@@ -255,7 +255,8 @@ on:
 **Conditions:** `branch`, `var`, `path`, `changed`, `file` (optionally with `contains`), `command`, `exit`,
 `actor`, `done`, `not`.
 
-**Actions:** `deny`, `allow`, `require`, `run` (a command or the checks of the matching rules), `context` (a
+**Actions:** `deny`, `allow`, `require`, `run` (a command or the checks of the matching rules, optionally
+recording a fact when it passes), `context` (a
 file, a text or the matching rules), `record`.
 
 **Modes:** `enforce`, `warn`, `audit`.

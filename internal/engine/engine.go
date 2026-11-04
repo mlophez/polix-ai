@@ -87,6 +87,7 @@ type Engine struct {
 	gotChange bool
 	files     []string
 	rules     []rules.Rule
+	rulesErr  error
 	gotRules  bool
 	vars      map[string]string
 }
@@ -265,8 +266,24 @@ func (en *Engine) apply(e *workflow.Entry, ev Event, res *Result) bool {
 		block(en.expand(*e.Require, ev))
 		return false
 	case "run":
+		// The fact is about the content the run saw: pin it before running, and record nothing if the run (or
+		// anyone else meanwhile) changed it. Only a run that passed records, whatever the mode.
+		var before string
+		if e.Run.Record != "" {
+			before = en.Hash()
+		}
 		if reason := en.run(e.Run, ev); reason != "" {
 			block(reason)
+		} else if e.Run.Record != "" {
+			fact := en.expand(e.Run.Record, ev)
+			en.hash = nil
+			if en.Hash() != before {
+				reason := fmt.Sprintf("el contenido cambió durante el run; no se registra %s", fact)
+				res.Warnings = append(res.Warnings, reason)
+				en.log(ev, "run", e.Line, "warn", reason)
+			} else {
+				en.recordFact(ev, fact)
+			}
 		}
 		return false
 	case "context":
@@ -288,6 +305,9 @@ func (en *Engine) run(r *workflow.Run, ev Event) string {
 	defer cancel()
 	if r.Rules != "" {
 		all := en.Rules()
+		if en.rulesErr != nil {
+			return fmt.Sprintf("No se pueden cargar las rules: %v", en.rulesErr)
+		}
 		var paths []string
 		if r.Rules == "changed" {
 			paths = en.Changed()
@@ -522,7 +542,7 @@ func (en *Engine) Files() []string {
 // Rules returns the rules of the repository.
 func (en *Engine) Rules() []rules.Rule {
 	if !en.gotRules {
-		en.rules, _ = rules.Load(en.Repo.Root)
+		en.rules, en.rulesErr = rules.Load(en.Repo.Root)
 		en.gotRules = true
 	}
 	return en.rules

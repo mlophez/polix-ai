@@ -540,6 +540,88 @@ func TestSubagentCommandsOnProtectedFiles(t *testing.T) {
 	expectCode(t, "builder reads protected files", code, 0, stderr)
 }
 
+// run with record records the fact only when the run passes, so a passing gate on stop counts as done.
+func TestRunRecordsOnSuccess(t *testing.T) {
+	const gate = `  pre_commit:
+    - unless: { done: tested }
+      deny: "Faltan los tests"
+`
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  stop:
+    - unless: { done: tested }
+      mode: warn
+      run: { command: [git, rev-parse, --verify, --quiet, no-such-ref], record: tested }
+`+gate)
+	r.write("src/a.go", "package a\n")
+	code, _, stderr := r.stop()
+	expectCode(t, "stop with the run failing in warn mode", code, 0, stderr)
+	code, _, stderr = r.bash("git commit -m x", false)
+	expectCode(t, "commit after a failing run", code, 2, stderr)
+
+	r.write("polix.yaml", `version: 1
+on:
+  stop:
+    - unless: { done: tested }
+      run: { command: [git, rev-parse, --verify, --quiet, HEAD], record: tested }
+`+gate)
+	code, _, stderr = r.stop()
+	expectCode(t, "stop with the run passing", code, 0, stderr)
+	code, _, stderr = r.bash("git commit -m x", false)
+	expectCode(t, "commit after a passing run", code, 0, stderr)
+
+	r.write("src/a.go", "package a\n\nvar x = 1\n")
+	code, _, stderr = r.bash("git commit -m x", false)
+	expectCode(t, "commit after an edit", code, 2, stderr)
+
+	// A run that passes in warn mode records too.
+	r.write("polix.yaml", `version: 1
+on:
+  stop:
+    - mode: warn
+      run: { command: [git, rev-parse, --verify, --quiet, HEAD], record: tested }
+`+gate)
+	r.stop()
+	code, _, stderr = r.bash("git commit -m x", false)
+	expectCode(t, "commit after a passing run in warn mode", code, 0, stderr)
+}
+
+// Rules that cannot be loaded fail run: { rules }, instead of passing with no checks and recording a fact.
+func TestRunRulesFailsOnBadRules(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - run: { rules: changed, record: checked }\n")
+	r.write("ai/rules/bad.yaml", "rules: [\n")
+	code, _, stderr := r.stop()
+	expectCode(t, "stop with rules that do not load", code, 2, stderr)
+	if !strings.Contains(stderr, "No se pueden cargar las rules") {
+		t.Fatalf("reason: %q", stderr)
+	}
+}
+
+// A run that changes the content proves nothing about the result: its fact is not recorded.
+func TestRunRecordSkipsChangedContent(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  stop:
+    - run: { command: [git, checkout, --, README.md], record: tested }
+  pre_commit:
+    - unless: { done: tested }
+      deny: "Faltan los tests"
+`)
+	r.write("README.md", "changed\n")
+	code, _, stderr := r.stop()
+	expectCode(t, "stop with a run that rewrites a file", code, 0, stderr)
+	code, _, stderr = r.bash("git commit -m x", false)
+	expectCode(t, "commit after a run that changed the content", code, 2, stderr)
+
+	// Same run, nothing left to rewrite: the content holds and the fact is recorded.
+	r.stop()
+	code, _, stderr = r.bash("git commit -m x", false)
+	expectCode(t, "commit after a run on stable content", code, 0, stderr)
+}
+
 // The loop guard covers every block of a stop, not only require: a deny or a failing run cannot trap the agent.
 func TestStopLoopGuardOnAnyBlock(t *testing.T) {
 	r := newRepo(t, "main")

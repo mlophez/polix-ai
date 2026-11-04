@@ -120,6 +120,8 @@ on:
     #   zero exit blocks with the last 15 lines of its output;
     # - rules: `changed` (the changed files) or a path such as "{path}": runs the check of every deterministic
     #   rule with a check whose scope matches; a failure names the rule ids and their output.
+    # Optional record: the name of a fact recorded on the current content when the run passes (never when it
+    # fails, whatever the mode), as `record` does.
     - if: { path: "**/*.py" }
       mode: warn
       run: { command: ["uv", "run", "ruff", "check", "{path}"] }
@@ -174,6 +176,10 @@ on:
     # changed: some file changed by the branch (see base) matches a glob, or one of a list.
     - if: { changed: "**" }
       run: { rules: changed }
+    # A run that records a fact: the tests run on stop without the agent, once per content.
+    - if: { changed: "src/**" }
+      unless: { done: tested }
+      run: { command: ["just", "test"], record: tested }
     # require: what the agent must do before it stops; only valid on stop and subagent_stop. In enforce mode it
     # blocks with the text and counts for the loop guard (max_stop_blocks), like any block of a stop; it never
     # stops the evaluation, so every pending require is reported at once.

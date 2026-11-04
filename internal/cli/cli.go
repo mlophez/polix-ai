@@ -461,6 +461,9 @@ func mermaidLabel(e *workflow.Entry) string {
 		} else {
 			act += " " + strings.Join(e.Run.Command, " ")
 		}
+		if e.Run.Record != "" {
+			act += " → record " + e.Run.Record
+		}
 	}
 	if m := e.Mode; m != "" && m != workflow.ModeEnforce {
 		act += " (" + m + ")"

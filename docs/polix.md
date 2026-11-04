@@ -209,6 +209,10 @@ Actions:
   (`rules: "{path}"`), each rule once per session. Not valid on `stop` or `subagent_stop`, which cannot
   receive context.
 - `record: <fact>` records a fact on the current content.
+- `run: { ..., record: <fact> }` also records the fact when the run passes, in any mode, on the content the run
+  saw: a failing run records nothing, and neither does one during which the content changed (a formatter that
+  rewrites files, another agent editing). A gate on `stop` with `unless: { done: <fact> }` then runs until it
+  passes, and once per content after that. A rules file that cannot be loaded fails `run: { rules }`.
 
 Modes: `enforce` applies the entry; `warn` turns a block into a warning in the context; `audit` only logs what it
 would have blocked, to try a new entry before enforcing it.

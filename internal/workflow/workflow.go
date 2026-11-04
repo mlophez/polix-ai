@@ -120,7 +120,9 @@ func Nested(v any) (Cond, bool) {
 type Run struct {
 	Command Args   `yaml:"command"`
 	Rules   string `yaml:"rules"`
-	keys    []string
+	// Record names a fact recorded on the current content when the run passes.
+	Record string `yaml:"record"`
+	keys   []string
 }
 
 // Context injects text into the session: a file, a text or the rules that apply to a path.
@@ -421,10 +423,14 @@ func (v *validator) action(ev string, e *Entry) {
 		}
 	case "run":
 		r := e.Run
-		v.unknownKeys(e.Line, "run", r.keys, []string{"command", "rules"})
+		v.unknownKeys(e.Line, "run", r.keys, []string{"command", "rules", "record"})
 		if (len(r.Command) == 0) == (r.Rules == "") {
 			v.add(e.Line, "run needs exactly one of command or rules")
 		}
+		if contains(r.keys, "record") && r.Record == "" {
+			v.add(e.Line, "record in run needs the name of the fact")
+		}
+		v.placeholders(e.Line, r.Record)
 		for _, a := range r.Command {
 			v.placeholders(e.Line, a)
 		}
