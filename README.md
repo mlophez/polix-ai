@@ -13,6 +13,7 @@ One static binary connects Claude Code and Codex to the workflow and rules of yo
 [![License](https://img.shields.io/github/license/mlophez/polix-ai)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20macOS%20%7C%20windows-informational)
 
+[Engine and harness](#the-engine-and-the-harness) ·
 [Quick start](#quick-start) ·
 [How it works](#how-it-works) ·
 [polix.yaml](#the-workflow-in-one-file) ·
@@ -84,6 +85,39 @@ You don't have to invalidate anything by hand.
   three in CI. The hooks work the same under `sh`, Git Bash and PowerShell.
 - **Fast.** About 13 ms per hook call, and about 130 ms for a stop that hashes a 730-file repository (measured
   on macOS).
+
+## The engine and the harness
+
+polix comes in two layers, and the second one is optional.
+
+- **The engine** is the binary, `polix.yaml` and `ai/rules/`. It enforces whatever process you write down and
+  assumes none: use it with your own skills, agents and conventions.
+- **The harness** is a small set of best practices that ships in the plugin `polix`, for teams that want a
+  development flow ready to use. Each phase is a skill run by its own subagent, with a clean context and a
+  structured output that the next phase reads:
+  - **plan**: turns a request into a plan with its scope, steps and how each step is verified, before any edit.
+  - **build**: implements the plan step by step and runs the tests of each step.
+  - **review**: reviews the diff against the plan and `ai/rules/`, and reports findings without fixing them.
+  - **document**: updates the documentation and the comments that the change made stale.
+
+The harness is not enforced by itself. A skill only helps the agent; polix enforces a phase when your
+`polix.yaml` says so, for example by recording a fact when a phase ends and requiring it before a commit:
+
+```yaml
+on:
+  subagent_stop:
+    - if: { actor: "polix:reviewer" }
+      record: reviewed
+  pre_commit:
+    - unless: { done: [tested, reviewed] }
+      deny: "Test and review the diff before committing"
+```
+
+Adopt the whole flow, a single phase or none of it.
+
+> The harness is planned. Today the plugin holds the skills that set polix up (`/polix:workflow`,
+> `/polix:add-rule`, `/polix:doctor`) and the agents `polix:workflow-author`, `polix:rules-author` and
+> `polix:rules-reviewer`.
 
 ## Quick start
 
@@ -291,6 +325,7 @@ under Windows PowerShell 5.1 and PowerShell 7.
 polix is a **proof of concept**. It works and governs its own repository, but some things are still open:
 
 - Codex support is experimental.
+- The harness of skills and agents for plan, build, review and document is not written yet.
 - The log grows without bound and is appended without a lock.
 - Releases are verified with checksums but are not signed yet.
 
