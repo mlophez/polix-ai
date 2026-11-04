@@ -26,7 +26,7 @@ You write the intent, which only this session knows; the subagent judges the cod
 
 - **Change**: the range or files from the arguments.
   Without them, the current change: the branch against its base plus what is staged, not staged and untracked.
-- **Intent**: what the change must achieve, from the conversation: the request, the plan or the ticket.
+- **Intent**: what the change must achieve, from the conversation: the request, the plan of `ai/plans/` or the ticket.
   Without any, leave it empty and the subagent infers it.
 
 ## Rules

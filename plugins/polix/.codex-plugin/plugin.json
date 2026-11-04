@@ -1,7 +1,7 @@
 {
   "name": "polix",
   "version": "0.0.0-dev",
-  "description": "Skills of polix: write the polix.yaml and ai/rules/ of a repository, review a change, audit a repository and fix the setup of polix.",
+  "description": "Skills of polix: write the polix.yaml and ai/rules/ of a repository, plan a change, review it, audit a repository and fix the setup of polix.",
   "author": {
     "name": "Miguel López Ruiz",
     "url": "https://github.com/mlophez"

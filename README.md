@@ -115,8 +115,8 @@ on:
 
 Adopt the whole flow, a single phase or none of it.
 
-> The harness is planned. Today the plugin holds the skills that set polix up (`/polix:workflow`,
-> `/polix:add-rule`, `/polix:doctor`), the skills `/polix:review` and `/polix:audit`, and the agents
+> The harness is in progress. Today the plugin holds the skills that set polix up (`/polix:workflow`,
+> `/polix:add-rule`, `/polix:doctor`), the skills `/polix:plan`, `/polix:review` and `/polix:audit`, and the agents
 > `polix:workflow-author`, `polix:rules-author`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`.
 
 ## Quick start
@@ -154,7 +154,7 @@ polix install --agent claude      # only Claude Code (default: Claude Code, and 
 `polix install` sets up two things, and running it again only updates what changed:
 
 - **For you, the plugin `polix`.** It holds the skills `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`,
-  `/polix:review` and `/polix:audit` and the agents `polix:workflow-author`, `polix:rules-author`,
+  `/polix:plan`, `/polix:review` and `/polix:audit` and the agents `polix:workflow-author`, `polix:rules-author`,
   `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`.
   The plugin ships inside the binary: polix writes it to the local marketplace `~/.polix/marketplace/` and
   registers it with `claude plugin install polix@polix --scope user` (for Codex, it enables it in
@@ -335,7 +335,7 @@ under Windows PowerShell 5.1 and PowerShell 7.
 polix is a **proof of concept**. It works and governs its own repository, but some things are still open:
 
 - Codex support is experimental.
-- The harness of skills and agents for plan, build, review and document is not written yet.
+- The harness has its plan and review phases; build and document are not written yet.
 - The log grows without bound and is appended without a lock.
 - Releases are verified with checksums but are not signed yet.
 

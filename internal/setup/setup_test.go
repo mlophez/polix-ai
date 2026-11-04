@@ -389,7 +389,7 @@ func TestHookTimeouts(t *testing.T) {
 }
 
 func TestPluginNames(t *testing.T) {
-	if got := strings.Join(Skills(), " "); got != "add-rule audit doctor review workflow" {
+	if got := strings.Join(Skills(), " "); got != "add-rule audit doctor plan review workflow" {
 		t.Fatalf("skills: %s", got)
 	}
 	if got := strings.Join(Agents(), " "); got != "auditor reviewer rules-author rules-reviewer workflow-author" {
