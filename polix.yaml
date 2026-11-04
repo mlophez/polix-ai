@@ -5,40 +5,27 @@ base: main
 max_stop_blocks: 3
 
 on:
-  session_start:
-    - context:
-        text: >-
-          Este repositorio se gobierna con su propio polix (polix.yaml, ai/rules/). Rama {branch}.
-          Antes de commitear cambios de código: `just test` en verde sobre el diff final y revisión con el
-          subagente reviewer. Tras cambiar el motor, `just install` para que los hooks usen el binario nuevo.
-
-  # Inject the rules that apply to each edited path, once per session.
-  #pre_edit:
-  #  - context: { rules: "{path}" }
-
-  ## Feedback right after editing Go: the gofmt rule (whole tree, it takes milliseconds).
-  #post_edit:
-  #  - if: { path: "*.go" }
-  #    mode: warn
-  #    run: { rules: "{path}" }
+  # Format each Go file right after it is edited. A failure (a syntax error) reaches the agent as context.
+  post_edit:
+    - if: { path: "*.go" }
+      mode: warn
+      run: { command: ["gofmt", "-w", "{path}"] }
 
   # Only a full `just test` (vet + every test) counts as tested; `just test -run X` does not.
   post_command:
     - if: { command: ["just test", "just test 2>&1"], exit: 0 }
       record: tested
 
-  #pre_commit:
-    #- if: { changed: ["*.go", "install.sh", "install.ps1", "scripts/**", ".github/**"] }
-    #  unless: { done: reviewed }
-    #  mode: warn
-    #  deny: "El diff no está revisado: lanza el subagente reviewer antes de commitear"
-
-  #subagent_stop:
-  #  - if: { actor: reviewer }
-  #    record: reviewed
-
   # Deterministic rules of the changed files must pass before the turn ends.
   stop:
+    # The formatter (GO-1) and the linter (GO-3, golangci-lint with .golangci.yml), once per content.
+    - if: { changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"] }
+      unless: { done: formatted }
+      run: { rules: changed, record: formatted }
+    - if: { changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"] }
+      unless: { done: linted }
+      run: { command: ["golangci-lint", "run", "./..."], record: linted }
+    # The tests run on stop without the agent, once per content; a `just test` of the agent counts too.
     - if: { changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**", "Justfile"] }
       unless: { done: tested }
-      deny: "Los tests no han pasado sobre este diff: ejecuta just test"
+      run: { command: ["just", "test"], record: tested }

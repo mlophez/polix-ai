@@ -53,10 +53,10 @@ func newFakeReleaseFiles(t *testing.T, files map[string][]byte, sums map[string]
 	})
 	for _, prefix := range []string{"/download/v0.2.0/", "/latest/download/"} {
 		mux.HandleFunc(prefix+"checksums.txt", func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte(listing.String()))
+			_, _ = w.Write([]byte(listing.String()))
 		})
 		for name, data := range files {
-			mux.HandleFunc(prefix+name, func(w http.ResponseWriter, r *http.Request) { w.Write(data) })
+			mux.HandleFunc(prefix+name, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(data) })
 		}
 	}
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -231,7 +231,7 @@ func TestUpdateHookCannotWrite(t *testing.T) {
 	if err := os.Chmod(dir, 0o555); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 	code, _, stderr := runCmd("update", "--hook")
 	if code != 0 || !strings.Contains(stderr, "cannot write") || content(t, exe) != "old" {
 		t.Fatalf("cannot write: %d %q", code, stderr)

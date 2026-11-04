@@ -122,13 +122,13 @@ func parseCommand(text string) command {
 			pending = kind
 			continue
 		}
-		switch {
-		case ch == '\'' || ch == '"':
+		switch ch {
+		case '\'', '"':
 			quote, inWord, quoted = ch, true, true
-		case ch == '|' || ch == ';' || ch == '&':
+		case '|', ';', '&':
 			flush()
 			pending = ""
-		case ch == ' ' || ch == '\t' || ch == '\n':
+		case ' ', '\t', '\n':
 			flush()
 		default:
 			cur.WriteRune(ch)

@@ -176,7 +176,9 @@ func TestDoctorPath(t *testing.T) {
 		t.Fatalf("doctor: %d\n%s", code, stdout)
 	}
 	other := filepath.Join(t.TempDir(), "polix")
-	os.WriteFile(other, []byte("other"), 0o755)
+	if err := os.WriteFile(other, []byte("other"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	lookPath = func(name string) (string, error) {
 		if name == "polix" {
 			return other, nil

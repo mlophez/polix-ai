@@ -223,6 +223,7 @@ func loadValid(root string) (*workflow.Workflow, error) {
 	}
 	var old *workflow.TooOld
 	if err != nil && !errors.As(err, &old) && mayNeedNewer(err.Error()) {
+		//nolint:staticcheck // ST1005: the agent reads this message as is, a sentence in Spanish
 		err = fmt.Errorf("%w\nSi %s usa opciones de una versión de polix más reciente que la instalada (%s), no las "+
 			"quites: ejecuta polix update.", err, workflow.File, Version)
 	}

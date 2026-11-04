@@ -82,8 +82,12 @@ func TestInstallInARepository(t *testing.T) {
 
 	// The same hooks in the settings of the user too run twice.
 	data, _ := os.ReadFile(filepath.Join("..", "..", "examples", "claude-settings.json"))
-	os.MkdirAll(filepath.Join(os.Getenv("HOME"), ".claude"), 0o755)
-	os.WriteFile(filepath.Join(os.Getenv("HOME"), ".claude", "settings.json"), data, 0o644)
+	if err := os.MkdirAll(filepath.Join(os.Getenv("HOME"), ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".claude", "settings.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if code, stdout, _ := r.run("doctor", "--offline"); code != 1 || !strings.Contains(stdout, "runs polix twice") {
 		t.Fatalf("doctor with duplicated hooks: %d\n%s", code, stdout)
 	}

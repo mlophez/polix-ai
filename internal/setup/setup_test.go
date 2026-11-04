@@ -27,6 +27,17 @@ func read(t *testing.T, p string) string {
 	return string(data)
 }
 
+// write creates p with data, and the folders that hold it.
+func write(t *testing.T, p, data string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // fakeCLI stands for the CLIs of Claude Code and Codex: it records every call and answers like `claude plugin`
 // does with --json.
 type fakeCLI struct {
@@ -154,8 +165,7 @@ func TestInstallClaude(t *testing.T) {
 
 	// A second install changes nothing; a file of an earlier release that this one dropped is removed.
 	stale := filepath.Join(o.PluginDir(), "skills", "gone", "SKILL.md")
-	os.MkdirAll(filepath.Dir(stale), 0o755)
-	os.WriteFile(stale, []byte("old"), 0o644)
+	write(t, stale, "old")
 	changes, err = Install(o, []string{Claude})
 	if err != nil || len(changes) != 1 || changes[0].Action != "removed" || changes[0].Path != stale {
 		t.Fatalf("second install: %v %+v", err, changes)
@@ -210,9 +220,8 @@ func TestInstallCodex(t *testing.T) {
 	o := opts(t)
 	cli := fakeAgents(t, false, true)
 	config := o.CodexConfigFile()
-	os.MkdirAll(filepath.Dir(config), 0o755)
 	mine := "model = \"gpt-5\"\n\n[plugins.\"other@x\"]\nenabled = true\n"
-	os.WriteFile(config, []byte(mine), 0o644)
+	write(t, config, mine)
 
 	if _, err := Install(o, []string{Codex}); err != nil {
 		t.Fatal(err)
@@ -229,7 +238,7 @@ func TestInstallCodex(t *testing.T) {
 	}
 
 	// A plugin disabled by hand is enabled again.
-	os.WriteFile(config, []byte(strings.Replace(got, "polix@polix\"]\nenabled = true", "polix@polix\"]\nenabled = false", 1)), 0o644)
+	write(t, config, strings.Replace(got, "polix@polix\"]\nenabled = true", "polix@polix\"]\nenabled = false", 1))
 	if _, err := Install(o, []string{Codex}); err != nil || !CodexEnabled(o) {
 		t.Fatalf("enable again: %v\n%s", err, read(t, config))
 	}
@@ -267,7 +276,6 @@ func TestRegisterHooksInTheProject(t *testing.T) {
 	fakeAgents(t, true, false)
 	o.Project = t.TempDir()
 	settings := o.HooksFile(Claude)
-	os.MkdirAll(filepath.Dir(settings), 0o755)
 	mine := `{
   "permissions": {"allow": ["Bash(go test:*)"]},
   "hooks": {
@@ -278,13 +286,13 @@ func TestRegisterHooksInTheProject(t *testing.T) {
   },
   "model": "opus"
 }`
-	os.WriteFile(settings, []byte(mine), 0o644)
+	write(t, settings, mine)
 
 	if _, err := Install(o, []string{Claude, Codex}); err != nil {
 		t.Fatal(err)
 	}
 	got := read(t, settings)
-	if p, h, m := strings.Index(got, `"permissions"`), strings.Index(got, `"hooks"`), strings.Index(got, `"model"`); !(p < h && h < m) {
+	if p, h, m := strings.Index(got, `"permissions"`), strings.Index(got, `"hooks"`), strings.Index(got, `"model"`); p >= h || h >= m {
 		t.Fatalf("the order of the keys is kept:\n%s", got)
 	}
 	hooks, err := ReadHooks(settings)
@@ -337,11 +345,10 @@ func TestRegisterHooksReplacesALegacyCommand(t *testing.T) {
 	o := opts(t)
 	o.Project = t.TempDir()
 	settings := o.HooksFile(Claude)
-	os.MkdirAll(filepath.Dir(settings), 0o755)
-	os.WriteFile(settings, []byte(`{"hooks": {"SessionStart": [
+	write(t, settings, `{"hooks": {"SessionStart": [
   {"hooks": [{"type": "command", "command": "polix hook claude", "timeout": 900}]},
   {"matcher": "startup", "hooks": [{"type": "command", "command": "polix update --hook; polix doctor --hook", "timeout": 180}]}
-]}}`), 0o644)
+]}}`)
 	if _, err := RegisterHooks(o, Claude); err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +395,8 @@ func TestHooksGroupsInline(t *testing.T) {
 	}
 	got := read(t, o.HooksFile(Claude))
 	for _, l := range strings.Split(got, "\n") {
-		if strings.Contains(l, `"command"`) && !(strings.HasPrefix(l, "      { ") && strings.Contains(l, `"hooks": [{ "type": "command"`)) {
+		oneLine := strings.HasPrefix(l, "      { ") && strings.Contains(l, `"hooks": [{ "type": "command"`)
+		if strings.Contains(l, `"command"`) && !oneLine {
 			t.Fatalf("a group spans lines:\n%s", got)
 		}
 	}
@@ -407,11 +415,10 @@ func TestHooksGroupsInline(t *testing.T) {
 func TestRegisterHooksMixedGroup(t *testing.T) {
 	o := Options{Project: t.TempDir()}
 	settings := o.HooksFile(Claude)
-	os.MkdirAll(filepath.Dir(settings), 0o755)
-	os.WriteFile(settings, []byte(`{"hooks": {"Stop": [{"hooks": [
+	write(t, settings, `{"hooks": {"Stop": [{"hooks": [
   {"type": "command", "command": "polix hook claude"},
   {"type": "command", "command": "notify-send done"}
-]}]}}`), 0o644)
+]}]}}`)
 	if _, err := RegisterHooks(o, Claude); err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +454,9 @@ func TestRegisterHooksKeepsLinkAndMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	settings := o.HooksFile(Claude)
-	os.MkdirAll(filepath.Dir(settings), 0o755)
+	if err := os.MkdirAll(filepath.Dir(settings), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Symlink(target, settings); err != nil {
 		t.Skipf("cannot create symlinks here: %v", err)
 	}

@@ -5,6 +5,13 @@ rules:
     deterministic: true
     check: ai/checks/gofmt.sh
 
+  - id: GO-3
+    description: >-
+      Go code passes golangci-lint with .golangci.yml. A finding that is intended is silenced on its line with
+      `//nolint:<linter> // <reason>`, never by disabling the linter for the module. polix.yaml and CI run it.
+    scope: ["*.go", "go.mod", "go.sum", ".golangci.yml"]
+    deterministic: true
+
   - id: GO-2
     description: >-
       Code, comments, docs and commit messages are written in English; only the texts that polix.yaml shows to

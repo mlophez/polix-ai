@@ -22,13 +22,13 @@ func releases(t *testing.T, bin []byte, sum string) *httptest.Server {
 		http.Redirect(w, r, "/tag/v0.2.0", http.StatusFound)
 	})
 	mux.HandleFunc("/download/v0.2.0/checksums.txt", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("0000  polix_other_os\n" + sum + "  " + asset + "\n"))
+		_, _ = w.Write([]byte("0000  polix_other_os\n" + sum + "  " + asset + "\n"))
 	})
 	// The binary is served through a redirect, as GitHub does.
 	mux.HandleFunc("/download/v0.2.0/"+asset, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/assets/"+asset, http.StatusFound)
 	})
-	mux.HandleFunc("/assets/"+asset, func(w http.ResponseWriter, r *http.Request) { w.Write(bin) })
+	mux.HandleFunc("/assets/"+asset, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(bin) })
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv

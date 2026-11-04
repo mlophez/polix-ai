@@ -24,6 +24,11 @@ jobs:
           go-version-file: go.mod
       - name: Vet
         run: go vet ./...
+      # The linter of GO-3, with .golangci.yml.
+      - name: Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.15.0
       # On Windows this also runs install.ps1 under Windows PowerShell 5.1 and PowerShell 7.
       - name: Test
         run: go test ./...
