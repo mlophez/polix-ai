@@ -5,13 +5,19 @@ set positional-arguments
 test *args:
     go vet ./... && go test ./... "$@"
 
-# Build polix into build/polix
+# Build polix into build/polix (a static binary for this system)
 build:
     go build -o build/polix ./cmd/polix
 
 # Install polix with go install, so the hooks find it on the PATH
 install:
     go install ./cmd/polix
+
+# Install polix and check it against this repository: config, deterministic rules and machine
+check: install
+    polix check
+    polix rules check
+    polix doctor --offline
 
 # Build the assets of a release into dist/ (what the release workflow publishes)
 dist version:
