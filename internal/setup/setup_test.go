@@ -396,3 +396,26 @@ func TestPluginNames(t *testing.T) {
 		t.Fatalf("agents: %s", got)
 	}
 }
+
+// A development build is always "dev", so the plugin carries a hash of its contents as version: Claude Code only
+// copies a plugin to its cache when its version changes.
+func TestManifestVersionOfDevelopmentBuild(t *testing.T) {
+	if v := ManifestVersion("1.2.3"); v != "1.2.3" {
+		t.Fatalf("a release writes its own version: %s", v)
+	}
+	dev := ManifestVersion("dev")
+	if !strings.HasPrefix(dev, "0.0.0-dev+") || len(dev) != len("0.0.0-dev+")+12 || ManifestVersion("") != dev {
+		t.Fatalf("a development build writes 0.0.0-dev+<hash>: %s", dev)
+	}
+	o := Options{Home: t.TempDir(), Version: "dev"}
+	if _, err := WritePlugin(o); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := PluginVersion(o); v != dev {
+		t.Fatalf("plugin version: %s, want %s", v, dev)
+	}
+	m := read(t, filepath.Join(o.MarketplaceDir(), Name, ".codex-plugin", "plugin.json"))
+	if !strings.Contains(m, `"version": "`+dev+`"`) {
+		t.Fatalf("both manifests carry it: %s", m)
+	}
+}

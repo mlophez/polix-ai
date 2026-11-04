@@ -278,11 +278,12 @@ it. Running it again rewrites what changed and removes what the release dropped.
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
   `ai/rules/`, `doctor` fixes the setup) and, for Claude Code, agents (`workflow-author`, `rules-author` and the
   read-only `rules-reviewer` and `auditor`). Install writes it, with the version of the binary in its
-  manifests, to the local marketplace `~/.polix/marketplace/` and registers it:
+  manifests, to the local marketplace `~/.polix/marketplace/` and registers it. A development build, whose version
+  is always `dev`, writes `0.0.0-dev+<hash of the plugin>` instead, so every change of the plugin is a new version.
   - Claude Code: `claude plugin marketplace add ~/.polix/marketplace --scope user` and
     `claude plugin install polix@polix --scope user`. Claude Code copies the plugin to its cache
     (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
-    `claude plugin update`, which copies the new version; it loads in the next session. Its
+    `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
     skills are `/polix:workflow`, `/polix:add-rule` and `/polix:doctor`, its agents `polix:workflow-author`,
     `polix:rules-author`, `polix:rules-reviewer` and `polix:auditor`.
   - Codex, when it is installed (or with `--agent codex`): `codex plugin marketplace add ~/.polix/marketplace` and

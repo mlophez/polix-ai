@@ -428,7 +428,7 @@ func (d *doctorRun) plugin(home string, quick bool) {
 	case !ok:
 		d.add(levelWarn, "plugin", "the plugin polix (skills and agents) is not installed: run polix install --user")
 		return
-	case v != Version:
+	case v != setup.ManifestVersion(Version):
 		d.add(levelWarn, "plugin", "%s is from polix %s, this binary is %s: run polix install --user", o.PluginDir(), v, Version)
 		return
 	}

@@ -3,6 +3,8 @@ package setup
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mlophez/polix-ai/internal/version"
 	"github.com/mlophez/polix-ai/plugins"
 )
 
@@ -121,11 +124,40 @@ type codexEntry struct {
 	Category string `json:"category"`
 }
 
+// ManifestVersion is the version polix writes in the manifests of the plugin for a binary of the given version.
+// A release writes its own version. A development build is always "dev", and Claude Code only copies a plugin to
+// its cache when its version changes, so it writes 0.0.0-dev+<hash of the plugin> instead.
+func ManifestVersion(binary string) string {
+	if version.IsRelease(binary) {
+		return binary
+	}
+	return "0.0.0-dev+" + pluginHash()
+}
+
+// pluginHash is a short hash of the paths and contents of the plugin embedded in the binary.
+func pluginHash() string {
+	h := sha256.New()
+	_ = fs.WalkDir(plugins.FS, Name, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := plugins.FS.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(h, "%s\x00%d\x00", p, len(data))
+		h.Write(data)
+		return nil
+	})
+	return hex.EncodeToString(h.Sum(nil))[:12]
+}
+
 // pluginFiles are the files of the local marketplace, keyed by path relative to it: the plugin embedded in the
-// binary, with the version of the binary in its manifests, and a marketplace manifest for each agent.
-func pluginFiles(version string) (map[string][]byte, error) {
+// binary, with its ManifestVersion in its manifests, and a marketplace manifest for each agent.
+func pluginFiles(binary string) (map[string][]byte, error) {
 	files := map[string][]byte{}
 	description := ""
+	manifest := ManifestVersion(binary)
 	err := fs.WalkDir(plugins.FS, Name, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -135,7 +167,7 @@ func pluginFiles(version string) (map[string][]byte, error) {
 			return err
 		}
 		if path.Base(p) == "plugin.json" {
-			if data, err = setVersion(data, version); err != nil {
+			if data, err = setVersion(data, manifest); err != nil {
 				return fmt.Errorf("%s: %w", p, err)
 			}
 			if strings.Contains(p, ".claude-plugin") {
@@ -153,7 +185,7 @@ func pluginFiles(version string) (map[string][]byte, error) {
 
 	var cm claudeMarketplace
 	cm.Name = Name
-	cm.Description = "The plugin of polix " + version + ", written by polix install from its binary: do not edit."
+	cm.Description = "The plugin of polix " + binary + ", written by polix install from its binary: do not edit."
 	cm.Owner.Name = Name
 	cm.Plugins = []claudeEntry{{Name: Name, Source: "./" + Name, Description: description}}
 	files[".claude-plugin/marketplace.json"] = pretty(marshal(cm))
@@ -170,7 +202,7 @@ func pluginFiles(version string) (map[string][]byte, error) {
 }
 
 // setVersion sets the version of a plugin manifest, keeping the order of its keys.
-func setVersion(data []byte, version string) ([]byte, error) {
+func setVersion(data []byte, v string) ([]byte, error) {
 	ms, err := decodeObject(data)
 	if err != nil {
 		return nil, err
@@ -179,7 +211,7 @@ func setVersion(data []byte, version string) ([]byte, error) {
 	if i < 0 {
 		return nil, errors.New("no version")
 	}
-	ms[i].val = marshal(version)
+	ms[i].val = marshal(v)
 	return pretty(encodeObject(ms)), nil
 }
 
@@ -193,6 +225,7 @@ func WritePlugin(o Options) ([]Change, error) {
 }
 
 // PluginVersion returns the version of the plugin written in the local marketplace, and whether it is there.
+// Compare it with the ManifestVersion of the binary, not with the version of the binary.
 func PluginVersion(o Options) (string, bool) {
 	data, err := os.ReadFile(filepath.Join(o.PluginDir(), ".claude-plugin", "plugin.json"))
 	if err != nil {
