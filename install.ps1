@@ -60,7 +60,16 @@ try {
         if ($parts.Count -eq 2 -and $parts[1].TrimStart('*') -eq $asset) { $want = $parts[0].ToLower() }
     }
     if (-not $want) { throw "install.ps1: checksums.txt has no entry for $asset" }
-    $got = (Get-FileHash -Algorithm SHA256 -Path $file).Hash.ToLower()
+    # SHA-256 through .NET, not Get-FileHash: Windows PowerShell 5.1 started from PowerShell 7 inherits its
+    # PSModulePath and cannot load the Get-FileHash of its own Microsoft.PowerShell.Utility module.
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead($file)
+    try {
+        $got = ([System.BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-', '').ToLower()
+    } finally {
+        $stream.Dispose()
+        $sha.Dispose()
+    }
     if ($got -ne $want) { throw "install.ps1: checksum of $asset is $got, checksums.txt says $want" }
 
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
