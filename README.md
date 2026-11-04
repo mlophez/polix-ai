@@ -116,8 +116,8 @@ on:
 Adopt the whole flow, a single phase or none of it.
 
 > The harness is planned. Today the plugin holds the skills that set polix up (`/polix:workflow`,
-> `/polix:add-rule`, `/polix:doctor`) and the agents `polix:workflow-author`, `polix:rules-author` and
-> `polix:rules-reviewer`.
+> `/polix:add-rule`, `/polix:doctor`) and the agents `polix:workflow-author`, `polix:rules-author`,
+> `polix:rules-reviewer` and `polix:auditor`.
 
 ## Quick start
 
@@ -154,9 +154,10 @@ polix install --agent claude      # only Claude Code (default: Claude Code, and 
 `polix install` sets up two things, and running it again only updates what changed:
 
 - **For you, the plugin `polix`.** It holds the skills `/polix:workflow`, `/polix:add-rule` and `/polix:doctor`
-  and the agents `polix:workflow-author`, `polix:rules-author` and `polix:rules-reviewer`. The plugin ships inside
-  the binary: polix writes it to the local marketplace `~/.polix/marketplace/` and registers it with
-  `claude plugin install polix@polix --scope user` (for Codex, it enables it in `~/.codex/config.toml`).
+  and the agents `polix:workflow-author`, `polix:rules-author`, `polix:rules-reviewer` and `polix:auditor`.
+  The plugin ships inside the binary: polix writes it to the local marketplace `~/.polix/marketplace/` and
+  registers it with `claude plugin install polix@polix --scope user` (for Codex, it enables it in
+  `~/.codex/config.toml`).
   Start a new session to load it.
 - **For the repository, the hooks.** They go in `.claude/settings.json` (and `.codex/hooks.json` for Codex),
   keeping every other setting and hook of those files. Commit them with your workflow so the team gets them.

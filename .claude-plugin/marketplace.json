@@ -9,7 +9,7 @@
     {
       "name": "polix",
       "source": "./plugins/polix",
-      "description": "Skills and agents of polix: write the polix.yaml and ai/rules/ of a repository, review a change against its rules and fix the setup of polix.",
+      "description": "Skills and agents of polix: write the polix.yaml and ai/rules/ of a repository, review a change against its rules, audit a repository and fix the setup of polix.",
       "category": "development"
     }
   ]

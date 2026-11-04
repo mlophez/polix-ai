@@ -392,7 +392,7 @@ func TestPluginNames(t *testing.T) {
 	if got := strings.Join(Skills(), " "); got != "add-rule doctor workflow" {
 		t.Fatalf("skills: %s", got)
 	}
-	if got := strings.Join(Agents(), " "); got != "rules-author rules-reviewer workflow-author" {
+	if got := strings.Join(Agents(), " "); got != "auditor rules-author rules-reviewer workflow-author" {
 		t.Fatalf("agents: %s", got)
 	}
 }
