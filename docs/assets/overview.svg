@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" width="960" height="380" role="img" aria-labelledby="title desc">
+  <title id="title">How polix works</title>
+  <desc id="desc">Claude Code and Codex call polix through their hooks. polix reads the declarative workflow in polix.yaml and the rules in ai/rules, keeps facts and decisions in a log, and answers each hook by blocking, injecting context or allowing the action.</desc>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .bg { fill: #f8fafc; stroke: #e2e8f0; }
+    .card { fill: #ffffff; stroke: #cbd5e1; }
+    .chip { fill: #eef2ff; stroke: #c7d2fe; }
+    .core { fill: #4f46e5; }
+    .t { fill: #0f172a; }
+    .m { fill: #64748b; }
+    .on-core { fill: #ffffff; }
+    .on-core-m { fill: #c7d2fe; }
+    .wire { stroke: #94a3b8; fill: none; stroke-width: 1.75; }
+    .head { fill: #94a3b8; }
+    .lbl { fill: #64748b; letter-spacing: .08em; }
+    .red { fill: #e5484d; } .blue { fill: #3b82f6; } .green { fill: #30a46c; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; stroke: #30363d; }
+      .card { fill: #161b22; stroke: #30363d; }
+      .chip { fill: #1e1b4b; stroke: #3730a3; }
+      .t { fill: #e6edf3; }
+      .m, .lbl { fill: #8b949e; }
+      .wire { stroke: #6e7681; }
+      .head { fill: #6e7681; }
+    }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0.5" y="0.5" width="959" height="379" rx="16"/>
+
+  <!-- Agents -->
+  <text class="lbl" x="40" y="96" font-size="11" font-weight="600">YOUR AGENT</text>
+  <rect class="card" x="40" y="110" width="200" height="72" rx="12"/>
+  <text class="t" x="60" y="142" font-size="16" font-weight="600">Claude Code</text>
+  <text class="m" x="60" y="164" font-size="12">hooks</text>
+  <rect class="card" x="40" y="218" width="200" height="72" rx="12"/>
+  <text class="t" x="60" y="250" font-size="16" font-weight="600">Codex</text>
+  <text class="m" x="60" y="272" font-size="12">hooks (experimental)</text>
+
+  <!-- Agent hooks to polix -->
+  <path class="wire" d="M240,146 C305,146 305,186 366,186" marker-end="url(#arrow)"/>
+  <path class="wire" d="M240,254 C305,254 305,214 366,214" marker-end="url(#arrow)"/>
+  <text class="m mono" x="305" y="204" font-size="11" text-anchor="middle">event</text>
+
+  <!-- Declarative inputs -->
+  <text class="lbl" x="480" y="40" font-size="11" font-weight="600" text-anchor="middle">DECLARATIVE POLICY</text>
+  <rect class="chip" x="340" y="56" width="130" height="50" rx="10"/>
+  <text class="t mono" x="405" y="79" font-size="14" font-weight="600" text-anchor="middle">polix.yaml</text>
+  <text class="m" x="405" y="96" font-size="11" text-anchor="middle">workflow</text>
+  <rect class="chip" x="490" y="56" width="130" height="50" rx="10"/>
+  <text class="t mono" x="555" y="79" font-size="14" font-weight="600" text-anchor="middle">ai/rules/</text>
+  <text class="m" x="555" y="96" font-size="11" text-anchor="middle">rules</text>
+  <path class="wire" d="M405,106 L435,146" marker-end="url(#arrow)"/>
+  <path class="wire" d="M555,106 L525,146" marker-end="url(#arrow)"/>
+
+  <!-- Engine -->
+  <rect class="core" x="370" y="150" width="220" height="100" rx="14"/>
+  <text class="on-core" x="480" y="200" font-size="28" font-weight="700" text-anchor="middle">polix</text>
+  <text class="on-core-m" x="480" y="224" font-size="12" text-anchor="middle">one binary, every repository</text>
+
+  <!-- State -->
+  <path class="wire" d="M480,254 L480,296" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <rect class="card" x="395" y="300" width="170" height="50" rx="10"/>
+  <text class="t mono" x="480" y="322" font-size="14" font-weight="600" text-anchor="middle">log.jsonl</text>
+  <text class="m" x="480" y="339" font-size="11" text-anchor="middle">facts and decisions</text>
+
+  <!-- Outcomes -->
+  <text class="lbl" x="720" y="76" font-size="11" font-weight="600">WHAT THE AGENT GETS</text>
+  <path class="wire" d="M590,190 C655,190 655,118 716,118" marker-end="url(#arrow)"/>
+  <path class="wire" d="M590,200 L716,200" marker-end="url(#arrow)"/>
+  <path class="wire" d="M590,210 C655,210 655,282 716,282" marker-end="url(#arrow)"/>
+
+  <rect class="card" x="720" y="90" width="200" height="56" rx="12"/>
+  <circle class="red" cx="742" cy="118" r="5"/>
+  <text class="t" x="758" y="114" font-size="14" font-weight="600">Block</text>
+  <text class="m mono" x="758" y="132" font-size="11">exit 2 + reasons</text>
+
+  <rect class="card" x="720" y="172" width="200" height="56" rx="12"/>
+  <circle class="blue" cx="742" cy="200" r="5"/>
+  <text class="t" x="758" y="196" font-size="14" font-weight="600">Inject context</text>
+  <text class="m mono" x="758" y="214" font-size="11">additionalContext</text>
+
+  <rect class="card" x="720" y="254" width="200" height="56" rx="12"/>
+  <circle class="green" cx="742" cy="282" r="5"/>
+  <text class="t" x="758" y="278" font-size="14" font-weight="600">Allow</text>
+  <text class="m mono" x="758" y="296" font-size="11">exit 0</text>
+</svg>

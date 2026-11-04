@@ -23,6 +23,10 @@ One static binary connects Claude Code and Codex to the workflow and rules of yo
 
 ---
 
+<p align="center">
+  <img src="docs/assets/overview.svg" alt="Claude Code and Codex call polix through their hooks; polix reads polix.yaml and ai/rules/, keeps facts and decisions in log.jsonl, and answers by blocking, injecting context or allowing the action" width="100%">
+</p>
+
 ## The problem
 
 You wrote it down in `AGENTS.md`: *run the tests before you commit, get the diff reviewed, never push to main.*
