@@ -300,12 +300,67 @@ Actions:
   rewrites files, another agent editing). A gate on `stop` with `unless: { done: <fact> }` then runs until it
   passes, and once per content after that. A rules file that cannot be loaded fails `run: { rules }`.
 
-Modes: `enforce` applies the entry; `warn` turns a block into a warning in the context; `audit` only logs what it
-would have blocked, to try a new entry before enforcing it.
+Modes: `enforce` applies the entry; `warn` turns a block into a warning for the agent; `audit` only logs what it
+would have blocked, to try a new entry before enforcing it. What each one does on each event is in
+[How the entries of an event are evaluated](#how-the-entries-of-an-event-are-evaluated).
 
 `polix check` rejects unknown events, conditions, actions and keys (inside `run`, `context` and `vars` too),
 variables and placeholders that are not defined, and conditions on events where they never hold, so a typo
 never turns into an entry that silently stops applying.
+
+### How the entries of an event are evaluated
+
+One hook call may produce several events: an edit of several paths gives one `pre_edit` per path, and a command
+with a `git commit` gives `pre_command` and `pre_commit`. Each event is answered on its own and the answers are
+merged: the call blocks when any of them blocks, with the reasons of all of them.
+
+For every event the [protections](#protections) come first: the state of polix and the `protected` paths are
+denied before any entry is read. Then the entries of the event run one after the other, in the order of the file,
+never in parallel. An entry whose `if` does not hold, or whose `unless` holds, is skipped. A `run` waits for its
+command to finish before the next entry starts, so a `stop` takes the sum of its runs, all of them bounded by the
+budget of 10 minutes of the hook call (see [Limits of the proof of concept](#limits-of-the-proof-of-concept)).
+
+Only two things stop the evaluation and leave the later entries of the event unread:
+
+- `allow`, which answers without blocking.
+- `deny` when it actually blocks: in `enforce` mode and not let go by the [loop guard](#loop-guard).
+
+Everything else goes on to the next entry. A failing `run` and a pending `require` block the event, but the later
+entries still run, so one answer reports every failure at once. `context` and `record` never block; when the event
+blocks, the texts of its `context` entries go with the reasons.
+
+What a block does depends on the event, since some of them already happened:
+
+- `pre_edit`, `pre_command`, `pre_commit`: the tool call is denied and the agent receives the reasons.
+- `prompt`: the prompt is rejected before the agent reads it.
+- `post_edit`, `post_command`: the edit or the command already happened. Only a failing `run` blocks here, since
+  `deny` and `require` are not valid on them, and its output reaches the agent as feedback on that call.
+- `stop`, `subagent_stop`: the agent, or the subagent, may not end its turn and receives the reasons to act on
+  them, up to the loop guard.
+- `session_start`: the session starts anyway; the agent only shows the reasons to the user.
+
+The mode of the entry decides whether a block happens and who learns about it:
+
+- `enforce`: the entry blocks as above.
+- `warn`: nothing is blocked; the log records a `warn` decision and the reason reaches the agent as context, prefixed
+  with "Aviso de polix:", on the events that take context (`session_start`, `prompt`, `pre_*` and `post_*`).
+  `stop` and `subagent_stop` take no context: there a warning only reaches the agent inside the message of a block
+  of another entry of the same stop. Otherwise polix writes it on stderr, which the agent does not read and Claude
+  Code only shows in the transcript, so a gate on stop that the agent must notice is `enforce`.
+- `audit`: nothing is blocked and the agent learns nothing; the log records an `audit` decision, read with
+  `polix log`.
+
+In every mode a `run` that passes records its fact, and an entry that does not block lets the evaluation go on.
+
+The `stop` of this repository shows it. It has two entries, golangci-lint and `go test ./...`, both in `enforce` mode
+and each with `unless: { done: <fact> }`. When the agent ends a turn after changing a Go file:
+
+1. golangci-lint runs. When it fails, the stop blocks and nothing is recorded, but the evaluation goes on.
+2. `go test ./...` runs anyway. When it passes, it records `tested` on the current content.
+3. The agent receives the output of golangci-lint and has to go on. If it fixes the code, the content changes, so on
+   the next stop both entries run again; if it stops again without changing anything, `tested` is done for that
+   content and only golangci-lint runs, until the loop guard lets it stop after the third block.
+4. Once both pass, `linted` and `tested` are recorded, and a later stop on the same content runs nothing.
 
 ### Loop guard
 

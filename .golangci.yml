@@ -1,11 +1,13 @@
-# golangci-lint of polix (GO-3): the standard linters (errcheck, govet, ineffassign, staticcheck, unused).
-# polix.yaml runs it on stop and CI on every system (version pinned in .github/workflows/ci.yml).
+# golangci-lint of polix: the standard linters (errcheck, govet, ineffassign, staticcheck, unused) and the gofmt
+# formatter. polix.yaml runs it on stop and CI on every system (version pinned in .github/workflows/ci.yml).
 version: "2"
 linters:
   default: standard
   exclusions:
     # The usual unchecked errors: Close of a deferred cleanup, os.Remove of a temporary file, fmt.Print...
     presets: [std-error-handling]
+formatters:
+  enable: [gofmt]
 issues:
   # Report every finding, not only the first ones of each kind, so one run shows all there is to fix.
   max-issues-per-linter: 0

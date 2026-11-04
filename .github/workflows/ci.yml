@@ -24,7 +24,7 @@ jobs:
           go-version-file: go.mod
       - name: Vet
         run: go vet ./...
-      # The linter of GO-3, with .golangci.yml.
+      # The linters and the gofmt formatter of .golangci.yml.
       - name: Lint
         uses: golangci/golangci-lint-action@v8
         with:

@@ -1,31 +1,37 @@
 # Workflow of this repository, enforced by polix itself (dogfooding). Reference of every option:
 # examples/polix.yaml; design and limits: docs/polix.md. Validate with `polix check`, draw with `polix graph`.
+#
+# The hooks of .claude/settings.json send every event to polix, but this workflow only acts on two of them:
+# post_edit (format the edited Go file) and stop (lint and test before the turn ends). On the other events polix
+# only applies its built-in protections: no agent writes the state of polix, and no subagent edits AGENTS.md,
+# CLAUDE.md, ai/rules/** or this file.
 version: 1
 base: main
+# A stop gate that keeps failing on the same content lets the agent stop after 3 blocks, so it never loops.
 max_stop_blocks: 3
 
 on:
-  # Format each Go file right after it is edited. A failure (a syntax error) reaches the agent as context.
+  # post_edit: after the agent edits a file, once per edited path.
   post_edit:
+    # gofmt rewrites the edited Go file, so the agent never has to format by hand. In warn mode: the edit already
+    # happened, and a failure (a syntax error) only reaches the agent as context. The lint of stop checks the
+    # format of every file anyway.
     - if: { path: "*.go" }
       mode: warn
       run: { command: ["gofmt", "-w", "{path}"] }
 
-  # Only a full `just test` (vet + every test) counts as tested; `just test -run X` does not.
-  post_command:
-    - if: { command: ["just test", "just test 2>&1"], exit: 0 }
-      record: tested
-
-  # Deterministic rules of the changed files must pass before the turn ends.
+  # stop: when the agent ends its turn. The entries run in order, and a failing one blocks the stop but does not
+  # skip the next, so the agent gets every failure in one answer. Each one runs once per content: its fact
+  # (linted, tested) is recorded when it passes, and `unless: done` skips it until the files change again.
   stop:
-    # The formatter (GO-1) and the linter (GO-3, golangci-lint with .golangci.yml), once per content.
-    - if: { changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"] }
-      unless: { done: formatted }
-      run: { rules: changed, record: formatted }
+    # golangci-lint with .golangci.yml over the whole module: the gofmt formatter and the standard linters, govet
+    # (go vet) among them. Only when a Go file or the lint configuration changed.
     - if: { changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"] }
       unless: { done: linted }
       run: { command: ["golangci-lint", "run", "./..."], record: linted }
-    # The tests run on stop without the agent, once per content; a `just test` of the agent counts too.
-    - if: { changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**", "Justfile"] }
+
+    # Every test of the module, without the agent asking for it. The install scripts and scripts/ are tested from
+    # Go, so a change in them runs the tests too. Go caches the results, so a run on code already tested is fast.
+    - if: { changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"] }
       unless: { done: tested }
-      run: { command: ["just", "test"], record: tested }
+      run: { command: ["go", "test", "./..."], record: tested }

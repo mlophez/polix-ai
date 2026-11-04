@@ -1,20 +1,14 @@
 rules:
-  - id: GO-1
-    description: Go code is formatted with gofmt.
-    scope: ["*.go"]
-    deterministic: true
-    check: ai/checks/gofmt.sh
-
-  - id: GO-3
-    description: >-
-      Go code passes golangci-lint with .golangci.yml. A finding that is intended is silenced on its line with
-      `//nolint:<linter> // <reason>`, never by disabling the linter for the module. polix.yaml and CI run it.
-    scope: ["*.go", "go.mod", "go.sum", ".golangci.yml"]
-    deterministic: true
-
   - id: GO-2
     description: >-
       Code, comments, docs and commit messages are written in English; only the texts that polix.yaml shows to
       the agent or the user may be in Spanish.
     scope: ["*.go", "docs/**", "examples/**", "scripts/**", "install.sh", "install.ps1"]
+    deterministic: false
+
+  - id: GO-3
+    description: >-
+      A finding of the linter that is intended is silenced on its own line with `//nolint:<linter> // <reason>`,
+      never by disabling the linter or excluding the file in .golangci.yml.
+    scope: ["*.go", ".golangci.yml"]
     deterministic: false
