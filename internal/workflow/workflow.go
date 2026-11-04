@@ -26,6 +26,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/mlophez/polix-ai/internal/version"
 )
 
 // File is the workflow, relative to the repository root.
@@ -68,7 +70,10 @@ const (
 
 // Workflow is polix.yaml.
 type Workflow struct {
-	Version       int                `yaml:"version"`
+	Version int `yaml:"version"`
+	// Requires is the oldest polix that knows every option the file uses (`requires: 0.2.0`). An older polix
+	// reads it before anything else and asks to be updated instead of reporting the options it does not know.
+	Requires      string             `yaml:"requires"`
 	Base          string             `yaml:"base"`            // branch a change merges into, for `changed`
 	MaxStopBlocks int                `yaml:"max_stop_blocks"` // loop guard of every block on stop and subagent_stop
 	Vars          map[string]Var     `yaml:"vars"`
@@ -257,8 +262,10 @@ func (e *Entry) actions() []string {
 	return out
 }
 
-// Load reads the workflow of root. It returns nil without error when the repository has none.
-func Load(root string) (*Workflow, error) {
+// Load reads the workflow of root for the polix of version running. It returns nil without error when the
+// repository has none, and a *TooOld when the workflow requires a newer polix than running, before parsing the
+// rest, which an older polix may not know. A development build is never too old.
+func Load(root, running string) (*Workflow, error) {
 	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(File)))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -266,7 +273,36 @@ func Load(root string) (*Workflow, error) {
 	if err != nil {
 		return nil, err
 	}
+	if req := requires(data); version.IsRelease(running) && version.Valid(req) && version.Compare(running, req) < 0 {
+		return nil, &TooOld{Requires: strings.TrimPrefix(req, "v"), Running: running}
+	}
 	return Parse(data)
+}
+
+// TooOld is the error of a workflow that requires a newer polix than the one running.
+type TooOld struct {
+	Requires string // the version polix.yaml requires
+	Running  string // the version of the running polix
+}
+
+func (e *TooOld) Error() string {
+	return fmt.Sprintf("%s requires polix %s or newer and this is %s: run polix update", File, e.Requires, e.Running)
+}
+
+// requires reads the top level `requires` of a workflow without decoding the rest; "" when it has none or the
+// YAML is broken (Parse reports it then).
+func requires(data []byte) string {
+	var root yaml.Node
+	if yaml.Unmarshal(data, &root) != nil || len(root.Content) != 1 || root.Content[0].Kind != yaml.MappingNode {
+		return ""
+	}
+	top := root.Content[0]
+	for i := 0; i+1 < len(top.Content); i += 2 {
+		if top.Content[i].Value == "requires" && top.Content[i+1].Kind == yaml.ScalarNode {
+			return strings.TrimSpace(top.Content[i+1].Value)
+		}
+	}
+	return ""
 }
 
 // Parse decodes a workflow, rejecting unknown top level keys.
@@ -279,7 +315,7 @@ func Parse(data []byte) (*Workflow, error) {
 		top := root.Content[0]
 		for i := 0; i < len(top.Content); i += 2 {
 			switch k := top.Content[i].Value; k {
-			case "version", "base", "max_stop_blocks", "vars", "on":
+			case "version", "requires", "base", "max_stop_blocks", "vars", "on":
 			default:
 				return nil, fmt.Errorf("%s:%d: unknown key %q", File, top.Content[i].Line, k)
 			}
@@ -345,6 +381,9 @@ func Validate(w *Workflow) []string {
 	v := &validator{w: w}
 	if w.Version != 1 {
 		v.add(0, "version must be 1, got %d", w.Version)
+	}
+	if w.Requires != "" && !version.Valid(w.Requires) {
+		v.add(0, "requires must be a version of polix like 0.2.0, got %q", w.Requires)
 	}
 	if w.MaxStopBlocks < 0 {
 		v.add(0, "max_stop_blocks must be positive, got %d", w.MaxStopBlocks)

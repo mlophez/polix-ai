@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,8 +14,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/mlophez/polix-ai/internal/gitx"
 	"github.com/mlophez/polix-ai/internal/setup"
 	"github.com/mlophez/polix-ai/internal/update"
+	"github.com/mlophez/polix-ai/internal/version"
 )
 
 // Version of polix. Releases set it at build time with -ldflags "-X github.com/mlophez/polix-ai/internal/cli.Version=...";
@@ -41,8 +44,10 @@ func init() {
 const (
 	hookLatestTimeout = 5 * time.Second
 	downloadTimeout   = 2 * time.Minute
-	// checkEvery spaces the checks of the session start hook.
-	checkEvery = 24 * time.Hour
+	// checkEvery spaces the checks of the session start hook (see hookShouldCheck).
+	checkEvery = time.Hour
+	// retryAfter spaces the attempts of the session start hook after an update that failed.
+	retryAfter = 15 * time.Minute
 )
 
 func updateCmd() *cobra.Command {
@@ -54,9 +59,12 @@ func updateCmd() *cobra.Command {
 		Long: "Download the latest release (or --version V, older ones included), check it against checksums.txt and " +
 			"replace the running binary atomically. Then refresh, with the new binary, the plugin of the user (installed " +
 			"when missing) and, inside a repository that registers them, the hooks of polix.\n\n" +
-			"With --hook it is meant for the session start hook of the agent: it checks at most once a day, gives up " +
-			"quickly without network, never fails and only prints a line when it changed something. " +
-			"POLIX_NO_UPDATE=1 disables it, for machines where the version is pinned by other means.",
+			"With --hook it is the session start hook of the agent: it checks at most once an hour (at once when a newer " +
+			"release is already known or this binary rejects the polix.yaml of the repository, which may need a newer " +
+			"polix; 15 minutes after a failed update), gives up quickly without network, never fails, only prints a " +
+			"line when it changed something and then runs polix doctor --hook with the binary it leaves.\n\n" +
+			"POLIX_NO_UPDATE=1 disables the update, for machines where the version is pinned by other means; an older " +
+			"version installed with --version is updated again by the hook unless it is set.",
 		Example: "  polix update\n  polix update --check\n  polix update --version 0.2.0",
 		Args:    cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
@@ -65,11 +73,13 @@ func updateCmd() *cobra.Command {
 	}
 	c.Flags().BoolVar(&check, "check", false, "only report whether a newer release exists")
 	c.Flags().StringVar(&want, "version", "", "install this version, older ones included, instead of the latest")
-	c.Flags().BoolVar(&hook, "hook", false, "for a session start hook: once a day, quiet, never fails")
+	c.Flags().BoolVar(&hook, "hook", false, "for the session start hook: once an hour, quiet, never fails, then doctor --hook")
 	return c
 }
 
-// doUpdate replaces the running binary and refreshes the plugin. With hook it never fails.
+// doUpdate replaces the running binary and refreshes the plugin. With hook it never fails and ends with the
+// doctor of the binary it leaves: one command does both, since the hooks of an event run in parallel and doctor
+// must see the binary the update left, and a single command needs no separator that only some shells know.
 func doUpdate(check bool, want string, hook bool, stdout, stderr io.Writer) int {
 	msg, exe, err := runUpdate(check, want, hook)
 	u, ue := newUI(stdout), newUI(stderr)
@@ -87,7 +97,9 @@ func doUpdate(check bool, want string, hook bool, stdout, stderr io.Writer) int 
 			u.ok("%s", msg)
 		}
 	}
-	if !check && (err == nil || hook) && os.Getenv("POLIX_NO_UPDATE") == "" {
+	// After a replace that failed another process may have updated the binary: this one must not rewrite the
+	// plugin of the new one with its own.
+	if !check && (err == nil || hook && !errors.Is(err, errReplace)) && os.Getenv("POLIX_NO_UPDATE") == "" {
 		if serr := refreshAfterUpdate(exe, hook, stdout, stderr); serr != nil {
 			if hook {
 				fmt.Fprintln(stderr, "polix update:", serr)
@@ -96,11 +108,66 @@ func doUpdate(check bool, want string, hook bool, stdout, stderr io.Writer) int 
 			}
 		}
 	}
-	if err != nil && !hook {
+	if hook {
+		hookDoctor(exe, stdout, stderr)
+		return 0
+	}
+	if err != nil {
 		return 1
 	}
 	return 0
 }
+
+// hookDoctor runs doctor --hook on the working folder with the binary the update left: the new one when it was
+// replaced, so it checks itself, else this one.
+func hookDoctor(newExe string, stdout, stderr io.Writer) {
+	if newExe == "" {
+		doctor(".", true, false, stdout)
+		return
+	}
+	cmd := exec.Command(newExe, "doctor", "--hook")
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintln(stderr, "polix doctor:", err)
+	}
+}
+
+// workflowAhead reports whether this binary rejects the workflow of the repository of the working folder in a way
+// a newer polix may not (see mayNeedNewer), so the session start hook looks for one at once.
+func workflowAhead() bool {
+	repo, err := gitx.Open(".")
+	if err != nil {
+		return false
+	}
+	_, err = loadValid(repo.Root)
+	return err != nil && mayNeedNewer(err.Error())
+}
+
+// within reports whether t is less than d ago. A time in the future (saved with a clock that was ahead) is not
+// within: it must not stop the checks until the clock reaches it.
+func within(t time.Time, d time.Duration) bool {
+	since := time.Since(t)
+	return since >= 0 && since < d
+}
+
+// hookShouldCheck decides whether the session start hook asks for the latest release. A release build asks once
+// an hour, at once when the cache already knows a newer release (a polix doctor or --check saw it) or this binary
+// rejects the workflow, and never within retryAfter of an update that failed, so a failure that repeats does not
+// download the binary at every session start. A development build never asks.
+func hookShouldCheck(c update.Cache) bool {
+	switch {
+	case !version.IsRelease(Version), within(c.FailedAt, retryAfter):
+		return false
+	case !within(c.CheckedAt, checkEvery):
+		return true
+	case version.IsRelease(c.Latest) && version.Compare(Version, c.Latest) < 0:
+		return true
+	}
+	return workflowAhead()
+}
+
+// errReplace marks an update whose binary could not take the place of the running one.
+var errReplace = errors.New("cannot replace the binary")
 
 // refreshAfterUpdate brings the plugin in line with the binary. When the binary was replaced, the new one does it,
 // since the plugin is embedded in it; otherwise this one. A person also gets the plugin of the user installed when
@@ -169,8 +236,17 @@ func runUpdate(check bool, want string, hook bool) (msg, replaced string, err er
 		return "", "", err
 	}
 	update.Cleanup(exe)
-	if hook && (!update.IsRelease(Version) || time.Since(update.LoadCache().CheckedAt) < checkEvery) {
+	cache := update.LoadCache()
+	if hook && !hookShouldCheck(cache) {
 		return "", "", nil
+	}
+	// fail records a failure of the hook, retried after retryAfter.
+	fail := func(err error) (string, string, error) {
+		if hook {
+			cache.FailedAt = time.Now()
+			_ = update.SaveCache(cache)
+		}
+		return "", "", err
 	}
 	client := update.New()
 	target := want
@@ -183,16 +259,20 @@ func runUpdate(check bool, want string, hook bool) (msg, replaced string, err er
 		latest, err := client.Latest(ctx)
 		cancel()
 		if err != nil {
-			return "", "", err
+			return fail(err)
 		}
-		_ = update.SaveCache(update.Cache{CheckedAt: time.Now(), Latest: latest})
+		// The time of the check is only saved once this binary is the latest: a check that leaves it behind (a
+		// failed download, --check) is repeated at the next session start.
+		cache.Latest = latest
+		_ = update.SaveCache(cache)
 		target = latest
 		switch {
-		case !update.IsRelease(Version) && check:
+		case !version.IsRelease(Version) && check:
 			return fmt.Sprintf("polix %s is a development build; the latest release is %s", Version, latest), "", nil
-		case !update.IsRelease(Version):
+		case !version.IsRelease(Version):
 			return "", "", fmt.Errorf("polix %s is a development build: run polix update --version %s to replace it", Version, latest)
-		case update.Compare(Version, latest) >= 0:
+		case version.Compare(Version, latest) >= 0:
+			_ = update.SaveCache(update.Cache{CheckedAt: time.Now(), Latest: latest})
 			if hook {
 				return "", "", nil
 			}
@@ -202,14 +282,21 @@ func runUpdate(check bool, want string, hook bool) (msg, replaced string, err er
 	if check {
 		return fmt.Sprintf("polix %s can be updated to %s: run polix update", Version, target), "", nil
 	}
+	// A binary that cannot be replaced (a folder of the system) fails before the download.
+	if err := update.Writable(exe); err != nil {
+		return fail(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
 	defer cancel()
 	bin, err := client.Download(ctx, target)
 	if err != nil {
-		return "", "", err
+		return fail(err)
 	}
 	if err := update.Replace(exe, bin); err != nil {
-		return "", "", err
+		return fail(fmt.Errorf("%w: %w", errReplace, err))
+	}
+	if want == "" {
+		_ = update.SaveCache(update.Cache{CheckedAt: time.Now(), Latest: target})
 	}
 	if hook {
 		return fmt.Sprintf("polix se ha actualizado de %s a %s.", Version, target), exe, nil

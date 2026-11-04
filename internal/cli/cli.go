@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -198,12 +199,7 @@ func hook(name, dir string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// Paths were resolved before the repository was known: parse again now that it is.
 	native, events, _ = ad.Parse(input, resolver)
 
-	wf, err := workflow.Load(repo.Root)
-	if err == nil && wf != nil {
-		if problems := workflow.Validate(wf); len(problems) > 0 {
-			err = fmt.Errorf("%s", strings.Join(problems, "\n"))
-		}
-	}
+	wf, err := loadValid(repo.Root)
 	en := engine.New(repo, wf)
 	if err != nil {
 		en.Workflow, en.Invalid = nil, err
@@ -213,6 +209,39 @@ func hook(name, dir string, stdin io.Reader, stdout, stderr io.Writer) int {
 		res.Merge(en.Handle(ev))
 	}
 	return ad.Render(native, res, stdout, stderr)
+}
+
+// loadValid loads the workflow of root and validates it: an error holds every problem, or is a *workflow.TooOld.
+// Unknown options may be options of a newer polix, so the error then says so, lest the agent take them out.
+func loadValid(root string) (*workflow.Workflow, error) {
+	wf, err := workflow.Load(root, Version)
+	if err == nil && wf != nil {
+		if problems := workflow.Validate(wf); len(problems) > 0 {
+			err = fmt.Errorf("%s", strings.Join(problems, "\n"))
+		}
+	}
+	var old *workflow.TooOld
+	if err != nil && !errors.As(err, &old) && mayNeedNewer(err.Error()) {
+		err = fmt.Errorf("%w\nSi %s usa opciones de una versión de polix más reciente que la instalada (%s), no las "+
+			"quites: ejecuta polix update.", err, workflow.File, Version)
+	}
+	return wf, err
+}
+
+// newerVersion matches the problem of a workflow of a later version of the schema.
+var newerVersion = regexp.MustCompile(`version must be 1, got ([2-9]|\d{2,})`)
+
+// mayNeedNewer reports whether the problems of a workflow may come from a newer polix than this one: it requires
+// one, it names something this one does not know, or it has a later version of the schema.
+func mayNeedNewer(problems string) bool {
+	return strings.Contains(problems, "requires polix") || strings.Contains(problems, "unknown") ||
+		newerVersion.MatchString(problems)
+}
+
+// newerHint is the line polix check and polix doctor add to problems that may come from a newer polix.
+func newerHint() string {
+	return fmt.Sprintf("these problems may be options of a newer polix than this one (%s): run polix update before "+
+		"removing them", Version)
 }
 
 func checkCmd() *cobra.Command {
@@ -238,13 +267,16 @@ func checkCmd() *cobra.Command {
 // check validates the workflow and the rules and prints every problem.
 func check(repo *gitx.Repo, stdout, stderr io.Writer) int {
 	var problems []string
-	wf, err := workflow.Load(repo.Root)
+	wf, err := workflow.Load(repo.Root, Version)
+	var old *workflow.TooOld
+	tooOld := errors.As(err, &old)
 	switch {
 	case err != nil:
 		problems = append(problems, err.Error())
 	case wf != nil:
 		problems = append(problems, workflow.Validate(wf)...)
 	}
+	hint := !tooOld && mayNeedNewer(strings.Join(problems, "\n"))
 	all, err := rules.Load(repo.Root)
 	if err != nil {
 		problems = append(problems, err.Error())
@@ -255,6 +287,9 @@ func check(repo *gitx.Repo, stdout, stderr io.Writer) int {
 		u := newUI(stderr)
 		for _, p := range problems {
 			u.fail("%s", p)
+		}
+		if hint {
+			u.warn("%s", newerHint())
 		}
 		return 1
 	}
@@ -309,7 +344,7 @@ func rulesCheck(repo *gitx.Repo, changed bool, base string, stdout, stderr io.Wr
 	list := all
 	if changed {
 		if base == "" {
-			wf, _ := workflow.Load(repo.Root)
+			wf, _ := workflow.Load(repo.Root, Version)
 			base = wf.BaseBranch()
 		}
 		files, err := repo.Changed(base)
@@ -360,7 +395,7 @@ func graphCmd() *cobra.Command {
 
 // graph prints the workflow as a Mermaid flowchart: one subgraph per event, one node per entry.
 func graph(repo *gitx.Repo, stdout io.Writer) error {
-	wf, err := workflow.Load(repo.Root)
+	wf, err := workflow.Load(repo.Root, Version)
 	if err != nil {
 		return err
 	}

@@ -52,7 +52,8 @@ func (o Options) MarketplaceDir() string {
 	return filepath.Join(o.Home, ".polix", "marketplace")
 }
 
-// PluginDir is the folder of the plugin inside the marketplace, which Claude Code loads in place.
+// PluginDir is the folder of the plugin inside the marketplace, which Claude Code copies to its cache on install
+// and update.
 func (o Options) PluginDir() string {
 	return filepath.Join(o.MarketplaceDir(), Name)
 }
@@ -217,7 +218,8 @@ func Refresh(o Options) ([]Change, error) {
 	if err != nil || len(changes) == 0 {
 		return changes, err
 	}
-	// Claude Code already reads the new files in place; update records the new version. Codex may hold a copy.
+	// Claude Code loads a copy of the plugin in its cache: update copies the new version, for the next session.
+	// Codex may hold a copy too.
 	if _, err := LookPath("claude"); err == nil {
 		_, _ = claude(nil, "plugin", "update", PluginID, "--scope", "user", "--json")
 	}

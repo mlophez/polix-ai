@@ -45,6 +45,7 @@ $base = if ($version -eq 'latest') { "$releases/latest/download" } else { "$rele
 
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("polix-install-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+$new = $null
 try {
     $sums = Join-Path $tmp 'checksums.txt'
     $file = Join-Path $tmp $asset
@@ -75,18 +76,37 @@ try {
 
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $target = Join-Path $dir $exeName
-    if (Test-Path $target) {
+    # Copied next to the target first, so the last step is a rename on the same disk, never a copy in place.
+    $new = "$target.new"
+    Copy-Item -Force $file $new
+    if ($os -ne 'windows') { & chmod +x $new }
+    $old = "$target.old"
+    $hadOld = Test-Path $target
+    if ($hadOld) {
         # Windows cannot overwrite a binary that is running (a hook of another session): move it aside first.
-        $old = "$target.old"
         Remove-Item -Force -ErrorAction SilentlyContinue $old
         Move-Item -Force $target $old
-        Remove-Item -Force -ErrorAction SilentlyContinue $old
     }
-    Move-Item -Force $file $target
-    if ($os -ne 'windows') { & chmod +x $target }
+    try {
+        Move-Item -Force $new $target
+    } catch {
+        # An antivirus may hold the new file: put the old binary back, so the machine is never left without polix.
+        $why = $_.Exception.Message
+        if ($hadOld) {
+            try {
+                Move-Item -Force $old $target
+            } catch {
+                throw "install.ps1: cannot replace ${target}: $why; and the old binary could not be put back from ${old}: $($_.Exception.Message)"
+            }
+        }
+        throw "install.ps1: cannot replace ${target}: $why"
+    }
+    # A running polix.exe cannot be removed: polix removes it on its next run.
+    if ($hadOld) { Remove-Item -Force -ErrorAction SilentlyContinue $old }
     Write-Host "installed polix $(& $target version) in $target"
 } finally {
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $tmp
+    if ($new) { Remove-Item -Force -ErrorAction SilentlyContinue $new }
 }
 
 $sep = [System.IO.Path]::PathSeparator

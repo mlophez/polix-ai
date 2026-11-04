@@ -167,6 +167,13 @@ Every hook calls the same command, as in [`examples/claude-settings.json`](examp
 { "type": "command", "command": "polix hook claude", "timeout": 900 }
 ```
 
+`SessionStart` also runs `polix update --hook` when a session starts: polix keeps itself up to date. It looks for a
+new release at most once an hour, or at every start when it rejects the `polix.yaml` of the repository, which may
+need a newer polix (`requires: 0.2.0` in `polix.yaml` says so). It replaces the binary and refreshes the plugin,
+and then runs `polix doctor --hook`, which tells the agent about any problem of the machine. `POLIX_NO_UPDATE=1`
+turns the update off. Development builds (`just install`) never update themselves. Details in
+[docs/polix.md](docs/polix.md).
+
 `polix update` refreshes the plugin with each new binary, and `polix uninstall` removes the plugin and the hooks
 of the repository (`--user` for only the plugin).
 
@@ -298,7 +305,7 @@ polix uninstall [--user]       remove the plugin and the hooks of the repository
 polix version
 ```
 
-Every command except `version` accepts `--dir <repo>`.
+Most commands accept `--dir <repo>`; `version`, `update` and `hook` work on the working directory.
 
 ## Dogfooding
 
@@ -317,7 +324,7 @@ just release 0.2.0
 ```
 
 Code lives in `cmd/polix` and `internal/` (`agent`, `engine`, `workflow`, `rules`, `state`, `cli`, `setup`,
-`update`, `gitx`, `glob`, `shell`). The plugin lives in `plugins/polix/`, embedded in the binary; check it with
+`update`, `version`, `gitx`, `glob`, `shell`). The plugin lives in `plugins/polix/`, embedded in the binary; check it with
 `claude plugin validate plugins/polix`. CI runs on Linux, macOS and Windows, including the PowerShell installer
 under Windows PowerShell 5.1 and PowerShell 7.
 

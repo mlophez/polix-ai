@@ -102,11 +102,12 @@ func TestInstallInARepository(t *testing.T) {
 // A person who updates gets the plugin of the user and the hooks of the repository refreshed; the session start
 // hook only refreshes the plugin already installed.
 func TestUpdateRefreshesThePlugin(t *testing.T) {
+	outsideRepo(t)
 	newFakeRelease(t, []byte("new"))
 	fakeBinary(t, "0.2.0")
 
 	code, stdout, stderr := runCmd("update", "--hook")
-	if code != 0 || stdout != "" {
+	if code != 0 || withoutDoctor(stdout) != "" {
 		t.Fatalf("the hook installs nothing new: %d %q %q", code, stdout, stderr)
 	}
 	if _, err := os.Stat(pluginDir()); err == nil {
@@ -130,7 +131,7 @@ func TestUpdateRefreshesThePlugin(t *testing.T) {
 		t.Fatalf("plugin version after the refresh: %q", v)
 	}
 	_, stdout, _ = runCmd("update", "--hook")
-	if stdout != "" {
+	if withoutDoctor(stdout) != "" {
 		t.Fatalf("nothing to refresh, nothing to say: %q", stdout)
 	}
 }

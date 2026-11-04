@@ -688,6 +688,60 @@ func TestInvalidWorkflowCanBeFixed(t *testing.T) {
 	}
 }
 
+// A workflow that requires a newer polix asks to update polix, not to fix the file: not even the main session may
+// edit it, lest it take out options of the newer polix, and the commands that update polix stay open.
+func TestWorkflowAheadOfPolix(t *testing.T) {
+	old := Version
+	Version = "0.1.0"
+	t.Cleanup(func() { Version = old })
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\nrequires: 0.2.0\nan_option_of_0_2: true\n")
+
+	code, _, stderr := r.edit("polix.yaml", "")
+	expectCode(t, "the session edits a workflow ahead", code, 2, stderr)
+	if !strings.Contains(stderr, "necesita polix 0.2.0") || !strings.Contains(stderr, "polix update") ||
+		strings.Contains(stderr, "corrígelo") {
+		t.Fatalf("the reason asks to update polix: %q", stderr)
+	}
+	code, _, stderr = r.edit("src/a.go", "")
+	expectCode(t, "the session edits code", code, 2, stderr)
+	for c, want := range map[string]int{"polix update": 0, "polix update --version 0.2.0": 0, "polix version": 0,
+		"polix doctor": 0, "ls": 2, "polix update && ls": 2} {
+		code, _, stderr = r.bash(c, false)
+		expectCode(t, c, code, want, stderr)
+	}
+	code, _, stderr = r.stop()
+	expectCode(t, "stop", code, 0, stderr)
+
+	var out, errb bytes.Buffer
+	if code := Run([]string{"check", "--dir", r.dir}, nil, &out, &errb); code != 1 || !strings.Contains(errb.String(), "requires polix 0.2.0") {
+		t.Fatalf("check: %d %q", code, errb.String())
+	}
+}
+
+// Unknown options may belong to a newer polix: the reason says so, so the agent updates instead of removing them.
+func TestUnknownOptionsHintAnUpdate(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - deny: x\n      an_option_of_0_2: 1\n")
+	code, _, stderr := r.edit("src/a.go", "")
+	expectCode(t, "edit", code, 2, stderr)
+	if !strings.Contains(stderr, "no las quites: ejecuta polix update") {
+		t.Fatalf("the reason hints an update: %q", stderr)
+	}
+	var out, errb bytes.Buffer
+	if code := Run([]string{"check", "--dir", r.dir}, nil, &out, &errb); code != 1 || !strings.Contains(errb.String(), "newer polix") {
+		t.Fatalf("polix check hints an update too: %d %q", code, errb.String())
+	}
+	r.write("polix.yaml", "version: 2\n")
+	if _, _, stderr = r.edit("src/a.go", ""); !strings.Contains(stderr, "polix update") {
+		t.Fatalf("a later version of the schema hints an update: %q", stderr)
+	}
+	r.write("polix.yaml", "version: 1\nmax_stop_blocks: -1\n")
+	if _, _, stderr = r.edit("src/a.go", ""); strings.Contains(stderr, "polix update") {
+		t.Fatalf("no hint for a plain mistake: %q", stderr)
+	}
+}
+
 // Codex gives relative paths in apply_patch: they are resolved from the cwd of the call, not of the process.
 func TestCodexRelativeStatePath(t *testing.T) {
 	r := newRepo(t, "main")

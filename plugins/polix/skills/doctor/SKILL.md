@@ -30,9 +30,12 @@ Find why polix does not apply as expected and fix it with the user.
   A new or changed plugin applies in the next session, or after `/reload-plugins` in Claude Code.
 - **hooks**: `polix install` registers the hooks in `.claude/settings.json` and `.codex/hooks.json` of the repository.
   When they are registered twice, remove the `polix ...` hooks of one of the files: each hook would run twice.
+  When `SessionStart` does not run `polix update --hook`, or runs the command of an earlier polix, run `polix install`.
 - **codex**: Codex skips new or changed hooks until the user trusts them with `/hooks`.
 - **workflow** and **rules**: fix the problems `polix check` prints.
   The skills `workflow` and `add-rule` of polix know their formats.
+  When `polix.yaml` requires a newer polix, run `polix update` and leave `polix.yaml` alone.
+  An unknown option may belong to a newer polix: run `polix update` and check again before removing it.
 - **state**: the folder `<git-dir>/polix/` must be writable; never edit it by hand, read it with `polix log`.
 
 ### Installing polix

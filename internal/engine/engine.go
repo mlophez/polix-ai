@@ -8,6 +8,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -130,36 +131,54 @@ func (en *Engine) outsideChange(ev Event) bool {
 
 // invalid answers an event when the workflow is not valid. Edits and commands fail closed, so a broken file is
 // noticed at once instead of silently disabling the workflow, except what fixing it needs: the main session may
-// edit the workflow and run `polix check`, and edits outside the change never depended on the workflow. Other
-// events only warn: a blocked stop would keep the agent in a loop it cannot leave.
+// edit the workflow and run the commands of polix that check or update it, and edits outside the change never
+// depended on the workflow. Other events only warn: a blocked stop would keep the agent in a loop it cannot leave.
+//
+// A workflow that requires a newer polix is not broken but ahead of this binary: the answer asks to update polix,
+// and not even the main session may edit the workflow, so the agent does not take options out of it to please an
+// old binary.
 func (en *Engine) invalid(ev Event) Result {
 	problems := en.Invalid.Error()
+	reason := "polix: el workflow no es válido; corrígelo y ejecuta polix check.\n" + problems
+	var old *workflow.TooOld
+	tooOld := errors.As(en.Invalid, &old)
+	if tooOld {
+		problems = fmt.Sprintf("este repositorio necesita polix %s o posterior y la instalada es %s", old.Requires, old.Running)
+		reason = "polix: " + problems + ". Ejecuta polix update (o pide al usuario que lo haga) y no cambies " +
+			workflow.File + "."
+	}
 	switch ev.Name {
 	case workflow.PreEdit:
-		if en.outsideChange(ev) || (ev.Actor == ActorSession && ev.Path == workflow.File) {
+		if en.outsideChange(ev) || (!tooOld && ev.Actor == ActorSession && ev.Path == workflow.File) {
 			return Result{}
 		}
 	case workflow.PreCommand, workflow.PreCommit:
-		if onlyCheck(ev.Command) {
+		if onlyPolix(ev.Command) {
 			return Result{}
 		}
 	default:
+		if tooOld {
+			return Result{Warnings: []string{"polix: " + problems + ": ejecuta polix update"}}
+		}
 		return Result{Warnings: []string{"el workflow no es válido: " + problems}}
 	}
 	en.log(ev, "invalid", 0, "block", problems)
-	return Result{Block: true, Reasons: []string{"polix: el workflow no es válido; corrígelo y ejecuta polix check.\n" + problems}}
+	return Result{Block: true, Reasons: []string{reason}}
 }
 
-// onlyCheck reports a command line that only validates the workflow (`polix check`, maybe after a cd).
-func onlyCheck(command string) bool {
+// onlyPolix reports a command line that only checks the workflow or updates polix (`polix check`, `polix update`,
+// `polix doctor`, `polix version`, maybe after a cd): what an invalid or too new workflow needs.
+func onlyPolix(command string) bool {
 	segs := shell.Split(command)
 	for _, seg := range segs {
-		if !glob.Command("polix check*", seg.Text) && !glob.Command("cd *", seg.Text) {
+		if !slices.ContainsFunc(polixCommands, func(p string) bool { return glob.Command(p, seg.Text) }) {
 			return false
 		}
 	}
 	return len(segs) > 0
 }
+
+var polixCommands = []string{"cd *", "polix check*", "polix update*", "polix doctor*", "polix version*"}
 
 // protect applies the rules every repository gets, whatever its workflow says: nobody edits the state of
 // polix, and subagents never edit the context, the rules or the workflow, which only a person changes.

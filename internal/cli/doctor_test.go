@@ -62,6 +62,22 @@ func TestDoctorHealthy(t *testing.T) {
 	}
 }
 
+// The session start command of an earlier build, or none, means polix does not keep itself up to date.
+func TestDoctorFindsAnOutdatedUpdateHook(t *testing.T) {
+	healthyMachine(t)
+	r := readyRepo(t)
+	settings := filepath.Join(r.dir, ".claude", "settings.json")
+	data, _ := os.ReadFile(settings)
+	r.write(".claude/settings.json", strings.Replace(string(data), `"polix update --hook"`, `"polix update --hook; polix doctor --hook"`, 1))
+	if _, stdout, _ := r.run("doctor", "--offline"); !strings.Contains(stdout, "command of an earlier polix") {
+		t.Fatalf("legacy command: %s", stdout)
+	}
+	r.write(".claude/settings.json", strings.Replace(string(data), `"polix update --hook"`, `"echo hi"`, 1))
+	if _, stdout, _ := r.run("doctor", "--offline"); !strings.Contains(stdout, "does not update itself") {
+		t.Fatalf("no update command: %s", stdout)
+	}
+}
+
 func TestDoctorFindsProblems(t *testing.T) {
 	healthyMachine(t)
 	r := readyRepo(t)

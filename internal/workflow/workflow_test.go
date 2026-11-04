@@ -1,6 +1,9 @@
 package workflow
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -68,5 +71,38 @@ on:
 `
 	if got := validate(t, src); got != "" {
 		t.Fatalf("unexpected problems:\n%s", got)
+	}
+}
+
+// requires is read before the rest of the file, so a polix older than the workflow asks to be updated instead of
+// reporting the options it does not know; a development build is never too old.
+func TestLoadRequires(t *testing.T) {
+	root := t.TempDir()
+	write := func(s string) {
+		if err := os.WriteFile(filepath.Join(root, File), []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("version: 1\nrequires: 0.3.0\nan_option_of_0_3: true\n")
+	_, err := Load(root, "0.2.1")
+	var old *TooOld
+	if !errors.As(err, &old) || old.Requires != "0.3.0" || old.Running != "0.2.1" {
+		t.Fatalf("an older polix: %v", err)
+	}
+	if _, err := Load(root, "dev"); err == nil || errors.As(err, &old) {
+		t.Fatalf("a dev build parses the file and reports what it does not know: %v", err)
+	}
+	if _, err := Load(root, "0.3.0"); err == nil || errors.As(err, &old) {
+		t.Fatalf("the required version parses the file: %v", err)
+	}
+
+	write("version: 1\nrequires: v0.2.0\n")
+	w, err := Load(root, "0.2.0")
+	if err != nil || w.Requires != "v0.2.0" || len(Validate(w)) != 0 {
+		t.Fatalf("a polix as new as required: %v %+v %v", err, w, Validate(w))
+	}
+	write("version: 1\nrequires: 0.2\n")
+	if w, err := Load(root, "0.2.0"); err != nil || len(Validate(w)) != 1 {
+		t.Fatalf("requires must be a full version: %v", err)
 	}
 }

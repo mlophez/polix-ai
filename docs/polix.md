@@ -94,8 +94,23 @@ they belong to each repository. `POLIX_NO_SETUP=1` skips it.
 `checksums.txt` and replaces the running binary atomically: a hook that starts meanwhile runs the old binary or
 the new one, never half of it. A development build (`dev`) is only replaced with `--version`, and
 `POLIX_NO_UPDATE=1` disables updates where the version is pinned by other means.
-`--hook` is the mode of the session start hook: at most one check a day (cached in the user cache folder), five
-seconds to reach GitHub, never fails, and prints one line only when it updated.
+`--hook` is the mode of the session start hook: at most one check an hour (cached in the user cache folder), five
+seconds to reach GitHub, never fails, prints one line only when it updated and ends with `polix doctor --hook` run
+by the binary it leaves. The time of a check is saved only once the binary is the latest. The hook checks at once,
+without waiting for the hour, when the cache already knows a newer release (a `polix doctor` or `--check` saw it)
+or when this binary rejects the `polix.yaml` of the repository in a way a newer polix may not (it `requires` one,
+names something this one does not know or has a later `version`). An update that fails (no network, a download
+cut, a folder it cannot write, which it tests before downloading) is retried 15 minutes later, not at every
+session start. `POLIX_NO_UPDATE=1` skips the update and the refresh of the plugin in the hook, not the doctor; it
+is also what keeps an older version installed with `--version`, which the hook would otherwise update again.
+Every release must keep what earlier releases rely on to update into it, since their update code is frozen in
+the binaries of the users: the assets `polix_<os>_<arch>` (`.exe` on Windows) and `checksums.txt` in the format of
+`sha256sum`, the redirect of `releases/latest` to `releases/tag/v<version>`, the cache `update.json`, and the
+commands an old binary runs with the new one after replacing it: `__refresh --quiet`, `__refresh --hooks`,
+`doctor --hook` and `install --user --yes --quiet` (`TestCommandsTheUpdateRuns` keeps them). A tag with a
+prerelease (`v0.2.0-rc1`) is published as a GitHub prerelease, which `releases/latest` never points to.
+Only releases update themselves: a development build (`just install`, or `go install` of a commit) never does, so
+the machines that try polix install it with `install.sh` or `install.ps1`.
 After the binary, `update` refreshes the plugin: when it replaced the binary, the new one does it, since the plugin
 is embedded in it. A person who runs `polix update` also gets the plugin of the user installed when it is missing,
 and the hooks of polix rewritten in the repository of the working directory when it registers them. The session
@@ -106,10 +121,12 @@ the repository.
 git, `polix.yaml`, the rules and that their checks exist and are executable, the hooks of Claude Code (project,
 local and user settings: every event, every governed tool in the matchers, a timeout above the run budget, and
 never twice), the plugin of the user (its version against the binary and, except in `--hook`, that Claude Code has
-it installed and enabled), the hooks and the plugin of Codex when it is used and that the state can be written. It exits 1 on any failure.
+it installed and enabled), the hooks and the plugin of Codex when it is used and that the state can be written. It
+also warns when `SessionStart` does not run `polix update --hook`, or runs the command of an earlier build, which
+`polix install` replaces. It exits 1 on any failure.
 `--hook` prints nothing when everything is fine and never fails; otherwise it prints the problems, which Claude
 Code adds to the context of the session, so the agent tells the user and offers to fix them. It does not use
-the network: it compares with the latest release the last `polix update` saw.
+the network: it compares with the latest release the last `polix update` or `polix doctor` saw.
 
 To publish a release, from a clean `main`: `just release 0.2.0`. It runs the tests, tags `v0.2.0` and pushes
 the tag. `.github/workflows/release.yml` then runs the tests on Linux, macOS and Windows (`ci.yml`, which also
@@ -150,14 +167,21 @@ Commands are judged with a heuristic, aimed at accidents rather than at an agent
 
 - Outside a git repository, or without `polix.yaml`, only the protections apply.
 - An invalid workflow blocks edits and commands (fail closed) with the problems found, so a broken file is
-  noticed at once, except what fixing it needs: the main session may edit `polix.yaml` and run `polix check`
-  (optionally after a `cd`), and edits outside the repository or of ignored files go through as always.
-  The built-in protections still apply. It never blocks a stop, which would trap the agent in a loop.
+  noticed at once, except what fixing it needs: the main session may edit `polix.yaml`, any actor may run
+  `polix check`, `polix update`, `polix doctor` and `polix version` (optionally after a `cd`), and edits outside
+  the repository or of ignored files go through as always. The built-in protections still apply. It never blocks a stop, which
+  would trap the agent in a loop. When a problem names something unknown, the reason adds that it may be an
+  option of a newer polix, to update instead of removing it.
+- A workflow that `requires` a newer polix than the one running is not broken but ahead: it blocks the same way,
+  asking to run `polix update`, and not even the main session may edit `polix.yaml`, so the agent does not take
+  options out of it to please an old binary. A development build ignores `requires`, and `polix check` rejects one
+  that is not a version like `0.2.0`.
 
 ## polix.yaml
 
 ```yaml
 version: 1
+requires: 0.1.0       # oldest polix that knows every option of the file (optional, since 0.1.0)
 base: main            # branch the change merges into, for `changed` (default main)
 max_stop_blocks: 3    # loop guard of every block on stop and subagent_stop, per entry (default 3)
 vars:
@@ -256,10 +280,11 @@ it. Running it again rewrites what changed and removes what the release dropped.
   read-only `rules-reviewer`). Install writes it, with the version of the binary in its manifests, to the local
   marketplace `~/.polix/marketplace/` and registers it:
   - Claude Code: `claude plugin marketplace add ~/.polix/marketplace --scope user` and
-    `claude plugin install polix@polix --scope user`. Claude Code loads a plugin of a local marketplace in place,
-    so a rewrite of the folder applies in the next session; install and update then run `claude plugin update` to
-    record the new version. Its skills are `/polix:workflow`, `/polix:add-rule` and `/polix:doctor`, its agents
-    `polix:workflow-author`, `polix:rules-author` and `polix:rules-reviewer`.
+    `claude plugin install polix@polix --scope user`. Claude Code copies the plugin to its cache
+    (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
+    `claude plugin update`, which copies the new version; it loads in the next session. Its skills are
+    `/polix:workflow`, `/polix:add-rule` and `/polix:doctor`, its agents `polix:workflow-author`,
+    `polix:rules-author` and `polix:rules-reviewer`.
   - Codex, when it is installed (or with `--agent codex`): `codex plugin marketplace add ~/.polix/marketplace` and
     `[plugins."polix@polix"] enabled = true` in `~/.codex/config.toml`, the rest of the file kept. Codex documents
     no command to install a plugin without its interface, so this part is experimental until it is checked against
@@ -287,13 +312,17 @@ one of them goes. `examples/claude-settings.json` is what install registers for 
 equal); it and `examples/codex-hooks.json` remain for a rollout that renders the settings itself (Logalty Control).
 
 On `SessionStart` with matcher `startup` (a new session, not a resume, a clear or a compaction) the hooks
-also run `polix update --hook; polix doctor --hook`: it keeps polix up to date and reports any problem of the
-machine or the repository. Update and doctor run in one command because Claude Code runs the hooks of an event
-in parallel, and doctor must see the binary the update left.
+also run `polix update --hook`: it keeps polix up to date and then runs `polix doctor --hook`, which reports any
+problem of the machine or the repository. Update and doctor are one command because Claude Code runs the hooks of
+an event in parallel, and doctor must see the binary the update left. These commands are committed in the
+repositories and must keep working with every later release, so what they do lives in the binary: an earlier
+build registered `polix update --hook; polix doctor --hook`, which `polix install`, or a `polix update` run by a
+person, replaces (the session start hook never touches the files of the repository); until then the doctor runs
+twice at session start.
 
-Every hook command is a plain `polix ...` call, joined with `;` at most, because Claude Code runs hook commands
+Every hook command is a plain `polix ...` call, with no shell syntax, because Claude Code runs hook commands
 with `sh -c` on macOS and Linux, with Git Bash on Windows, or with PowerShell on Windows when Git Bash is not
-installed (Git for Windows is optional). That syntax means the same in all of them; `command -v`, `||` or
+installed (Git for Windows is optional). A plain command means the same in all of them; `command -v`, `||` or
 `{ ...; }` would break under PowerShell. For the same reason a hook cannot detect that polix is missing: until
 it is installed, the hooks fail with "command not found" (or "is not recognized" in PowerShell), which Claude
 Code treats as a non blocking error, and the workflow does not apply on that machine. The fragment of

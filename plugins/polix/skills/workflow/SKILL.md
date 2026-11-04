@@ -32,6 +32,9 @@ Judging the code belongs to a reviewer subagent, such as `polix:rules-reviewer`,
 - Add every new blocking entry with `mode: audit`.
 - Give every entry a `why` with its reason.
 - Write the reasons of `deny` and `require` in the language of the team, as an instruction the agent can follow.
+- When the change uses a key, event, condition or action the file did not use yet, set `requires` to the output of
+  `polix version`, unless it is `dev` or `requires` is already newer; never lower `requires`.
+- Never remove an option `polix check` calls unknown before `polix update` rules out an outdated polix.
 - Only write `polix.yaml`; rules of the code go to `ai/rules/` with the skill `add-rule` of polix.
 - Talk to the user in the language of the session.
 

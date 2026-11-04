@@ -6,7 +6,7 @@ one static binary per system. Design, commands and limits: `docs/polix.md`.
 
 - Entry point: `cmd/polix`. Packages in `internal/`: `agent` (Claude Code and Codex adapters), `engine`,
   `workflow` (polix.yaml), `rules` (ai/rules), `state` (log in `<git-dir>/polix/`), `cli`, `setup` (polix install:
-  the plugin and the hooks), `update`, `gitx`, `glob`, `shell`.
+  the plugin and the hooks), `update`, `version` (comparison of versions), `gitx`, `glob`, `shell`.
 - `plugins/polix/` is the plugin of polix for Claude Code and Codex (skills, agents), embedded in the binary by the
   package `plugins`; the repository serves it as a marketplace too. Check it with `claude plugin validate plugins/polix`.
 - `examples/` holds the reference `polix.yaml`, hook settings and the AGENTS.md fragment for governed repos.

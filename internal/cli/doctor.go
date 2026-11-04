@@ -23,6 +23,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/setup"
 	"github.com/mlophez/polix-ai/internal/state"
 	"github.com/mlophez/polix-ai/internal/update"
+	"github.com/mlophez/polix-ai/internal/version"
 	"github.com/mlophez/polix-ai/internal/workflow"
 )
 
@@ -158,11 +159,11 @@ func (d *doctorRun) binary(noNetwork bool) {
 		return
 	}
 	switch latest := d.latest(noNetwork); {
-	case !update.IsRelease(Version):
+	case !version.IsRelease(Version):
 		d.add(levelWarn, "version", "polix %s is a development build: install a release with polix update --version <version>", Version)
 	case latest == "":
 		d.add(levelOK, "version", "polix %s (latest release unknown)", Version)
-	case update.Compare(Version, latest) < 0:
+	case version.Compare(Version, latest) < 0:
 		d.add(levelWarn, "version", "polix %s, the latest release is %s: run polix update", Version, latest)
 	default:
 		d.add(levelOK, "version", "polix %s, the latest release", Version)
@@ -184,7 +185,7 @@ func (d *doctorRun) binary(noNetwork bool) {
 
 // latest returns the latest release: asked to the releases page, or the one the last check saw.
 func (d *doctorRun) latest(noNetwork bool) string {
-	if noNetwork || !update.IsRelease(Version) {
+	if noNetwork || !version.IsRelease(Version) {
 		return update.LoadCache().Latest
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), hookLatestTimeout)
@@ -194,7 +195,14 @@ func (d *doctorRun) latest(noNetwork bool) string {
 		d.add(levelWarn, "version", "cannot reach the releases: %v", err)
 		return update.LoadCache().Latest
 	}
-	_ = update.SaveCache(update.Cache{CheckedAt: time.Now(), Latest: latest})
+	// Like polix update, the time of the check is only saved when this binary is the latest, so a newer release
+	// seen here does not delay the update of the next session start.
+	cache := update.LoadCache()
+	cache.Latest = latest
+	if version.Compare(Version, latest) >= 0 {
+		cache.CheckedAt = time.Now()
+	}
+	_ = update.SaveCache(cache)
 	return latest
 }
 
@@ -205,10 +213,14 @@ func sameFile(a, b string) bool {
 }
 
 func (d *doctorRun) workflow(repo *gitx.Repo) {
-	wf, err := workflow.Load(repo.Root)
+	wf, err := workflow.Load(repo.Root, Version)
+	var old *workflow.TooOld
 	switch {
 	case err != nil:
 		d.add(levelFail, "workflow", "%v", err)
+		if !errors.As(err, &old) && mayNeedNewer(err.Error()) {
+			d.add(levelWarn, "workflow", "%s", newerHint())
+		}
 	case wf == nil:
 		d.add(levelWarn, "workflow", "no %s: only the built-in protections apply", workflow.File)
 	default:
@@ -218,6 +230,8 @@ func (d *doctorRun) workflow(repo *gitx.Repo) {
 		}
 		if len(problems) == 0 {
 			d.add(levelOK, "workflow", "%s is valid", workflow.File)
+		} else if mayNeedNewer(strings.Join(problems, "\n")) {
+			d.add(levelWarn, "workflow", "%s", newerHint())
 		}
 	}
 }
@@ -346,6 +360,20 @@ func (d *doctorRun) hooks(root, home string) {
 	if len(dup) > 0 {
 		d.add(levelFail, "hooks", "Claude Code runs polix twice on %s: keep the hooks of polix in one of %s",
 			strings.Join(dup, ", "), strings.Join(sources, ", "))
+	}
+	updates, legacy := false, false
+	for _, g := range merged["SessionStart"] {
+		for _, h := range g.Hooks {
+			legacy = legacy || setup.IsLegacyCommand(h.Command)
+			updates = updates || setup.IsUpdateCommand(h.Command) && !setup.IsLegacyCommand(h.Command)
+		}
+	}
+	switch {
+	case legacy:
+		d.add(levelWarn, "hooks", "SessionStart runs a command of an earlier polix: run polix install to refresh the hooks")
+	case !updates:
+		d.add(levelWarn, "hooks", "SessionStart does not run %s, so polix does not update itself: run polix install",
+			setup.UpdateCommand)
 	}
 	budget := engine.RunBudget.Seconds()
 	for _, ev := range claudeHookEvents {

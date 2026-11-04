@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "polix update --hook; polix doctor --hook",
+            "command": "polix update --hook",
             "timeout": 180
           }
         ]

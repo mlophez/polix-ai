@@ -72,6 +72,9 @@ func newFakeReleaseFiles(t *testing.T, files map[string][]byte, sums map[string]
 func fakeBinary(t *testing.T, version string) string {
 	t.Helper()
 	exe := filepath.Join(t.TempDir(), "polix")
+	if runtime.GOOS == "windows" {
+		exe += ".exe" // exec only runs a file with an extension of PATHEXT
+	}
 	if err := os.WriteFile(exe, []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -83,6 +86,19 @@ func fakeBinary(t *testing.T, version string) string {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 	return exe
+}
+
+// outsideRepo runs the rest of the test in an empty folder: update and its hook act on the repository of the
+// working folder, which must not be the one of the tests.
+func outsideRepo(t *testing.T) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+}
+
+// withoutDoctor is what the session start hook said before the doctor it ends with.
+func withoutDoctor(stdout string) string {
+	before, _, _ := strings.Cut(stdout, "polix doctor ha encontrado")
+	return before
 }
 
 func runCmd(args ...string) (int, string, string) {
@@ -101,6 +117,7 @@ func content(t *testing.T, path string) string {
 }
 
 func TestUpdate(t *testing.T) {
+	outsideRepo(t)
 	newFakeRelease(t, []byte("new"))
 	exe := fakeBinary(t, "0.1.0")
 
@@ -122,6 +139,7 @@ func TestUpdate(t *testing.T) {
 
 // --version installs a given release, older ones included, and a development build is only replaced that way.
 func TestUpdateVersion(t *testing.T) {
+	outsideRepo(t)
 	newFakeRelease(t, []byte("pinned"))
 	exe := fakeBinary(t, "dev")
 	code, _, stderr := runCmd("update")
@@ -134,8 +152,10 @@ func TestUpdateVersion(t *testing.T) {
 	}
 }
 
-// The hook mode checks at most once a day, never fails and says nothing when there is nothing to say.
+// The hook mode checks at most once an hour, never fails, says nothing when there is nothing to say and ends with
+// the doctor.
 func TestUpdateHook(t *testing.T) {
+	outsideRepo(t)
 	rel := newFakeRelease(t, []byte("new"))
 	exe := fakeBinary(t, "0.1.0")
 
@@ -144,18 +164,21 @@ func TestUpdateHook(t *testing.T) {
 		t.Fatalf("first hook updates: %d %q", code, stdout)
 	}
 	n := rel.requests.Load()
-	Version = "0.1.0"
+	Version = "0.2.0" // the binary the update left
 	code, stdout, _ = runCmd("update", "--hook")
-	if code != 0 || stdout != "" || rel.requests.Load() != n {
-		t.Fatalf("a second hook the same day does nothing: %d %q, %d requests", code, stdout, rel.requests.Load()-n)
+	if code != 0 || withoutDoctor(stdout) != "" || rel.requests.Load() != n {
+		t.Fatalf("a second hook within the hour does nothing: %d %q, %d requests", code, stdout, rel.requests.Load()-n)
+	}
+	if !strings.Contains(stdout, "polix doctor ha encontrado") {
+		t.Fatalf("the hook ends with the doctor, which sees the plugin is missing: %q", stdout)
 	}
 
-	if err := update.SaveCache(update.Cache{CheckedAt: time.Now().Add(-48 * time.Hour)}); err != nil {
+	if err := update.SaveCache(update.Cache{CheckedAt: time.Now().Add(-2 * time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("POLIX_RELEASES_URL", "http://127.0.0.1:1") // nothing listens
 	code, stdout, _ = runCmd("update", "--hook")
-	if code != 0 || stdout != "" {
+	if code != 0 || withoutDoctor(stdout) != "" {
 		t.Fatalf("without network the hook stays quiet: %d %q", code, stdout)
 	}
 
@@ -163,7 +186,165 @@ func TestUpdateHook(t *testing.T) {
 	if code, _, stderr := runCmd("update"); code != 1 || !strings.Contains(stderr, "POLIX_NO_UPDATE") {
 		t.Fatalf("POLIX_NO_UPDATE: %d %q", code, stderr)
 	}
+	if code, stdout, _ := runCmd("update", "--hook"); code != 0 || !strings.Contains(stdout, "polix doctor ha encontrado") {
+		t.Fatalf("POLIX_NO_UPDATE only skips the update, not the doctor: %d %q", code, stdout)
+	}
 }
+
+// A download that fails leaves the check undone, so the next session start tries again instead of within the hour.
+func TestUpdateHookRetriesAFailedDownload(t *testing.T) {
+	outsideRepo(t)
+	newFakeReleaseFiles(t, map[string][]byte{asset: []byte("new")}, map[string][]byte{asset: []byte("tampered")})
+	exe := fakeBinary(t, "0.1.0")
+	code, _, stderr := runCmd("update", "--hook")
+	if code != 0 || !strings.Contains(stderr, "checksum") || content(t, exe) != "old" {
+		t.Fatalf("a tampered release is not installed: %d %q", code, stderr)
+	}
+	c := update.LoadCache()
+	if !c.CheckedAt.IsZero() || c.Latest != "0.2.0" || c.FailedAt.IsZero() {
+		t.Fatalf("the failed check is not saved as done, the failure is: %+v", c)
+	}
+	if _, _, stderr = runCmd("update", "--hook"); stderr != "" {
+		t.Fatalf("within the wait after a failure the hook does not try: %q", stderr)
+	}
+	c.FailedAt = time.Now().Add(-retryAfter - time.Minute)
+	if err := update.SaveCache(c); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, stderr = runCmd("update", "--hook"); !strings.Contains(stderr, "checksum") {
+		t.Fatalf("after the wait the hook tries again: %q", stderr)
+	}
+	if _, _, _ = runCmd("update", "--check"); !update.LoadCache().CheckedAt.IsZero() {
+		t.Fatal("--check leaves this binary behind: it does not count as a check of the hook")
+	}
+}
+
+// A binary in a folder it cannot write fails before the download, and waits before trying again.
+func TestUpdateHookCannotWrite(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("a read-only folder does not stop writes on Windows nor for root")
+	}
+	outsideRepo(t)
+	rel := newFakeRelease(t, []byte("new"))
+	exe := fakeBinary(t, "0.1.0")
+	dir := filepath.Dir(exe)
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	code, _, stderr := runCmd("update", "--hook")
+	if code != 0 || !strings.Contains(stderr, "cannot write") || content(t, exe) != "old" {
+		t.Fatalf("cannot write: %d %q", code, stderr)
+	}
+	n := rel.requests.Load()
+	if n != 1 {
+		t.Fatalf("only the latest release is asked, nothing is downloaded: %d requests", n)
+	}
+	runCmd("update", "--hook")
+	if rel.requests.Load() != n {
+		t.Fatal("within the wait after a failure the hook does not ask again")
+	}
+}
+
+// A newer release the cache already knows (polix doctor saw it) is installed at once, not within the hour.
+func TestUpdateHookKnowsANewerRelease(t *testing.T) {
+	outsideRepo(t)
+	newFakeRelease(t, []byte("new"))
+	exe := fakeBinary(t, "0.1.0")
+	if err := update.SaveCache(update.Cache{CheckedAt: time.Now(), Latest: "0.2.0"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, stdout, _ := runCmd("update", "--hook"); !strings.Contains(stdout, "actualizado") || content(t, exe) != "new" {
+		t.Fatalf("a known newer release: %q", stdout)
+	}
+}
+
+// The doctor of the hook is the one of the binary the update left: a real release, run after the replace.
+func TestUpdateHookRunsTheNewDoctor(t *testing.T) {
+	outsideRepo(t)
+	newFakeRelease(t, releaseBinary(t))
+	exe := fakeBinary(t, "0.1.0")
+	code, stdout, stderr := runCmd("update", "--hook")
+	if code != 0 || !strings.Contains(stdout, "actualizado de 0.1.0 a 0.2.0") || stderr != "" {
+		t.Fatalf("update: %d %q %q", code, stdout, stderr)
+	}
+	out, err := exec.Command(exe, "version").Output()
+	if err != nil || strings.TrimSpace(string(out)) != "0.2.0" {
+		t.Fatalf("the new binary: %q %v", out, err)
+	}
+	if !strings.Contains(withoutDoctor(stdout), "actualizado") || !strings.Contains(stdout, "polix doctor ha encontrado") {
+		t.Fatalf("the new binary runs the doctor after the update: %q", stdout)
+	}
+}
+
+// polix doctor saves the time of the check only when this binary is the latest, like the hook.
+func TestDoctorCache(t *testing.T) {
+	outsideRepo(t)
+	newFakeRelease(t, []byte("new"))
+	fakeBinary(t, "0.1.0")
+	runCmd("doctor")
+	if c := update.LoadCache(); c.Latest != "0.2.0" || !c.CheckedAt.IsZero() {
+		t.Fatalf("behind: %+v", c)
+	}
+	Version = "0.2.0"
+	runCmd("doctor")
+	if c := update.LoadCache(); c.CheckedAt.IsZero() {
+		t.Fatalf("latest: %+v", c)
+	}
+}
+
+// Every release runs these commands of the next one: an old binary that updates runs them with the new binary,
+// so they must keep existing with these flags (see docs/polix.md).
+func TestCommandsTheUpdateRuns(t *testing.T) {
+	for _, args := range [][]string{{"__refresh", "--quiet"}, {"__refresh", "--hooks"}, {"doctor", "--hook"},
+		{"install", "--user", "--yes", "--quiet"}, {"update", "--hook"}, {"version"}} {
+		if code, _, stderr := runCmd(append(args, "--help")...); code != 0 {
+			t.Errorf("polix %s: %d %q", strings.Join(args, " "), code, stderr)
+		}
+	}
+}
+
+// A nested option, or a later version of the schema, may come from a newer polix too; a plain mistake may not.
+func TestWorkflowAhead(t *testing.T) {
+	fakeBinary(t, "0.1.0")
+	r := newRepo(t, "main")
+	t.Chdir(r.dir)
+	for src, want := range map[string]bool{
+		"version: 1\nrequires: 0.2.0\n":                                     true,
+		"version: 1\nan_option: true\n":                                     true,
+		"version: 1\non:\n  pre_edit:\n    - deny: x\n      an_option: 1\n": true,
+		"version: 2\n":                      true,
+		"version: 1\nmax_stop_blocks: -1\n": false,
+		"version: 1\n":                      false,
+	} {
+		r.write("polix.yaml", src)
+		if got := workflowAhead(); got != want {
+			t.Errorf("workflowAhead with %q = %v, want %v", src, got, want)
+		}
+	}
+}
+
+// A repository whose workflow this binary rejects (it requires a newer polix) is checked at every session start.
+func TestUpdateHookWhenTheWorkflowIsAhead(t *testing.T) {
+	rel := newFakeRelease(t, []byte("new"))
+	exe := fakeBinary(t, "0.1.0")
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\nrequires: 0.2.0\n")
+	t.Chdir(r.dir)
+	if err := update.SaveCache(update.Cache{CheckedAt: time.Now(), Latest: "0.1.0"}); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runCmd("update", "--hook")
+	if code != 0 || !strings.Contains(stdout, "actualizado de 0.1.0 a 0.2.0") || content(t, exe) != "new" {
+		t.Fatalf("a workflow ahead skips the hour: %d %q %q (%d requests)", code, stdout, stderr, rel.requests.Load())
+	}
+	if _, err := os.Stat(filepath.Join(r.dir, ".claude")); err == nil {
+		t.Fatal("the hook never touches the files of the repository")
+	}
+}
+
+// moduleDir is the root of the module, taken before any test changes the working folder.
+var moduleDir, _ = filepath.Abs(filepath.Join("..", ".."))
 
 // release builds polix as version 0.2.0 once per test run: the install scripts run the binary they install.
 var release = sync.OnceValues(func() ([]byte, error) {
@@ -178,6 +359,7 @@ var release = sync.OnceValues(func() ([]byte, error) {
 	}
 	cmd := exec.Command("go", "build", "-o", out, "-ldflags",
 		"-X github.com/mlophez/polix-ai/internal/cli.Version=0.2.0", "github.com/mlophez/polix-ai/cmd/polix")
+	cmd.Dir = moduleDir
 	if msg, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("go build: %v\n%s", err, msg)
 	}
@@ -249,6 +431,17 @@ func TestInstallScript(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "polix")); err == nil {
 		t.Fatal("a tampered binary must not be installed")
+	}
+
+	newFakeRelease(t, bin)
+	if out, err = runInstall(t, dir, "sh", script); err != nil {
+		t.Fatalf("first install: %v\n%s", err, out)
+	}
+	if out, err = runInstall(t, dir, "sh", script); err != nil || content(t, filepath.Join(dir, "polix")) != string(bin) {
+		t.Fatalf("install over an installed polix: %v\n%s", err, out)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Fatalf("only polix is left in its folder: %v", entries)
 	}
 }
 

@@ -17,7 +17,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -157,9 +156,27 @@ func Executable() (string, error) {
 	return filepath.EvalSymlinks(exe)
 }
 
+// Seams for the tests: the rename of Replace, and whether the old binary is moved aside first, as Windows needs.
+var (
+	rename    = os.Rename
+	moveAside = runtime.GOOS == "windows"
+)
+
+// Writable reports whether Replace can write next to exe, so an update that could never be installed fails before
+// downloading the binary.
+func Writable(exe string) error {
+	tmp, err := os.CreateTemp(filepath.Dir(exe), ".polix-update-*")
+	if err != nil {
+		return fmt.Errorf("cannot write next to %s: %w", exe, err)
+	}
+	tmp.Close()
+	return os.Remove(tmp.Name())
+}
+
 // Replace installs data as the binary at exe. The new binary is written next to it and renamed over it, so a
 // hook that starts meanwhile runs either the old or the new one, never half of it. Windows cannot replace a
-// running binary, so the old one is moved aside to <exe>.old first; Cleanup removes it on a later run.
+// running binary, so the old one is moved aside to <exe>.old first, and moved back when the new one cannot take
+// its place (an antivirus may hold the new file); Cleanup removes it on a later run.
 func Replace(exe string, data []byte) error {
 	tmp, err := os.CreateTemp(filepath.Dir(exe), ".polix-update-*")
 	if err != nil {
@@ -176,65 +193,33 @@ func Replace(exe string, data []byte) error {
 	if err := os.Chmod(tmp.Name(), 0o755); err != nil {
 		return err
 	}
-	if runtime.GOOS == "windows" {
-		old := exe + ".old"
-		_ = os.Remove(old)
-		if err := os.Rename(exe, old); err != nil {
-			return err
-		}
+	if !moveAside {
+		return rename(tmp.Name(), exe)
 	}
-	return os.Rename(tmp.Name(), exe)
+	old := exe + ".old"
+	_ = os.Remove(old)
+	if err := rename(exe, old); err != nil {
+		return err
+	}
+	if err := rename(tmp.Name(), exe); err != nil {
+		if rerr := rename(old, exe); rerr != nil {
+			return fmt.Errorf("%w; and the old binary could not be put back from %s: %v", err, old, rerr)
+		}
+		return err
+	}
+	return nil
 }
 
 // Cleanup removes the binary a previous update on Windows moved aside.
 func Cleanup(exe string) { _ = os.Remove(exe + ".old") }
 
-// Compare compares two versions (1.2.3, with an optional v and -prerelease): -1, 0 or 1. A prerelease is lower
-// than its release; prereleases compare as text.
-func Compare(a, b string) int {
-	an, ap := parse(a)
-	bn, bp := parse(b)
-	for i := range an {
-		if an[i] != bn[i] {
-			if an[i] < bn[i] {
-				return -1
-			}
-			return 1
-		}
-	}
-	switch {
-	case ap == bp:
-		return 0
-	case ap == "":
-		return 1
-	case bp == "":
-		return -1
-	case ap < bp:
-		return -1
-	}
-	return 1
-}
-
-func parse(v string) ([3]int, string) {
-	v = strings.TrimPrefix(v, "v")
-	v, pre, _ := strings.Cut(v, "-")
-	var n [3]int
-	for i, p := range strings.SplitN(v, ".", 3) {
-		n[i], _ = strconv.Atoi(p)
-	}
-	return n, pre
-}
-
-// IsRelease reports whether v is a released version (not a development build).
-func IsRelease(v string) bool {
-	n, _ := parse(v)
-	return v != "" && v != "dev" && n != [3]int{}
-}
-
-// Cache remembers the last check of the latest release, so the session start hook asks at most once a day.
+// Cache remembers the last check of the latest release, so the session start hook asks at most once an hour, and
+// the last update that failed, so a failure that repeats (a folder it cannot write, a proxy that cuts the
+// download) is retried after a while instead of at every session start.
 type Cache struct {
 	CheckedAt time.Time `json:"checked_at"`
 	Latest    string    `json:"latest"`
+	FailedAt  time.Time `json:"failed_at,omitzero"`
 }
 
 // cacheFile is <user cache dir>/polix/update.json; POLIX_CACHE_DIR overrides the folder.

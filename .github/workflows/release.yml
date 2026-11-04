@@ -29,7 +29,11 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "polix $GITHUB_REF_NAME" --generate-notes --verify-tag
+        # A prerelease (v0.2.0-rc1) never becomes the latest release, which every polix updates to.
+        run: |
+          pre=
+          case $GITHUB_REF_NAME in *-*) pre=--prerelease ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --title "polix $GITHUB_REF_NAME" --generate-notes --verify-tag $pre
 
   # Installs the published release as a user would, on every system, and checks the installed version.
   install:

@@ -331,6 +331,33 @@ func TestRegisterHooksInTheProject(t *testing.T) {
 	}
 }
 
+// The session start command of an earlier build is replaced in place, not kept next to the new one.
+func TestRegisterHooksReplacesALegacyCommand(t *testing.T) {
+	o := opts(t)
+	o.Project = t.TempDir()
+	settings := o.HooksFile(Claude)
+	os.MkdirAll(filepath.Dir(settings), 0o755)
+	os.WriteFile(settings, []byte(`{"hooks": {"SessionStart": [
+  {"hooks": [{"type": "command", "command": "polix hook claude", "timeout": 900}]},
+  {"matcher": "startup", "hooks": [{"type": "command", "command": "polix update --hook; polix doctor --hook", "timeout": 180}]}
+]}}`), 0o644)
+	if _, err := RegisterHooks(o, Claude); err != nil {
+		t.Fatal(err)
+	}
+	got := read(t, settings)
+	if strings.Contains(got, "polix doctor --hook") || strings.Count(got, `"`+UpdateCommand+`"`) != 1 {
+		t.Fatalf("the legacy command is replaced:\n%s", got)
+	}
+	for _, c := range []string{"polix update --hook", "polix update --hook --flag-of-a-later-release", "polix update --hook; polix doctor --hook"} {
+		if !IsPolixCommand(c) {
+			t.Errorf("%q is the update of polix", c)
+		}
+	}
+	if IsPolixCommand("polix update --check") || IsPolixCommand("polix update --hookx") {
+		t.Error("only the session start command is the update of polix")
+	}
+}
+
 // The example settings of the repository are what install registers.
 func TestClaudeSettingsExample(t *testing.T) {
 	var example, generated any

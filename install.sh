@@ -61,7 +61,8 @@ sha256() {
 }
 
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT INT TERM
+new=
+trap 'rm -rf "$tmp"; [ -z "$new" ] || rm -f "$new"' EXIT INT TERM
 
 # fetch downloads a file of the release into $tmp and checks it against checksums.txt.
 fetch() {
@@ -85,8 +86,12 @@ fi
 
 fetch "$asset"
 mkdir -p "$dir"
-chmod +x "$tmp/$asset"
-mv "$tmp/$asset" "$dir/polix"
+# Copied next to the target and renamed over it: the rename is atomic, so a hook that starts meanwhile runs the
+# old binary or the new one, never half of one, as a move from the temporary folder on another disk would copy.
+new=$dir/.polix-install.$$
+cp "$tmp/$asset" "$new" || fail "cannot write in $dir"
+chmod +x "$new"
+mv -f "$new" "$dir/polix" || fail "cannot replace $dir/polix"
 echo "installed polix $("$dir/polix" version) in $dir/polix"
 
 case ":$PATH:" in

@@ -4,7 +4,7 @@
 // and, for Claude Code, its agents, which help in any repository. The plugin is written to a local marketplace,
 // ~/.polix/marketplace/, and registered with each agent:
 //   - Claude Code: `claude plugin marketplace add` and `claude plugin install polix@polix`, for the user. Claude Code
-//     loads a plugin of a local marketplace in place, so rewriting the folder updates it in the next session.
+//     copies the plugin to its cache, so a rewrite of the folder needs `claude plugin update` to reach it.
 //   - Codex: `codex plugin marketplace add` and `[plugins."polix@polix"] enabled = true` in ~/.codex/config.toml.
 //
 // For a repository it registers the hooks that call `polix hook`, which belong to the project like its polix.yaml
@@ -43,10 +43,14 @@ const HookTimeout = 900
 // updateTimeout bounds the session start check: an update downloads the binary.
 const updateTimeout = 180
 
-// UpdateCommand is the session start command that keeps polix up to date and reports the problems of the machine.
-// Update and doctor share one command because the hooks of an event run in parallel, and doctor must see the binary
-// the update left.
-const UpdateCommand = "polix update --hook; polix doctor --hook"
+// UpdateCommand is the session start command that keeps polix up to date and reports the problems of the machine:
+// polix update --hook ends with the doctor of the binary it leaves. It is one plain command, with no shell syntax,
+// because it is committed in the hooks files of the repositories, which every release, and every shell an agent
+// runs hooks with, must understand; what it does lives in the binary.
+const UpdateCommand = "polix update --hook"
+
+// legacyCommands are the commands earlier builds registered, recognized so install replaces them.
+var legacyCommands = []string{"polix update --hook; polix doctor --hook"}
 
 // claudeTools are the tools whose use polix governs in Claude Code.
 var claudeTools = "Edit|Write|MultiEdit|NotebookEdit|Bash"
@@ -109,7 +113,20 @@ func Hooks(agent string) map[string][]hookGroup {
 
 // IsPolixCommand reports whether a hook command is one polix registers.
 func IsPolixCommand(command string) bool {
-	return strings.HasPrefix(strings.TrimSpace(command), "polix hook ") || strings.TrimSpace(command) == UpdateCommand
+	c := strings.TrimSpace(command)
+	return strings.HasPrefix(c, "polix hook ") || IsUpdateCommand(c)
+}
+
+// IsUpdateCommand reports whether a hook command is the session start command of polix, of this release, of an
+// earlier one or of a later one that adds flags: install replaces it instead of adding a second update next to it.
+func IsUpdateCommand(command string) bool {
+	c := strings.TrimSpace(command)
+	return c == UpdateCommand || strings.HasPrefix(c, UpdateCommand+" ") || strings.HasPrefix(c, UpdateCommand+";")
+}
+
+// IsLegacyCommand reports whether a hook command is one an earlier build registered and install now replaces.
+func IsLegacyCommand(command string) bool {
+	return slices.Contains(legacyCommands, strings.TrimSpace(command))
 }
 
 // hookEvents are the events polix registers, in lifecycle order: the order new events are added to a file.

@@ -13,11 +13,20 @@
 #    its action. `deny` in enforce mode and `allow` stop the evaluation; every other action lets it go on.
 #
 # An invalid file (any problem `polix check` reports) blocks pre_edit, pre_command and pre_commit with the
-# problems (fail closed), except the main session editing polix.yaml or running `polix check`, and only warns on
-# the other events, so a broken file never traps a stop in a loop.
+# problems (fail closed), except the main session editing polix.yaml or running `polix check`, `polix update`,
+# `polix doctor` or `polix version`, and only warns on the other events, so a broken file never traps a stop in a
+# loop. A file that `requires` a newer polix blocks the same way, asking to run `polix update`, and not even the
+# main session may edit it.
 
 # Required. The only version is 1.
 version: 1
+
+# Optional. The oldest polix that knows every option this file uses; set it when an option needs a newer polix
+# than the one the team may have. It is read before the rest of the file, so an older polix that does not know the
+# other options blocks edits and commands asking to run `polix update`, instead of reporting them as mistakes, and
+# the session start hook looks for the new release at once. A development build ignores it. Known since polix
+# 0.1.0: no earlier polix exists.
+requires: 0.1.0
 
 # Optional, default main. The branch the change merges into: `changed` compares the working tree with the merge
 # base of HEAD and this branch, plus untracked files not ignored. When the branch does not exist, it compares

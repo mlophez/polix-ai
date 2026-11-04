@@ -13,34 +13,6 @@ import (
 	"testing"
 )
 
-func TestCompare(t *testing.T) {
-	cases := []struct {
-		a, b string
-		want int
-	}{
-		{"0.2.0", "0.2.0", 0},
-		{"v0.2.0", "0.2.0", 0},
-		{"0.2.0", "0.10.0", -1},
-		{"1.0.0", "0.99.99", 1},
-		{"0.2.0-rc1", "0.2.0", -1},
-		{"0.2.0", "0.2.0-rc1", 1},
-		{"0.2.0-rc1", "0.2.0-rc2", -1},
-	}
-	for _, c := range cases {
-		if got := Compare(c.a, c.b); got != c.want {
-			t.Errorf("Compare(%q, %q) = %d, want %d", c.a, c.b, got, c.want)
-		}
-	}
-}
-
-func TestIsRelease(t *testing.T) {
-	for v, want := range map[string]bool{"0.2.0": true, "1.0.0-rc1": true, "dev": false, "": false, "0.0.0": false} {
-		if got := IsRelease(v); got != want {
-			t.Errorf("IsRelease(%q) = %v, want %v", v, got, want)
-		}
-	}
-}
-
 // releases serves a fake releases page with one release, v0.2.0, whose binary is bin.
 func releases(t *testing.T, bin []byte, sum string) *httptest.Server {
 	t.Helper()
@@ -132,5 +104,54 @@ func TestCache(t *testing.T) {
 	}
 	if c := LoadCache(); c.Latest != "0.2.0" {
 		t.Fatalf("cache: %+v", c)
+	}
+}
+
+// On Windows the old binary is moved aside; when the new one cannot take its place, the old one is put back, so
+// the machine is never left without polix.
+func TestReplaceRollsBack(t *testing.T) {
+	exe := filepath.Join(t.TempDir(), "polix")
+	if err := os.WriteFile(exe, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldRename, oldAside := rename, moveAside
+	t.Cleanup(func() { rename, moveAside = oldRename, oldAside })
+	moveAside = true
+	rename = func(from, to string) error {
+		if strings.Contains(filepath.Base(from), ".polix-update-") {
+			return os.ErrPermission // an antivirus holds the new file
+		}
+		return os.Rename(from, to)
+	}
+	if err := Replace(exe, []byte("new")); err == nil {
+		t.Fatal("the failed rename is reported")
+	}
+	if data, err := os.ReadFile(exe); err != nil || string(data) != "old" {
+		t.Fatalf("the old binary is back: %q %v", data, err)
+	}
+	entries, _ := os.ReadDir(filepath.Dir(exe))
+	if len(entries) != 1 {
+		t.Fatalf("nothing else is left: %v", entries)
+	}
+
+	rename = os.Rename
+	if err := Replace(exe, []byte("new")); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(exe); string(data) != "new" {
+		t.Fatalf("moved aside and replaced: %q", data)
+	}
+}
+
+func TestWritable(t *testing.T) {
+	dir := t.TempDir()
+	if err := Writable(filepath.Join(dir, "polix")); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("the probe is removed: %v", entries)
+	}
+	if err := Writable(filepath.Join(dir, "missing", "polix")); err == nil {
+		t.Fatal("a folder that cannot be written is reported")
 	}
 }
