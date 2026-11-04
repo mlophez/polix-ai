@@ -31,6 +31,7 @@ import (
 var (
 	executable = update.Executable
 	lookPath   = exec.LookPath
+	goos       = runtime.GOOS
 )
 
 // Levels of a finding of doctor.
@@ -68,6 +69,7 @@ var claudeHookEvents = []struct {
 	{"UserPromptSubmit", nil},
 	{"PreToolUse", []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}},
 	{"PostToolUse", []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}},
+	{"PostToolUseFailure", []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}},
 	{"SubagentStop", nil},
 	{"Stop", nil},
 }
@@ -206,6 +208,11 @@ func (d *doctorRun) latest(noNetwork bool) string {
 	return latest
 }
 
+func isFile(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
+}
+
 func sameFile(a, b string) bool {
 	ia, errA := os.Stat(a)
 	ib, errB := os.Stat(b)
@@ -223,6 +230,7 @@ func (d *doctorRun) workflow(repo *gitx.Repo) {
 		}
 	case wf == nil:
 		d.add(levelWarn, "workflow", "no %s: only the built-in protections apply", workflow.File)
+		d.base(repo, nil)
 	default:
 		problems := workflow.Validate(wf)
 		for _, p := range problems {
@@ -230,9 +238,21 @@ func (d *doctorRun) workflow(repo *gitx.Repo) {
 		}
 		if len(problems) == 0 {
 			d.add(levelOK, "workflow", "%s is valid", workflow.File)
+			d.base(repo, wf)
 		} else if mayNeedNewer(strings.Join(problems, "\n")) {
 			d.add(levelWarn, "workflow", "%s", newerHint())
 		}
+	}
+}
+
+// base warns when polix rules check --changed would find no base branch; the rules report their own problems.
+func (d *doctorRun) base(repo *gitx.Repo, wf *workflow.Workflow) {
+	all, err := rules.Load(repo.Root)
+	if err != nil {
+		return
+	}
+	if msg := baseWarning(repo, wf, all); msg != "" {
+		d.add(levelWarn, "workflow", "%s", msg)
 	}
 }
 
@@ -243,8 +263,17 @@ func (d *doctorRun) rules(repo *gitx.Repo) {
 		return
 	}
 	problems := rules.Validate(repo.Root, all)
+	missing := map[string]bool{}
 	for _, r := range all {
-		if !r.Deterministic || r.Check == "" || runtime.GOOS == "windows" {
+		if !r.Deterministic || r.Check == "" {
+			continue
+		}
+		if goos == "windows" {
+			// A shebang does nothing on Windows: the check needs its interpreter, found as runCheck finds it.
+			if _, err := rules.Interpreter(r.Check, lookPath, isFile); err != nil && !missing[err.Error()] {
+				missing[err.Error()] = true
+				problems = append(problems, fmt.Sprintf("%s %s: %v", r.File, r.ID, err))
+			}
 			continue
 		}
 		info, err := os.Stat(filepath.Join(repo.Root, filepath.FromSlash(r.Check)))
@@ -394,7 +423,12 @@ func (d *doctorRun) hooks(root, home string) {
 			}
 		}
 		if len(polix) == 0 {
-			d.add(levelFail, "hooks", "%s does not run polix hook claude: run polix install", ev.name)
+			// Settings written by an older polix lack the event: only the feedback of failed commands is lost.
+			level := levelFail
+			if ev.name == "PostToolUseFailure" {
+				level = levelWarn
+			}
+			d.add(level, "hooks", "%s does not run polix hook claude: run polix install", ev.name)
 			continue
 		}
 		var missing []string

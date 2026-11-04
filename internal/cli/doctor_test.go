@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -62,6 +63,21 @@ func TestDoctorHealthy(t *testing.T) {
 	}
 }
 
+// doctor warns that rules check --changed would fail when no base branch exists and a rule has a check.
+func TestDoctorMissingBase(t *testing.T) {
+	healthyMachine(t)
+	r := readyRepo(t)
+	r.git("branch", "-m", "main", "trunk")
+	if _, stdout, _ := r.run("doctor", "--offline"); strings.Contains(stdout, "would fail") {
+		t.Fatalf("no deterministic rule, no warning: %s", stdout)
+	}
+	r.write("ai/rules/style.yaml", "rules:\n  - id: S-1\n    description: d\n    scope: [\"src/**\"]\n    deterministic: true\n    check: checks/ok.sh\n")
+	r.write("checks/ok.sh", "#!/bin/sh\nexit 0\n")
+	if _, stdout, _ := r.run("doctor", "--offline"); !strings.Contains(stdout, "rules check --changed would fail") {
+		t.Fatalf("a deterministic rule without main: %s", stdout)
+	}
+}
+
 // The session start command of an earlier build, or none, means polix does not keep itself up to date.
 func TestDoctorFindsAnOutdatedUpdateHook(t *testing.T) {
 	healthyMachine(t)
@@ -75,6 +91,24 @@ func TestDoctorFindsAnOutdatedUpdateHook(t *testing.T) {
 	r.write(".claude/settings.json", strings.Replace(string(data), `"polix update --hook"`, `"echo hi"`, 1))
 	if _, stdout, _ := r.run("doctor", "--offline"); !strings.Contains(stdout, "does not update itself") {
 		t.Fatalf("no update command: %s", stdout)
+	}
+}
+
+// Settings written before polix registered PostToolUseFailure only lose the feedback of failed commands: a warning.
+func TestDoctorOldSettingsWarn(t *testing.T) {
+	healthyMachine(t)
+	r := readyRepo(t)
+	var settings map[string]map[string]any
+	data, _ := os.ReadFile(filepath.Join(r.dir, ".claude", "settings.json"))
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	delete(settings["hooks"], "PostToolUseFailure")
+	data, _ = json.Marshal(settings)
+	r.write(".claude/settings.json", string(data))
+	code, stdout, _ := r.run("doctor", "--offline")
+	if code != 0 || !regexp.MustCompile(`warn +hooks +PostToolUseFailure does not run polix hook claude`).MatchString(stdout) {
+		t.Fatalf("doctor should only warn: %d\n%s", code, stdout)
 	}
 }
 
@@ -162,5 +196,26 @@ func TestDoctorOutsideRepository(t *testing.T) {
 	code := Run([]string{"doctor", "--offline", "--dir", t.TempDir()}, nil, &out, &errb)
 	if code != 0 || !strings.Contains(out.String(), "not inside a git repository") {
 		t.Fatalf("doctor: %d\n%s%s", code, out.String(), errb.String())
+	}
+}
+
+// On Windows, doctor reports a check whose interpreter is not on the PATH.
+func TestDoctorMissingInterpreter(t *testing.T) {
+	healthyMachine(t)
+	r := readyRepo(t)
+	r.write("ai/rules/style.yaml", "rules:\n  - id: S-1\n    description: d\n    deterministic: true\n    check: checks/ok.py\n")
+	r.write("checks/ok.py", "print('ok')\n")
+	oldOS, oldLook := goos, lookPath
+	goos = "windows"
+	lookPath = func(name string) (string, error) {
+		if name == "python" || name == "python3" || name == "py" {
+			return "", exec.ErrNotFound
+		}
+		return oldLook(name)
+	}
+	t.Cleanup(func() { goos, lookPath = oldOS, oldLook })
+	code, stdout, _ := r.run("doctor", "--offline")
+	if code == 0 || !strings.Contains(stdout, "S-1") || !strings.Contains(stdout, "python") {
+		t.Fatalf("doctor should report the missing python: %d\n%s", code, stdout)
 	}
 }

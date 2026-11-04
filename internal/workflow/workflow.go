@@ -59,7 +59,7 @@ var Events = []string{SessionStart, Prompt, PreEdit, PostEdit, PreCommand, PostC
 var Actions = []string{"deny", "allow", "require", "run", "context", "record"}
 
 // Conditions an `if` or `unless` can use.
-var Conditions = []string{"branch", "var", "path", "changed", "file", "contains", "command", "exit", "actor", "done", "not"}
+var Conditions = []string{"branch", "var", "path", "changed", "file", "contains", "command", "writes", "exit", "actor", "done", "not"}
 
 // Modes of an entry: enforce applies it, warn turns a block into a warning in the context, audit only logs.
 const (
@@ -73,11 +73,15 @@ type Workflow struct {
 	Version int `yaml:"version"`
 	// Requires is the oldest polix that knows every option the file uses (`requires: 0.2.0`). An older polix
 	// reads it before anything else and asks to be updated instead of reporting the options it does not know.
-	Requires      string             `yaml:"requires"`
-	Base          string             `yaml:"base"`            // branch a change merges into, for `changed`
-	MaxStopBlocks int                `yaml:"max_stop_blocks"` // loop guard of every block on stop and subagent_stop
-	Vars          map[string]Var     `yaml:"vars"`
-	On            map[string][]Entry `yaml:"on"`
+	Requires string `yaml:"requires"`
+	// Base names the branches a change may merge into, for `polix rules check --changed`; the hooks always
+	// compare `changed` with HEAD.
+	Base          Names `yaml:"base"`
+	MaxStopBlocks int   `yaml:"max_stop_blocks"` // loop guard of every block on stop and subagent_stop
+	// Protected are the path globs no agent writes, the main session included: only a person changes them.
+	Protected []string           `yaml:"protected"`
+	Vars      map[string]Var     `yaml:"vars"`
+	On        map[string][]Entry `yaml:"on"`
 }
 
 // Var extracts a variable from the branch name: the first group of the regular expression, or the whole match.
@@ -136,6 +140,23 @@ type Context struct {
 	Text  string `yaml:"text"`
 	Rules string `yaml:"rules"`
 	keys  []string
+}
+
+// Names is one name or a list of names.
+type Names []string
+
+// UnmarshalYAML accepts a string or a list of strings.
+func (ns *Names) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		*ns = Names{n.Value}
+		return nil
+	}
+	var list []string
+	if err := n.Decode(&list); err != nil {
+		return err
+	}
+	*ns = list
+	return nil
 }
 
 // Args is a command as a list of arguments; a string is split on spaces. Commands never run through a shell.
@@ -215,12 +236,12 @@ func mapKeys(n *yaml.Node) []string {
 	return keys
 }
 
-// BaseBranch returns the branch a change merges into.
-func (w *Workflow) BaseBranch() string {
-	if w == nil || w.Base == "" {
-		return DefaultBase
+// BaseBranches returns the branches a change may merge into, DefaultBase when the workflow names none.
+func (w *Workflow) BaseBranches() []string {
+	if w == nil || len(w.Base) == 0 {
+		return []string{DefaultBase}
 	}
-	return w.Base
+	return slices.Clone(w.Base)
 }
 
 // EffectiveMode returns the mode of the entry, enforce by default.
@@ -315,7 +336,7 @@ func Parse(data []byte) (*Workflow, error) {
 		top := root.Content[0]
 		for i := 0; i < len(top.Content); i += 2 {
 			switch k := top.Content[i].Value; k {
-			case "version", "requires", "base", "max_stop_blocks", "vars", "on":
+			case "version", "requires", "base", "max_stop_blocks", "protected", "vars", "on":
 			default:
 				return nil, fmt.Errorf("%s:%d: unknown key %q", File, top.Content[i].Line, k)
 			}
@@ -335,6 +356,7 @@ func Parse(data []byte) (*Workflow, error) {
 var conditionEvents = map[string][]string{
 	"path":    {PreEdit, PostEdit},
 	"command": {PreCommand, PostCommand, PreCommit},
+	"writes":  {PreCommand, PostCommand, PreCommit},
 	"exit":    {PostCommand},
 }
 
@@ -387,6 +409,16 @@ func Validate(w *Workflow) []string {
 	}
 	if w.MaxStopBlocks < 0 {
 		v.add(0, "max_stop_blocks must be positive, got %d", w.MaxStopBlocks)
+	}
+	for _, b := range w.Base {
+		if strings.TrimSpace(b) == "" {
+			v.add(0, "base: a branch name cannot be empty")
+		}
+	}
+	for _, g := range w.Protected {
+		if strings.TrimSpace(g) == "" {
+			v.add(0, "protected: a path glob cannot be empty")
+		}
 	}
 	names := make([]string, 0, len(w.Vars))
 	for name := range w.Vars {

@@ -46,15 +46,11 @@ func (r *Repo) Branch() string {
 	return b
 }
 
-// Changed returns the repository relative paths that differ from the merge base with base (the branch the
-// change will merge into), plus untracked files not ignored by .gitignore. Without base, or when it does not
-// exist, it compares with HEAD.
-func (r *Repo) Changed(base string) ([]string, error) {
-	ref := "HEAD"
-	if base != "" {
-		if mb, err := r.git("merge-base", "HEAD", base); err == nil && mb != "" {
-			ref = mb
-		}
+// Changed returns the repository relative paths that differ from ref, plus untracked files not ignored by
+// .gitignore. An empty ref means HEAD: what is not committed yet. ResolveBase gives the ref of a whole branch.
+func (r *Repo) Changed(ref string) ([]string, error) {
+	if ref == "" {
+		ref = "HEAD"
 	}
 	files := map[string]bool{}
 	if _, err := r.git("rev-parse", "--verify", "--quiet", "HEAD"); err == nil {
@@ -82,6 +78,40 @@ func (r *Repo) Changed(base string) ([]string, error) {
 	}
 	sort.Strings(list)
 	return list, nil
+}
+
+// ResolveBase returns the merge base of HEAD with the closest of the candidate branches: each is tried as a
+// local branch and then as origin/<name>, and among those that exist the one with the fewest commits from its
+// merge base to HEAD wins; ties keep the order of the list. It fails, naming the candidates, when none exists.
+func (r *Repo) ResolveBase(candidates []string) (string, error) {
+	best, bestCount := "", -1
+	for _, name := range candidates {
+		for _, ref := range []string{"refs/heads/" + name, "refs/remotes/origin/" + name} {
+			if _, err := r.git("rev-parse", "--verify", "--quiet", ref+"^{commit}"); err != nil {
+				continue
+			}
+			mb, err := r.git("merge-base", "HEAD", ref)
+			if err != nil || mb == "" {
+				break
+			}
+			out, err := r.git("rev-list", "--count", mb+"..HEAD")
+			if err != nil {
+				break
+			}
+			var n int
+			if _, err := fmt.Sscan(out, &n); err != nil {
+				break
+			}
+			if bestCount < 0 || n < bestCount {
+				best, bestCount = mb, n
+			}
+			break
+		}
+	}
+	if best == "" {
+		return "", fmt.Errorf("no base branch found: tried %s, locally and on origin", strings.Join(candidates, ", "))
+	}
+	return best, nil
 }
 
 // ContentHash returns the hash of the git tree the working tree would produce if everything were staged,

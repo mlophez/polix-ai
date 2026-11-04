@@ -486,6 +486,18 @@ func testInstallPowerShell(t *testing.T, ps string) {
 		t.Fatalf("install.ps1 over an installed polix: %v\n%s", err, out)
 	}
 
+	// Run through iex, as `irm | iex` does, the script leaves none of its variables in the session.
+	cmd := fmt.Sprintf("Get-Content -Raw '%s' | Invoke-Expression; if (Test-Path variable:version) { 'LEAKED' } else { 'CLEAN' }",
+		strings.ReplaceAll(script, "'", "''"))
+	out, err = runInstall(t, dir, ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd)
+	if err != nil || !strings.Contains(out, "CLEAN") {
+		t.Fatalf("install.ps1 through iex leaves its variables: %v\n%s", err, out)
+	}
+
+	if runtime.GOOS == "windows" {
+		testInstallPowerShellPath(t, ps, dir, args)
+	}
+
 	os.Remove(exe)
 	newFakeReleaseFiles(t, map[string][]byte{asset: []byte("tampered")}, map[string][]byte{asset: bin})
 	out, err = runInstall(t, dir, ps, args...)
@@ -494,5 +506,67 @@ func testInstallPowerShell(t *testing.T, ps string) {
 	}
 	if _, err := os.Stat(exe); err == nil {
 		t.Fatal("a tampered binary must not be installed")
+	}
+}
+
+// userPathPS reads the user Path of the registry unexpanded, and its type, as "<kind>|<value>".
+const userPathPS = `$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment'); ` +
+	`$v = $k.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); ` +
+	`if ($null -eq $v) { 'None|' } else { "$($k.GetValueKind('Path'))|$v" }`
+
+// testInstallPowerShellPath checks on Windows that install.ps1 adds its folder to the user Path keeping the
+// entries with variables and the type of the value, and restores the Path of the machine afterwards.
+func testInstallPowerShellPath(t *testing.T, ps, dir string, args []string) {
+	t.Helper()
+	runPS := func(script string) string {
+		t.Helper()
+		out, err := exec.Command(ps, "-NoProfile", "-Command", script).CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", script, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	kind, orig, _ := strings.Cut(runPS(userPathPS), "|")
+	t.Cleanup(func() {
+		if kind == "None" {
+			runPS(`[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true).DeleteValue('Path', $false)`)
+			return
+		}
+		runPS(fmt.Sprintf(`[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true).SetValue('Path', '%s', [Microsoft.Win32.RegistryValueKind]::%s)`,
+			strings.ReplaceAll(orig, "'", "''"), kind))
+	})
+	entry := `%USERPROFILE%\polix-test-entry`
+	for _, want := range []string{"ExpandString", "String"} {
+		runPS(fmt.Sprintf(`[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true).SetValue('Path', '%s', [Microsoft.Win32.RegistryValueKind]::%s)`,
+			strings.ReplaceAll(entry+";"+orig, "'", "''"), want))
+
+		cmd := exec.Command(ps, args...)
+		cmd.Env = append(os.Environ(), "POLIX_INSTALL_DIR="+dir, "POLIX_RELEASES_URL="+os.Getenv("POLIX_RELEASES_URL"),
+			"POLIX_NO_SETUP=1", "PATH="+pathWithoutAgents())
+		if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "added "+dir) {
+			t.Fatalf("install.ps1 adds its folder to the user Path (%s): %v\n%s", want, err, out)
+		}
+		gotKind, got, _ := strings.Cut(runPS(userPathPS), "|")
+		entries := strings.Split(got, ";")
+		if gotKind != want || entries[0] != entry || entries[len(entries)-1] != dir {
+			t.Fatalf("the user Path keeps %s and its type %s, and ends with %s: %s %q", entry, want, dir, gotKind, got)
+		}
+	}
+}
+
+// --check with --version compares the requested version with the running one and downloads nothing.
+func TestUpdateCheckVersion(t *testing.T) {
+	outsideRepo(t)
+	newFakeRelease(t, []byte("new"))
+	exe := fakeBinary(t, "0.2.0")
+	for v, want := range map[string]string{
+		"0.3.0": "is newer than this binary",
+		"0.2.0": "is already this binary",
+		"0.1.0": "would be a downgrade",
+	} {
+		code, stdout, stderr := runCmd("update", "--check", "--version", v)
+		if code != 0 || !strings.Contains(stdout, want) || content(t, exe) != "old" {
+			t.Errorf("--check --version %s: %d %q %q", v, code, stdout, stderr)
+		}
 	}
 }

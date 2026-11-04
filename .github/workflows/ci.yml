@@ -27,3 +27,6 @@ jobs:
       # On Windows this also runs install.ps1 under Windows PowerShell 5.1 and PowerShell 7.
       - name: Test
         run: go test ./...
+      # The checks of the deterministic rules of ai/rules/, as `polix rules check` runs them at a commit.
+      - name: Rules
+        run: go run ./cmd/polix rules check

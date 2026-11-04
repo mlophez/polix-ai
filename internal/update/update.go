@@ -177,6 +177,7 @@ func Writable(exe string) error {
 // hook that starts meanwhile runs either the old or the new one, never half of it. Windows cannot replace a
 // running binary, so the old one is moved aside to <exe>.old first, and moved back when the new one cannot take
 // its place (an antivirus may hold the new file); Cleanup removes it on a later run.
+// Between the two renames there is no binary at exe: a hook that starts then fails without blocking.
 func Replace(exe string, data []byte) error {
 	tmp, err := os.CreateTemp(filepath.Dir(exe), ".polix-update-*")
 	if err != nil {

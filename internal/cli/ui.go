@@ -24,7 +24,6 @@ var (
 	styleWarn  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	styleFail  = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
 	styleMuted = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	styleTitle = lipgloss.NewStyle().Bold(true)
 	styleCode  = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 )
 
@@ -42,10 +41,6 @@ func (u *ui) status(level, area, msg string) {
 		badge = fmt.Sprintf("%-4s", level)
 	}
 	fmt.Fprintf(u.w, "%s  %s  %s\n", badge, styleMuted.Render(fmt.Sprintf("%-8s", area)), msg)
-}
-
-func (u *ui) title(format string, args ...any) {
-	fmt.Fprintln(u.w, styleTitle.Render(fmt.Sprintf(format, args...)))
 }
 
 func (u *ui) line(format string, args ...any) {

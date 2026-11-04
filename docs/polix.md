@@ -30,7 +30,8 @@ polix hook codex           # entry point of the Codex hooks (experimental)
 polix check                # validate polix.yaml and ai/rules/
 polix rules check          # run the checks of every deterministic rule (for CI)
 polix rules check --changed  # only the rules whose scope matches the files changed by the branch
-                             # (--base BRANCH, default the base of polix.yaml, else main)
+                             # (--base BRANCH, default the closest of base in polix.yaml, else main;
+                             # it fails when no base exists, locally or on origin)
 polix graph                # print the workflow as a Mermaid diagram
 polix log --tail 20        # print the last entries of the state log (--json for the raw lines)
 polix doctor               # check that this machine and repository are ready (--hook, --offline)
@@ -40,6 +41,16 @@ polix update               # replace the binary with the latest release and refr
                            # (--check, --version V, --hook)
 polix version
 ```
+
+`polix rules check --changed` compares the branch with its base: `--base`, else the candidates of `base` in
+`polix.yaml`, else `main`. Each candidate is tried as a local branch and then as `origin/<branch>`, and among those
+that exist the one whose merge base is closest to HEAD wins, so a feature forked from `dev` compares with `dev`
+when `base: [main, dev]`. When none exists the command fails naming them, and `polix check` and `polix doctor`
+warn about it when a deterministic rule has a check. In GitHub Actions, run it with
+`--base="${{ github.base_ref }}"` after a checkout with `fetch-depth: 0`: outside a pull request `base_ref` is
+empty, and an empty `--base` falls back to `base`. On a push to a branch of `base` itself, such as `main`, the
+branch is its own base and `--changed` checks nothing: run `polix rules check` without it there. The hooks never
+use `base`.
 
 The repository commands, `doctor`, `install` and `uninstall` take `--dir <repo>` (`-C`; default: the working
 directory, or the `cwd` of the hook input).
@@ -91,8 +102,12 @@ Both scripts then run `polix install --user --yes`, which installs the plugin of
 they belong to each repository. `POLIX_NO_SETUP=1` skips it.
 
 `polix update` downloads the latest release (or `--version V`, older ones included), checks it against
-`checksums.txt` and replaces the running binary atomically: a hook that starts meanwhile runs the old binary or
-the new one, never half of it. A development build (`dev`) is only replaced with `--version`, and
+`checksums.txt` and replaces the running binary atomically: on macOS and Linux a hook that starts meanwhile runs
+the old binary or the new one, never half of it. On Windows the running `polix.exe` is moved aside and the new one
+renamed in its place: between the two renames there is a short moment without `polix.exe`, and a hook that starts
+then fails as a non blocking error, so that one call is not governed.
+`--check` only reports whether a newer release exists; with `--version V` it says whether `V` is newer than the
+running binary, the same or older (a downgrade). Neither downloads anything. A development build (`dev`) is only replaced with `--version`, and
 `POLIX_NO_UPDATE=1` disables updates where the version is pinned by other means.
 `--hook` is the mode of the session start hook: at most one check an hour (cached in the user cache folder), five
 seconds to reach GitHub, never fails, prints one line only when it updated and ends with `polix doctor --hook` run
@@ -118,12 +133,14 @@ start hook only refreshes the plugin already installed: it never installs anythi
 the repository.
 
 `polix doctor` checks the version against the latest release, that the `PATH` the hooks use runs this binary,
-git, `polix.yaml`, the rules and that their checks exist and are executable, the hooks of Claude Code (project,
+git, `polix.yaml`, the rules and that their checks exist and are executable (on Windows, that their interpreter
+is found), the hooks of Claude Code (project,
 local and user settings: every event, every governed tool in the matchers, a timeout above the run budget, and
 never twice), the plugin of the user (its version against the binary and, except in `--hook`, that Claude Code has
 it installed and enabled), the hooks and the plugin of Codex when it is used and that the state can be written. It
 also warns when `SessionStart` does not run `polix update --hook`, or runs the command of an earlier build, which
-`polix install` replaces. It exits 1 on any failure.
+`polix install` replaces, and when `PostToolUseFailure` does not run polix, as in the settings of an earlier
+build: only the feedback of failed commands is lost. It exits 1 on any failure.
 `--hook` prints nothing when everything is fine and never fails; otherwise it prints the problems, which Claude
 Code adds to the context of the session, so the agent tells the user and offers to fix them. It does not use
 the network: it compares with the latest release the last `polix update` or `polix doctor` saw.
@@ -141,27 +158,59 @@ The Justfile recipes use `sh`: on Windows, run them from Git Bash.
 1. The adapter of the agent (`internal/agent`) turns the JSON of stdin into neutral events.
    An edit becomes one `pre_edit` or `post_edit` per path; a `git commit` in a command also produces
    `pre_commit`.
-2. The engine (`internal/engine`) applies the built-in protections, then the entries of the event in order.
+2. The engine (`internal/engine`) applies the protections, then the entries of the event in order.
 3. The adapter answers: exit 2 with the reasons on stderr to block, or exit 0 with
    `hookSpecificOutput.additionalContext` on stdout to inject context.
 
 Edits outside the repository (scratchpad, memory, another repository) and of files git ignores are not part of
 the change: the workflow does not apply to them, only the protections.
 
-### Built-in protections
+### Protections
 
-They apply whatever the workflow says, even without one:
+The only built-in protection applies whatever the workflow says, even without one: nobody edits the state
+(`<git-dir>/polix/`), and no command that names it may write files (`rm`, `mv`, `cp`, `tee`, `sed -i`,
+redirections other than `2>&1`...); reading it is allowed, and `polix log` prints it.
+A command names the state by its absolute path or below a git directory (`.git/polix`,
+`.git/worktrees/<name>/polix`), followed by a slash, a space, a quote, `;`, `&`, `|`, `)`, `*` or the end of the
+line: the bare word `polix` is the binary, not the state. On macOS and Windows, whose file names ignore case,
+the state is found in any case.
 
-- Nobody edits the state (`<git-dir>/polix/`), and no command that names it may write files (`rm`, `mv`,
-  `cp`, `tee`, `sed -i`, redirections other than `2>&1`...); reading it is allowed, and `polix log` prints it.
-  A command names the state by its absolute path or below a git directory (`.git/polix`,
-  `.git/worktrees/<name>/polix`): the bare word `polix` is the binary, not the state.
-- Subagents never edit `AGENTS.md`, `CLAUDE.md`, `ai/rules/` or `polix.yaml`, with the edit tools or with a
-  command that names them and writes files.
-  The main session may, because `init`, `add-rule` and `maintenance` write them with the user.
+polix protects nothing else on its own: `AGENTS.md`, `CLAUDE.md`, `ai/rules/` and `polix.yaml` may be edited by
+any agent unless the workflow protects them. The key `protected` of `polix.yaml` lists path globs that no actor
+writes, the main session included: an edit of a matching path is denied, and so is a command that writes files
+and names one. Reading is allowed. It applies before the workflow, so files git ignores, such as `.env`, are
+covered too, and it binds the skills as well: protecting `polix.yaml` or `ai/rules/` keeps the skills `workflow`
+and `add-rule` from writing them. For finer control, such as keeping only subagents away, use the condition
+`writes` with `actor` in a `pre_command` entry and `path` in a `pre_edit` entry.
 
-Commands are judged with a heuristic, aimed at accidents rather than at an agent determined to get around it:
-`cat CLAUDE.md > notes.txt` is denied to a subagent, and `python -c "open(...)"` is not seen.
+Each command of the line is parsed with its quotes into the program it runs (past variable assignments, `sudo`,
+`env`, `xargs`..., and `git rm` and `git mv` as `rm` and `mv`), its arguments and its redirections. It writes:
+
+- the targets of its redirections inside the repository: `>`, `>>`, `>|`, `&>`, `>&file` and `x>AGENTS.md`
+  without spaces. `2>&1`, an input, `/dev/null` and a path outside the repository write nothing, nor does `NUL`
+  on Windows. A `>` inside quotes is text, not a redirection;
+- every file it names, read or written, when the program writes by itself: `rm`, `mv`, `cp`, `tee`, `touch`,
+  `ln`, `chmod`, `install`, `rsync`, `truncate`, `dd of=`, and `sed` or `perl` with `-i`. For these a folder that
+  holds what a glob matches counts too: the literal folder a glob with a slash starts with, or a parent of it
+  (`ai/rules` and `ai` for `ai/rules/**`, `docs` for `docs/secret.md`), and a word with wildcards that may reach
+  it (`rm -rf ai/*`, and `rm *.md` for `AGENTS.md`, but not for `docs/secret.md`). `rm`, and `mv` for its sources,
+  also count on the root and its parents (`rm -rf .`). The reason then names the glob the folder holds.
+
+Reading is allowed: `cat CLAUDE.md > notes.txt`, `ls ai 2>/dev/null` or `rg install ai` write nothing protected.
+On macOS and Windows the globs of `protected` and `writes` ignore case, so `.ENV` is `.env` there. It is a
+heuristic, aimed at accidents rather than at an agent determined to get around it. It does not see:
+
+- a program that writes through an interpreter or another command: `python -c "open(...)"`, `bash -c '...'`,
+  `sh -c`, `find ai -delete` or `find ai -exec rm {} \;`;
+- a wrapper with an option that takes a value (`sudo -u root rm`, `nice -n 10 rm`, `xargs -I {} rm`), or one it
+  does not know (`timeout 10 rm`): the wrappers it skips are `sudo`, `env`, `command`, `nohup`, `time`, `exec`,
+  `xargs` and `nice`, with their options but not their values;
+- a wildcard against a pattern that has wildcards too (`rm -f .env*` for `.env.*`, `rm ai/rules/*` for
+  `ai/rules/*.yaml`): wildcards are only compared with literal paths and folders, and with a whole folder of `/**`;
+- a path reached through `cd` (`cd ai && rm -rf rules`) or built by the command itself;
+- quoting other than that of bash: a backslash before an ordinary character stays (for the paths of Windows, so
+  `rm AGENT\S.md` is not `AGENTS.md`), `$'...'` is not decoded, and under PowerShell a quoted path that ends in a
+  backslash (`"ai\rules\"`) is read as an escaped quote.
 
 ### Failure policy
 
@@ -179,10 +228,14 @@ Commands are judged with a heuristic, aimed at accidents rather than at an agent
 
 ## polix.yaml
 
+`examples/polix.yaml` is the current Logalty flow written as a workflow, annotated as a reference of every option;
+a test validates it.
+
 ```yaml
 version: 1
 requires: 0.1.0       # oldest polix that knows every option of the file (optional, since 0.1.0)
-base: main            # branch the change merges into, for `changed` (default main)
+base: [main, dev]     # branch, or candidates, a change merges into, for rules check --changed (default main)
+protected: [".env"]   # path globs no agent writes, the main session included (optional)
 max_stop_blocks: 3    # loop guard of every block on stop and subagent_stop, per entry (default 3)
 vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # first group of the branch name, used as {key}
@@ -203,7 +256,9 @@ Conditions:
 - `branch`: the current branch matches a regular expression.
 - `var`: a variable of `vars` has a value.
 - `path`: the edited path matches a glob (or a list); only on `pre_edit` and `post_edit`.
-- `changed`: a file changed by the branch matches a glob (or a list).
+- `changed`: a file not committed yet (changed since HEAD, or untracked and not ignored) matches a glob (or a
+  list). The flow is reviewed commit by commit: once committed, a change no longer counts, whatever `base` says,
+  so gates that must hold before a commit belong on `pre_commit`.
 - `file`: a file of the repository matches a glob; with `contains`, it also holds that text.
 - `command` and `exit`: a command of the line matches a pattern (`*` matches anything) and its exit code.
   `command` only on `pre_command`, `post_command` and `pre_commit`; `exit` only on `post_command`.
@@ -212,7 +267,10 @@ Conditions:
   The exit code of the line only counts for a command whose failure propagates to it, alone, last or followed by
   `&&`: in `just test | tail`, `tail` decides it, so `exit: 0` does not hold and a fact like `tested` is not
   recorded from it.
-- `actor`: who acts, `session` or the subagent type (`builder`, `reviewer`...).
+- `writes`: a command of the line writes files and names a path that matches a glob (or a list), with the same
+  heuristic as `protected`; reading does not count. Only on `pre_command`, `post_command` and `pre_commit`.
+- `actor`: who acts, `session` or the subagent type. An agent of a plugin is named with its prefix, as
+  `polix:rules-reviewer`; an agent of `.claude/agents/` by its bare name.
 - `done`: a fact was recorded on this branch for exactly the current content.
 - `not`: a map of nested conditions; it holds unless every one of them holds.
 
@@ -228,7 +286,11 @@ Actions:
 - `require: <what to do>` blocks `stop` or `subagent_stop` until it is done; only valid there.
 - `run: { command: [..] }` runs a command from the root, without a shell; a failure blocks with its output.
 - `run: { rules: changed }` runs the checks of the deterministic rules whose scope matches the changed files
-  (`rules: "{path}"` for one path); a failure blocks naming the rule ids.
+  (`rules: "{path}"` for one path); a failure blocks naming the rule ids. On Windows, where a shebang does
+  nothing, a `.sh` check runs with the `bash` of Git for Windows, found next to `git` (else a `bash` of the `PATH`
+  outside the Windows folder, never the one of WSL), and a `.py` check with `py -3`, then `python3`, then
+  `python`, skipping the aliases of the Microsoft Store; a missing interpreter fails the check naming it, and
+  `polix doctor` reports it.
 - `context: { file | text | rules }` injects a file, a text, or the rules whose scope matches a path
   (`rules: "{path}"`), each rule once per session. Not valid on `stop` or `subagent_stop`, which cannot
   receive context.
@@ -252,7 +314,8 @@ loop guard: after `max_stop_blocks` blocks of the same entry, in the same sessio
 same content, the agent may stop and the log records a `loop_guard` decision.
 Counting per entry keeps several pending blocks from using up the guard of each other, and subagents never use
 up the guard of the main session.
-`examples/polix.yaml` is the current Logalty flow written as a workflow.
+When the log cannot be read, or the block cannot be written to it (a read only state folder), the guard cannot
+count: it fails open, lets the agent stop with a warning and records a `loop_guard` decision when it can.
 
 ## State
 
@@ -265,9 +328,18 @@ up the guard of the main session.
 - `injected`: the rules already injected in a session.
 - `stop_block`: the blocks of a stop, per entry, session, actor and content, for the loop guard.
 
+The reason of an entry is capped at 8 KiB and each line kept from the output of a `run` or a check at 500 bytes,
+both marked where cut, so no line of the log nears the read limit of 4 MiB.
+A line over that limit (written by hand, say) is skipped when the log is read, and `polix log` says how many
+lines it skipped; the entries around it still count.
+
 The content hash is the git tree the working tree would produce with everything staged (untracked files included,
 ignored ones excluded), computed on a copy of the index.
 Any edit changes it, so a fact recorded before the edit stops counting without anyone invalidating it.
+It is computed again after every `run`, with or without `record`, since a run may rewrite files.
+When it cannot be computed (an unreadable file, a broken index), facts are neither recorded nor satisfied: `done`
+does not hold, and the hook warns with the cause. The loop guard still counts the blocks of a stop made without a
+hash, as one content, so the agent can always stop.
 
 ## The plugin and the hooks: polix install
 
@@ -297,24 +369,30 @@ it. Running it again rewrites what changed and removes what the release dropped.
 
   When the CLI of an agent is not on the `PATH`, install writes the plugin and prints the commands to run by hand.
 - The hooks, for the repository of the working directory (or `--dir`), since they belong to the project like its
-  `polix.yaml` and are committed with it: merged into `.claude/settings.json` and `.codex/hooks.json`. Every
+  `polix.yaml` and are committed with it: merged into `.claude/settings.json` and `.codex/hooks.json`. For Claude Code
+  they cover `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure` (a failed
+  command reaches `post_command` with a non-zero `exit`; a failed edit runs no `post_edit`), `SubagentStop` and
+  `Stop`; Codex gets the same events except `PostToolUseFailure`. Every
   other setting, event and hook of those files is kept in its order, and the hooks of polix take the place of the
-  ones they replace, so the file only changes where polix changed. Codex skips new or changed hooks until the
+  ones they replace, so the file only changes where polix changed. A group that mixes a hook of polix with other
+  commands keeps the other commands, and the hook of polix goes to a group of its own. Each group of hooks of an
+  event, of polix or not, is written on one line, and the rest of the file is indented with two spaces. A
+  symlinked file is written through the link, to its target, and an existing file keeps its permissions. Codex skips new or changed hooks until the
   user trusts them with `/hooks`. The plugin brings no hooks.
 
 `--user` installs only the plugin; outside a git repository that is all install does. `polix uninstall` removes
 the same parts: it unregisters the plugin from each agent and, for both, removes `~/.polix/marketplace/`; unless
 `--user`, it removes the hooks of polix of the repository, and a hooks file when nothing else is left in it.
 
-The repository is a marketplace too (`.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`, named
-`polix-ai`), for whoever wants the plugin without the binary: `/plugin marketplace add mlophez/polix-ai`. The
+The plugin only arrives with `polix install`: the repository serves no marketplace of its own. The
 reference of the skill `workflow` (`plugins/polix/skills/workflow/reference.yaml`) is a copy of
 `examples/polix.yaml`, kept equal by a test; `claude plugin validate plugins/polix` checks the plugin.
 
 Claude Code merges the hooks of the project, local and user settings, so polix registered in two of them runs
 twice, which doubles every block and every record: `polix install` warns about it and `polix doctor` fails until
-one of them goes. `examples/claude-settings.json` is what install registers for Claude Code (a test keeps them
-equal); it and `examples/codex-hooks.json` remain for a rollout that renders the settings itself (Logalty Control).
+one of them goes. `examples/claude-settings.json` and `examples/codex-hooks.json` are, byte for byte, what install
+writes in an empty repository for each agent (a test keeps them equal); they remain for a rollout that renders the
+settings itself (Logalty Control).
 
 On `SessionStart` with matcher `startup` (a new session, not a resume, a clear or a compaction) the hooks
 also run `polix update --hook`: it keeps polix up to date and then runs `polix doctor --hook`, which reports any
@@ -337,6 +415,9 @@ Every `run` of one hook call shares a budget of 10 minutes (commands and rule ch
 set the `timeout` of each `polix hook` to 900 seconds, above it. The default of Claude Code is 600
 seconds (30 on `UserPromptSubmit`), not above the budget, so a long gate could be killed and the action let
 through; `polix doctor` warns about it.
+When the budget runs out, polix kills the command or the check and waits at most 5 seconds more for its output: a
+grandchild that keeps the output open (a server started in the background) no longer holds the hook, although it
+may outlive the budget, since polix does not kill the whole process tree.
 In the real rollout Logalty Control would render them and pin the version of the binary.
 
 ## Limits of the proof of concept
@@ -352,11 +433,9 @@ In the real rollout Logalty Control would render them and pin the version of the
 - The actions of `.github/workflows/release.yml` are pinned by tag, not by commit SHA.
 - The condition `pr` (state of the pull request) is not implemented.
 - The log is appended without a lock; parallel subagents could in theory interleave lines.
-- `PostToolUseFailure` of Claude Code is understood (exit code 1) but not registered in the example, until it is
-  checked against the installed version.
 - Injected rules are not bounded: a project with many rules without scope gets all of them on its first edit.
-- No tests inside `polix.yaml` yet, nor `why` and `review_by` to expire entries.
+- No tests inside `polix.yaml` yet. The key `why` of an entry is only a note; expiring entries with `review_by` is
+  pending.
 - Measured on macOS: about 13 ms per hook call without a workflow and about 130 ms for a stop that computes the
   content hash of a 730 file repository.
-  Not measured on Windows yet; the code builds for `windows/amd64` and runs rule checks through `python` or
-  `bash` there, since a shebang does nothing.
+  Not measured on Windows yet.

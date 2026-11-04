@@ -17,6 +17,8 @@ Turn what the user wants to enforce into entries of `polix.yaml`, at the root of
 Conditions are facts of the repository, the event and the state: polix measures and never judges.
 Judging the code belongs to a reviewer subagent, such as `polix:reviewer` or `polix:rules-reviewer`,
 whose stop the workflow can record.
+In `actor`, an agent of a plugin goes with its prefix (`polix:reviewer`, never `reviewer`); an agent of
+`.claude/agents/` goes by its bare name.
 
 ## Requirements
 

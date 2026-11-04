@@ -4,10 +4,12 @@
 #
 # How a hook call is answered:
 # 1. The adapter turns the hook input into neutral events (an edit of several files gives one event per path).
-# 2. The built-in protections run first, whatever this file says, even without it:
-#    - nobody edits the state (<git-dir>/polix/), and no command naming it may write files;
-#    - subagents never edit AGENTS.md, CLAUDE.md, ai/rules/ or polix.yaml, neither with the edit tools nor with a
-#      command that writes them (only the main session may).
+# 2. The protections run first:
+#    - built in, even without this file: nobody edits the state (<git-dir>/polix/), and no command naming it may
+#      write files;
+#    - the paths of `protected` (below), which no actor writes, the main session included.
+#    polix protects nothing else on its own: AGENTS.md, CLAUDE.md, ai/rules/ and polix.yaml are only protected
+#    when this file says so.
 # 3. Edits outside the repository or of files git ignores skip the workflow: only the protections apply to them.
 # 4. The entries of the event run in file order; each one whose `if` holds and whose `unless` does not hold applies
 #    its action. `deny` in enforce mode and `allow` stop the evaluation; every other action lets it go on.
@@ -28,10 +30,20 @@ version: 1
 # 0.1.0: no earlier polix exists.
 requires: 0.1.0
 
-# Optional, default main. The branch the change merges into: `changed` compares the working tree with the merge
-# base of HEAD and this branch, plus untracked files not ignored. When the branch does not exist, it compares
-# with HEAD, so only uncommitted changes count.
-base: main
+# Optional, default main. The branch the change merges into, or a list of candidates, used only by
+# `polix rules check --changed` (CI): each candidate is tried locally and then as origin/<branch>, and the one whose
+# merge base is closest to HEAD wins. The command fails when none exists, and `polix check` and `polix doctor` warn
+# about it. In the hooks, `changed` always compares with HEAD: the change is reviewed commit by commit.
+# In GitHub Actions, pass `--base="${{ github.base_ref }}"` with a checkout of `fetch-depth: 0`; outside a pull
+# request it is empty, and an empty --base falls back to this list. On a push to a branch of this list, such as
+# main, --changed checks nothing (the branch is its own base): run `polix rules check` without it there.
+base: [main, dev]
+
+# Optional. Path globs that no agent writes, the main session included: only a person changes them by hand. It
+# applies before the workflow, so files git ignores (.env) are covered too. It blocks edits and commands that write
+# files and name a matching path (the heuristic of `writes`), never reads. Protecting polix.yaml or ai/rules/ keeps
+# the skills `workflow` and `add-rule` from writing them.
+protected: [".env", "AGENTS.md", "CLAUDE.md"]
 
 # Optional, default 3 (0 also means 3; negative is rejected). Loop guard of every block of stop and subagent_stop
 # in enforce mode (require, deny or a failing run): after this many blocks of the same entry, in the same session,
@@ -69,7 +81,7 @@ on:
   #   why:    optional free text for people; the engine ignores it.
   #   <action>: exactly one of deny, allow, require, run, context, record.
   # Unknown events, keys (also inside run, context and vars), conditions, actions and modes are rejected by
-  # `polix check`, and so are conditions on events where they never hold (path, command, exit).
+  # `polix check`, and so are conditions on events where they never hold (path, command, writes, exit).
   #
   # Modes, for the actions that can block (deny, require, run):
   # - enforce: blocks. The agent gets the reasons (exit 2 on stderr) and cannot go on.
@@ -111,12 +123,13 @@ on:
     # contains is only valid next to file.
     - unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
       deny: "El plan no tiene la línea Ticket: {key}"
-    # actor: who acts, `session` (the main session) or the subagent type (builder, reviewer...); a list holds when
-    # any matches.
+    # actor: who acts, `session` (the main session) or the subagent type; a list holds when any matches. An agent of
+    # a plugin is named with its prefix, `plugin:agent`, as polix:reviewer or acme:builder (a builder agent of a
+    # plugin acme); an agent of .claude/agents/ by its bare name.
     # deny: block the event with the reason; in enforce mode it stops the evaluation, in warn or audit it does not.
-    - unless: { actor: builder }
+    - unless: { actor: acme:builder }
       mode: audit       # new entry: it only logs what it would block until it is trusted
-      deny: "Solo el subagente builder edita el proyecto: usa /build"
+      deny: "Solo el subagente acme:builder edita el proyecto: usa /build"
     - context: { rules: "{path}" }
 
   # post_edit: after a file is edited, once per path. It cannot be blocked: deny and allow are rejected.
@@ -151,6 +164,13 @@ on:
     - if: { command: "terraform apply*", not: { branch: "^main$" } }
       mode: warn
       deny: "terraform apply solo se lanza desde el pipeline de main"
+    # writes: a command of the line writes a path that matches a glob, or one of a list: the target of a
+    # redirection into the repository, or a file named by a program that writes by itself (rm, mv, cp, tee,
+    # sed -i...), which also matches on a folder holding it or a wildcard reaching it (`rm -rf ai` or `rm -rf ai/*`
+    # for ai/rules/**). A heuristic: reads do not count, and `python -c` that opens a file is not seen. Only on
+    # pre_command, post_command and pre_commit.
+    - if: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
+      deny: "Solo la sesión principal cambia {command}"
 
   # post_command: after a shell command ran. It cannot be blocked: deny and allow are rejected.
   post_command:
@@ -170,19 +190,19 @@ on:
     - unless: { done: tested }
       deny: "Los tests no han pasado sobre este diff: ejecuta just test"
     - unless: { done: reviewed }
-      deny: "El diff no está revisado: lanza el subagente reviewer"
+      deny: "El diff no está revisado: lanza el subagente polix:reviewer"
 
   # subagent_stop: a subagent is about to stop; actor is its type. require blocks it until the condition is met.
   subagent_stop:
-    - if: { actor: reviewer }
+    - if: { actor: polix:reviewer }
       record: reviewed
-    - if: { actor: builder, changed: "src/**" }
+    - if: { actor: acme:builder, changed: "src/**" }
       unless: { done: tested }
       require: "Ejecuta just test antes de terminar"
 
   # stop: the main session is about to end its turn; actor is always `session`.
   stop:
-    # changed: some file changed by the branch (see base) matches a glob, or one of a list.
+    # changed: some file not committed yet (changed since HEAD, or untracked) matches a glob, or one of a list.
     - if: { changed: "**" }
       run: { rules: changed }
     # A run that records a fact: the tests run on stop without the agent, once per content.
@@ -195,4 +215,4 @@ on:
     # context is not valid on stop and subagent_stop: the agent cannot receive it there.
     - if: { changed: "src/**" }
       unless: { done: reviewed }
-      require: "Lanza el subagente reviewer sobre el diff actual"
+      require: "Lanza el subagente polix:reviewer sobre el diff actual"

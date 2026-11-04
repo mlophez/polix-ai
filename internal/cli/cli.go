@@ -23,6 +23,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -177,7 +178,7 @@ func hook(name, dir string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return repo.Rel(p, cwd)
 	}
-	native, events, err := ad.Parse(input, resolver)
+	_, events, err := ad.Parse(input, resolver)
 	if err != nil {
 		fmt.Fprintln(stderr, "polix hook:", err)
 		return agent.ExitOK
@@ -197,7 +198,7 @@ func hook(name, dir string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return agent.ExitOK // outside a repository there is nothing to govern
 	}
 	// Paths were resolved before the repository was known: parse again now that it is.
-	native, events, _ = ad.Parse(input, resolver)
+	native, events, _ := ad.Parse(input, resolver)
 
 	wf, err := loadValid(repo.Root)
 	en := engine.New(repo, wf)
@@ -294,12 +295,27 @@ func check(repo *gitx.Repo, stdout, stderr io.Writer) int {
 		return 1
 	}
 	u := newUI(stdout)
+	if msg := baseWarning(repo, wf, all); msg != "" {
+		newUI(stderr).warn("%s", msg)
+	}
 	if wf == nil {
 		u.line("%s no %s (only the built-in protections apply) and %d rules of %s/", styleOK.Render("ok:"), workflow.File, len(all), rules.Dir)
 		return 0
 	}
 	u.line("%s %s and %d rules of %s/", styleOK.Render("ok:"), workflow.File, len(all), rules.Dir)
 	return 0
+}
+
+// baseWarning explains that polix rules check --changed would fail because no base branch exists, when the
+// repository has a deterministic rule with a check; "" otherwise.
+func baseWarning(repo *gitx.Repo, wf *workflow.Workflow, all []rules.Rule) string {
+	if !slices.ContainsFunc(all, func(r rules.Rule) bool { return r.Deterministic && r.Check != "" }) {
+		return ""
+	}
+	if _, err := repo.ResolveBase(wf.BaseBranches()); err != nil {
+		return fmt.Sprintf("polix rules check --changed would fail: %v; set base in %s or pass --base", err, workflow.File)
+	}
+	return ""
 }
 
 func rulesCmd() *cobra.Command {
@@ -327,14 +343,15 @@ func rulesCmd() *cobra.Command {
 	}
 	dirFlag(chk, &dir, ".")
 	chk.Flags().BoolVar(&changed, "changed", false, "only the rules whose scope matches the changed files")
-	chk.Flags().StringVar(&base, "base", "", "branch the change merges into, for --changed (default: base of "+
+	chk.Flags().StringVar(&base, "base", "", "branch the change merges into, for --changed, locally or on origin (default: the closest of base in "+
 		workflow.File+", else "+workflow.DefaultBase+")")
 	c.AddCommand(chk)
 	return c
 }
 
 // rulesCheck runs the checks of the deterministic rules: all of them, or with changed only those whose scope
-// matches the files changed by the branch. The base of changed is base, else the base of polix.yaml.
+// matches the files changed by the branch. The branch is compared with the closest of base, else of the base of
+// polix.yaml, and it fails when none exists.
 func rulesCheck(repo *gitx.Repo, changed bool, base string, stdout, stderr io.Writer) int {
 	all, err := rules.Load(repo.Root)
 	if err != nil {
@@ -343,11 +360,17 @@ func rulesCheck(repo *gitx.Repo, changed bool, base string, stdout, stderr io.Wr
 	}
 	list := all
 	if changed {
+		candidates := []string{base}
 		if base == "" {
 			wf, _ := workflow.Load(repo.Root, Version)
-			base = wf.BaseBranch()
+			candidates = wf.BaseBranches()
 		}
-		files, err := repo.Changed(base)
+		ref, err := repo.ResolveBase(candidates)
+		if err != nil {
+			newUI(stderr).fail("%v: set base in %s or pass --base", err, workflow.File)
+			return 1
+		}
+		files, err := repo.Changed(ref)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
@@ -440,7 +463,7 @@ func logCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return printLog(repo, n, raw, c.OutOrStdout())
+			return printLog(repo, n, raw, c.OutOrStdout(), c.ErrOrStderr())
 		},
 	}
 	dirFlag(c, &dir, ".")
@@ -449,10 +472,14 @@ func logCmd() *cobra.Command {
 	return c
 }
 
-func printLog(repo *gitx.Repo, n int, raw bool, stdout io.Writer) error {
-	entries, err := state.Open(repo.GitDir).Entries()
+func printLog(repo *gitx.Repo, n int, raw bool, stdout, stderr io.Writer) error {
+	store := state.Open(repo.GitDir)
+	entries, err := store.Entries()
 	if err != nil {
 		return err
+	}
+	if k := store.Skipped(); k > 0 {
+		fmt.Fprintf(stderr, "polix: %d lines of the log are longer than %d bytes and were skipped\n", k, state.MaxLine)
 	}
 	if n > 0 && len(entries) > n {
 		entries = entries[len(entries)-n:]

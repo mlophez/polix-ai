@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -358,18 +359,109 @@ func TestRegisterHooksReplacesALegacyCommand(t *testing.T) {
 	}
 }
 
-// The example settings of the repository are what install registers.
-func TestClaudeSettingsExample(t *testing.T) {
-	var example, generated any
-	if err := json.Unmarshal([]byte(read(t, filepath.Join("..", "..", "examples", "claude-settings.json"))), &example); err != nil {
+// The example hooks files of the repository are, byte for byte, what install writes for each agent in an empty
+// repository. POLIX_UPDATE_EXAMPLES=1 rewrites them.
+func TestHooksExamples(t *testing.T) {
+	for agent, example := range map[string]string{Claude: "claude-settings.json", Codex: "codex-hooks.json"} {
+		o := Options{Project: t.TempDir()}
+		if _, err := RegisterHooks(o, agent); err != nil {
+			t.Fatal(err)
+		}
+		got := read(t, o.HooksFile(agent))
+		p := filepath.Join("..", "..", "examples", example)
+		if os.Getenv("POLIX_UPDATE_EXAMPLES") == "1" {
+			if err := os.WriteFile(p, []byte(got), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if want := read(t, p); want != got {
+			t.Errorf("examples/%s differs from what install writes:\n%s", example, got)
+		}
+	}
+}
+
+// Every group of hooks is written on one line, and a second install changes nothing.
+func TestHooksGroupsInline(t *testing.T) {
+	o := Options{Project: t.TempDir()}
+	if _, err := RegisterHooks(o, Claude); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := json.Marshal(map[string]any{"hooks": Hooks(Claude)})
-	_ = json.Unmarshal(data, &generated)
-	a, _ := json.Marshal(example)
-	b, _ := json.Marshal(generated)
-	if string(a) != string(b) {
-		t.Fatalf("examples/claude-settings.json differs from the hooks install registers:\n%s\n%s", a, b)
+	got := read(t, o.HooksFile(Claude))
+	for _, l := range strings.Split(got, "\n") {
+		if strings.Contains(l, `"command"`) && !(strings.HasPrefix(l, "      { ") && strings.Contains(l, `"hooks": [{ "type": "command"`)) {
+			t.Fatalf("a group spans lines:\n%s", got)
+		}
+	}
+	if !strings.Contains(got, `"PostToolUseFailure"`) {
+		t.Fatalf("Claude Code gets PostToolUseFailure:\n%s", got)
+	}
+	if _, ok := Hooks(Codex)["PostToolUseFailure"]; ok {
+		t.Fatal("Codex keeps its events")
+	}
+	if changes, err := RegisterHooks(o, Claude); err != nil || len(changes) != 0 {
+		t.Fatalf("second install: %v %+v", err, changes)
+	}
+}
+
+// A group that mixes polix with another command keeps the other command, and polix ends once on the event.
+func TestRegisterHooksMixedGroup(t *testing.T) {
+	o := Options{Project: t.TempDir()}
+	settings := o.HooksFile(Claude)
+	os.MkdirAll(filepath.Dir(settings), 0o755)
+	os.WriteFile(settings, []byte(`{"hooks": {"Stop": [{"hooks": [
+  {"type": "command", "command": "polix hook claude"},
+  {"type": "command", "command": "notify-send done"}
+]}]}}`), 0o644)
+	if _, err := RegisterHooks(o, Claude); err != nil {
+		t.Fatal(err)
+	}
+	hooks, _ := ReadHooks(settings)
+	polix, other := 0, 0
+	for _, g := range hooks["Stop"] {
+		for _, h := range g.Hooks {
+			switch h.Command {
+			case "polix hook claude":
+				polix++
+			case "notify-send done":
+				other++
+			}
+		}
+	}
+	if polix != 1 || other != 1 {
+		t.Fatalf("one polix and the other command: %+v", hooks["Stop"])
+	}
+	if _, err := Uninstall(o, []string{Claude}); err != nil {
+		t.Fatal(err)
+	}
+	hooks, _ = ReadHooks(settings)
+	if Registered(settings) || len(hooks["Stop"]) != 1 || hooks["Stop"][0].Hooks[0].Command != "notify-send done" {
+		t.Fatalf("uninstall leaves the other command: %+v", hooks)
+	}
+}
+
+// Install writes through a symlinked settings file to its target and keeps the mode of the file.
+func TestRegisterHooksKeepsLinkAndMode(t *testing.T) {
+	o := Options{Project: t.TempDir()}
+	target := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(target, []byte(`{"model": "opus"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	settings := o.HooksFile(Claude)
+	os.MkdirAll(filepath.Dir(settings), 0o755)
+	if err := os.Symlink(target, settings); err != nil {
+		t.Skipf("cannot create symlinks here: %v", err)
+	}
+	if _, err := RegisterHooks(o, Claude); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(settings); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the link stays: %v", err)
+	}
+	if !Registered(target) {
+		t.Fatal("the target is written")
+	}
+	if info, _ := os.Stat(target); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Fatalf("the mode is kept: %v", info.Mode())
 	}
 }
 

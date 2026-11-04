@@ -63,7 +63,7 @@ func Split(line string) []Segment {
 		case c == '|' && next == '&': // |& pipes stderr too
 			flush(false)
 			i++
-		case c == '>' && next == '&', c == '&' && next == '>': // redirections such as 2>&1 and &>
+		case c == '>' && next == '&', c == '&' && next == '>', c == '>' && next == '|': // redirections: 2>&1, &>, >|
 			cur.WriteByte(c)
 			cur.WriteByte(next)
 			i++

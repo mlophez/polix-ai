@@ -12,8 +12,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -83,7 +85,8 @@ type Engine struct {
 
 	deadline  time.Time // end of the RunBudget of this call
 	branch    *string
-	hash      *string
+	hash      *string  // nil until computed; "" when it cannot be computed
+	warnings  []string // warnings found while evaluating, such as an unknown content hash
 	changed   []string
 	gotChange bool
 	files     []string
@@ -98,7 +101,7 @@ func New(repo *gitx.Repo, wf *workflow.Workflow) *Engine {
 	return &Engine{Repo: repo, Workflow: wf, Store: state.Open(repo.GitDir), deadline: time.Now().Add(RunBudget)}
 }
 
-// Handle evaluates the built-in protections and then the entries of the event, in order.
+// Handle evaluates the protections (the state and the protected paths) and then the entries of the event, in order.
 func (en *Engine) Handle(ev Event) Result {
 	if res, blocked := en.protect(ev); blocked {
 		en.log(ev, "builtin", 0, "deny", strings.Join(res.Reasons, "; "))
@@ -120,6 +123,7 @@ func (en *Engine) Handle(ev Event) Result {
 			break
 		}
 	}
+	res.Warnings = appendNew(res.Warnings, en.warnings)
 	return res
 }
 
@@ -180,10 +184,15 @@ func onlyPolix(command string) bool {
 
 var polixCommands = []string{"cd *", "polix check*", "polix update*", "polix doctor*", "polix version*"}
 
-// protect applies the rules every repository gets, whatever its workflow says: nobody edits the state of
-// polix, and subagents never edit the context, the rules or the workflow, which only a person changes.
+// protect applies the protections that come before the workflow: nobody edits the state of polix, whatever the
+// workflow says, and no actor, the main session included, writes a path of the protected list of the workflow,
+// also when git ignores it. Reading is always allowed.
 func (en *Engine) protect(ev Event) (Result, bool) {
 	deny := func(reason string) (Result, bool) { return Result{Block: true, Reasons: []string{reason}}, true }
+	var protected []string
+	if en.Invalid == nil && en.Workflow != nil {
+		protected = en.Workflow.Protected
+	}
 	switch ev.Name {
 	case workflow.PreEdit:
 		abs := ev.AbsPath
@@ -193,42 +202,49 @@ func (en *Engine) protect(ev Event) (Result, bool) {
 		if abs != "" && within(en.Store.Dir, abs) {
 			return deny("El estado de polix solo lo escribe polix.")
 		}
-		if ev.Actor != ActorSession && glob.AnyPath(protectedPaths, ev.Path) {
-			return deny(fmt.Sprintf("El subagente %s no puede editar %s: solo lo cambia una persona.", ev.Actor, ev.Path))
+		if !ev.Outside && ev.Path != "" && anyPathFold(protected, ev.Path) {
+			return deny(fmt.Sprintf("%s está protegido en %s: solo lo cambia una persona.", ev.Path, workflow.File))
 		}
 	case workflow.PreCommand, workflow.PreCommit:
 		// Reading is fine (the log is the evidence of the process); only commands that could write are denied.
-		if !writesFiles.MatchString(ev.Command) {
-			break
-		}
-		if en.namesState(ev.Command) {
+		if writesFiles.MatchString(ev.Command) && en.namesState(ev.Command) {
 			return deny("El estado de polix solo lo escribe polix; para leerlo usa polix log.")
 		}
-		if ev.Actor != ActorSession && protectedRef.MatchString(ev.Command) {
-			return deny(fmt.Sprintf("El subagente %s no puede modificar %s: solo lo cambia una persona.", ev.Actor,
-				strings.Join(protectedPaths, ", ")))
+		if p, held, ok := en.writes(protected, ev); ok {
+			if held != "" {
+				return deny(fmt.Sprintf("%s contiene %s, protegido en %s: solo lo cambia una persona.", p, held, workflow.File))
+			}
+			return deny(fmt.Sprintf("%s está protegido en %s: solo lo cambia una persona.", p, workflow.File))
 		}
 	}
 	return Result{}, false
 }
 
-// protectedPaths are the files only a person changes: the context, the rules and the workflow.
-var protectedPaths = []string{"AGENTS.md", "CLAUDE.md", rules.Dir + "/**", workflow.File}
-
-// protectedRef finds a protected path in a command line.
-var protectedRef = regexp.MustCompile(`(^|[\s'"=/(])(AGENTS\.md|CLAUDE\.md|` + regexp.QuoteMeta(workflow.File) + `|` +
-	regexp.QuoteMeta(rules.Dir) + `(/|[\s'"]|$))`)
-
 // stateRef finds the state folder in a command line, written relative to a git directory (`.git/polix`, or
-// `.git/worktrees/<name>/polix` in a worktree). The name alone is not enough: it is also the name of the binary.
-var stateRef = regexp.MustCompile(`\.git/(worktrees/[^/\s'"]+/)?` + regexp.QuoteMeta(state.DirName) + `(/|[\s'"]|$)`)
+// `.git/worktrees/<name>/polix` in a worktree). The name alone is not enough: it is also the name of the binary,
+// so it must end the word or be followed by a separator of the shell, a slash or a glob.
+var stateRef = regexp.MustCompile(stateRefExpr)
+
+// stateRefFold is stateRef ignoring case, for the systems whose file names ignore it.
+var stateRefFold = regexp.MustCompile(`(?i)` + stateRefExpr)
+
+const stateRefExpr = `\.git/(worktrees/[^/\s'"]+/)?` + state.DirName + `(/|[\s'";&|)*]|$)`
+
+// foldCase is true on the systems whose file names usually ignore case.
+var foldCase = runtime.GOOS == "darwin" || runtime.GOOS == "windows"
 
 // namesState reports whether a command line names the state folder, by its absolute path or below .git.
 func (en *Engine) namesState(command string) bool {
-	if stateRef.MatchString(filepath.ToSlash(command)) {
+	re, norm := stateRef, func(s string) string { return s }
+	if foldCase {
+		re, norm = stateRefFold, strings.ToLower
+	}
+	if re.MatchString(filepath.ToSlash(command)) {
 		return true
 	}
+	command = norm(command)
 	for _, dir := range []string{en.Store.Dir, gitx.RealPath(en.Store.Dir)} {
+		dir = norm(dir)
 		if strings.Contains(command, dir) || strings.Contains(command, filepath.ToSlash(dir)) {
 			return true
 		}
@@ -238,9 +254,10 @@ func (en *Engine) namesState(command string) bool {
 
 // writesFiles recognises commands that can create, change or delete files: a heuristic, since a shell command
 // cannot be fully analysed, aimed at accidents rather than at an agent determined to get around it. A `>`
-// followed by `&` duplicates a descriptor (`2>&1`) and writes nothing.
+// followed by `&` and a digit or `-` duplicates a descriptor (`2>&1`) and writes nothing; `>&file` writes file.
+// It guards the state, which any mention may reach; protected paths go through the parse of writes instead.
 var writesFiles = regexp.MustCompile(`(^|[\s;&|(])(rm|mv|cp|tee|truncate|dd|touch|ln|install|chmod|rsync)(\s|$)|` +
-	`(sed|perl)\s+(-\S*\s+)*-i|>([^&]|$)`)
+	`(sed|perl)\s+(-\S*\s+)*-i|>([^&]|&\s*[^0-9\s-]|$)`)
 
 // apply runs the action of a matching entry and reports whether evaluation of the event stops there.
 func (en *Engine) apply(e *workflow.Entry, ev Event, res *Result) bool {
@@ -259,15 +276,26 @@ func (en *Engine) apply(e *workflow.Entry, ev Event, res *Result) bool {
 		}
 		if ev.Name == workflow.Stop || ev.Name == workflow.SubagentStop {
 			// Loop guard of every block of a stop (require, deny or a failing run): after max_stop_blocks blocks
-			// of this entry on this same content, let the agent stop and leave a trace.
-			if n := en.Store.StopBlocks(ev.Session, ev.Name, ev.Actor, e.Line, en.Hash()); n >= en.Workflow.MaxStopBlocks {
+			// of this entry on this same content, let the agent stop and leave a trace. An unknown hash counts as
+			// one content. When the log cannot be read or written the guard cannot count, so it fails open.
+			hash, _ := en.Hash()
+			n, err := en.Store.StopBlocks(ev.Session, ev.Name, ev.Actor, e.Line, hash)
+			if err == nil && n >= en.Workflow.MaxStopBlocks {
 				en.log(ev, e.Action(), e.Line, "loop_guard", reason)
 				res.Warnings = append(res.Warnings, fmt.Sprintf("polix deja parar tras %d bloqueos: %s", n, reason))
 				return false
 			}
-			sb := en.entry(ev, state.KindStopBlock, "", reason)
-			sb.Hash, sb.Line = en.Hash(), e.Line
-			_ = en.Store.Append(sb)
+			if err == nil {
+				sb := en.entry(ev, state.KindStopBlock, "", reason)
+				sb.Hash, sb.Line = hash, e.Line
+				err = en.Store.Append(sb)
+			}
+			if err != nil {
+				en.log(ev, e.Action(), e.Line, "loop_guard", reason)
+				res.Warnings = append(res.Warnings,
+					fmt.Sprintf("polix deja parar porque no puede usar su log (%v): %s", err, reason))
+				return false
+			}
 		}
 		res.Block = true
 		res.Reasons = append(res.Reasons, reason)
@@ -286,17 +314,23 @@ func (en *Engine) apply(e *workflow.Entry, ev Event, res *Result) bool {
 		return false
 	case "run":
 		// The fact is about the content the run saw: pin it before running, and record nothing if the run (or
-		// anyone else meanwhile) changed it. Only a run that passed records, whatever the mode.
+		// anyone else meanwhile) changed it, or if the hash is unknown. Only a run that passed records, whatever
+		// the mode. Any run may rewrite files, so the hash is computed again after it.
 		var before string
+		knownBefore := true
 		if e.Run.Record != "" {
-			before = en.Hash()
+			before, knownBefore = en.Hash()
 		}
-		if reason := en.run(e.Run, ev); reason != "" {
+		reason := en.run(e.Run, ev)
+		en.hash = nil
+		if reason != "" {
 			block(reason)
 		} else if e.Run.Record != "" {
 			fact := en.expand(e.Run.Record, ev)
-			en.hash = nil
-			if en.Hash() != before {
+			after, knownAfter := en.Hash()
+			if !knownBefore || !knownAfter {
+				en.log(ev, "run", e.Line, "warn", "hash del contenido desconocido; no se registra "+fact)
+			} else if after != before {
 				reason := fmt.Sprintf("el contenido cambió durante el run; no se registra %s", fact)
 				res.Warnings = append(res.Warnings, reason)
 				en.log(ev, "run", e.Line, "warn", reason)
@@ -350,10 +384,11 @@ func (en *Engine) run(r *workflow.Run, ev Event) string {
 	}
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = en.Repo.Root
+	cmd.WaitDelay = rules.WaitDelay
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := cmd.Run(); err != nil {
-		return fmt.Sprintf("Falla %s: %v\n%s", strings.Join(args, " "), err, indent(lastLines(out.String(), 15)))
+		return fmt.Sprintf("Falla %s: %v\n%s", strings.Join(args, " "), err, indent(lastLines(out.String(), 15, maxLineLen)))
 	}
 	return ""
 }
@@ -437,6 +472,9 @@ func (en *Engine) condition(k string, v any, all workflow.Cond, ev Event) bool {
 		return true // evaluated together with file
 	case "command":
 		return len(en.matchingCommands(list(), ev)) > 0
+	case "writes":
+		_, _, ok := en.writes(list(), ev)
+		return ok
 	case "exit":
 		n, _ := v.(int)
 		if patterns, ok := all["command"]; ok {
@@ -464,7 +502,8 @@ func (en *Engine) condition(k string, v any, all workflow.Cond, ev Event) bool {
 		return false
 	case "done":
 		for _, fact := range list() {
-			if !en.Store.Done(fact, en.Branch(), en.Hash()) {
+			hash, known := en.Hash()
+			if !known || !en.Store.Done(fact, en.Branch(), hash) {
 				return false
 			}
 		}
@@ -529,22 +568,26 @@ func (en *Engine) Branch() string {
 	return *en.branch
 }
 
-// Hash returns the content hash the facts are tied to.
-func (en *Engine) Hash() string {
+// Hash returns the content hash the facts are tied to and whether it is known. When it cannot be computed it
+// returns "" and false, and the cause is kept as a warning of the call: facts are then neither recorded nor
+// satisfied.
+func (en *Engine) Hash() (string, bool) {
 	if en.hash == nil {
 		h, err := en.Repo.ContentHash(en.Store.Dir)
 		if err != nil {
-			h = "unknown"
+			h = ""
+			en.warnings = appendNew(en.warnings, []string{fmt.Sprintf(
+				"polix no puede calcular el hash del contenido (%v): no se registran ni se cumplen hechos", err)})
 		}
 		en.hash = &h
 	}
-	return *en.hash
+	return *en.hash, *en.hash != ""
 }
 
-// Changed returns the files changed by the branch.
+// Changed returns the files that are not committed yet: changed since HEAD, or untracked.
 func (en *Engine) Changed() []string {
 	if !en.gotChange {
-		en.changed, _ = en.Repo.Changed(en.Workflow.BaseBranch())
+		en.changed, _ = en.Repo.Changed("")
 		en.gotChange = true
 	}
 	return en.changed
@@ -591,9 +634,16 @@ func (en *Engine) Vars() map[string]string {
 	return en.vars
 }
 
+// recordFact records fact on the current content; nothing without a known hash, whose cause Hash already
+// keeps as a warning.
 func (en *Engine) recordFact(ev Event, fact string) {
+	hash, known := en.Hash()
+	if !known {
+		en.log(ev, "record", 0, "warn", "hash del contenido desconocido; no se registra "+fact)
+		return
+	}
 	e := en.entry(ev, state.KindFact, "", "")
-	e.Fact, e.Hash = fact, en.Hash()
+	e.Fact, e.Hash = fact, hash
 	_ = en.Store.Append(e)
 }
 
@@ -614,9 +664,103 @@ func (en *Engine) entry(ev Event, kind, outcome, reason string) state.Entry {
 	return e
 }
 
-// within reports whether path is dir or inside it.
+// anyPathFold is glob.AnyPath without case on the systems whose file names ignore it, so `.ENV` is `.env` there.
+func anyPathFold(patterns []string, p string) bool {
+	if !foldCase {
+		return glob.AnyPath(patterns, p)
+	}
+	lower := make([]string, len(patterns))
+	for i, pattern := range patterns {
+		lower[i] = strings.ToLower(pattern)
+	}
+	return glob.AnyPath(lower, strings.ToLower(p))
+}
+
+// holdsAny returns the first pattern with a slash whose paths the folder dir holds: dir is the literal folder the
+// pattern starts with (ai/rules for ai/rules/**, docs for docs/secret.md) or one of its parents. A pattern without
+// a slash matches a name anywhere in the tree, so it names no folder. Without case where file names ignore it.
+func holdsAny(patterns []string, dir string) (string, bool) {
+	if foldCase {
+		dir = strings.ToLower(dir)
+	}
+	for _, pattern := range patterns {
+		folders, _ := literalFolders(pattern)
+		for _, f := range folders {
+			if f == dir {
+				return pattern, true
+			}
+		}
+	}
+	return "", false
+}
+
+// wildcardHolds returns the first pattern that a word with wildcards may write: the word matches the pattern
+// when it has no wildcards (`*` for `.env`, `docs/*.md` for `docs/secret.md`), or one of the literal folders the
+// pattern starts with (`ai/*` and `*` for `ai/rules/**`), or it lies inside the folder of a pattern that takes
+// everything below it (`ai/rules/*` for `ai/rules/**`). Without case where file names ignore it.
+func wildcardHolds(patterns []string, word string) (string, bool) {
+	if foldCase {
+		word = strings.ToLower(word)
+	}
+	dir := word
+	if i := strings.IndexAny(dir, "*?"); i >= 0 {
+		dir = path.Dir(dir[:i+1])
+	}
+	for _, pattern := range patterns {
+		folders, literal := literalFolders(pattern)
+		candidates := folders
+		if literal {
+			candidates = append(candidates, foldPattern(pattern))
+		}
+		for _, c := range candidates {
+			// A word without a slash stays in its folder: `*.md` at the root reaches docs, not docs/secret.md.
+			if !strings.Contains(word, "/") {
+				c, _, _ = strings.Cut(c, "/")
+			}
+			if glob.Path(word, c) {
+				return pattern, true
+			}
+		}
+		if p := foldPattern(pattern); len(folders) > 0 && p == folders[len(folders)-1]+"/**" {
+			if f := folders[len(folders)-1]; dir == f || strings.HasPrefix(dir, f+"/") {
+				return pattern, true
+			}
+		}
+	}
+	return "", false
+}
+
+// literalFolders returns the folders a pattern with a slash starts with, from the outermost (ai and ai/rules for
+// ai/rules/**), folded where file names ignore case, and whether the pattern has no wildcards at all.
+func literalFolders(pattern string) (folders []string, literal bool) {
+	pattern = foldPattern(pattern)
+	literal = !strings.ContainsAny(pattern, "*?")
+	if !strings.Contains(pattern, "/") {
+		return nil, literal
+	}
+	segs := strings.Split(pattern, "/")
+	for n := 1; n < len(segs) && !strings.ContainsAny(segs[n-1], "*?"); n++ {
+		folders = append(folders, strings.Join(segs[:n], "/"))
+	}
+	return folders, literal
+}
+
+// foldPattern trims the slashes around a pattern and folds its case where file names ignore it.
+func foldPattern(pattern string) string {
+	pattern = strings.Trim(pattern, "/")
+	if foldCase {
+		pattern = strings.ToLower(pattern)
+	}
+	return pattern
+}
+
+// within reports whether path is dir or inside it; without case on the systems whose file names ignore it.
 func within(dir, path string) bool {
-	rel, err := filepath.Rel(gitx.RealPath(dir), gitx.RealPath(path))
+	dir, path = gitx.RealPath(dir), gitx.RealPath(path)
+	if foldCase {
+		dir, path = strings.ToLower(dir), strings.ToLower(path)
+	}
+	rel, err := filepath.Rel(dir, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
@@ -627,10 +771,17 @@ func indent(s string) string {
 	return "  " + strings.ReplaceAll(strings.TrimRight(s, "\n"), "\n", "\n  ")
 }
 
-func lastLines(s string, n int) string {
+// maxLineLen caps each line kept from the output of a command, so a huge line never reaches the log whole.
+const maxLineLen = rules.MaxLineLen
+
+// lastLines keeps the last n lines of s, each cut to width bytes.
+func lastLines(s string, n, width int) string {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	if len(lines) > n {
 		lines = lines[len(lines)-n:]
+	}
+	for i, l := range lines {
+		lines[i] = state.Cut(l, width)
 	}
 	return strings.Join(lines, "\n")
 }

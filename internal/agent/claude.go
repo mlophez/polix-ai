@@ -16,7 +16,8 @@ type Claude struct{}
 var claudeEditTools = map[string]bool{"Edit": true, "Write": true, "MultiEdit": true, "NotebookEdit": true}
 
 // claudeContextEvents are the events whose JSON output can add context to the session.
-var claudeContextEvents = map[string]bool{"SessionStart": true, "UserPromptSubmit": true, "PreToolUse": true, "PostToolUse": true}
+var claudeContextEvents = map[string]bool{"SessionStart": true, "UserPromptSubmit": true, "PreToolUse": true, "PostToolUse": true,
+	"PostToolUseFailure": true}
 
 func (Claude) Name() string { return "claude" }
 
@@ -40,6 +41,8 @@ func (Claude) Parse(input []byte, rel Resolver) (string, []engine.Event, error) 
 	case "PreToolUse", "PostToolUse", "PostToolUseFailure":
 		pre := in.HookEventName == "PreToolUse"
 		switch {
+		case claudeEditTools[in.ToolName] && in.HookEventName == "PostToolUseFailure":
+			return in.HookEventName, nil, nil // a failed edit changed nothing: no post_edit
 		case claudeEditTools[in.ToolName]:
 			name := workflow.PostEdit
 			if pre {

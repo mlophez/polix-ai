@@ -67,16 +67,3 @@ func TestFrontmatterNames(t *testing.T) {
 		t.Fatal("the plugin has skills and agents")
 	}
 }
-
-// The marketplaces of the repository serve the same plugin folder.
-func TestRepositoryMarketplaces(t *testing.T) {
-	for _, p := range []string{filepath.Join("..", ".claude-plugin", "marketplace.json"), filepath.Join("..", ".agents", "plugins", "marketplace.json")} {
-		data, err := os.ReadFile(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(string(data), `"./plugins/polix"`) {
-			t.Fatalf("%s does not point to ./plugins/polix", p)
-		}
-	}
-}

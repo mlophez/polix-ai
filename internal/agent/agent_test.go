@@ -49,3 +49,16 @@ func TestEditEventsRelativePath(t *testing.T) {
 		t.Errorf("absolute path: AbsPath = %q", evs[1].AbsPath)
 	}
 }
+
+// A failed edit changed nothing, so it yields no event; a failed command reaches post_command with a non-zero exit.
+func TestClaudePostToolUseFailure(t *testing.T) {
+	none := func(string, string) (string, bool) { return "", false }
+	_, evs, err := Claude{}.Parse([]byte(`{"hook_event_name":"PostToolUseFailure","tool_name":"Edit","tool_input":{"file_path":"/x/a.go"}}`), none)
+	if err != nil || len(evs) != 0 {
+		t.Fatalf("failed edit: %v %+v", err, evs)
+	}
+	_, evs, err = Claude{}.Parse([]byte(`{"hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{"command":"go test ./..."}}`), none)
+	if err != nil || len(evs) == 0 || evs[0].Name != "post_command" || evs[0].ExitCode != 1 {
+		t.Fatalf("failed command: %v %+v", err, evs)
+	}
+}

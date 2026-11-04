@@ -17,6 +17,7 @@ One static binary connects Claude Code and Codex to the workflow and rules of yo
 [Quick start](#quick-start) ·
 [How it works](#how-it-works) ·
 [polix.yaml](#the-workflow-in-one-file) ·
+[Use cases](docs/use-cases.md) ·
 [Why not shell scripts?](#why-not-a-few-shell-scripts) ·
 [Docs](docs/polix.md)
 
@@ -73,10 +74,14 @@ You don't have to invalidate anything by hand.
   conditions that can never hold on their event, so a typo cannot quietly switch a guardrail off.
 - **Roll out safely.** Every entry can run in `audit` mode (only log what it would have blocked), then `warn` (tell
   the agent), then `enforce` (block).
-- **Built-in protections.** Nobody can tamper with the state, and subagents can never rewrite `AGENTS.md`,
-  `CLAUDE.md`, `ai/rules/` or `polix.yaml`. These protections apply even when the repository has no workflow.
+- **Protections.** Nobody can tamper with the state of Polix, even when the repository has no workflow; that is
+  all Polix protects on its own. The key `protected` of `polix.yaml` lists paths no agent may write (`.env`, the
+  context files), and the condition `writes` keeps some actors away from some paths, as in
+  [the recipe](docs/use-cases.md#safety).
 - **Rules that reach the agent and CI.** Rules in `ai/rules/` have a scope. Polix injects only the ones that
-  match the file being edited, once per session. The same checks run in CI with `polix rules check --changed`.
+  match the file being edited, once per session. The same checks run in CI with
+  `polix rules check --changed --base="${{ github.base_ref }}"` on a pull request, after a checkout with
+  `fetch-depth: 0` ([the recipe](docs/use-cases.md#the-same-checks-for-the-agent-and-for-ci)).
 - **No infinite loops.** A loop guard lets the agent stop after `max_stop_blocks` identical blocks. A broken
   `polix.yaml` fails closed for edits and commands but never traps a stop.
 - **An audit trail.** Every decision is logged with the entry that caused it, giving evidence of the process
@@ -158,8 +163,8 @@ polix install --agent claude      # only Claude Code (default: Claude Code, and 
   `/polix:init`, `/polix:plan`, `/polix:review` and `/polix:audit` and the agents `polix:workflow-author`,
   `polix:rules-author`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`.
   The plugin ships inside the binary: Polix writes it to the local marketplace `~/.polix/marketplace/` and
-  registers it with `claude plugin install polix@Polix --scope user` (for Codex, it enables it in
-  `~/.codex/config.toml`).
+  registers it with `claude plugin install polix@polix --scope user` (for Codex, it enables it in
+  `~/.codex/config.toml`). The plugin only arrives this way: the repository serves no marketplace.
   Start a new session to load it.
 - **For the repository, the hooks.** They go in `.claude/settings.json` (and `.codex/hooks.json` for Codex),
   keeping every other setting and hook of those files. Commit them with your workflow so the team gets them.
@@ -200,7 +205,7 @@ does not have Polix yet, the agent offers to install it, and only runs the insta
 ```mermaid
 flowchart LR
   A["Claude Code / Codex<br/>hook event (JSON)"] --> B["Adapter<br/>neutral events"]
-  B --> C["Built-in protections"]
+  B --> C["Protections<br/>state and protected"]
   C --> D["polix.yaml<br/>entries in order"]
   R["ai/rules/"] --> D
   S[("&lt;git-dir&gt;/polix/log.jsonl<br/>facts and decisions")] <--> D
@@ -211,7 +216,8 @@ flowchart LR
 
 1. The **adapter** turns the agent's hook input into neutral events. An edit of three files becomes three
    `pre_edit` events, and a `git commit` inside a shell command also raises `pre_commit`.
-2. The **engine** applies the built-in protections, then the entries of the event in file order.
+2. The **engine** applies the protections (the state of Polix and the `protected` paths of `polix.yaml`), then the
+   entries of the event in file order.
 3. The adapter **answers** the agent. It exits with code 2 and the reasons on stderr to block, or with code 0 and
    `additionalContext` to inject guidance.
 
@@ -250,7 +256,7 @@ on:
       record: tested
 
   subagent_stop:
-    - if: { actor: reviewer }
+    - if: { actor: polix:reviewer }               # agents of a plugin go with its prefix
       record: reviewed
 
   pre_commit:
@@ -263,7 +269,11 @@ on:
 `subagent_stop`, `stop`.
 
 **Conditions:** `branch`, `var`, `path`, `changed`, `file` (optionally with `contains`), `command`, `exit`,
-`actor`, `done`, `not`.
+`writes`, `actor`, `done`, `not`. In the hooks, `changed` is what is not committed yet (changed since HEAD, or
+untracked).
+
+**Top-level keys:** `version`, `requires`, `base` (the branch, or candidates, `rules check --changed` compares
+with), `protected` (paths no agent writes), `max_stop_blocks`, `vars`, `on`.
 
 **Actions:** `deny`, `allow`, `require`, `run` (a command or the checks of the matching rules, optionally
 recording a fact when it passes), `context` (a
@@ -275,6 +285,31 @@ Commands are split and matched the way a shell runs them. In `cd x && just test 
 commands. It also knows that `tail` decides the exit code, so a piped `just test` is not counted as a green run.
 
 The full reference, with comments on every option, is in [`examples/polix.yaml`](examples/polix.yaml).
+
+## Use cases
+
+[docs/use-cases.md](docs/use-cases.md) collects ready-to-paste recipes, each one checked with `polix check`:
+
+- [Review every change with a reviewer subagent](docs/use-cases.md#review-every-change-with-a-reviewer-subagent),
+  and never commit a diff it did not see.
+- [Document at the end of every task](docs/use-cases.md#document-at-the-end-of-every-task) with a documenter
+  subagent.
+- [Tests that run themselves](docs/use-cases.md#tests-that-run-themselves) when the agent tries to stop, once per
+  content.
+- [Sensitive code gets a security review](docs/use-cases.md#sensitive-code-gets-a-security-review) only when auth,
+  crypto or the schema change.
+- [No ticket, no code](docs/use-cases.md#no-ticket-no-code) and
+  [a plan before the first edit](docs/use-cases.md#a-plan-before-the-first-edit).
+- [Keep production out of reach](docs/use-cases.md#keep-production-out-of-reach): no force pushes, no `terraform
+  apply` outside main, no `kubectl` on prod contexts.
+- [Secrets never land in a commit](docs/use-cases.md#secrets-never-land-in-a-commit) and
+  [hands off generated files and lockfiles](docs/use-cases.md#hands-off-generated-files-and-lockfiles).
+- [Try a guardrail before enforcing it](docs/use-cases.md#try-a-guardrail-before-enforcing-it) with `audit` and
+  `warn`.
+- [The whole flow](docs/use-cases.md#putting-it-together-build-document-test-review-commit): build, document,
+  test, review and commit, in the order the content hash demands.
+- [Coming from Claude Code hooks](docs/use-cases.md#coming-from-claude-code-hooks): where each example of the
+  official hooks guide lands in Polix, and what stays outside of it.
 
 ## Why not a few shell scripts?
 
@@ -295,26 +330,30 @@ Shell hooks are fine for one trivial check. Polix is for when guardrails are par
 ## Commands
 
 ```text
-polix hook claude              entry point of the Claude Code hooks (event on stdin)
-polix hook codex               entry point of the Codex hooks (experimental)
+polix hook claude [-C dir]     entry point of the Claude Code hooks (event on stdin)
+polix hook codex [-C dir]      entry point of the Codex hooks (experimental)
 polix check                    validate polix.yaml and ai/rules/
 polix rules check [--changed]  run the checks of the deterministic rules (for CI)
 polix graph                    print the workflow as a Mermaid diagram
 polix log --tail 20 [--json]   print the last entries of the state log
 polix doctor [--hook]          check that this machine and repository are ready
 polix update [--version V]     replace the binary with a release, verified and atomic
+polix update --check           only report whether a newer release exists
+polix update --hook            session start hook: at most once an hour, quiet, never fails
 polix install [--user]         install the plugin for the user and register the hooks in the repository
 polix uninstall [--user]       remove the plugin and the hooks of the repository
 polix version
 ```
 
-Most commands accept `--dir <repo>`; `version`, `update` and `hook` work on the working directory.
+Most commands accept `--dir <repo>` (`-C`); `hook` defaults to the `cwd` of the hook input, and `version` and
+`update` work on the working directory.
 
 ## Dogfooding
 
 This repository is governed by its own Polix: [`polix.yaml`](polix.yaml), [`ai/rules/`](ai/rules) and the hooks in
 [`.claude/settings.json`](.claude/settings.json). An agent working on Polix cannot end a turn with untested Go
-changes, and the gofmt rule runs as a deterministic check.
+changes, and the gofmt rule runs as a deterministic check, in the hooks and in CI (`polix rules check` on the
+three systems).
 
 ## Development
 

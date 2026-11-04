@@ -322,16 +322,17 @@ on:
 	expectCode(t, "the text of a push inside quotes", code, 0, stderr)
 }
 
-// Built-in protections apply whatever the workflow says, even without one.
+// The protection of the state applies whatever the workflow says, even without one; the context, the rules and
+// the workflow are not protected unless the workflow says so.
 func TestProtections(t *testing.T) {
 	r := newRepo(t, "main")
 
 	code, _, stderr := r.edit("ai/rules/security.yaml", "builder")
-	expectCode(t, "a subagent edits the rules", code, 2, stderr)
+	expectCode(t, "a subagent edits the rules", code, 0, stderr)
+	code, _, stderr = r.edit("polix.yaml", "builder")
+	expectCode(t, "a subagent edits the workflow", code, 0, stderr)
 	code, _, stderr = r.edit("AGENTS.md", "reviewer")
-	expectCode(t, "a subagent edits AGENTS.md", code, 2, stderr)
-	code, _, stderr = r.edit("ai/rules/security.yaml", "")
-	expectCode(t, "the session edits the rules (add-rule)", code, 0, stderr)
+	expectCode(t, "a subagent edits AGENTS.md", code, 0, stderr)
 	code, _, stderr = r.edit(".git/polix/log.jsonl", "")
 	expectCode(t, "anyone edits the state", code, 2, stderr)
 	code, _, stderr = r.bash("rm .git/polix/log.jsonl", false)
@@ -512,6 +513,7 @@ func TestStateProtectionByPath(t *testing.T) {
 		"cd ~/Code/polix-ai && just test 2>&1 | tail -3",
 		"polix log > /tmp/out.txt",
 		"cp build/polix ~/bin/",
+		"cat .git/polix/log.jsonl >&2",
 	} {
 		code, _, stderr := r.bash(c, false)
 		expectCode(t, c, code, 0, stderr)
@@ -521,23 +523,95 @@ func TestStateProtectionByPath(t *testing.T) {
 		"cp /tmp/x ./.git/polix/log.jsonl",
 		"echo x >> " + filepath.Join(r.dir, ".git", "polix", "log.jsonl"),
 		"cd .. && rm repo/.git/worktrees/w1/polix/log.jsonl",
+		"rm -rf .git/polix;true",
+		"rm -rf .git/polix&&true",
+		"(rm -rf .git/polix)",
+		"rm .git/polix* x",
+		"echo x >&.git/polix/log.jsonl",
+		"echo x >& .git/polix/log.jsonl",
 	} {
 		code, _, stderr := r.bash(c, false)
 		expectCode(t, c, code, 2, stderr)
 	}
 }
 
-// A subagent cannot get around the protection of the context, the rules and the workflow through a command.
-func TestSubagentCommandsOnProtectedFiles(t *testing.T) {
-	r := newRepo(t, "main")
-	for _, c := range []string{"sed -i s/a/b/ polix.yaml", "echo x >> ai/rules/a.yaml", "rm CLAUDE.md", "mv x AGENTS.md"} {
-		code, _, stderr := r.bashAs(c, false, "builder")
-		expectCode(t, "builder: "+c, code, 2, stderr)
-		code, _, stderr = r.bashAs(c, false, "")
-		expectCode(t, "session: "+c, code, 0, stderr)
+// On the systems whose file names ignore case, the state is found in any case.
+func TestStateProtectionFoldsCase(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
+		t.Skip("file names keep their case on " + runtime.GOOS)
 	}
-	code, _, stderr := r.bashAs("cat CLAUDE.md ai/rules/a.yaml", false, "builder")
-	expectCode(t, "builder reads protected files", code, 0, stderr)
+	r := newRepo(t, "main")
+	code, _, stderr := r.edit(".git/POLIX/log.jsonl", "")
+	expectCode(t, "edit of the state in another case", code, 2, stderr)
+	code, _, stderr = r.bash("rm -rf .GIT/Polix", false)
+	expectCode(t, "a command on the state in another case", code, 2, stderr)
+}
+
+// protected keeps every actor, the main session included, from writing a path, also an ignored one; reads pass.
+func TestProtectedPaths(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write(".gitignore", ".env\n")
+	r.write("polix.yaml", "version: 1\nprotected: [\".env\", \"AGENTS.md\", \"ai/rules/**\"]\n")
+	for _, actor := range []string{"", "builder"} {
+		code, _, stderr := r.edit(".env", actor)
+		expectCode(t, actor+" edits .env", code, 2, stderr)
+		if !strings.Contains(stderr, "solo lo cambia una persona") {
+			t.Fatalf("the reason says who changes it: %q", stderr)
+		}
+		code, _, stderr = r.bashAs("echo x >AGENTS.md", false, actor)
+		expectCode(t, actor+" writes AGENTS.md", code, 2, stderr)
+		code, _, stderr = r.bashAs("cat a.txt>>AGENTS.md", false, actor)
+		expectCode(t, actor+" appends to AGENTS.md without spaces", code, 2, stderr)
+		code, _, stderr = r.bashAs("cat AGENTS.md", false, actor)
+		expectCode(t, actor+" reads AGENTS.md", code, 0, stderr)
+		for _, cmd := range []string{"rm -rf ai/rules", "rm -rf ai/rules/", "rm -rf ai", "mv ai/rules x", "rm -rf .",
+			"rm -rf ./", "rm -rf *", "rm -rf ai/*", "rm -rf ai/r*", "rm -f ai/rules/*", "cat a.txt > ai/rules/x.yaml",
+			"echo x >&AGENTS.md", `rm -rf "a>b" ai`} {
+			code, _, stderr = r.bashAs(cmd, false, actor)
+			expectCode(t, actor+" runs "+cmd, code, 2, stderr)
+		}
+		code, _, stderr = r.bashAs("rm -rf ai", false, actor)
+		if code != 2 || !strings.Contains(stderr, "ai contiene ai/rules/**") {
+			t.Fatalf("the reason names the protected glob the folder holds: %q", stderr)
+		}
+		// Reading a folder that holds protected paths is fine, also with its output redirected away from it.
+		for _, cmd := range []string{"rm -rf ai/plans", "rm -f ai/plans/*", "ls ai 2>/dev/null", "rg foo ai > /tmp/out",
+			"ls ai > out.txt", "cp a.txt .", "cat AGENTS.md 2>&1 >/dev/null", "rg install ai", "grep -rn rm ai",
+			`grep -n "x>y" AGENTS.md`, "mv /tmp/foo.txt .", "cat AGENTS.md > notes.txt"} {
+			code, _, stderr = r.bashAs(cmd, false, actor)
+			expectCode(t, actor+" runs "+cmd, code, 0, stderr)
+		}
+		code, _, stderr = r.edit("README.md", actor)
+		expectCode(t, actor+" edits README.md", code, 0, stderr)
+	}
+	// Where file names ignore case, so does protected: .ENV is .env there.
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		code, _, stderr := r.edit(".ENV", "")
+		expectCode(t, "edits .ENV", code, 2, stderr)
+		code, _, stderr = r.bash("echo x > ./agents.md", false)
+		expectCode(t, "writes ./agents.md", code, 2, stderr)
+	}
+}
+
+// writes lets an entry keep only subagents away from a path.
+func TestWritesCondition(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  pre_command:
+    - if: { writes: ["AGENTS.md", "ai/rules/**"], not: { actor: session } }
+      deny: "Solo la sesión principal cambia AGENTS.md"
+`)
+	code, _, stderr := r.bashAs("rm -rf ai/rules", false, "builder")
+	expectCode(t, "builder removes ai/rules", code, 2, stderr)
+	code, _, stderr = r.bashAs("ls ai 2>/dev/null", false, "builder")
+	expectCode(t, "builder lists ai", code, 0, stderr)
+	code, _, stderr = r.bashAs("sed -i s/a/b/ AGENTS.md", false, "builder")
+	expectCode(t, "builder writes AGENTS.md", code, 2, stderr)
+	code, _, stderr = r.bashAs("cat AGENTS.md", false, "builder")
+	expectCode(t, "builder reads AGENTS.md", code, 0, stderr)
+	code, _, stderr = r.bashAs("sed -i s/a/b/ AGENTS.md", false, "")
+	expectCode(t, "the session writes AGENTS.md", code, 0, stderr)
 }
 
 // run with record records the fact only when the run passes, so a passing gate on stop counts as done.
@@ -806,6 +880,35 @@ func TestRulesCheckBase(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("--base overrides polix.yaml: %d %q", code, stdout)
 	}
+	r.write("polix.yaml", "version: 1\nbase: [main, develop]\n")
+	code, stdout, _ = r.run("rules", "check", "--changed")
+	if code != 0 || !strings.Contains(stdout, "0 checks") {
+		t.Fatalf("the closest base of the list is develop: %d %q", code, stdout)
+	}
+	r.write("polix.yaml", "version: 1\nbase: trunk\n")
+	code, stdout, stderr := r.run("rules", "check", "--changed")
+	if code != 1 || !strings.Contains(stderr, "trunk") {
+		t.Fatalf("a base that does not exist fails naming it: %d %q %q", code, stdout, stderr)
+	}
+	if _, _, stderr := r.run("check"); !strings.Contains(stderr, "rules check --changed would fail") {
+		t.Fatalf("check warns about the missing base: %q", stderr)
+	}
+}
+
+// In the hooks, changed is what is not committed yet, whatever base says.
+func TestChangedSinceHead(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\nbase: main\non:\n  stop:\n    - if: { changed: \"src/**\" }\n      require: \"src cambiado\"\n")
+	r.git("add", "--all")
+	r.git("commit", "--quiet", "-m", "workflow")
+	r.git("checkout", "--quiet", "-b", "feature")
+	r.write("src/a.go", "package a\n")
+	code, _, stderr := r.stop()
+	expectCode(t, "stop with uncommitted src", code, 2, stderr)
+	r.git("add", "--all")
+	r.git("commit", "--quiet", "-m", "src")
+	code, _, stderr = r.stop()
+	expectCode(t, "stop after the commit", code, 0, stderr)
 }
 
 // The example settings give the hooks more time than the run budget of a call, so the agent never kills a
@@ -845,5 +948,154 @@ func TestDecisionsSkipTheHash(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(r.dir, ".git", "polix", "log.jsonl"))
 	if !strings.Contains(string(data), `"action":"deny","line":4`) || strings.Contains(string(data), `"hash"`) {
 		t.Fatalf("log: %s", data)
+	}
+}
+
+// skipFileModes skips a test that relies on file modes denying access: they do not on Windows nor as root.
+func skipFileModes(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("file modes do not deny access here")
+	}
+}
+
+// A line of the log longer than the read limit is skipped: the loop guard still counts and lets the agent stop,
+// and polix log prints the other entries and says how many lines it skipped.
+func TestStopLoopGuardHugeLogLine(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\nmax_stop_blocks: 2\n"+strings.TrimPrefix(reviewOnStop, "version: 1\n"))
+	r.write("src/app.go", "package app\n")
+	r.write(".git/polix/log.jsonl", `{"kind":"decision","reason":"`+strings.Repeat("x", 5*1024*1024)+"\"}\n")
+	r.stops("", 2, 2, 0)
+	code, stdout, stderr := r.run("log", "-n", "0")
+	expectCode(t, "polix log", code, 0, stderr)
+	if !strings.Contains(stdout, "loop_guard") || !strings.Contains(stderr, "1 lines") {
+		t.Fatalf("stdout: %s\nstderr: %s", stdout, stderr)
+	}
+}
+
+// When the stop block cannot be written, the loop guard cannot count: a blocking stop lets the agent stop with
+// a warning instead of trapping it.
+func TestStopLoopGuardReadOnlyState(t *testing.T) {
+	skipFileModes(t)
+	r := newRepo(t, "main")
+	r.write("polix.yaml", reviewOnStop)
+	r.write("src/app.go", "package app\n")
+	dir := filepath.Join(r.dir, ".git", "polix")
+	r.write(".git/polix/log.jsonl", "")
+	if err := os.Chmod(filepath.Join(dir, "log.jsonl"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	code, _, stderr := r.stop()
+	expectCode(t, "stop with a read only state", code, 0, stderr)
+	if !strings.Contains(stderr, "no puede usar su log") {
+		t.Fatalf("stderr: %q", stderr)
+	}
+}
+
+// A failing run that prints a huge line records a capped reason, which polix log prints.
+func TestRunHugeOutputCapped(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  stop:
+    - run: { command: [git, diff, --no-index, empty.txt, big.txt] }
+`)
+	r.write("empty.txt", "")
+	r.write("big.txt", strings.Repeat("y", 4*1000*1000)+"\n")
+	code, _, stderr := r.stop()
+	expectCode(t, "stop with a failing run", code, 2, stderr)
+	code, stdout, stderr := r.run("log", "--json", "-n", "0")
+	expectCode(t, "polix log", code, 0, stderr)
+	found := false
+	for line := range strings.SplitSeq(strings.TrimSpace(stdout), "\n") {
+		if len(line) > 16*1024 {
+			t.Fatalf("a log line has %d bytes", len(line))
+		}
+		found = found || strings.Contains(line, "Falla git diff")
+	}
+	if !found || stderr != "" {
+		t.Fatalf("stdout: %.2000s\nstderr: %s", stdout, stderr)
+	}
+}
+
+// Without a content hash, no fact is recorded, done does not hold and the hook says why.
+func TestUnknownHashRecordsNothing(t *testing.T) {
+	skipFileModes(t)
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  post_command:
+    - if: { command: "just test", exit: 0 }
+      record: tested
+  stop:
+    - if: { changed: "**" }
+      unless: { done: tested }
+      require: "Faltan los tests"
+`)
+	r.write("secret.txt", "x\n")
+	p := filepath.Join(r.dir, "secret.txt")
+	if err := os.Chmod(p, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(p, 0o644) })
+	code, _, stderr := r.bash("just test", true)
+	expectCode(t, "tests pass without a hash", code, 0, stderr)
+	if !strings.Contains(stderr, "hash del contenido") {
+		t.Fatalf("stderr should warn about the hash: %q", stderr)
+	}
+	data, _ := os.ReadFile(filepath.Join(r.dir, ".git", "polix", "log.jsonl"))
+	if strings.Contains(string(data), `"kind":"fact"`) || strings.Contains(string(data), "unknown") {
+		t.Fatalf("log: %s", data)
+	}
+	r.write("src/a.go", "package a\n")
+	code, _, stderr = r.stop()
+	expectCode(t, "stop after an edit without a hash", code, 2, stderr)
+}
+
+// A run without record may rewrite files: the later entries of the call use the content after it.
+func TestRunRefreshesHash(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  stop:
+    - unless: { done: formatted }
+      run: { command: [git, checkout, --, README.md] }
+    - record: tested
+  pre_commit:
+    - unless: { done: tested }
+      deny: "Faltan los tests"
+`)
+	r.git("add", "polix.yaml")
+	r.git("commit", "--quiet", "-m", "workflow")
+	r.write("README.md", "changed\n")
+	code, _, stderr := r.stop()
+	expectCode(t, "stop with a run that rewrites a file", code, 0, stderr)
+	code, _, stderr = r.bash("git commit -m x", false)
+	expectCode(t, "commit on the content after the rewrite", code, 0, stderr)
+}
+
+// A failed command reaches post_command with exit 1, and a failed edit runs no post_edit.
+func TestPostToolUseFailure(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\non:\n  post_command:\n    - if: { exit: 1 }\n      context: { text: \"el comando falló\" }\n"+
+		"  post_edit:\n    - context: { text: \"post edit\" }\n")
+	_, stdout, stderr := r.hook("claude", map[string]any{"hook_event_name": "PostToolUseFailure", "tool_name": "Bash",
+		"tool_input": map[string]any{"command": "go test ./..."}, "error": "exit status 1"})
+	if !strings.Contains(stdout, "el comando falló") {
+		t.Fatalf("a failed command matches exit 1: %q %q", stdout, stderr)
+	}
+	_, stdout, stderr = r.hook("claude", map[string]any{"hook_event_name": "PostToolUseFailure", "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": filepath.Join(r.dir, "a.go")}})
+	if strings.Contains(stdout, "post edit") || strings.Contains(stderr, "post edit") {
+		t.Fatalf("a failed edit runs no post_edit: %q %q", stdout, stderr)
+	}
+	data, _ := os.ReadFile(filepath.Join(r.dir, ".git", "polix", "log.jsonl"))
+	if strings.Contains(string(data), "post_edit") {
+		t.Fatalf("no post_edit in the log: %s", data)
 	}
 }

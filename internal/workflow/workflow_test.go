@@ -39,6 +39,9 @@ func TestValidateRejects(t *testing.T) {
 		{"path outside edits", "version: 1\non:\n  stop:\n    - if: { path: x }\n      require: x\n", "path never holds on stop"},
 		{"command inside not outside commands", "version: 1\non:\n  pre_edit:\n    - if: { not: { command: x } }\n      deny: x\n", "command never holds on pre_edit"},
 		{"contains not a text", "version: 1\non:\n  pre_edit:\n    - unless: { file: x, contains: [a] }\n      deny: x\n", "contains needs a text"},
+		{"writes on pre_edit", "version: 1\non:\n  pre_edit:\n    - if: { writes: x }\n      deny: x\n", "writes never holds on pre_edit"},
+		{"empty protected glob", "version: 1\nprotected: [\".env\", \"\"]\n", "protected: a path glob cannot be empty"},
+		{"empty base name", "version: 1\nbase: [main, \"\"]\n", "base: a branch name cannot be empty"},
 		{"allow on post_edit", "version: 1\non:\n  post_edit:\n    - allow: true\n", "allow cannot let post_edit through"},
 	}
 	for _, c := range cases {
@@ -61,6 +64,9 @@ on:
       allow: true
     - unless: { file: "plans/{key}-*.md", contains: "Ticket: {key}" }
       deny: "Falta el plan de {key} para {path} en {branch}"
+  pre_command:
+    - if: { writes: ["AGENTS.md", "ai/rules/**"], not: { actor: session } }
+      deny: "Solo una persona cambia {command}"
   post_command:
     - if: { command: "just test*", exit: 0 }
       record: tested
@@ -104,5 +110,73 @@ func TestLoadRequires(t *testing.T) {
 	write("version: 1\nrequires: 0.2\n")
 	if w, err := Load(root, "0.2.0"); err != nil || len(Validate(w)) != 1 {
 		t.Fatalf("requires must be a full version: %v", err)
+	}
+}
+
+// base takes one branch or a list, and main is the default.
+func TestBaseBranches(t *testing.T) {
+	for src, want := range map[string]string{
+		"version: 1\n":                    "main",
+		"version: 1\nbase: dev\n":         "dev",
+		"version: 1\nbase: [dev, main]\n": "dev,main",
+	} {
+		w, err := Parse([]byte(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Join(w.BaseBranches(), ","); got != want || len(Validate(w)) != 0 {
+			t.Errorf("%q: BaseBranches = %q, want %q (%v)", src, got, want, Validate(w))
+		}
+	}
+	w, err := Parse([]byte("version: 1\nprotected: [.env, \"ai/rules/**\"]\n"))
+	if err != nil || len(w.Protected) != 2 || len(Validate(w)) != 0 {
+		t.Fatalf("protected: %v %+v", err, w)
+	}
+}
+
+// The annotated example of the repository, which is also the reference of the skill workflow, is a valid workflow.
+func TestExampleIsValid(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "examples", "polix.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if problems := validate(t, string(data)); problems != "" {
+		t.Fatalf("examples/polix.yaml:\n%s", problems)
+	}
+}
+
+// Every recipe of docs/use-cases.md is a valid workflow once `version: 1` is added. The yaml blocks that are not a
+// workflow (a rule of ai/rules/, a step of CI) have no top-level key of polix.yaml and are skipped.
+func TestUseCasesAreValid(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "use-cases.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "```yaml\n")
+	checked := 0
+	for i, b := range blocks[1:] {
+		src, _, ok := strings.Cut(b, "```")
+		if !ok {
+			t.Fatalf("block %d: not closed", i+1)
+		}
+		workflow := false
+		for _, line := range strings.Split(src, "\n") {
+			for _, key := range []string{"version:", "protected:", "vars:", "on:"} {
+				workflow = workflow || strings.HasPrefix(line, key)
+			}
+		}
+		if !workflow {
+			continue
+		}
+		if !strings.Contains("\n"+src, "\nversion:") {
+			src = "version: 1\n" + src
+		}
+		if problems := validate(t, src); problems != "" {
+			t.Errorf("block %d of docs/use-cases.md:\n%s\n%s", i+1, src, problems)
+		}
+		checked++
+	}
+	if checked < 20 {
+		t.Fatalf("only %d recipes found in docs/use-cases.md", checked)
 	}
 }

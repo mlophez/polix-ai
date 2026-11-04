@@ -71,7 +71,7 @@ func updateCmd() *cobra.Command {
 			return exit(doUpdate(check, strings.TrimPrefix(want, "v"), hook, c.OutOrStdout(), c.ErrOrStderr()))
 		},
 	}
-	c.Flags().BoolVar(&check, "check", false, "only report whether a newer release exists")
+	c.Flags().BoolVar(&check, "check", false, "only report, without installing: whether a newer release exists, or with --version how that version compares to this binary")
 	c.Flags().StringVar(&want, "version", "", "install this version, older ones included, instead of the latest")
 	c.Flags().BoolVar(&hook, "hook", false, "for the session start hook: once an hour, quiet, never fails, then doctor --hook")
 	return c
@@ -277,6 +277,18 @@ func runUpdate(check bool, want string, hook bool) (msg, replaced string, err er
 				return "", "", nil
 			}
 			return fmt.Sprintf("polix %s is up to date", Version), "", nil
+		}
+	}
+	if check && want != "" {
+		switch c := version.Compare(want, Version); {
+		case !version.IsRelease(Version):
+			return fmt.Sprintf("polix %s is a development build: run polix update --version %s to install %s", Version, want, want), "", nil
+		case c > 0:
+			return fmt.Sprintf("polix %s is newer than this binary (%s): run polix update --version %s", want, Version, want), "", nil
+		case c == 0:
+			return fmt.Sprintf("polix %s is already this binary", want), "", nil
+		default:
+			return fmt.Sprintf("polix %s is older than this binary (%s): installing it would be a downgrade", want, Version), "", nil
 		}
 	}
 	if check {

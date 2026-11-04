@@ -9,10 +9,12 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
+	"unicode/utf8"
 )
 
 // DirName is the folder of the state inside the git directory, so it is never versioned and goes with the
@@ -45,11 +47,19 @@ type Entry struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
+// MaxLine is the longest line of the log that is read; longer lines are skipped.
+const MaxLine = 4 * 1024 * 1024
+
+// MaxReason is the longest reason stored in an entry; longer reasons are cut, so every line stays far below
+// MaxLine.
+const MaxReason = 8 * 1024
+
 // Store reads and appends the log of one repository.
 type Store struct {
 	Dir     string
 	entries []Entry
 	loaded  bool
+	skipped int
 }
 
 // Open returns the store under gitDir; the folder is created on the first append.
@@ -57,7 +67,8 @@ func Open(gitDir string) *Store { return &Store{Dir: filepath.Join(gitDir, DirNa
 
 func (s *Store) path() string { return filepath.Join(s.Dir, "log.jsonl") }
 
-// Entries returns every entry of the log, read once per process.
+// Entries returns every entry of the log, read once per process. Lines over MaxLine are skipped and counted
+// (see Skipped); it fails only when the log exists and cannot be read.
 func (s *Store) Entries() ([]Entry, error) {
 	if s.loaded {
 		return s.entries, nil
@@ -71,16 +82,77 @@ func (s *Store) Entries() ([]Entry, error) {
 		return nil, err
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	for sc.Scan() {
+	var entries []Entry
+	skipped := 0
+	err = readLines(f, MaxLine, func(line []byte, tooLong bool) {
+		if tooLong {
+			skipped++
+			return
+		}
 		var e Entry
-		if json.Unmarshal(sc.Bytes(), &e) == nil {
-			s.entries = append(s.entries, e)
+		if json.Unmarshal(line, &e) == nil {
+			entries = append(entries, e)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.entries, s.skipped, s.loaded = entries, skipped, true
+	return s.entries, nil
+}
+
+// Skipped returns how many lines Entries skipped for being over MaxLine.
+func (s *Store) Skipped() int { return s.skipped }
+
+// readLines calls fn with every line of r without its newline; a line over limit is discarded as it is read
+// and reported with tooLong, so a huge line never stops the reading nor fills the memory.
+func readLines(r io.Reader, limit int, fn func(line []byte, tooLong bool)) error {
+	br := bufio.NewReaderSize(r, 64*1024)
+	var buf []byte
+	tooLong := false
+	for {
+		chunk, err := br.ReadSlice('\n')
+		if !tooLong {
+			if len(buf)+len(chunk) > limit+1 {
+				tooLong, buf = true, buf[:0]
+			} else {
+				buf = append(buf, chunk...)
+			}
+		}
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue
+		}
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		if tooLong || len(buf) > 0 {
+			line := buf
+			if n := len(line); n > 0 && line[n-1] == '\n' {
+				line = line[:n-1]
+			}
+			fn(line, tooLong)
+		}
+		buf, tooLong = buf[:0], false
+		if err != nil {
+			return nil
 		}
 	}
-	s.loaded = true
-	return s.entries, sc.Err()
+}
+
+// Cut shortens s to at most limit bytes, on a rune boundary, marking the cut.
+func Cut(s string, limit int) string {
+	const mark = "… [recortado]"
+	if len(s) <= limit {
+		return s
+	}
+	n := limit - len(mark)
+	if n < 0 {
+		n = 0
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + mark
 }
 
 // Append writes one entry as a single line. Each line is written with one call in append mode, which keeps
@@ -89,6 +161,7 @@ func (s *Store) Append(e Entry) error {
 	if e.At == "" {
 		e.At = time.Now().Format(time.RFC3339)
 	}
+	e.Reason = Cut(e.Reason, MaxReason)
 	if err := os.MkdirAll(s.Dir, 0o755); err != nil {
 		return err
 	}
@@ -110,8 +183,12 @@ func (s *Store) Append(e Entry) error {
 	return nil
 }
 
-// Done reports whether fact was recorded on the branch for exactly this content hash.
+// Done reports whether fact was recorded on the branch for exactly this content hash; never for an unknown
+// (empty) hash.
 func (s *Store) Done(fact, branch, hash string) bool {
+	if hash == "" {
+		return false
+	}
 	entries, _ := s.Entries()
 	for _, e := range entries {
 		if e.Kind == KindFact && e.Fact == fact && e.Branch == branch && e.Hash == hash {
@@ -134,9 +211,14 @@ func (s *Store) Injected(rule, session string) bool {
 
 // StopBlocks counts the times the workflow entry at line blocked event (stop or subagent_stop) of actor in
 // session on this content hash: the loop guard. Counting per entry keeps several pending blocks from using up
-// the guard of each other, and per event and actor keeps subagents apart from the main session.
-func (s *Store) StopBlocks(session, event, actor string, line int, hash string) int {
-	entries, _ := s.Entries()
+// the guard of each other, and per event and actor keeps subagents apart from the main session. hash is empty
+// when the content hash is unknown; those blocks are counted together. It returns the error of reading the log,
+// so the guard can let the agent stop instead of blocking it forever.
+func (s *Store) StopBlocks(session, event, actor string, line int, hash string) (int, error) {
+	entries, err := s.Entries()
+	if err != nil {
+		return 0, err
+	}
 	n := 0
 	for _, e := range entries {
 		if e.Kind == KindStopBlock && e.Session == session && e.Event == event && e.Actor == actor &&
@@ -144,5 +226,5 @@ func (s *Store) StopBlocks(session, event, actor string, line int, hash string) 
 			n++
 		}
 	}
-	return n
+	return n, nil
 }

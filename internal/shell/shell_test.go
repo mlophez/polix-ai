@@ -17,6 +17,7 @@ func TestSplit(t *testing.T) {
 		{"(cd h && go test) && just test", []Segment{{"cd h", true}, {"go test", true}, {"just test", true}}},
 		{`echo "a && b | c" && git push`, []Segment{{`echo "a && b | c"`, true}, {"git push", true}}},
 		{"just test || true", []Segment{{"just test", false}, {"true", true}}},
+		{"echo x >|out.txt && ls", []Segment{{"echo x >|out.txt", true}, {"ls", true}}},
 		{"echo $(date)", []Segment{{"echo $(date)", true}}},
 		{"(echo $(date)) && ls", []Segment{{"echo $(date)", true}, {"ls", true}}},
 		{"((cd x && just test))", []Segment{{"cd x", true}, {"just test", true}}},

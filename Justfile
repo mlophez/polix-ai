@@ -15,9 +15,22 @@ install:
 
 # Install polix and check it against this repository: config, deterministic rules and machine
 check: install
-    polix check
-    polix rules check
-    polix doctor --offline
+    #!/bin/sh
+    set -eu
+    # Run the binary go install just wrote by its path, not the first polix of the PATH. go install writes to
+    # GOBIN, else to the bin of the first entry of GOPATH (separated by ; on Windows, by : elsewhere).
+    bin=$(go env GOBIN)
+    if [ -z "$bin" ]; then
+        sep=:
+        [ "$(go env GOOS)" != windows ] || sep=';'
+        gopath=$(go env GOPATH)
+        bin=${gopath%%"$sep"*}/bin
+    fi
+    polix=$bin/polix
+    [ -x "$polix" ] || polix=$polix.exe
+    "$polix" check
+    "$polix" rules check
+    "$polix" doctor --offline
 
 # Build the assets of a release into dist/ (what the release workflow publishes)
 dist version:
@@ -29,6 +42,9 @@ release version:
     set -eu
     v="v${1#v}"
     test -z "$(git status --porcelain)" || { echo "the working tree is not clean" >&2; exit 1; }
+    test "$(git rev-parse --abbrev-ref HEAD)" = main || { echo "releases are tagged on main" >&2; exit 1; }
+    git fetch origin main
+    test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || { echo "HEAD is not origin/main: pull or push first" >&2; exit 1; }
     just test
     git tag -a "$v" -m "polix $v"
     git push origin "$v"

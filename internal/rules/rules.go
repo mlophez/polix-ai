@@ -7,7 +7,9 @@ package rules
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +21,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/mlophez/polix-ai/internal/glob"
+	"github.com/mlophez/polix-ai/internal/state"
 )
 
 // Dir is the folder of the rules, relative to the repository root.
@@ -42,15 +45,20 @@ type Rule struct {
 
 // Load reads every rule file of root, retired ones excluded, ordered by id.
 func Load(root string) ([]Rule, error) {
-	files, err := filepath.Glob(filepath.Join(root, Dir, "*.yaml"))
+	// The folder is listed, not globbed: the root may hold [, ], * or ?, which a glob would read as a pattern.
+	entries, err := os.ReadDir(filepath.Join(root, Dir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
 	var all []Rule
-	for _, f := range files {
-		if filepath.Base(f) == retiredFile {
+	for _, e := range entries { // ReadDir sorts by name, as the glob did
+		if e.IsDir() || filepath.Ext(e.Name()) != ".yaml" || e.Name() == retiredFile {
 			continue
 		}
+		f := filepath.Join(root, Dir, e.Name())
 		data, err := os.ReadFile(f)
 		if err != nil {
 			return nil, err
@@ -144,28 +152,108 @@ func runCheck(ctx context.Context, root, check string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 	script := filepath.Join(root, filepath.FromSlash(check))
-	var cmd *exec.Cmd
-	switch {
-	case runtime.GOOS == "windows" && strings.HasSuffix(check, ".py"):
-		cmd = exec.CommandContext(ctx, "python", script)
-	case runtime.GOOS == "windows" && strings.HasSuffix(check, ".sh"):
-		cmd = exec.CommandContext(ctx, "bash", script)
-	default:
-		cmd = exec.CommandContext(ctx, script)
+	argv := []string{script}
+	if runtime.GOOS == "windows" {
+		interp, err := Interpreter(check, exec.LookPath, fileExists)
+		if err != nil {
+			return "", err
+		}
+		argv = append(interp, script)
 	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = root
+	// When the deadline kills the script, a grandchild may still hold its output open: stop waiting for it.
+	cmd.WaitDelay = WaitDelay
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err := cmd.Run()
 	return out.String(), err
 }
 
-// tail keeps the last n non-empty lines of s.
+// Interpreter returns the command line, without the script, that runs a check on Windows, where a shebang does
+// nothing: nil for a script that runs by itself. look finds a program on the PATH and exists reports whether a
+// file exists; they are parameters so the choice can be tested on any system.
+//
+// A .sh check runs with the bash of Git for Windows, found next to git, or else with a bash of the PATH outside
+// the Windows folder, which is the bash of WSL and runs in another system. A .py check runs with the py launcher,
+// then python3, then python, skipping the aliases of the Microsoft Store, which open the Store instead of running.
+func Interpreter(check string, look func(string) (string, error), exists func(string) bool) ([]string, error) {
+	switch strings.ToLower(winExt(check)) {
+	case ".sh":
+		if git, err := look("git"); err == nil {
+			dir := winDir(git)
+			for _, b := range []string{winDir(dir) + `\bin\bash.exe`, dir + `\bash.exe`} {
+				if exists(b) {
+					return []string{b}, nil
+				}
+			}
+		}
+		if b, err := look("bash"); err == nil && !inWindowsDir(b) {
+			return []string{b}, nil
+		}
+		return nil, errors.New("no se encuentra bash para ejecutar el check: instala Git for Windows (git y su bash)")
+	case ".py":
+		for _, c := range []struct {
+			name string
+			args []string
+		}{{"py", []string{"-3"}}, {"python3", nil}, {"python", nil}} {
+			if p, err := look(c.name); err == nil && !isStoreAlias(p) {
+				return append([]string{p}, c.args...), nil
+			}
+		}
+		return nil, errors.New("no se encuentra python para ejecutar el check: instala Python (py, python3 o python en el PATH)")
+	}
+	return nil, nil
+}
+
+func fileExists(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
+}
+
+// winDir and winExt split a Windows path on any system, where filepath would not see \ as a separator.
+func winDir(p string) string {
+	if i := strings.LastIndexAny(p, `\/`); i >= 0 {
+		return p[:i]
+	}
+	return "."
+}
+
+func winExt(p string) string {
+	base := p[strings.LastIndexAny(p, `\/`)+1:]
+	if i := strings.LastIndex(base, "."); i >= 0 {
+		return base[i:]
+	}
+	return ""
+}
+
+func normWin(p string) string { return strings.ToLower(strings.ReplaceAll(p, "/", `\`)) }
+
+// inWindowsDir reports whether a path is below the system folder of Windows, where the bash of WSL lives.
+func inWindowsDir(p string) bool {
+	n := normWin(p)
+	if root := os.Getenv("SystemRoot"); root != "" && strings.HasPrefix(n, normWin(root)+`\`) {
+		return true
+	}
+	return strings.Contains(n, `:\windows\`)
+}
+
+// isStoreAlias reports whether a path is an alias of the Microsoft Store, below WindowsApps.
+func isStoreAlias(p string) bool { return strings.Contains(normWin(p), `\windowsapps\`) }
+
+// WaitDelay bounds the wait for the output of a command killed by its deadline, held open by a grandchild that
+// outlives it.
+const WaitDelay = 5 * time.Second
+
+// MaxLineLen caps each line kept from the output of a check or a command, in bytes.
+const MaxLineLen = 500
+
+// tail keeps the last n non-empty lines of s, each cut to MaxLineLen bytes.
 func tail(s string, n int) string {
 	var lines []string
 	for l := range strings.SplitSeq(s, "\n") {
 		if strings.TrimSpace(l) != "" {
-			lines = append(lines, l)
+			lines = append(lines, state.Cut(l, MaxLineLen))
 		}
 	}
 	if len(lines) > n {
