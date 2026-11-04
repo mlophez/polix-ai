@@ -276,16 +276,20 @@ it. Running it again rewrites what changed and removes what the release dropped.
 
 - The plugin `polix`, for the user, since it helps in any repository. It is the folder `plugins/polix/` of this
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
-  `ai/rules/`, `doctor` fixes the setup) and, for Claude Code, agents (`workflow-author`, `rules-author` and the
-  read-only `rules-reviewer` and `auditor`). Install writes it, with the version of the binary in its
-  manifests, to the local marketplace `~/.polix/marketplace/` and registers it. A development build, whose version
-  is always `dev`, writes `0.0.0-dev+<hash of the plugin>` instead, so every change of the plugin is a new version.
+  `ai/rules/`, `doctor` fixes the setup, `review` reviews the current change with the agent `reviewer`, `audit`
+  audits the repository with several `auditor` agents in parallel) and, for Claude Code, agents (`workflow-author`,
+  `rules-author` and the read-only `reviewer`, `rules-reviewer` and `auditor`). Install writes it, with the version
+  of the binary in its manifests, to the local marketplace `~/.polix/marketplace/` and registers it. A
+  development build, whose version is always `dev`, writes `0.0.0-dev+<hash of the plugin>` instead, so every
+  change of the plugin is a new version.
   - Claude Code: `claude plugin marketplace add ~/.polix/marketplace --scope user` and
     `claude plugin install polix@polix --scope user`. Claude Code copies the plugin to its cache
     (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
     `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
-    skills are `/polix:workflow`, `/polix:add-rule` and `/polix:doctor`, its agents `polix:workflow-author`,
-    `polix:rules-author`, `polix:rules-reviewer` and `polix:auditor`.
+    skills are `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:review` and `/polix:audit`, its
+    agents `polix:workflow-author`, `polix:rules-author`, `polix:reviewer`, `polix:rules-reviewer` and
+    `polix:auditor`. The skills `review` and `audit` launch the agents; Codex, which has no agents of plugins,
+    follows the file of the agent in the session instead.
   - Codex, when it is installed (or with `--agent codex`): `codex plugin marketplace add ~/.polix/marketplace` and
     `[plugins."polix@polix"] enabled = true` in `~/.codex/config.toml`, the rest of the file kept. Codex documents
     no command to install a plugin without its interface, so this part is experimental until it is checked against

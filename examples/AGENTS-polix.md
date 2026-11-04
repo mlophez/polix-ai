@@ -19,7 +19,9 @@ aprobación:
   `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/mlophez/polix-ai/releases/latest/download/install.ps1 | iex"`
 
 Los dos instalan el binario y ejecutan `polix install --user`, que instala para el usuario el plugin `polix`:
-en Claude Code, las skills `/polix:workflow`, `/polix:add-rule` y `/polix:doctor` y los agents
-`polix:workflow-author`, `polix:rules-author` y `polix:rules-reviewer`. Los hooks ya vienen en el repositorio.
+en Claude Code, las skills `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:review` y
+`/polix:audit` y los agents `polix:workflow-author`, `polix:rules-author`, `polix:reviewer`,
+`polix:rules-reviewer` y `polix:auditor`.
+Los hooks ya vienen en el repositorio.
 Después, pide al usuario que reinicie Claude Code para que cargue el plugin y los hooks encuentren polix en el
 `PATH`, y comprueba el equipo con `polix doctor`.

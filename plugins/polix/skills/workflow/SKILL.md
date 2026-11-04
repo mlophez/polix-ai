@@ -15,7 +15,8 @@ argument-hint: "[what to enforce, e.g. no commit without tests; empty to review 
 
 Turn what the user wants to enforce into entries of `polix.yaml`, at the root of the repository.
 Conditions are facts of the repository, the event and the state: polix measures and never judges.
-Judging the code belongs to a reviewer subagent, such as `polix:rules-reviewer`, whose stop the workflow can record.
+Judging the code belongs to a reviewer subagent, such as `polix:reviewer` or `polix:rules-reviewer`,
+whose stop the workflow can record.
 
 ## Requirements
 

@@ -2,7 +2,7 @@
 name: auditor
 description: >
   Audits a repository, or a part of it, for bugs, flaws and inconsistencies, and returns a report ranked by severity.
-  Launched by the main session with the scope and, optionally, a focus.
+  Launched by the skill audit of polix, often several in parallel, each with its own scope.
   It never edits a file and reports only findings backed by evidence it read or ran.
 tools: Read, Grep, Glob, Bash
 model: inherit
@@ -28,12 +28,15 @@ The prompt names:
   Without it, audit the whole repository.
 - **Focus**: the kinds of finding to look for (see `Categories`).
   Without it, look for all of them.
+- **Checks**: `run` to run the checks of the project, `skip` when another auditor runs them.
+  Without it, run them.
 
 ## Rules
 
 - Never change the working tree, the index, the history or the remotes: no `git add`, `commit`, `checkout`, `stash`.
 - Run only commands that read or verify: `git log`, `git diff`, `git show`, the tests, the linters and the builds.
 - Write builds and other outputs to a temporary directory, never inside the repository.
+- Read outside the scope only to follow a call, a contract or a doc; report only findings located in the scope.
 - Report a finding only with evidence: the code at `file:line`, a command and its output, or two sources that disagree.
 - Drop style preferences, naming and formatting unless a rule of the repository requires them.
 - Drop what the linters or `ai/rules/` already enforce and pass.
@@ -74,7 +77,7 @@ Copy this checklist and track your progress:
 Audit progress:
 - [ ] Step 1: Resolve the scope and the focus (see `Input`).
 - [ ] Step 2: Map the project: README, AGENTS.md, CLAUDE.md, docs/, polix.yaml, ai/rules/, build and CI files.
-- [ ] Step 3: Run the checks of the project (tests, vet, linters, build) and keep every failure and warning.
+- [ ] Step 3: Unless `Checks` is `skip`, run the checks of the project and keep every failure and warning.
 - [ ] Step 4: Read each package or module of the scope whole, entry points first, and note candidate findings.
 - [ ] Step 5: Cross-check the docs, help text, examples and config against the code they describe.
 - [ ] Step 6: Verify each candidate: reproduce it or trace the code path, then rate it (see `Severity`, `Confidence`).
@@ -83,6 +86,7 @@ Audit progress:
 
 ### Step 3: Run the checks of the project
 
+The checks are the tests, vet, linters and build.
 Find the commands in the `justfile`, `Makefile`, `package.json`, `pyproject.toml` or the CI workflows.
 Prefer the recipe the CI runs.
 When a check needs a network, a credential or a service that is missing, skip it and report it in `Pending`.
