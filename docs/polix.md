@@ -286,8 +286,8 @@ it. Running it again rewrites what changed and removes what the release dropped.
     `claude plugin install polix@polix --scope user`. Claude Code copies the plugin to its cache
     (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
     `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
-    skills are `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:plan`, `/polix:review` and
-    `/polix:audit`, its agents `polix:workflow-author`, `polix:rules-author`, `polix:reviewer`,
+    skills are `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:init`, `/polix:plan`,
+    `/polix:review` and `/polix:audit`, its agents `polix:workflow-author`, `polix:rules-author`, `polix:reviewer`,
     `polix:rules-reviewer` and `polix:auditor`. The skills `review` and `audit` launch the agents; Codex, which
     has no agents of plugins, follows the file of the agent in the session instead.
   - Codex, when it is installed (or with `--agent codex`): `codex plugin marketplace add ~/.polix/marketplace` and

@@ -94,8 +94,8 @@ func installCmd() *cobra.Command {
 		Use:   "install",
 		Short: "Install the plugin of polix for the user and register its hooks in the repository",
 		Long: "Install what the agents need to run polix, from this binary.\n\n" +
-			"For the user, the plugin polix, with skills (/polix:workflow, /polix:add-rule, /polix:doctor, /polix:plan,\n" +
-			"/polix:review, /polix:audit) and agents (polix:workflow-author, polix:rules-author, polix:reviewer,\n" +
+			"For the user, the plugin polix, with skills (/polix:workflow, /polix:add-rule, /polix:doctor, /polix:init,\n" +
+			"/polix:plan, /polix:review, /polix:audit) and agents (polix:workflow-author, polix:rules-author, polix:reviewer,\n" +
 			"polix:rules-reviewer, polix:auditor) that help in any repository. It is written to the local marketplace\n" +
 			"~/.polix/marketplace/ and registered with each agent:\n" +
 			"  Claude Code  claude plugin marketplace add, claude plugin install polix@polix --scope user\n" +
