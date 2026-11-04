@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "polix hook codex" }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "polix hook codex" }] }
+    ],
+    "PreToolUse": [
+      { "matcher": ".*", "hooks": [{ "type": "command", "command": "polix hook codex" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": ".*", "hooks": [{ "type": "command", "command": "polix hook codex" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "polix hook codex" }] }
+    ]
+  }
+}

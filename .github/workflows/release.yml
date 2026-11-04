@@ -1,0 +1,63 @@
+# Publishes a release when a version tag is pushed (just release 0.2.0): it runs the tests on Linux, macOS and
+# Windows, builds the assets with scripts/dist.sh, attaches them to a GitHub release of the tag and then installs
+# that release on the three systems with the documented commands.
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: scripts/dist.sh "$GITHUB_REF_NAME"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "polix $GITHUB_REF_NAME" --generate-notes --verify-tag
+
+  # Installs the published release as a user would, on every system, and checks the installed version.
+  install:
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      POLIX_VERSION: ${{ github.ref_name }}
+    steps:
+      - name: install.sh
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          curl -fsSL "https://github.com/mlophez/polix-ai/releases/download/$POLIX_VERSION/install.sh" | sh
+          test "$("$HOME/.local/bin/polix" version)" = "${POLIX_VERSION#v}"
+      - name: install.ps1 (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          irm "https://github.com/mlophez/polix-ai/releases/download/$env:POLIX_VERSION/install.ps1" | iex
+          $v = & "$env:LOCALAPPDATA\Programs\polix\polix.exe" version
+          if ($v -ne $env:POLIX_VERSION.TrimStart('v')) { throw "installed $v" }
+      - name: install.sh through Git Bash (hands over to install.ps1)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          curl -fsSL "https://github.com/mlophez/polix-ai/releases/download/$POLIX_VERSION/install.sh" | sh
+          test "$("$(cygpath -u "$LOCALAPPDATA")/Programs/polix/polix.exe" version)" = "${POLIX_VERSION#v}"
