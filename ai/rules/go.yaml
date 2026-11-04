@@ -1,0 +1,13 @@
+rules:
+  - id: GO-1
+    description: Go code is formatted with gofmt.
+    scope: ["*.go"]
+    deterministic: true
+    check: ai/checks/gofmt.sh
+
+  - id: GO-2
+    description: >-
+      Code, comments, docs and commit messages are written in English; only the texts that polix.yaml shows to
+      the agent or the user may be in Spanish.
+    scope: ["*.go", "docs/**", "examples/**", "scripts/**", "install.sh", "install.ps1"]
+    deterministic: false

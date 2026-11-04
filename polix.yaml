@@ -1,0 +1,44 @@
+# Workflow of this repository, enforced by polix itself (dogfooding). Reference of every option:
+# examples/polix.yaml; design and limits: docs/polix.md. Validate with `polix check`, draw with `polix graph`.
+version: 1
+base: main
+max_stop_blocks: 3
+
+on:
+  session_start:
+    - context:
+        text: >-
+          Este repositorio se gobierna con su propio polix (polix.yaml, ai/rules/). Rama {branch}.
+          Antes de commitear cambios de código: `just test` en verde sobre el diff final y revisión con el
+          subagente reviewer. Tras cambiar el motor, `just install` para que los hooks usen el binario nuevo.
+
+  # Inject the rules that apply to each edited path, once per session.
+  #pre_edit:
+  #  - context: { rules: "{path}" }
+
+  ## Feedback right after editing Go: the gofmt rule (whole tree, it takes milliseconds).
+  #post_edit:
+  #  - if: { path: "*.go" }
+  #    mode: warn
+  #    run: { rules: "{path}" }
+
+  # Only a full `just test` (vet + every test) counts as tested; `just test -run X` does not.
+  post_command:
+    - if: { command: ["just test", "just test 2>&1"], exit: 0 }
+      record: tested
+
+  #pre_commit:
+    #- if: { changed: ["*.go", "install.sh", "install.ps1", "scripts/**", ".github/**"] }
+    #  unless: { done: reviewed }
+    #  mode: warn
+    #  deny: "El diff no está revisado: lanza el subagente reviewer antes de commitear"
+
+  #subagent_stop:
+  #  - if: { actor: reviewer }
+  #    record: reviewed
+
+  # Deterministic rules of the changed files must pass before the turn ends.
+  stop:
+    - if: { changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**", "Justfile"] }
+      unless: { done: tested }
+      deny: "Los tests no han pasado sobre este diff: ejecuta just test"

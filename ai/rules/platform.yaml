@@ -1,0 +1,22 @@
+rules:
+  - id: XPLAT-1
+    description: >-
+      polix installs and runs on Linux, macOS and Windows (amd64 and arm64). Paths go through filepath and
+      are shown with forward slashes; OS specific behaviour is guarded by runtime.GOOS or build tags and is
+      covered by a test that runs in the CI matrix of the three systems.
+    scope: ["*.go", "install.sh", "install.ps1", "scripts/**", ".github/**"]
+    deterministic: false
+
+  - id: XPLAT-2
+    description: >-
+      Hook commands of the examples are plain `polix ...` calls joined with `;` at most: Claude Code runs them
+      with sh, Git Bash or PowerShell, so `||`, `command -v` or `{ ...; }` are not allowed.
+    scope: ["examples/**", ".claude/settings.json"]
+    deterministic: false
+
+  - id: DOC-1
+    description: >-
+      A change of the behaviour, the commands or the polix.yaml schema updates docs/polix.md and, for the
+      schema, the annotated examples/polix.yaml in the same change.
+    scope: ["cmd/**", "internal/**"]
+    deterministic: false
