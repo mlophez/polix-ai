@@ -107,14 +107,34 @@ go install github.com/mlophez/polix-ai/cmd/polix@latest
 The installers verify the binary against `checksums.txt` before installing it. Set `POLIX_VERSION` to pin a
 version and `POLIX_INSTALL_DIR` to change the install folder.
 
-**2. Register the hooks**
+**2. Install the plugin and register the hooks**
 
-Copy [`examples/claude-settings.json`](examples/claude-settings.json) into `.claude/settings.json` (or
-[`examples/codex-hooks.json`](examples/codex-hooks.json) into `.codex/hooks.json`). Every hook calls the same command:
+From the root of the repository:
+
+```bash
+polix install                     # the plugin for you and the hooks for this repository
+polix install --user              # only the plugin, from anywhere (the installers already ran it)
+polix install --agent claude      # only Claude Code (default: Claude Code, and Codex when it is used)
+```
+
+`polix install` sets up two things, and running it again only updates what changed:
+
+- **For you, the plugin `polix`.** It holds the skills `/polix:workflow`, `/polix:add-rule` and `/polix:doctor`
+  and the agents `polix:workflow-author`, `polix:rules-author` and `polix:rules-reviewer`. The plugin ships inside
+  the binary: polix writes it to the local marketplace `~/.polix/marketplace/` and registers it with
+  `claude plugin install polix@polix --scope user` (for Codex, it enables it in `~/.codex/config.toml`).
+  Start a new session to load it.
+- **For the repository, the hooks.** They go in `.claude/settings.json` (and `.codex/hooks.json` for Codex),
+  keeping every other setting and hook of those files. Commit them with your workflow so the team gets them.
+
+Every hook calls the same command, as in [`examples/claude-settings.json`](examples/claude-settings.json):
 
 ```json
 { "type": "command", "command": "polix hook claude", "timeout": 900 }
 ```
+
+`polix update` refreshes the plugin with each new binary, and `polix uninstall` removes the plugin and the hooks
+of the repository (`--user` for only the plugin).
 
 **3. Write your workflow**
 
@@ -238,6 +258,8 @@ polix graph                    print the workflow as a Mermaid diagram
 polix log --tail 20 [--json]   print the last entries of the state log
 polix doctor [--hook]          check that this machine and repository are ready
 polix update [--version V]     replace the binary with a release, verified and atomic
+polix install [--user]         install the plugin for the user and register the hooks in the repository
+polix uninstall [--user]       remove the plugin and the hooks of the repository
 polix version
 ```
 
@@ -259,9 +281,10 @@ just check      # install, then check this repository's config, rules and machin
 just release 0.2.0
 ```
 
-Code lives in `cmd/polix` and `internal/` (`agent`, `engine`, `workflow`, `rules`, `state`, `cli`, `update`,
-`gitx`, `glob`, `shell`). CI runs on Linux, macOS and Windows, including the PowerShell installer under
-Windows PowerShell 5.1 and PowerShell 7.
+Code lives in `cmd/polix` and `internal/` (`agent`, `engine`, `workflow`, `rules`, `state`, `cli`, `setup`,
+`update`, `gitx`, `glob`, `shell`). The plugin lives in `plugins/polix/`, embedded in the binary; check it with
+`claude plugin validate plugins/polix`. CI runs on Linux, macOS and Windows, including the PowerShell installer
+under Windows PowerShell 5.1 and PowerShell 7.
 
 ## Status
 

@@ -1,0 +1,16 @@
+{
+  "name": "polix-ai",
+  "description": "The plugin of polix, from its repository. polix install installs the same plugin from the binary.",
+  "owner": {
+    "name": "Miguel López Ruiz",
+    "url": "https://github.com/mlophez"
+  },
+  "plugins": [
+    {
+      "name": "polix",
+      "source": "./plugins/polix",
+      "description": "Skills and agents of polix: write the polix.yaml and ai/rules/ of a repository, review a change against its rules and fix the setup of polix.",
+      "category": "development"
+    }
+  ]
+}

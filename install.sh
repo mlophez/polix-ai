@@ -3,15 +3,17 @@
 #
 #   curl -fsSL https://github.com/mlophez/polix-ai/releases/latest/download/install.sh | sh
 #
-# On macOS and Linux it installs the binary itself. On Windows (Git Bash, MSYS or Cygwin) it runs install.ps1
-# of the same release, checked the same way, so a Windows machine gets one install wherever it starts from: in
-# %LOCALAPPDATA%\Programs\polix and on the user PATH that every shell and Claude Code see.
+# On macOS and Linux it installs the binary itself and runs `polix install --user`, which installs the plugin of polix
+# (skills and agents) for the user in Claude Code and, when it is used, Codex. On Windows (Git Bash, MSYS or Cygwin)
+# it runs install.ps1 of the same release, checked the same way, so a Windows machine gets one install wherever it
+# starts from: in %LOCALAPPDATA%\Programs\polix and on the user PATH that every shell and Claude Code see.
 #
 # Environment:
 #   POLIX_VERSION       version to install (default: the latest release)
 #   POLIX_INSTALL_DIR   folder of the binary (default: ~/.local/bin; on Windows a Windows path, default
 #                       %LOCALAPPDATA%\Programs\polix)
 #   POLIX_RELEASES_URL  releases page (default: https://github.com/mlophez/polix-ai/releases)
+#   POLIX_NO_SETUP      set it to skip `polix install --user`, which installs the plugin of polix for the user
 set -eu
 
 releases=${POLIX_RELEASES_URL:-https://github.com/mlophez/polix-ai/releases}
@@ -91,3 +93,9 @@ case ":$PATH:" in
   *":$dir:"*) ;;
   *) echo "warning: $dir is not on the PATH; add it, or the hooks will not find polix" >&2 ;;
 esac
+
+# The plugin of the user, embedded in the binary just installed. The hooks belong to each repository: polix
+# install registers them there.
+if [ -z "${POLIX_NO_SETUP:-}" ]; then
+  "$dir/polix" install --user --yes || echo "warning: polix install --user failed: run it again by hand" >&2
+fi

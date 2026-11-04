@@ -1,0 +1,183 @@
+# Example polix.yaml: the current Logalty flow (ticket, plan, builder, tests, reviewer, commit) plus the
+# rules of ai/rules/ injected and checked, annotated as a reference of every option of the schema.
+# Validate it with `polix check`; draw it with `polix graph`. Design and limits: docs/polix.md.
+#
+# How a hook call is answered:
+# 1. The adapter turns the hook input into neutral events (an edit of several files gives one event per path).
+# 2. The built-in protections run first, whatever this file says, even without it:
+#    - nobody edits the state (<git-dir>/polix/), and no command naming it may write files;
+#    - subagents never edit AGENTS.md, CLAUDE.md, ai/rules/ or polix.yaml, neither with the edit tools nor with a
+#      command that writes them (only the main session may).
+# 3. Edits outside the repository or of files git ignores skip the workflow: only the protections apply to them.
+# 4. The entries of the event run in file order; each one whose `if` holds and whose `unless` does not hold applies
+#    its action. `deny` in enforce mode and `allow` stop the evaluation; every other action lets it go on.
+#
+# An invalid file (any problem `polix check` reports) blocks pre_edit, pre_command and pre_commit with the
+# problems (fail closed), except the main session editing polix.yaml or running `polix check`, and only warns on
+# the other events, so a broken file never traps a stop in a loop.
+
+# Required. The only version is 1.
+version: 1
+
+# Optional, default main. The branch the change merges into: `changed` compares the working tree with the merge
+# base of HEAD and this branch, plus untracked files not ignored. When the branch does not exist, it compares
+# with HEAD, so only uncommitted changes count.
+base: main
+
+# Optional, default 3 (0 also means 3; negative is rejected). Loop guard of every block of stop and subagent_stop
+# in enforce mode (require, deny or a failing run): after this many blocks of the same entry, in the same session,
+# by the same actor and on the same content hash, the agent may stop, and the log records a `loop_guard` decision.
+max_stop_blocks: 3
+
+# Optional. Variables extracted from the current branch name, usable as {name} in any string.
+# - `branch` is a regular expression (Go RE2 syntax): the value is its first group, or the whole match without
+#   groups.
+# - When it does not match, the variable has no value: the `var` condition fails and {name} is left as is.
+# - A variable cannot be called path, command or branch, the built-in placeholders.
+vars:
+  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # PLAT-123-add-retry -> PLAT-123
+
+# Placeholders, replaced in the strings of conditions (except `branch`), actions and `contains`; an unknown one
+# is rejected by `polix check`:
+# - {path}: the edited path, relative to the root (pre_edit and post_edit; empty elsewhere);
+# - {command}: the whole command line (pre_command, post_command and pre_commit; empty elsewhere);
+# - {branch}: the current branch;
+# - {<var>}: each variable of `vars`.
+#
+# Path globs (`path`, `changed`, `file`, rule scopes) are relative to the root and use `/`: `*` and `?` stay
+# inside a segment, `**` crosses segments, and a pattern without `/` also matches the base name anywhere
+# (`*.md` matches docs/guide.md), like .gitignore. The whole path must match.
+#
+# Command patterns (`command`) match each command of the line as a whole, with surrounding spaces trimmed:
+# `*` matches any text, spaces and slashes included, and `?` one character. So "just test" only matches the bare
+# command, and "just test*" also matches `just test -k x` or `just test 2>&1`.
+
+on:
+  # Events, in lifecycle order. Each holds a list of entries. Keys of an entry:
+  #   if:     optional map of conditions; all must hold (no `if` always holds).
+  #   unless: optional map of conditions; the entry is skipped when all hold (no `unless` never skips).
+  #   mode:   optional, enforce (default) | warn | audit; how a block of the entry is applied (see deny).
+  #   why:    optional free text for people; the engine ignores it.
+  #   <action>: exactly one of deny, allow, require, run, context, record.
+  # Unknown events, keys (also inside run, context and vars), conditions, actions and modes are rejected by
+  # `polix check`, and so are conditions on events where they never hold (path, command, exit).
+  #
+  # Modes, for the actions that can block (deny, require, run):
+  # - enforce: blocks. The agent gets the reasons (exit 2 on stderr) and cannot go on.
+  # - warn: does not block. On session_start, prompt, pre_* and post_* the reason reaches the agent as context
+  #   ("Aviso de polix: ..."); on stop and subagent_stop the agent cannot receive context, so only the user sees
+  #   it on stderr. The log records a `warn` decision.
+  # - audit: does not block and says nothing; the log only records what the entry would have blocked. Use it to try
+  #   a new entry on real sessions, then move it to warn and to enforce once it is trusted.
+
+  # session_start: a session starts. It cannot be blocked: deny and allow are rejected; context, run and record
+  # work, and a failing run only shows its output, since the session starts anyway.
+  session_start:
+    # context: inject text into the session. Exactly one of:
+    # - file: a file of the repository (placeholders allowed); a missing file injects nothing;
+    # - text: a literal text (placeholders allowed);
+    # - rules: the rules of ai/rules/ whose scope matches a path (rules without scope match any path), injected
+    #   at most once per session each, as "- <id>: <description>".
+    - context: { text: "Rama {branch}: el flujo es ticket, plan, build, review y commit." }
+
+  # prompt: the user sends a prompt. deny rejects the prompt before the model sees it.
+  prompt:
+    # var: every variable of the list has a value (a string is a list of one).
+    - unless: { var: key }
+      context: { text: "No hay ticket en la rama: créalo con /ticket antes de cambiar nada." }
+
+  # pre_edit: before a file is edited, once per path. Conditions of the edit: path, actor.
+  pre_edit:
+    - unless: { var: key }
+      why: "Every change is tracked by a Jira ticket"
+      deny: "No hay ticket: crea la rama con /ticket"
+    # path: the edited path matches a glob, or one of a list. Never holds outside pre_edit and post_edit.
+    # allow: true lets the event pass and stops the evaluation; later entries do not run. Only true is valid.
+    - if: { path: "ai/plans/{key}-*.md" }
+      allow: true
+    # file: a file of the repository, tracked or untracked but not ignored, matches a glob (or one of a list).
+    - unless: { file: "ai/plans/{key}-*.md" }
+      deny: "No hay plan: escríbelo con /plan"
+    # file + contains: some matching file also holds this text (plain substring, placeholders allowed).
+    # contains is only valid next to file.
+    - unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
+      deny: "El plan no tiene la línea Ticket: {key}"
+    # actor: who acts, `session` (the main session) or the subagent type (builder, reviewer...); a list holds when
+    # any matches.
+    # deny: block the event with the reason; in enforce mode it stops the evaluation, in warn or audit it does not.
+    - unless: { actor: builder }
+      mode: audit       # new entry: it only logs what it would block until it is trusted
+      deny: "Solo el subagente builder edita el proyecto: usa /build"
+    - context: { rules: "{path}" }
+
+  # post_edit: after a file is edited, once per path. It cannot be blocked: deny and allow are rejected.
+  # A failing run gives its output to the agent as context in warn mode, and as a block reason in enforce mode.
+  post_edit:
+    # run: execute a command from the root, without a shell (no pipes, redirections or globs). Every run of one
+    # hook call shares a budget of 10 minutes; the timeout of the hook in the agent settings must be longer.
+    # Exactly one of:
+    # - command: a list of arguments, or a string split on spaces; placeholders allowed in each argument. A non
+    #   zero exit blocks with the last 15 lines of its output;
+    # - rules: `changed` (the changed files) or a path such as "{path}": runs the check of every deterministic
+    #   rule with a check whose scope matches; a failure names the rule ids and their output.
+    - if: { path: "**/*.py" }
+      mode: warn
+      run: { command: ["uv", "run", "ruff", "check", "{path}"] }
+    - if: { path: "checks/**" }
+      mode: warn
+      run: { rules: "{path}" }
+
+  # pre_command: before a shell command runs. The line is split into its commands (`cd x && just test | tail -3`
+  # gives `cd x`, `just test` and `tail -3`, quotes respected), and `command` holds when any of them matches.
+  pre_command:
+    # command: a command of the line matches a pattern, or one of a list.
+    - if: { command: ["git push*origin main*", "git push*origin HEAD:main*"] }
+      deny: "No se hace push directo a main: abre un PR"
+    # branch: the current branch matches a regular expression. It is not anchored: use ^ and $ for a whole match.
+    # not: a map of nested conditions; it holds unless every one of them holds (with one nested condition, it is its
+    # negation). Inside `if` it says the same as moving the nested conditions to `unless`; it is needed to negate
+    # some conditions of an `unless` or to combine a negation with other conditions in the same `if`.
+    - if: { command: "terraform apply*", not: { branch: "^main$" } }
+      mode: warn
+      deny: "terraform apply solo se lanza desde el pipeline de main"
+
+  # post_command: after a shell command ran. It cannot be blocked: deny and allow are rejected.
+  post_command:
+    # exit: the exit code of the line. Next to command, it only holds when a matching command decides the code of
+    # the line: alone, last, or followed by && (`just test | tail` is decided by tail, so it never holds).
+    # A command that failed to run (PostToolUseFailure) without an exit code counts as 1.
+    # record: record a fact (placeholders allowed) tied to the branch and the content hash, for `done`.
+    - if: { command: "just test*", exit: 0 }
+      record: tested
+
+  # pre_commit: before a command line that holds a `git commit` runs; it comes right after its pre_command.
+  pre_commit:
+    # done: every fact of the list was recorded on this branch for exactly the current content hash: the git tree
+    # of the working tree with everything staged (untracked included, ignored excluded). Any edit to any file that
+    # is not ignored changes the hash, so earlier facts stop counting; going back to an earlier content brings them
+    # back. Facts are not tied to the session.
+    - unless: { done: tested }
+      deny: "Los tests no han pasado sobre este diff: ejecuta just test"
+    - unless: { done: reviewed }
+      deny: "El diff no está revisado: lanza el subagente reviewer"
+
+  # subagent_stop: a subagent is about to stop; actor is its type. require blocks it until the condition is met.
+  subagent_stop:
+    - if: { actor: reviewer }
+      record: reviewed
+    - if: { actor: builder, changed: "src/**" }
+      unless: { done: tested }
+      require: "Ejecuta just test antes de terminar"
+
+  # stop: the main session is about to end its turn; actor is always `session`.
+  stop:
+    # changed: some file changed by the branch (see base) matches a glob, or one of a list.
+    - if: { changed: "**" }
+      run: { rules: changed }
+    # require: what the agent must do before it stops; only valid on stop and subagent_stop. In enforce mode it
+    # blocks with the text and counts for the loop guard (max_stop_blocks), like any block of a stop; it never
+    # stops the evaluation, so every pending require is reported at once.
+    # context is not valid on stop and subagent_stop: the agent cannot receive it there.
+    - if: { changed: "src/**" }
+      unless: { done: reviewed }
+      require: "Lanza el subagente reviewer sobre el diff actual"

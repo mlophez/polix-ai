@@ -6,21 +6,27 @@
 //	polix graph                  print the workflow as a Mermaid diagram
 //	polix log [--tail N] [--json] print the last entries of the state log
 //	polix doctor [--hook]        check that this machine and repository are ready for polix
-//	polix update [--check]       replace the binary with the latest release
+//	polix install [--user]       install the skills for the user and register the hooks in the repository
+//	polix uninstall [--user]     remove what install wrote
+//	polix update [--check]       replace the binary with the latest release and refresh the skills
 //	polix version
 //
-// Every command takes --dir (default the working directory) to point at the repository.
+// The commands are built with cobra and fang, which give them styled help, errors and shell completions. The
+// output of `polix hook` is not styled: the agents read it.
 package cli
 
 import (
 	"context"
 	"encoding/json"
-	"flag"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/charmbracelet/fang"
+	"github.com/spf13/cobra"
 
 	"github.com/mlophez/polix-ai/internal/agent"
 	"github.com/mlophez/polix-ai/internal/engine"
@@ -30,75 +36,132 @@ import (
 	"github.com/mlophez/polix-ai/internal/workflow"
 )
 
-const usage = `polix: applies the polix.yaml and ai/rules/ of a repository to Claude Code and Codex.
+// exitCode is the error of a command that already told the user why it failed: it only carries the exit code,
+// and fang prints nothing for it.
+type exitCode int
 
-Usage:
-  polix hook <claude|codex> [--dir DIR]   entry point of the hooks (event on stdin)
-  polix check [--dir DIR]                  validate polix.yaml and ai/rules/
-  polix rules check [--changed] [--base BRANCH] [--dir DIR]
-                                         run the checks of the deterministic rules
-  polix graph [--dir DIR]                  print the workflow as a Mermaid diagram
-  polix log [--tail N] [--json] [--dir DIR] print the last entries of the state log
-  polix doctor [--hook] [--offline] [--dir DIR]
-                                         check that this machine and repository are ready for polix
-  polix update [--check] [--version V] [--hook]
-                                         replace the binary with the latest release (or version V)
-  polix version
-`
+func (e exitCode) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+
+// exit turns the exit code of a command into its error.
+func exit(code int) error {
+	if code == 0 {
+		return nil
+	}
+	return exitCode(code)
+}
 
 // Run executes polix with args (without the program name) and returns the exit code.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
-		return 1
+	if stdin == nil {
+		stdin = os.Stdin
 	}
-	switch args[0] {
-	case "hook":
-		return hook(args[1:], stdin, stdout, stderr)
-	case "check":
-		return check(args[1:], stdout, stderr)
-	case "rules":
-		if len(args) < 2 || args[1] != "check" {
-			fmt.Fprint(stderr, usage)
-			return 1
-		}
-		return rulesCheck(args[2:], stdout, stderr)
-	case "graph":
-		return graph(args[1:], stdout, stderr)
-	case "log":
-		return logCmd(args[1:], stdout, stderr)
-	case "doctor":
-		return doctor(args[1:], stdout, stderr)
-	case "update":
-		return updateCmd(args[1:], stdout, stderr)
-	case "version":
-		fmt.Fprintln(stdout, Version)
-		return 0
-	case "-h", "--help", "help":
-		fmt.Fprint(stdout, usage)
+	root := newRoot()
+	root.SetArgs(args)
+	root.SetIn(stdin)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	err := fang.Execute(context.Background(), root,
+		fang.WithVersion(Version),
+		fang.WithoutManpage(),
+		fang.WithErrorHandler(printError),
+	)
+	if err == nil {
 		return 0
 	}
-	fmt.Fprintf(stderr, "polix: unknown command %q\n\n%s", args[0], usage)
+	if code, ok := errors.AsType[exitCode](err); ok {
+		return int(code)
+	}
 	return 1
+}
+
+// printError prints the error of a command in one line, as the old CLI did, so scripts and agents can read it;
+// an exitCode was already explained by the command.
+func printError(w io.Writer, _ fang.Styles, err error) {
+	if _, ok := errors.AsType[exitCode](err); ok {
+		return
+	}
+	fmt.Fprintf(w, "%s %s\n", styleFail.Render("polix:"), err)
+	if msg := err.Error(); strings.HasPrefix(msg, "unknown ") || strings.Contains(msg, "flag") || strings.Contains(msg, "arg(s)") {
+		fmt.Fprintf(w, "%s\n", styleMuted.Render("Run polix --help for usage."))
+	}
+}
+
+func newRoot() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "polix",
+		Short: "Applies the polix.yaml and ai/rules/ of a repository to Claude Code and Codex",
+		Long: "polix applies the workflow (polix.yaml) and the rules (ai/rules/) of a repository to Claude Code and " +
+			"Codex through their hooks: it blocks, requires, runs, injects and records what the workflow says.",
+		Example: "  # Set up this machine: the polix plugin with its skills and hooks\n" +
+			"  polix install\n\n" +
+			"  # Check the machine and the repository\n" +
+			"  polix doctor\n\n" +
+			"  # Validate the workflow and the rules\n" +
+			"  polix check",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	root.AddGroup(
+		&cobra.Group{ID: "repo", Title: "Repository"},
+		&cobra.Group{ID: "machine", Title: "Machine"},
+		&cobra.Group{ID: "agent", Title: "Agents"},
+	)
+	add := func(group string, cmds ...*cobra.Command) {
+		for _, c := range cmds {
+			c.GroupID = group
+			root.AddCommand(c)
+		}
+	}
+	add("repo", checkCmd(), rulesCmd(), graphCmd(), logCmd())
+	add("machine", installCmd(), uninstallCmd(), updateCmd(), doctorCmd(), versionCmd())
+	root.AddCommand(refreshCmd())
+	add("agent", hookCmd())
+	return root
+}
+
+// dirFlag adds --dir, the repository a command works on.
+func dirFlag(c *cobra.Command, dir *string, def string) {
+	c.Flags().StringVarP(dir, "dir", "C", def, "repository to work on")
+	_ = c.MarkFlagDirname("dir")
+}
+
+func versionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the version of polix",
+		Args:  cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			fmt.Fprintln(c.OutOrStdout(), Version)
+			return nil
+		},
+	}
+}
+
+func hookCmd() *cobra.Command {
+	var dir string
+	c := &cobra.Command{
+		Use:   "hook <claude|codex>",
+		Short: "Answer one hook call of an agent (event on stdin)",
+		Long: "Entry point of the hooks of Claude Code and Codex: it reads the event on stdin and answers with the " +
+			"exit code (2 blocks) and the output the agent expects. The polix plugin registers it; people do not " +
+			"run it.",
+		Args:      cobra.ExactArgs(1),
+		ValidArgs: []string{"claude", "codex"},
+		RunE: func(c *cobra.Command, args []string) error {
+			return exit(hook(args[0], dir, c.InOrStdin(), c.OutOrStdout(), c.ErrOrStderr()))
+		},
+	}
+	c.Flags().StringVarP(&dir, "dir", "C", "", "repository (default: cwd of the hook input, else the working directory)")
+	return c
 }
 
 // hook answers one hook call. Failure policy: outside a git repository, or without polix.yaml, it lets
 // everything through except the built-in protections. An invalid workflow fails closed on edits and commands
 // (see engine.Engine.Invalid) and never blocks a stop, which would keep the agent in a loop it cannot leave.
-func hook(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprintln(stderr, "polix hook: missing agent (claude, codex)")
-		return 1
-	}
-	ad, err := agent.For(args[0])
+func hook(name, dir string, stdin io.Reader, stdout, stderr io.Writer) int {
+	ad, err := agent.For(name)
 	if err != nil {
 		fmt.Fprintln(stderr, "polix hook:", err)
-		return 1
-	}
-	fs := flag.NewFlagSet("hook", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	dir := fs.String("dir", "", "repository (default: cwd of the hook input, else the working directory)")
-	if err := fs.Parse(args[1:]); err != nil {
 		return 1
 	}
 	input, err := io.ReadAll(stdin)
@@ -121,7 +184,7 @@ func hook(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(events) == 0 {
 		return agent.ExitOK
 	}
-	start := *dir
+	start := dir
 	if start == "" {
 		start = events[0].Cwd
 	}
@@ -152,12 +215,28 @@ func hook(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return ad.Render(native, res, stdout, stderr)
 }
 
-// check validates the workflow and the rules and prints every problem.
-func check(args []string, stdout, stderr io.Writer) int {
-	repo, code := openRepo("check", args, nil, stderr)
-	if repo == nil {
-		return code
+func checkCmd() *cobra.Command {
+	var dir string
+	c := &cobra.Command{
+		Use:   "check",
+		Short: "Validate polix.yaml and ai/rules/",
+		Long: "Validate the workflow and the rules and print every problem: unknown events, conditions, actions and " +
+			"keys, undefined variables and conditions on events where they never hold.",
+		Args: cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			repo, err := gitx.Open(dir)
+			if err != nil {
+				return err
+			}
+			return exit(check(repo, c.OutOrStdout(), c.ErrOrStderr()))
+		},
 	}
+	dirFlag(c, &dir, ".")
+	return c
+}
+
+// check validates the workflow and the rules and prints every problem.
+func check(repo *gitx.Repo, stdout, stderr io.Writer) int {
 	var problems []string
 	wf, err := workflow.Load(repo.Root)
 	switch {
@@ -173,31 +252,55 @@ func check(args []string, stdout, stderr io.Writer) int {
 		problems = append(problems, rules.Validate(repo.Root, all)...)
 	}
 	if len(problems) > 0 {
+		u := newUI(stderr)
 		for _, p := range problems {
-			fmt.Fprintln(stderr, p)
+			u.fail("%s", p)
 		}
 		return 1
 	}
+	u := newUI(stdout)
 	if wf == nil {
-		fmt.Fprintf(stdout, "ok: no %s (only the built-in protections apply) and %d rules of %s/\n", workflow.File, len(all), rules.Dir)
+		u.line("%s no %s (only the built-in protections apply) and %d rules of %s/", styleOK.Render("ok:"), workflow.File, len(all), rules.Dir)
 		return 0
 	}
-	fmt.Fprintf(stdout, "ok: %s and %d rules of %s/\n", workflow.File, len(all), rules.Dir)
+	u.line("%s %s and %d rules of %s/", styleOK.Render("ok:"), workflow.File, len(all), rules.Dir)
 	return 0
 }
 
-// rulesCheck runs the checks of the deterministic rules: all of them, or with --changed only those whose
-// scope matches the files changed by the branch. The base of --changed is --base, else the base of polix.yaml.
-func rulesCheck(args []string, stdout, stderr io.Writer) int {
-	var changed bool
-	var base string
-	repo, code := openRepo("rules check", args, func(fs *flag.FlagSet) {
-		fs.BoolVar(&changed, "changed", false, "only the rules whose scope matches the changed files")
-		fs.StringVar(&base, "base", "", "branch the change merges into, for --changed (default: base of "+workflow.File+", else "+workflow.DefaultBase+")")
-	}, stderr)
-	if repo == nil {
-		return code
+func rulesCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "rules",
+		Short: "Work with the rules of ai/rules/",
+		Args:  cobra.NoArgs,
 	}
+	var dir, base string
+	var changed bool
+	chk := &cobra.Command{
+		Use:   "check",
+		Short: "Run the checks of the deterministic rules",
+		Long: "Run the checks of the deterministic rules: all of them, or with --changed only those whose scope " +
+			"matches the files changed by the branch. Meant for CI.",
+		Example: "  polix rules check\n  polix rules check --changed --base develop",
+		Args:    cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			repo, err := gitx.Open(dir)
+			if err != nil {
+				return err
+			}
+			return exit(rulesCheck(repo, changed, base, c.OutOrStdout(), c.ErrOrStderr()))
+		},
+	}
+	dirFlag(chk, &dir, ".")
+	chk.Flags().BoolVar(&changed, "changed", false, "only the rules whose scope matches the changed files")
+	chk.Flags().StringVar(&base, "base", "", "branch the change merges into, for --changed (default: base of "+
+		workflow.File+", else "+workflow.DefaultBase+")")
+	c.AddCommand(chk)
+	return c
+}
+
+// rulesCheck runs the checks of the deterministic rules: all of them, or with changed only those whose scope
+// matches the files changed by the branch. The base of changed is base, else the base of polix.yaml.
+func rulesCheck(repo *gitx.Repo, changed bool, base string, stdout, stderr io.Writer) int {
 	all, err := rules.Load(repo.Root)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -223,30 +326,46 @@ func rulesCheck(args []string, stdout, stderr io.Writer) int {
 			ran++
 		}
 	}
+	ue := newUI(stderr)
 	for _, f := range failures {
-		fmt.Fprintf(stderr, "FAIL %s (%s): %s\n%s\n", f.Rule.ID, f.Rule.Check, f.Rule.Description, f.Output)
+		ue.fail("FAIL %s (%s): %s", f.Rule.ID, f.Rule.Check, f.Rule.Description)
+		fmt.Fprintln(stderr, f.Output)
 	}
-	fmt.Fprintf(stdout, "%d checks, %d failed\n", ran, len(failures))
+	u := newUI(stdout)
 	if len(failures) > 0 {
+		u.fail("%d checks, %d failed", ran, len(failures))
 		return 1
 	}
+	u.ok("%d checks, %d failed", ran, len(failures))
 	return 0
 }
 
-// graph prints the workflow as a Mermaid flowchart: one subgraph per event, one node per entry.
-func graph(args []string, stdout, stderr io.Writer) int {
-	repo, code := openRepo("graph", args, nil, stderr)
-	if repo == nil {
-		return code
+func graphCmd() *cobra.Command {
+	var dir string
+	c := &cobra.Command{
+		Use:   "graph",
+		Short: "Print the workflow as a Mermaid diagram",
+		Args:  cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			repo, err := gitx.Open(dir)
+			if err != nil {
+				return err
+			}
+			return graph(repo, c.OutOrStdout())
+		},
 	}
+	dirFlag(c, &dir, ".")
+	return c
+}
+
+// graph prints the workflow as a Mermaid flowchart: one subgraph per event, one node per entry.
+func graph(repo *gitx.Repo, stdout io.Writer) error {
 	wf, err := workflow.Load(repo.Root)
 	if err != nil {
-		fmt.Fprintln(stderr, "polix graph:", err)
-		return 1
+		return err
 	}
 	if wf == nil {
-		fmt.Fprintf(stderr, "polix graph: %s not found\n", workflow.File)
-		return 1
+		return fmt.Errorf("%s not found", workflow.File)
 	}
 	fmt.Fprintln(stdout, "flowchart TD")
 	n := 0
@@ -268,25 +387,37 @@ func graph(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintln(stdout, "  end")
 	}
-	return 0
+	return nil
 }
 
-// logCmd prints the last entries of the state log: the sanctioned way to read it, since commands that name the
-// state folder and write files are denied.
-func logCmd(args []string, stdout, stderr io.Writer) int {
+func logCmd() *cobra.Command {
+	var dir string
 	var n int
 	var raw bool
-	repo, code := openRepo("log", args, func(fs *flag.FlagSet) {
-		fs.IntVar(&n, "tail", 20, "number of entries, 0 for all")
-		fs.BoolVar(&raw, "json", false, "print the entries as JSON lines")
-	}, stderr)
-	if repo == nil {
-		return code
+	c := &cobra.Command{
+		Use:   "log",
+		Short: "Print the last entries of the state log",
+		Long: "Print the last entries of the state log: the sanctioned way to read it, since commands that name the " +
+			"state folder and write files are denied.",
+		Args: cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			repo, err := gitx.Open(dir)
+			if err != nil {
+				return err
+			}
+			return printLog(repo, n, raw, c.OutOrStdout())
+		},
 	}
+	dirFlag(c, &dir, ".")
+	c.Flags().IntVarP(&n, "tail", "n", 20, "number of entries, 0 for all")
+	c.Flags().BoolVar(&raw, "json", false, "print the entries as JSON lines")
+	return c
+}
+
+func printLog(repo *gitx.Repo, n int, raw bool, stdout io.Writer) error {
 	entries, err := state.Open(repo.GitDir).Entries()
 	if err != nil {
-		fmt.Fprintln(stderr, "polix log:", err)
-		return 1
+		return err
 	}
 	if n > 0 && len(entries) > n {
 		entries = entries[len(entries)-n:]
@@ -304,7 +435,7 @@ func logCmd(args []string, stdout, stderr io.Writer) int {
 		reason, _, _ := strings.Cut(e.Reason, "\n")
 		fmt.Fprintf(stdout, "%s  %-10s %-13s %-9s %-16s %.8s  %s\n", e.At, e.Kind, e.Event, e.Actor, what, e.Hash, reason)
 	}
-	return 0
+	return nil
 }
 
 // mermaidLabel describes an entry: its conditions and its action.
@@ -349,23 +480,4 @@ func condText(c workflow.Cond) string {
 		out = append(out, fmt.Sprintf("%s=%v", k, c[k]))
 	}
 	return strings.Join(out, ", ")
-}
-
-// openRepo parses --dir (plus extra flags) and opens the repository.
-func openRepo(name string, args []string, extra func(*flag.FlagSet), stderr io.Writer) (*gitx.Repo, int) {
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	dir := fs.String("dir", ".", "repository")
-	if extra != nil {
-		extra(fs)
-	}
-	if err := fs.Parse(args); err != nil {
-		return nil, 1
-	}
-	repo, err := gitx.Open(*dir)
-	if err != nil {
-		fmt.Fprintln(stderr, "polix "+name+":", err)
-		return nil, 1
-	}
-	return repo, 0
 }

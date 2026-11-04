@@ -80,6 +80,8 @@ func fakeBinary(t *testing.T, version string) string {
 	t.Cleanup(func() { executable, Version = oldExe, oldVersion })
 	t.Setenv("POLIX_CACHE_DIR", t.TempDir())
 	t.Setenv("POLIX_NO_UPDATE", "")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 	return exe
 }
 
@@ -195,10 +197,29 @@ func releaseBinary(t *testing.T) []byte {
 func runInstall(t *testing.T, dir string, name string, args ...string) (string, error) {
 	t.Helper()
 	cmd := exec.Command(name, args...)
+	// The installed binary runs polix install: without the CLIs of the agents on its PATH, and with a config
+	// folder of Claude Code of its own, it cannot change the plugins of the machine.
 	cmd.Env = append(os.Environ(), "POLIX_INSTALL_DIR="+dir, "POLIX_RELEASES_URL="+os.Getenv("POLIX_RELEASES_URL"),
-		"POLIX_NO_MODIFY_PATH=1")
+		"POLIX_NO_MODIFY_PATH=1", "PATH="+pathWithoutAgents(), "CLAUDE_CONFIG_DIR="+t.TempDir())
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// pathWithoutAgents is the PATH without the folders that hold the CLI of Claude Code or Codex.
+func pathWithoutAgents() string {
+	var keep []string
+	for _, d := range filepath.SplitList(os.Getenv("PATH")) {
+		agent := false
+		for _, name := range []string{"claude", "claude.exe", "claude.cmd", "codex", "codex.exe", "codex.cmd"} {
+			if _, err := os.Stat(filepath.Join(d, name)); err == nil {
+				agent = true
+			}
+		}
+		if !agent {
+			keep = append(keep, d)
+		}
+	}
+	return strings.Join(keep, string(os.PathListSeparator))
 }
 
 // install.sh downloads the binary of the platform, checks it and installs it (macOS and Linux; on Windows it
@@ -209,11 +230,15 @@ func TestInstallScript(t *testing.T) {
 	}
 	bin := releaseBinary(t)
 	newFakeRelease(t, bin)
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	script := filepath.Join("..", "..", "install.sh")
 	out, err := runInstall(t, dir, "sh", script)
 	if err != nil || !strings.Contains(out, "installed polix 0.2.0") || content(t, filepath.Join(dir, "polix")) != string(bin) {
 		t.Fatalf("install.sh: %v\n%s", err, out)
+	}
+	if v, ok := pluginVersion(); !ok || v != "0.2.0" || !strings.Contains(out, "/polix:add-rule") {
+		t.Fatalf("install.sh runs polix install: %q %v\n%s", v, ok, out)
 	}
 
 	os.Remove(filepath.Join(dir, "polix"))
@@ -246,6 +271,8 @@ func TestInstallPowerShell(t *testing.T) {
 func testInstallPowerShell(t *testing.T, ps string) {
 	bin := releaseBinary(t)
 	newFakeRelease(t, bin)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 	dir := t.TempDir()
 	script, _ := filepath.Abs(filepath.Join("..", "..", "install.ps1"))
 	args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script}
@@ -256,6 +283,9 @@ func testInstallPowerShell(t *testing.T, ps string) {
 	out, err := runInstall(t, dir, ps, args...)
 	if err != nil || !strings.Contains(out, "installed polix 0.2.0") || content(t, exe) != string(bin) {
 		t.Fatalf("install.ps1: %v\n%s", err, out)
+	}
+	if v, ok := pluginVersion(); !ok || v != "0.2.0" {
+		t.Fatalf("install.ps1 runs polix install: %q %v\n%s", v, ok, out)
 	}
 	// Installing again replaces the binary in place (on Windows, moving the old one aside).
 	out, err = runInstall(t, dir, ps, args...)

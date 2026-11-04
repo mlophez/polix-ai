@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mlophez/polix-ai/internal/setup"
 	"github.com/mlophez/polix-ai/internal/update"
 )
 
@@ -29,6 +30,9 @@ func healthyMachine(t *testing.T) string {
 	t.Cleanup(func() { lookPath = oldLook })
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	if _, err := setup.Install(setup.Options{Home: os.Getenv("HOME"), Version: "0.2.0"}, []string{setup.Claude}); err != nil {
+		t.Fatal(err)
+	}
 	return exe
 }
 

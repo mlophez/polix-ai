@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,7 +13,30 @@ import (
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/engine"
+	"github.com/mlophez/polix-ai/internal/setup"
 )
+
+// TestMain gives the tests a home of their own: install, update and doctor read and write below it, and must
+// never touch the agents of the machine that runs the tests.
+func TestMain(m *testing.M) {
+	home, err := os.MkdirTemp("", "polix-home-")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("HOME", home)
+	os.Setenv("USERPROFILE", home)
+	cache, _ := os.MkdirTemp("", "polix-cache-")
+	os.Setenv("POLIX_CACHE_DIR", cache)
+	// The CLIs of Claude Code and Codex are never run by the tests: they would change the plugins of the user.
+	setup.LookPath = func(name string) (string, error) { return "", errors.New(name + " is not on the PATH of the tests") }
+	setup.Run = func(name string, _ ...string) (string, error) {
+		return "", errors.New(name + " must not run in the tests")
+	}
+	code := m.Run()
+	os.RemoveAll(home)
+	os.RemoveAll(cache)
+	os.Exit(code)
+}
 
 // repo is a throwaway git repository for one test.
 type repo struct {

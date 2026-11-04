@@ -34,11 +34,19 @@ polix rules check --changed  # only the rules whose scope matches the files chan
 polix graph                # print the workflow as a Mermaid diagram
 polix log --tail 20        # print the last entries of the state log (--json for the raw lines)
 polix doctor               # check that this machine and repository are ready (--hook, --offline)
-polix update               # replace the binary with the latest release (--check, --version V, --hook)
+polix install              # plugin for the user, hooks for the repository (--user, --agent)
+polix uninstall            # remove what install wrote (--user, --agent)
+polix update               # replace the binary with the latest release and refresh the plugin
+                           # (--check, --version V, --hook)
 polix version
 ```
 
-Every command but `version` takes `--dir <repo>` (default: the working directory, or the `cwd` of the hook input).
+The repository commands, `doctor`, `install` and `uninstall` take `--dir <repo>` (`-C`; default: the working
+directory, or the `cwd` of the hook input).
+The CLI is built with cobra and fang: `polix --help` and `polix <command> --help` give styled help, and
+`polix completion <bash|zsh|fish|powershell>` the completions of the shell.
+The output for people is styled with lipgloss on a terminal and plain text in a pipe, CI or with `NO_COLOR`; the
+output of `polix hook` is never styled, since the agents read it.
 
 Recipes: `just test`, `just build` (to `build/polix`), `just install` (`go install`, so the hooks find
 `polix` on the `PATH`), `just dist <version>` (the assets of a release, in `dist/`) and `just release <version>`.
@@ -79,17 +87,26 @@ version.
 repository: it tells the agent to propose the install command of the system of the user, and to run it only
 with their approval, when polix is missing.
 
+Both scripts then run `polix install --user --yes`, which installs the plugin of the user (see below) and no hooks:
+they belong to each repository. `POLIX_NO_SETUP=1` skips it.
+
 `polix update` downloads the latest release (or `--version V`, older ones included), checks it against
 `checksums.txt` and replaces the running binary atomically: a hook that starts meanwhile runs the old binary or
 the new one, never half of it. A development build (`dev`) is only replaced with `--version`, and
 `POLIX_NO_UPDATE=1` disables updates where the version is pinned by other means.
 `--hook` is the mode of the session start hook: at most one check a day (cached in the user cache folder), five
 seconds to reach GitHub, never fails, and prints one line only when it updated.
+After the binary, `update` refreshes the plugin: when it replaced the binary, the new one does it, since the plugin
+is embedded in it. A person who runs `polix update` also gets the plugin of the user installed when it is missing,
+and the hooks of polix rewritten in the repository of the working directory when it registers them. The session
+start hook only refreshes the plugin already installed: it never installs anything new nor touches the files of
+the repository.
 
 `polix doctor` checks the version against the latest release, that the `PATH` the hooks use runs this binary,
 git, `polix.yaml`, the rules and that their checks exist and are executable, the hooks of Claude Code (project,
-local and user settings: every event, every governed tool in the matchers, a timeout above the run budget) and
-that the state can be written. It exits 1 on any failure.
+local and user settings: every event, every governed tool in the matchers, a timeout above the run budget, and
+never twice), the plugin of the user (its version against the binary and, except in `--hook`, that Claude Code has
+it installed and enabled), the hooks and the plugin of Codex when it is used and that the state can be written. It exits 1 on any failure.
 `--hook` prints nothing when everything is fine and never fails; otherwise it prints the problems, which Claude
 Code adds to the context of the session, so the agent tells the user and offers to fix them. It does not use
 the network: it compares with the latest release the last `polix update` saw.
@@ -224,13 +241,49 @@ The content hash is the git tree the working tree would produce with everything 
 ignored ones excluded), computed on a copy of the index.
 Any edit changes it, so a fact recorded before the edit stops counting without anyone invalidating it.
 
-## Registering the hooks
+## The plugin and the hooks: polix install
 
-`examples/claude-settings.json` registers `polix hook claude` in `.claude/settings.json`, and
-`examples/codex-hooks.json` registers `polix hook codex` in `.codex/hooks.json`.
+`polix install` installs what each agent needs, from the binary, so every release brings its plugin and hooks with
+it. Running it again rewrites what changed and removes what the release dropped. It has two parts:
 
-On `SessionStart` with matcher `startup` (a new session, not a resume, a clear or a compaction) the example
-also runs `polix update --hook; polix doctor --hook`: it keeps polix up to date and reports any problem of the
+- The plugin `polix`, for the user, since it helps in any repository. It is the folder `plugins/polix/` of this
+  repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
+  `ai/rules/`, `doctor` fixes the setup) and, for Claude Code, agents (`workflow-author`, `rules-author` and the
+  read-only `rules-reviewer`). Install writes it, with the version of the binary in its manifests, to the local
+  marketplace `~/.polix/marketplace/` and registers it:
+  - Claude Code: `claude plugin marketplace add ~/.polix/marketplace --scope user` and
+    `claude plugin install polix@polix --scope user`. Claude Code loads a plugin of a local marketplace in place,
+    so a rewrite of the folder applies in the next session; install and update then run `claude plugin update` to
+    record the new version. Its skills are `/polix:workflow`, `/polix:add-rule` and `/polix:doctor`, its agents
+    `polix:workflow-author`, `polix:rules-author` and `polix:rules-reviewer`.
+  - Codex, when it is installed (or with `--agent codex`): `codex plugin marketplace add ~/.polix/marketplace` and
+    `[plugins."polix@polix"] enabled = true` in `~/.codex/config.toml`, the rest of the file kept. Codex documents
+    no command to install a plugin without its interface, so this part is experimental until it is checked against
+    a running Codex. Codex plugins carry no agents.
+
+  When the CLI of an agent is not on the `PATH`, install writes the plugin and prints the commands to run by hand.
+- The hooks, for the repository of the working directory (or `--dir`), since they belong to the project like its
+  `polix.yaml` and are committed with it: merged into `.claude/settings.json` and `.codex/hooks.json`. Every
+  other setting, event and hook of those files is kept in its order, and the hooks of polix take the place of the
+  ones they replace, so the file only changes where polix changed. Codex skips new or changed hooks until the
+  user trusts them with `/hooks`. The plugin brings no hooks.
+
+`--user` installs only the plugin; outside a git repository that is all install does. `polix uninstall` removes
+the same parts: it unregisters the plugin from each agent and, for both, removes `~/.polix/marketplace/`; unless
+`--user`, it removes the hooks of polix of the repository, and a hooks file when nothing else is left in it.
+
+The repository is a marketplace too (`.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`, named
+`polix-ai`), for whoever wants the plugin without the binary: `/plugin marketplace add mlophez/polix-ai`. The
+reference of the skill `workflow` (`plugins/polix/skills/workflow/reference.yaml`) is a copy of
+`examples/polix.yaml`, kept equal by a test; `claude plugin validate plugins/polix` checks the plugin.
+
+Claude Code merges the hooks of the project, local and user settings, so polix registered in two of them runs
+twice, which doubles every block and every record: `polix install` warns about it and `polix doctor` fails until
+one of them goes. `examples/claude-settings.json` is what install registers for Claude Code (a test keeps them
+equal); it and `examples/codex-hooks.json` remain for a rollout that renders the settings itself (Logalty Control).
+
+On `SessionStart` with matcher `startup` (a new session, not a resume, a clear or a compaction) the hooks
+also run `polix update --hook; polix doctor --hook`: it keeps polix up to date and reports any problem of the
 machine or the repository. Update and doctor run in one command because Claude Code runs the hooks of an event
 in parallel, and doctor must see the binary the update left.
 
@@ -242,8 +295,8 @@ it is installed, the hooks fail with "command not found" (or "is not recognized"
 Code treats as a non blocking error, and the workflow does not apply on that machine. The fragment of
 `examples/AGENTS-polix.md` covers that case.
 
-Every `run` of one hook call shares a budget of 10 minutes (commands and rule checks together), and the example
-sets the `timeout` of each `polix hook claude` to 900 seconds, above it. The default of Claude Code is 600
+Every `run` of one hook call shares a budget of 10 minutes (commands and rule checks together), and the hooks
+set the `timeout` of each `polix hook` to 900 seconds, above it. The default of Claude Code is 600
 seconds (30 on `UserPromptSubmit`), not above the budget, so a long gate could be killed and the action let
 through; `polix doctor` warns about it.
 In the real rollout Logalty Control would render them and pin the version of the binary.

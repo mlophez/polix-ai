@@ -8,6 +8,7 @@
 #   POLIX_INSTALL_DIR     folder of the binary (default: %LOCALAPPDATA%\Programs\polix on Windows, ~/.local/bin elsewhere)
 #   POLIX_RELEASES_URL    releases page (default: https://github.com/mlophez/polix-ai/releases)
 #   POLIX_NO_MODIFY_PATH  set it to leave the user PATH alone
+#   POLIX_NO_SETUP        set it to skip `polix install --user`, which installs the plugin of polix for the user
 #
 # Errors are thrown, never `exit`: run through `irm | iex`, exit would close the terminal of the user.
 
@@ -101,4 +102,11 @@ if (($env:PATH -split [regex]::Escape($sep)) -notcontains $dir) {
     } else {
         Write-Warning "$dir is not on the PATH; add it, or the hooks will not find polix"
     }
+}
+
+# The plugin of the user, embedded in the binary just installed. The hooks belong to each repository: polix
+# install registers them there.
+if (-not $env:POLIX_NO_SETUP) {
+    & (Join-Path $dir $exeName) install --user --yes
+    if ($LASTEXITCODE -ne 0) { Write-Warning "polix install --user failed: run it again by hand" }
 }
