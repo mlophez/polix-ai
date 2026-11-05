@@ -9,11 +9,16 @@ base: main
 # A stop gate that keeps failing on the same content lets the agent stop after 3 blocks, so it never loops.
 max_stop_blocks: 3
 
+guidance:
+  commit: true
+  edit: true
+
 # No agent writes the instructions of the repository, the main session included: only a person changes them.
 protected: 
   - AGENTS.md
   - CLAUDE.md
   - polix.yaml
+
 
 # The checks of ai/rules/ that are Go tests (the AST tests of tests/architecture/) run as one `go test` of their
 # package, only the test named after the rule: GOARCH-4 runs TestGOARCH4.
