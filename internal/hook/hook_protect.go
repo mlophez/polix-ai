@@ -58,12 +58,14 @@ func NamesState(command, dir, realDir string, fold bool) bool {
 }
 
 // Within reports whether the real path p is the real folder dir or inside it; without case when fold is true.
+// It compares the cleaned paths by prefix rather than with filepath.Rel, which ignores case on Windows whatever
+// fold says.
 func Within(dir, p string, fold bool) bool {
+	dir, p = filepath.Clean(dir), filepath.Clean(p)
 	if fold {
 		dir, p = strings.ToLower(dir), strings.ToLower(p)
 	}
-	rel, err := filepath.Rel(dir, p)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return p == dir || strings.HasPrefix(p, strings.TrimSuffix(dir, string(filepath.Separator))+string(filepath.Separator))
 }
 
 // AnyPathFold is glob.AnyPath without case when fold is true, so `.ENV` is `.env` where file names ignore case.

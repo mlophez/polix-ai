@@ -3,7 +3,6 @@ package hook
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -137,10 +136,7 @@ func (r *answerHookRun) protect() (agent.Answer, bool) {
 	}
 	switch ev.Name {
 	case workflow.PreEdit:
-		abs := ev.AbsPath
-		if abs != "" && !filepath.IsAbs(abs) {
-			abs = filepath.Join(r.ev.Root, abs)
-		}
+		abs := Absolute(r.ev.Root, "", ev.AbsPath)
 		if abs != "" {
 			reals := r.reals(r.ev.StateDir(), abs)
 			if r.waiting() {

@@ -331,7 +331,8 @@ func Writes(patterns []string, command, cwd, root string, reals map[string]strin
 }
 
 // Absolute returns the path p given from cwd as the agent would reach it: p itself when absolute, else joined to
-// cwd, or to the root without a cwd; "" for an empty path.
+// cwd, or to the root without a cwd; "" for an empty path. A path rooted without a drive (`\x` on Windows) is
+// taken on the drive of that base, not joined to it.
 func Absolute(root, cwd, p string) string {
 	if p == "" {
 		return ""
@@ -341,7 +342,11 @@ func Absolute(root, cwd, p string) string {
 		if base == "" {
 			base = root
 		}
-		p = filepath.Join(base, p)
+		if filepath.VolumeName(p) == "" && (p[0] == '/' || p[0] == filepath.Separator) {
+			p = filepath.VolumeName(base) + p
+		} else {
+			p = filepath.Join(base, p)
+		}
 	}
 	return filepath.Clean(p)
 }
