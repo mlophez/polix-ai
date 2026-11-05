@@ -2,7 +2,7 @@ package order
 
 // Line has an unexported field (GOARCH-25).
 type Line struct {
-	SKU   string
+	SKU   string `json:"sku"` // a tag in the domain (GOARCH-16)
 	price int
 }
 
@@ -44,4 +44,11 @@ func Lines() []Line {
 		return nil
 	}
 	return []Line{first, {SKU: "b"}}
+}
+
+// Ignore validates a line but discards the error (GOARCH-29).
+func Ignore() Line {
+	l := Line{SKU: "z"}
+	l.Valid()
+	return l
 }

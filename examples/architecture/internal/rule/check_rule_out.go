@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -23,15 +24,15 @@ type CheckRuleAdapter struct {
 }
 
 const (
-	// checkTimeout bounds one check script, within the deadline of the caller.
-	checkTimeout = 5 * time.Minute
-	// waitDelay bounds the wait for the output of a command killed by its deadline, held open by a grandchild
-	// that outlives it.
-	waitDelay = 5 * time.Second
+	// checkRuleTimeout bounds one check script, within the deadline of the caller.
+	checkRuleTimeout = 5 * time.Minute
+	// checkRuleWaitDelay bounds the wait for the output of a command killed by its deadline, held open by a
+	// grandchild that outlives it.
+	checkRuleWaitDelay = 5 * time.Second
 )
 
 // LoadRules reads the rules from the files of ai/rules/.
-func (a CheckRuleAdapter) LoadRules() ([]Rule, error) {
+func (a CheckRuleAdapter) LoadRules(_ context.Context) ([]Rule, error) {
 	root := a.Repo.Root
 	// The folder is listed, not globbed: the root may hold [, ], * or ?, which a glob would read as a pattern.
 	entries, err := os.ReadDir(filepath.Join(root, Dir))
@@ -60,27 +61,34 @@ func (a CheckRuleAdapter) LoadRules() ([]Rule, error) {
 	return all, nil
 }
 
-// BaseBranches reads the base branches of polix.yaml with the domain of workflow; a use case of workflow would
-// break the vertical slices.
-func (a CheckRuleAdapter) BaseBranches() []string {
-	data, _ := os.ReadFile(filepath.Join(a.Repo.Root, workflow.File))
-	wf, _ := workflow.Parse(data)
-	return wf.BaseBranches()
+// BaseBranches reads the base branches of polix.yaml with the domain of workflow, as a use case of workflow would
+// break the vertical slices. Without polix.yaml they are those of workflow by default; a polix.yaml that cannot
+// be read or parsed is an error, never a silent default.
+func (a CheckRuleAdapter) BaseBranches(_ context.Context) ([]string, error) {
+	data, err := os.ReadFile(filepath.Join(a.Repo.Root, workflow.File))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	wf, err := workflow.Parse(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", workflow.File, err)
+	}
+	return wf.BaseBranches(), nil
 }
 
 // Changed asks git for the files changed against the first of candidates that exists.
-func (a CheckRuleAdapter) Changed(candidates []string) ([]string, error) {
-	ref, err := a.Repo.ResolveBase(candidates)
+func (a CheckRuleAdapter) Changed(ctx context.Context, candidates []string) ([]string, error) {
+	ref, err := a.Repo.ResolveBase(ctx, candidates)
 	if err != nil {
 		return nil, err
 	}
-	return a.Repo.Changed(ref)
+	return a.Repo.Changed(ctx, ref)
 }
 
 // RunScript runs a check script as a process. On Windows a shebang does nothing, so scripts are started through
 // their interpreter by extension; elsewhere they run directly, as their shebang says.
 func (a CheckRuleAdapter) RunScript(ctx context.Context, check string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	ctx, cancel := context.WithTimeout(ctx, checkRuleTimeout)
 	defer cancel()
 	script := filepath.Join(a.Repo.Root, filepath.FromSlash(check))
 	argv := []string{script}
@@ -93,7 +101,7 @@ func (a CheckRuleAdapter) RunScript(ctx context.Context, check string) (string, 
 	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = a.Repo.Root
-	cmd.WaitDelay = waitDelay
+	cmd.WaitDelay = checkRuleWaitDelay
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err := cmd.Run()

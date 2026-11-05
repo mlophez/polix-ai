@@ -13,7 +13,7 @@ type CancelOrderPort interface{ Cancel() }
 func CancelOrderCommand() {
 	_ = PlaceOrderAdapter{}
 	_ = stock.CountStock()
-	_ = CancelOrderAdapter{}
+	CancelOrderAdapter{}.Refund() // the entry calls the adapter (GOARCH-32)
 	l := Line{SKU: "c"}
 	if l.Valid() != nil {
 		return

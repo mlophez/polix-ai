@@ -25,7 +25,8 @@ func checkDAG(m *module) []string {
 			}
 			switch f.top {
 			case "pkg":
-				out = append(out, fmt.Sprintf("%s: imports %s: pkg/ never imports internal/", m.pos(f, s), strings.Trim(s.Path.Value, `"`)))
+				out = append(out, fmt.Sprintf("%s: imports %s: pkg/ never imports internal/", m.pos(f, s),
+					strings.Trim(s.Path.Value, `"`)))
 			case "internal":
 				if f.kind != kindTest && dir != f.dir {
 					if graph[f.dir] == nil {

@@ -14,7 +14,7 @@ rules:
 
   - id: GOARCH-2
     description: >-
-      Each domain package has its entity file <noun>.go, which declares the entity type <Noun>
+      Each domain package has its entity file <noun>.go, which declares the entity <Noun>, a struct
       (internal/rule/rule.go declares Rule); the domain may be split into <noun>_*.go (rule_parse.go).
     scope: ["internal/**/*.go"]
     deterministic: true
@@ -31,8 +31,11 @@ rules:
   - id: GOARCH-4
     description: >-
       The domain and the logic of a use case import nothing that touches the outside (os, os/exec, os/signal,
-      net, net/http, io/fs, runtime, syscall, cobra, pkg/git, pkg/cli) and never read the clock (time.Now, Since,
-      Until, Sleep, After, Tick, NewTimer, NewTicker, AfterFunc). The logic uses only the domain and its own
+      net, net/http, io/fs, runtime, syscall, cobra, pkg/git, pkg/cli), nor randomness (math/rand,
+      math/rand/v2, crypto/rand), nor logs (log, log/slog), and the logic does not import context. They never
+      read the clock (time.Now, Since, Until, Sleep, After, Tick, NewTimer, NewTicker, AfterFunc), write to the
+      console (fmt.Print*), start goroutines nor panic, and hold no state: no variables of the package but blank
+      ones and sentinel errors (Err* or err* = errors.New or fmt.Errorf). The logic uses only the domain and its own
       logic file, never the port, the request nor the adapter of its use case.
     scope: ["internal/**/*.go"]
     deterministic: true
@@ -117,9 +120,10 @@ rules:
 
   - id: GOARCH-16
     description: >-
-      Every use case declares <Verb><Noun>Request and <Verb><Noun>Response in <verb>_<noun>_in.go, and the types
-      of its logic carry no field tags, the shape of a transport.
-    scope: ["internal/**/*_in.go", "internal/**/*_logic.go"]
+      Every use case declares <Verb><Noun>Request and <Verb><Noun>Response in <verb>_<noun>_in.go, and neither
+      the types of its logic nor the exported types of the domain carry field tags, the shape of a transport. An
+      unexported type of the domain that decodes a format (fileYAML) may.
+    scope: ["internal/**/*.go"]
     deterministic: true
 
   - id: GOARCH-17
@@ -149,14 +153,14 @@ rules:
       turns the request into domain values, calls the logic once, carries out its output through the port and
       builds the response. It only sequences: every decision is in the logic or the domain, and a decision taken
       after the input and output of the shell is domain behavior, so the shell can be tested with a fake of the
-      port.
+      port. Its signature and who calls the logic and the port are checked by GOARCH-32.
     scope: ["internal/**/*_in.go"]
     deterministic: false
 
   - id: GOARCH-21
     description: >-
       The document of a use case says what its code does, and a change of the behavior of the use case updates
-      its document in the same commit.
+      its document in the same commit. That it names the fields and the methods of the code is GOARCH-36.
     scope: ["internal/**"]
     deterministic: false
 
@@ -222,9 +226,10 @@ rules:
 
   - id: GOARCH-29
     description: >-
-      A value of a domain struct is built with a literal, without constructors, and validated: a literal with
-      fields (T{...} or &T{...}) is bound to a variable on which the same function calls Valid() afterwards. The
-      empty literal T{}, the zero value returned with an error, and the tests are left out.
+      A value of a domain struct is built with a literal, never with a constructor (no function New* nor new*
+      in internal/), and validated: a literal with fields (T{...} or &T{...}) is bound to a variable on which the
+      same function calls Valid() afterwards and uses its error, neither alone as a statement nor assigned to _.
+      The empty literal T{}, the zero value returned with an error, and the tests are left out.
     scope: ["internal/**/*.go"]
     deterministic: true
 
@@ -236,3 +241,54 @@ rules:
       use cases (Retire, Narrow), not after the field it touches.
     scope: ["internal/**/*.go"]
     deterministic: false
+
+  - id: GOARCH-31
+    description: >-
+      Every top-level name of the files of a use case (types, functions, constants and variables; not methods,
+      init nor _) starts with the name of the use case, <Verb><Noun> or <verb><Noun> (CheckRuleFailed,
+      checkRuleTimeout): the use cases of a package share its namespace, and the name tells which use case a
+      symbol belongs to.
+    scope: ["internal/**/*_in.go", "internal/**/*_logic.go", "internal/**/*_out.go"]
+    deterministic: true
+
+  - id: GOARCH-32
+    description: >-
+      The in file declares the shell <verb><Noun>, of type func(context.Context, <Verb><Noun>Port,
+      <Verb><Noun>Request) (<Verb><Noun>Response, error). Outside the tests, the shell is the only function of its
+      package that calls the logic <Verb><Noun>, from one call site; and it is the only one that calls methods of
+      the port or of the adapter, apart from the methods of the adapter itself.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+
+  - id: GOARCH-33
+    description: >-
+      The port speaks in domain values: every method of <Verb><Noun>Port takes context.Context first, and the
+      rest of its parameters and its results are domain types of any package or predeclared types (error among
+      them), so the types of the infrastructure never leave the adapter. A port embeds no interface: it lists its
+      own methods.
+    scope: ["internal/**/*_in.go"]
+    deterministic: true
+
+  - id: GOARCH-34
+    description: >-
+      Every use case has its two tests: <verb>_<noun>_logic_test.go calls the logic <Verb><Noun> and does not
+      mention <Verb><Noun>Port nor <Verb><Noun>Adapter; <verb>_<noun>_in_test.go calls the shell <verb><Noun> and
+      does not mention <Verb><Noun>Adapter. That the logic is tested with domain values, without fakes, and the
+      shell with a fake of the port is left to the review (GOARCH-20).
+    scope: ["internal/**"]
+    deterministic: true
+
+  - id: GOARCH-35
+    description: >-
+      Each test file is named after the file it tests: <stem>_test.go sits next to <stem>.go, so the test of a
+      file is found by its name.
+    scope: ["internal/**/*_test.go", "pkg/**/*_test.go"]
+    deterministic: true
+
+  - id: GOARCH-36
+    description: >-
+      The document of a use case names, between backquotes, every field of <Verb><Noun>Request in ## Request,
+      every field of <Verb><Noun>Response in ## Response and every method of <Verb><Noun>Port in ## Port, so a
+      field or a method added to the code without its documentation fails.
+    scope: ["internal/**"]
+    deterministic: true

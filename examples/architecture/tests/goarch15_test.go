@@ -21,7 +21,8 @@ func checkOnlyCommandExported(m *module) []string {
 		command := camel(uc.stem) + "Command"
 		for _, d := range in.ast.Decls {
 			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.IsExported() && fn.Name.Name != command {
-				out = append(out, fmt.Sprintf("%s: exports %s: the only exported function is %s", m.pos(in, fn), fn.Name.Name, command))
+				out = append(out, fmt.Sprintf("%s: exports %s: the only exported function is %s", m.pos(in, fn),
+					fn.Name.Name, command))
 			}
 		}
 	}

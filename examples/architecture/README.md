@@ -11,11 +11,15 @@ internal/rule/               domain package, named as a noun
   check_rule_in.go           entry and shell: CheckRuleCommand, CheckRuleRequest, CheckRuleResponse,
                              CheckRulePort, checkRule
   check_rule_logic.go        pure logic: CheckRule and its decision, CheckRuleOutput
+  check_rule_in_test.go      tests of the shell, with a fake of the port
   check_rule_logic_test.go   tests of the logic, domain values in and the output out, without fakes
   check_rule_out.go          CheckRuleAdapter: files, git and processes behind the port
-  rule.go                    domain: the entity Rule and Matching
+  rule.go                    domain: the entity Rule (Valid, HasCheck) and Matching
+  rule_test.go               tests of rule.go
   rule_parse.go              domain: the format of ai/rules/*.yaml (Parse)
+  rule_parse_test.go         tests of rule_parse.go
   rule_result.go             domain: Result, the outcome of a check (Valid, Passed, Tail) and Failed
+  rule_result_test.go        tests of rule_result.go
 cmd/polix/
   main.go                    wires the root command and the entries of each use case
 ```
@@ -46,12 +50,18 @@ cmd/polix/
   decided after the input and output of the shell is domain behavior (`rule.Result.Tail`, `rule.Failed`).
 - **Request and response**: every use case has a `<Verb><Noun>Request` and a `<Verb><Noun>Response` in the in
   file, the only types with the shape of the transport; the command serializes the response to the console.
-- **Port**: one interface per use case, declared in the in file where it is used.
+- **Port**: one interface per use case, declared in the in file where it is used; its methods take
+  `context.Context` first and speak in domain values.
 - **Adapter**: the out file holds only the public struct `<Verb><Noun>Adapter`, which implements the port, its
   methods and unexported constants; no constructor: the entry fills its fields and passes it as the port, where
   the compiler checks that it implements it. Its exported methods are those of the port; its helpers are
   unexported methods, or live in `pkg/` when shared.
 - **Vertical slices**: a use case never calls another; it uses its own files, the domain of any package and `pkg/`.
+- **Names**: every top-level name of the files of a use case starts with its name (`CheckRuleFailed`,
+  `checkRuleTimeout`); the shell is `<verb><Noun>(ctx, port, req) (<Verb><Noun>Response, error)`, the only one
+  that calls the logic, once, and the port.
+- **Tests**: `<stem>_test.go` next to the `<stem>.go` it tests; each use case has `_logic_test.go` (domain values,
+  no fakes) and `_in_test.go` (the shell with a fake of the port).
 
 ## Open decisions
 

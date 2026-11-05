@@ -36,14 +36,15 @@ type CheckRuleFailed struct {
 }
 
 // CheckRulePort is what the shell of CheckRule needs from the outside. It is declared here, where it is used, as
-// an interface so its implementation can change; the entry injects the adapter, and the logic never sees it.
+// an interface so its implementation can change; the entry injects the adapter, and the logic never sees it. It
+// speaks in domain values, and every method takes the context of the caller.
 type CheckRulePort interface {
 	// LoadRules returns the rules of the repository, retired ones excluded, ordered by id.
-	LoadRules() ([]Rule, error)
+	LoadRules(ctx context.Context) ([]Rule, error)
 	// BaseBranches returns the base branches of polix.yaml, closest first.
-	BaseBranches() []string
+	BaseBranches(ctx context.Context) ([]string, error)
 	// Changed returns the files changed against the first of candidates that exists.
-	Changed(candidates []string) ([]string, error)
+	Changed(ctx context.Context, candidates []string) ([]string, error)
 	// RunScript runs one check script from the root of the repository and returns its output.
 	RunScript(ctx context.Context, script string) (string, error)
 }
@@ -61,11 +62,11 @@ func CheckRuleCommand() *cobra.Command {
 		Example: "  polix rules check\n  polix rules check --changed --base develop",
 		Args:    cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
+			var res CheckRuleResponse
 			repo, err := git.Open(req.Dir)
-			if err != nil {
-				return err
+			if err == nil {
+				res, err = checkRule(c.Context(), CheckRuleAdapter{Repo: repo}, req)
 			}
-			res, err := checkRule(c.Context(), CheckRuleAdapter{Repo: repo}, req)
 			if err != nil {
 				cli.NewUI(c.ErrOrStderr()).Fail("%v", err)
 				return cli.Exit(1)
@@ -88,13 +89,17 @@ func CheckRuleCommand() *cobra.Command {
 // values, calls the logic once, carries out its output through the port and builds the response. It only
 // sequences; the decisions are in the logic and the domain.
 func checkRule(ctx context.Context, port CheckRulePort, req CheckRuleRequest) (CheckRuleResponse, error) {
-	rules, err := port.LoadRules()
+	rules, err := port.LoadRules(ctx)
 	if err != nil {
 		return CheckRuleResponse{}, err
 	}
 	var changed []string
 	if req.OnlyChanged {
-		if changed, err = port.Changed(workflow.Bases(req.Base, port.BaseBranches())); err != nil {
+		bases, err := port.BaseBranches(ctx)
+		if err != nil {
+			return CheckRuleResponse{}, err
+		}
+		if changed, err = port.Changed(ctx, workflow.Bases(req.Base, bases)); err != nil {
 			return CheckRuleResponse{}, fmt.Errorf("%w: set base in %s or pass --base", err, workflow.File)
 		}
 	}
@@ -108,11 +113,11 @@ func checkRule(ctx context.Context, port CheckRulePort, req CheckRuleRequest) (C
 		}
 		results = append(results, res)
 	}
-	return newCheckRuleResponse(results), nil
+	return checkRuleResponse(results), nil
 }
 
-// newCheckRuleResponse turns the results of carrying out the output into the response the caller sees.
-func newCheckRuleResponse(results []Result) CheckRuleResponse {
+// checkRuleResponse turns the results of carrying out the output into the response the caller sees.
+func checkRuleResponse(results []Result) CheckRuleResponse {
 	res := CheckRuleResponse{Ran: len(results)}
 	for _, f := range Failed(results) {
 		res.Failed = append(res.Failed, CheckRuleFailed{

@@ -4,10 +4,11 @@ import "testing"
 
 // The logic is pure: its tests pass domain values and compare the output, without fakes.
 
+// someRules are valid rules, as the logic only ever receives valid ones.
 var someRules = []Rule{
-	{ID: "go", Scope: []string{"**/*.go"}, Deterministic: true, Check: "ai/checks/gofmt.sh"},
-	{ID: "sh", Scope: []string{"**/*.sh"}, Deterministic: true, Check: "ai/checks/shfmt.sh"},
-	{ID: "prose", Scope: []string{"**/*.go"}}, // no check
+	{ID: "go", Description: "gofmt", Scope: []string{"**/*.go"}, Deterministic: true, Check: "ai/checks/gofmt.sh"},
+	{ID: "sh", Description: "shfmt", Scope: []string{"**/*.sh"}, Deterministic: true, Check: "ai/checks/shfmt.sh"},
+	{ID: "prose", Description: "no check", Scope: []string{"**/*.go"}},
 }
 
 func TestCheckRuleAll(t *testing.T) {

@@ -47,10 +47,10 @@ The domain decides the rest:
 
 ## Response
 
-`CheckRuleResponse`, built from the results of the checks of the output: `Ran` and, for each failed check, its
-`ID`, `Check`, `Description` and `Output` (the `Tail` of the result). The command serializes it: each failure to
-stderr as `FAIL <id> (<check>): <description>` followed by its output, then the summary
-`<ran> checks, <failed> failed`. It exits with 0 when every check passed and with 1 otherwise.
+`CheckRuleResponse`, built from the results of the checks of the output: `Ran`, how many checks ran, and
+`Failed`, each failed check with its `ID`, `Check`, `Description` and `Output` (the `Tail` of the result). The
+command serializes it: each failure to stderr as `FAIL <id> (<check>): <description>` followed by its output, then
+the summary `<ran> checks, <failed> failed`. It exits with 0 when every check passed and with 1 otherwise.
 
 ## Port
 
@@ -58,7 +58,7 @@ stderr as `FAIL <id> (<check>): <description>` followed by its output, then the 
 `check_rule_out.go`:
 
 - `LoadRules`: reads and parses the files of `ai/rules/`.
-- `BaseBranches`: reads the base branches of polix.yaml.
+- `BaseBranches`: reads the base branches of polix.yaml; without polix.yaml, the default ones.
 - `Changed`: asks git for the files changed against the first base that exists.
 - `RunScript`: runs a check script from the root; on Windows through its interpreter (bash of Git for Windows
   for `.sh`, the py launcher or python for `.py`), elsewhere through its shebang.
@@ -67,7 +67,9 @@ stderr as `FAIL <id> (<check>): <description>` followed by its output, then the 
 
 The use case stops, without running any check, when:
 
+- `--dir` is not inside a git repository.
 - A file of `ai/rules/` cannot be read, is not valid yaml or holds a rule that is not `Valid`.
+- With `--changed`, polix.yaml cannot be read or parsed.
 - With `--changed`, none of the base branches exists, locally or on origin: the message asks to set `base` in
   polix.yaml or to pass `--base`.
 

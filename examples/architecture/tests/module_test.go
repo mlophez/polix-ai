@@ -519,3 +519,12 @@ func camel(stem string) string {
 	}
 	return b.String()
 }
+
+// lowerCamel turns a snake case stem into lowerCamelCase: check_rule -> checkRule.
+func lowerCamel(stem string) string {
+	c := camel(stem)
+	if c == "" {
+		return c
+	}
+	return strings.ToLower(c[:1]) + c[1:]
+}
