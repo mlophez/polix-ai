@@ -3,12 +3,17 @@
 #
 # The hooks of .claude/settings.json send every event to polix, but this workflow only acts on two of them:
 # post_edit (format the edited Go file) and stop (lint and test before the turn ends). On the other events polix
-# only applies its built-in protections: no agent writes the state of polix, and no subagent edits AGENTS.md,
-# CLAUDE.md, ai/rules/** or this file.
+# only applies its protections: the built-in one (no agent writes the state of polix) and the paths of `protected`.
 version: 1
 base: main
 # A stop gate that keeps failing on the same content lets the agent stop after 3 blocks, so it never loops.
 max_stop_blocks: 3
+
+# No agent writes the instructions of the repository, the main session included: only a person changes them.
+protected: 
+  - AGENTS.md
+  - CLAUDE.md
+  - polix.yaml
 
 # The checks of ai/rules/ that are Go tests (the AST tests of tests/architecture/) run as one `go test` of their
 # package, only the test named after the rule: GOARCH-4 runs TestGOARCH4.
@@ -40,3 +45,7 @@ on:
     - if: { changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"] }
       unless: { done: tested }
       run: { command: ["go", "test", "./..."], record: tested }
+
+    - if: { changed: ["*.go"] }
+      unless: { done: checked }
+      run: { rules: changed, record: checked }
