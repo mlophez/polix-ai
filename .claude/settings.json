@@ -1,4 +1,7 @@
 {
+  "autoMemoryEnabled": false,
+  "effortLevel": "high",
+  "model": "opus",
   "hooks": {
     "SessionStart": [
       { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900 }] },

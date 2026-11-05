@@ -3,15 +3,15 @@ package tests
 import (
 	"fmt"
 	"go/ast"
-	"go/token"
 	"testing"
 )
 
-// GOARCH-12: a port is one interface, never a struct: the entry declares the interface <Verb><Noun>Port and no
-// other interface.
+// GOARCH-12: a port is one interface, never a struct: the in file declares the interface <Verb><Noun>Port and no
+// other interface, named or anonymous.
 func TestGOARCH12Port(t *testing.T) {
 	checkRule(t, checkPort, "PlaceOrderPort is a struct, not an interface",
-		"declares the interface Notifier: the only interface is the port PlaceOrderPort")
+		"declares the interface Notifier: the only interface is the port PlaceOrderPort",
+		"declares an anonymous interface: the only interface is the port CancelOrderPort")
 }
 
 func checkPort(m *module) []string {
@@ -22,23 +22,39 @@ func checkPort(m *module) []string {
 			continue // GOARCH-3
 		}
 		port := camel(uc.stem) + "Port"
-		for _, d := range in.ast.Decls {
-			g, ok := d.(*ast.GenDecl)
-			if !ok || g.Tok != token.TYPE {
-				continue
+		spec := typeSpec(in.ast, port)
+		if spec != nil {
+			if _, isInterface := spec.Type.(*ast.InterfaceType); !isInterface {
+				out = append(out, fmt.Sprintf("%s: %s is a %s, not an interface", m.pos(in, spec), port,
+					kindOfType(spec.Type)))
 			}
-			for _, s := range g.Specs {
-				t := s.(*ast.TypeSpec)
-				_, isInterface := t.Type.(*ast.InterfaceType)
-				switch {
-				case t.Name.Name == port && !isInterface:
-					out = append(out, fmt.Sprintf("%s: %s is a %s, not an interface", m.pos(in, t), port, kindOfType(t.Type)))
-				case t.Name.Name != port && isInterface:
-					out = append(out, fmt.Sprintf("%s: declares the interface %s: the only interface is the port %s",
-						m.pos(in, t), t.Name.Name, port))
+		}
+		named := map[*ast.InterfaceType]string{}
+		for _, d := range in.ast.Decls {
+			if g, ok := d.(*ast.GenDecl); ok {
+				for _, s := range g.Specs {
+					if t, ok := s.(*ast.TypeSpec); ok {
+						if it, ok := t.Type.(*ast.InterfaceType); ok {
+							named[it] = t.Name.Name
+						}
+					}
 				}
 			}
 		}
+		ast.Inspect(in.ast, func(n ast.Node) bool {
+			it, ok := n.(*ast.InterfaceType)
+			if !ok || (spec != nil && it == spec.Type) {
+				return true
+			}
+			if name, ok := named[it]; ok {
+				out = append(out, fmt.Sprintf("%s: declares the interface %s: the only interface is the port %s",
+					m.pos(in, it), name, port))
+			} else {
+				out = append(out, fmt.Sprintf("%s: declares an anonymous interface: the only interface is the port %s",
+					m.pos(in, it), port))
+			}
+			return true
+		})
 	}
 	return out
 }

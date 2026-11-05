@@ -7,34 +7,34 @@ import (
 	"testing"
 )
 
-// GOARCH-7: the packages form a DAG: pkg/ never imports internal/, and the packages of internal/ have no import
-// cycle (the compiler would catch it too, but only once the module compiles).
+// GOARCH-7: the packages of the module form a DAG: pkg/ never imports internal/, and the packages of internal/
+// and pkg/ have no import cycle (the compiler would catch it too, but only once the module compiles).
 func TestGOARCH07DAG(t *testing.T) {
-	checkRule(t, checkDAG, "pkg/util/util.go:3: imports example.com/app/internal/order",
-		"import cycle: internal/order -> internal/stock -> internal/order")
+	checkRule(t, checkDAG, "imports example.com/app/internal/order: pkg/ never imports internal/",
+		"import cycle: internal/order -> internal/stock -> internal/order",
+		"import cycle: pkg/text -> pkg/util -> pkg/text")
 }
 
 func checkDAG(m *module) []string {
 	var out []string
 	graph := map[string]map[string]bool{}
 	for _, f := range m.files {
+		if f.top == "cmd" || f.kind == kindTest {
+			continue
+		}
 		for _, s := range f.ast.Imports {
-			dir := internalDir(strings.Trim(s.Path.Value, `"`))
-			if dir == "" {
+			p := strings.Trim(s.Path.Value, `"`)
+			dir := m.moduleDir(p)
+			if dir == "" || dir == f.dir {
 				continue
 			}
-			switch f.top {
-			case "pkg":
-				out = append(out, fmt.Sprintf("%s: imports %s: pkg/ never imports internal/", m.pos(f, s),
-					strings.Trim(s.Path.Value, `"`)))
-			case "internal":
-				if f.kind != kindTest && dir != f.dir {
-					if graph[f.dir] == nil {
-						graph[f.dir] = map[string]bool{}
-					}
-					graph[f.dir][dir] = true
-				}
+			if f.top == "pkg" && strings.HasPrefix(dir, "internal/") {
+				out = append(out, fmt.Sprintf("%s: imports %s: pkg/ never imports internal/", m.pos(f, s), p))
 			}
+			if graph[f.dir] == nil {
+				graph[f.dir] = map[string]bool{}
+			}
+			graph[f.dir][dir] = true
 		}
 	}
 	return append(out, cycles(graph)...)

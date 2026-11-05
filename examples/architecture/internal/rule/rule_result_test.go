@@ -2,6 +2,7 @@ package rule
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -23,6 +24,23 @@ func TestResultTailKeepsTheLastLinesAndTheError(t *testing.T) {
 	}
 	if want := "a.go: not formatted\nexit status 1"; r.Tail() != want {
 		t.Fatalf("tail %q, want %q", r.Tail(), want)
+	}
+}
+
+// Tail keeps TailLines lines, the last ones, and cuts each to MaxLineLen bytes, so a huge output never reaches
+// the console whole.
+func TestResultTailBoundsTheOutput(t *testing.T) {
+	var lines []string
+	for i := 0; i < TailLines+5; i++ {
+		lines = append(lines, strings.Repeat("x", i+1))
+	}
+	r := Result{Rule: goRule, Output: strings.Join(lines, "\n") + "\n" + strings.Repeat("y", 10000)}
+	got := strings.Split(r.Tail(), "\n")
+	if len(got) != TailLines || got[0] != lines[len(lines)-TailLines+1] {
+		t.Fatalf("tail keeps %d lines from %q", len(got), got[0])
+	}
+	if last := got[len(got)-1]; len(last) != MaxLineLen || !strings.HasPrefix(last, "yyy") {
+		t.Fatalf("the last line has %d bytes", len(last))
 	}
 }
 

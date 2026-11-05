@@ -10,7 +10,7 @@ import (
 // GOARCH-2: each domain package has its entity file <noun>.go, which declares the entity <Noun>, a struct.
 func TestGOARCH02Entity(t *testing.T) {
 	checkRule(t, checkEntity, "internal/order/order.go: does not declare the entity type Order",
-		"internal/stock/stock.go: the entity Stock is not a struct")
+		"internal/stock/stock.go: the entity Stock is not a struct", "internal/cart: no entity file cart.go")
 }
 
 func checkEntity(m *module) []string {

@@ -13,7 +13,10 @@ import (
 // <Verb><Noun>Adapter.
 func TestGOARCH11Names(t *testing.T) {
 	checkRule(t, checkNames, "internal/order/place_order_in.go: declares no type PlaceOrderRequest",
-		"internal/order: use case ship_parcel is not named <verb>_order")
+		"internal/order/place_order_in.go: declares no type PlaceOrderResponse",
+		"internal/order: use case ship_parcel is not named <verb>_order",
+		"internal/order/ship_parcel_out.go: declares no type ShipParcelAdapter",
+		"internal/order/ship_parcel_logic.go: declares no func ShipParcel")
 }
 
 func checkNames(m *module) []string {

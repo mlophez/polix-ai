@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/importer"
 	"go/parser"
 	"go/token"
 	"go/types"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -42,19 +44,22 @@ type mdFile struct {
 
 // module is the parsed module under check.
 type module struct {
-	fset  *token.FileSet
-	files []*goFile
-	docs  []*mdFile
+	path   string // module path of go.mod, or "" without one
+	fset   *token.FileSet
+	files  []*goFile
+	docs   []*mdFile
+	broken []string // files that do not parse, with their error
 
 	typesOnce sync.Once
-	info      *types.Info // types of the sources of internal/, filled by typed
+	info      *types.Info // types of the sources of internal/ and pkg/, filled by typed
 }
 
-// sourceImporter type-checks the packages of internal/ of the module from their sources, on demand. Any other
-// import, and a package of an import cycle (GOARCH-7), is an empty package: its names do not resolve, which the
-// checker reports and typed ignores.
+// sourceImporter type-checks the packages of internal/ and pkg/ of the module from their sources, on demand, and
+// takes the standard library from the compiler. Any other import, and a package of an import cycle (GOARCH-7),
+// is an empty package: its names do not resolve, which the checker reports and typed ignores.
 type sourceImporter struct {
 	m    *module
+	std  types.Importer
 	pkgs map[string][]*goFile // sources by folder
 	done map[string]*types.Package
 	busy map[string]bool
@@ -103,6 +108,16 @@ var useCaseSuffixes = []struct {
 	kind   kind
 }{{"_in", kindIn}, {"_logic", kindLogic}, {"_out", kindOut}}
 
+// versionSuffix is the major version at the end of an import path, which is not the name of the package.
+var versionSuffix = regexp.MustCompile(`[./]v[0-9]+$`)
+
+// TestParses reports the files of the module under check that do not parse, once, instead of failing every rule.
+func TestParses(t *testing.T) {
+	for _, b := range mustLoad(t, *root).broken {
+		t.Error(b)
+	}
+}
+
 // checkRule runs check on the module under check, where it must find nothing, and on testdata/bad, where every
 // string of want must appear in some violation it finds.
 func checkRule(t *testing.T, check func(*module) []string, want ...string) {
@@ -134,13 +149,17 @@ func mustLoad(t *testing.T, root string) *module {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if root == badRoot && len(m.broken) > 0 {
+		t.Fatal(strings.Join(m.broken, "\n"))
+	}
 	loaded.Store(root, m)
 	return m
 }
 
-// load parses every Go file of internal/, pkg/ and cmd/ under root, and the Markdown files of internal/.
+// load parses every Go file of internal/, pkg/ and cmd/ under root, and the Markdown files of internal/. A file
+// that does not parse is listed in broken and left out.
 func load(root string) (*module, error) {
-	m := &module{fset: token.NewFileSet()}
+	m := &module{fset: token.NewFileSet(), path: modulePath(root)}
 	for _, top := range []string{"internal", "pkg", "cmd"} {
 		base := filepath.Join(root, top)
 		if _, err := os.Stat(base); errors.Is(err, fs.ErrNotExist) {
@@ -166,12 +185,11 @@ func load(root string) (*module, error) {
 			case ".go":
 				f, err := parser.ParseFile(m.fset, p, nil, parser.ParseComments)
 				if err != nil {
-					return err
+					m.broken = append(m.broken, fmt.Sprintf("%s: does not parse: %v", rel, err))
+					return nil
 				}
 				g := &goFile{rel: rel, top: top, dir: dir, pkg: path.Base(dir), name: d.Name(), ast: f}
-				if top == "internal" {
-					g.kind, g.useCase = classify(g.pkg, g.name)
-				}
+				g.kind, g.useCase = classify(top, g.pkg, g.name)
 				m.files = append(m.files, g)
 			case ".md":
 				if top == "internal" {
@@ -191,14 +209,36 @@ func load(root string) (*module, error) {
 	return m, nil
 }
 
-// classify tells what a file of the package pkg is from its name (GOARCH-1).
-func classify(pkg, name string) (kind, string) {
+// modulePath reads the module path of the go.mod at root, or "" without one.
+func modulePath(root string) string {
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return ""
+	}
+	for l := range strings.SplitSeq(string(data), "\n") {
+		if p, ok := strings.CutPrefix(strings.TrimSpace(l), "module "); ok {
+			return strings.TrimSpace(p)
+		}
+	}
+	return ""
+}
+
+// classify tells what a file of the package pkg under top is from its name (GOARCH-1): a test under any top; a
+// file of a use case or domain only under internal/. The suffixes of a use case take precedence and need a verb:
+// <pkg>_in.go is neither domain nor a use case.
+func classify(top, pkg, name string) (kind, string) {
 	if strings.HasSuffix(name, "_test.go") {
 		return kindTest, ""
 	}
+	if top != "internal" {
+		return kindUnknown, ""
+	}
 	stem := strings.TrimSuffix(name, ".go")
 	for _, s := range useCaseSuffixes {
-		if uc, ok := strings.CutSuffix(stem, s.suffix); ok && uc != "" {
+		if uc, ok := strings.CutSuffix(stem, s.suffix); ok {
+			if uc == "" || uc == pkg {
+				return kindUnknown, ""
+			}
 			return s.kind, uc
 		}
 	}
@@ -224,11 +264,22 @@ func (m *module) sources() []*goFile {
 	return out
 }
 
-// packages groups the sources by folder.
+// packages groups the sources of internal/ by folder.
 func (m *module) packages() map[string][]*goFile {
 	out := map[string][]*goFile{}
 	for _, f := range m.sources() {
 		out[f.dir] = append(out[f.dir], f)
+	}
+	return out
+}
+
+// compiled groups the files of internal/ and pkg/ that are not tests by folder, for the type checker.
+func (m *module) compiled() map[string][]*goFile {
+	out := map[string][]*goFile{}
+	for _, f := range m.files {
+		if f.top != "cmd" && f.kind != kindTest {
+			out[f.dir] = append(out[f.dir], f)
+		}
 	}
 	return out
 }
@@ -253,6 +304,36 @@ func (m *module) useCases() []*useCase {
 	return out
 }
 
+// moduleDir returns the folder of an import of the module (internal/rule, pkg/git), or "". The checker names the
+// packages of the module module/<folder>. Without a module path, an import is of the module when it holds
+// /internal/ or /pkg/.
+func (m *module) moduleDir(importPath string) string {
+	if rest, ok := strings.CutPrefix(importPath, "module/"); ok {
+		return rest
+	}
+	if m.path != "" {
+		rest, ok := strings.CutPrefix(importPath, m.path+"/")
+		if !ok || (!strings.HasPrefix(rest, "internal/") && !strings.HasPrefix(rest, "pkg/")) {
+			return ""
+		}
+		return rest
+	}
+	for _, top := range []string{"/internal/", "/pkg/"} {
+		if _, rest, ok := strings.Cut(importPath, top); ok {
+			return strings.Trim(top, "/") + "/" + rest
+		}
+	}
+	return ""
+}
+
+// internalDir returns the folder of an import of internal/ (internal/rule), or "".
+func (m *module) internalDir(importPath string) string {
+	if dir := m.moduleDir(importPath); strings.HasPrefix(dir, "internal/") {
+		return dir
+	}
+	return ""
+}
+
 // symbols maps each top-level name of a package (not methods) to the file that declares it.
 func symbols(files []*goFile) map[string]*goFile {
 	out := map[string]*goFile{}
@@ -269,21 +350,32 @@ func symbols(files []*goFile) map[string]*goFile {
 func decls(f *ast.File) map[string]string {
 	out := map[string]string{}
 	for _, d := range f.Decls {
-		switch d := d.(type) {
-		case *ast.FuncDecl:
-			if d.Recv == nil {
-				out[d.Name.Name] = "func"
-			}
-		case *ast.GenDecl:
-			for _, s := range d.Specs {
-				switch s := s.(type) {
-				case *ast.TypeSpec:
-					out[s.Name.Name] = "type"
-				case *ast.ValueSpec:
-					for _, n := range s.Names {
-						out[n.Name] = strings.ToLower(d.Tok.String())
-					}
-				}
+		what := "func"
+		if g, ok := d.(*ast.GenDecl); ok {
+			what = strings.ToLower(g.Tok.String())
+		}
+		for _, id := range topLevelNames(d) {
+			out[id.Name] = what
+		}
+	}
+	return out
+}
+
+// topLevelNames returns the names a declaration adds to its package; methods and imports add none.
+func topLevelNames(d ast.Decl) []*ast.Ident {
+	var out []*ast.Ident
+	switch d := d.(type) {
+	case *ast.FuncDecl:
+		if d.Recv == nil {
+			out = append(out, d.Name)
+		}
+	case *ast.GenDecl:
+		for _, s := range d.Specs {
+			switch s := s.(type) {
+			case *ast.TypeSpec:
+				out = append(out, s.Name)
+			case *ast.ValueSpec:
+				out = append(out, s.Names...)
 			}
 		}
 	}
@@ -314,12 +406,12 @@ func funcDecl(f *ast.File, name string) *ast.FuncDecl {
 	return nil
 }
 
-// imports maps the local name of each import of f to its path.
+// imports maps the local name of each import of f to its path; a dot import is under ".".
 func imports(f *ast.File) map[string]string {
 	out := map[string]string{}
 	for _, s := range f.Imports {
 		p := strings.Trim(s.Path.Value, `"`)
-		name := path.Base(p)
+		name := packageName(p)
 		if s.Name != nil {
 			name = s.Name.Name
 		}
@@ -328,27 +420,42 @@ func imports(f *ast.File) map[string]string {
 	return out
 }
 
-// internalDir returns the folder of an import of internal/ (internal/rule), or "".
-func internalDir(importPath string) string {
-	if _, rest, ok := strings.Cut(importPath, "/internal/"); ok {
-		return "internal/" + rest
+// packageName guesses the name of the package of an import path: its last element without a major version
+// (gopkg.in/yaml.v3 is yaml, math/rand/v2 is rand).
+func packageName(importPath string) string {
+	p := versionSuffix.ReplaceAllString(importPath, "")
+	return path.Base(p)
+}
+
+// importedAs returns the local name under which f imports the package of path p, or "".
+func importedAs(f *ast.File, p string) string {
+	for name, ip := range imports(f) {
+		if ip == p {
+			return name
+		}
 	}
 	return ""
 }
 
 // localRefs returns the uses in f of top-level names that other files of its package declare. Names resolved in f
 // itself (its own declarations, locals that shadow) are left out, and so are selectors, field names and keys of
-// composite literals, which are not top-level names.
-func localRefs(f *goFile, syms map[string]*goFile) []ref {
+// struct literals, which are not top-level names; the keys of a map literal are.
+func (m *module) localRefs(f *goFile, syms map[string]*goFile) []ref {
 	skip := map[*ast.Ident]bool{}
 	var out []ref
 	ast.Inspect(f.ast, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.SelectorExpr:
 			skip[x.Sel] = true
-		case *ast.KeyValueExpr:
-			if id, ok := x.Key.(*ast.Ident); ok {
-				skip[id] = true
+		case *ast.CompositeLit:
+			if m.structLiteral(x) {
+				for _, e := range x.Elts {
+					if kv, ok := e.(*ast.KeyValueExpr); ok {
+						if id, ok := kv.Key.(*ast.Ident); ok {
+							skip[id] = true
+						}
+					}
+				}
 			}
 		case *ast.Field:
 			for _, id := range x.Names {
@@ -375,8 +482,22 @@ func localRefs(f *goFile, syms map[string]*goFile) []ref {
 	return out
 }
 
+// structLiteral reports whether the composite literal lit builds a struct, so its keys are field names: by its
+// type when the checker resolved it, else by the syntax of its type expression.
+func (m *module) structLiteral(lit *ast.CompositeLit) bool {
+	if tv, ok := m.typed().Types[lit]; ok && tv.Type != nil {
+		_, isStruct := tv.Type.Underlying().(*types.Struct)
+		return isStruct
+	}
+	switch lit.Type.(type) {
+	case *ast.MapType, *ast.ArrayType:
+		return false
+	}
+	return true
+}
+
 // packageRefs returns the uses in f of names of other packages of internal/.
-func packageRefs(f *goFile) []pkgRef {
+func (m *module) packageRefs(f *goFile) []pkgRef {
 	imps := imports(f.ast)
 	var out []pkgRef
 	ast.Inspect(f.ast, func(n ast.Node) bool {
@@ -388,7 +509,7 @@ func packageRefs(f *goFile) []pkgRef {
 		if !ok || id.Obj != nil {
 			return true
 		}
-		if dir := internalDir(imps[id.Name]); dir != "" && dir != f.dir {
+		if dir := m.internalDir(imps[id.Name]); dir != "" && dir != f.dir {
 			out = append(out, pkgRef{dir: dir, pkg: id.Name, name: sel.Sel.Name, node: sel})
 		}
 		return true
@@ -396,8 +517,8 @@ func packageRefs(f *goFile) []pkgRef {
 	return out
 }
 
-// typed returns the types of the sources of internal/. The module need not compile: the checker goes on after
-// each error, and what does not resolve has no type.
+// typed returns the types of the sources of internal/ and pkg/. The module need not compile: the checker goes on
+// after each error, and what does not resolve has no type.
 func (m *module) typed() *types.Info {
 	m.typesOnce.Do(func() {
 		m.info = &types.Info{
@@ -406,20 +527,32 @@ func (m *module) typed() *types.Info {
 			Uses:       map[*ast.Ident]types.Object{},
 			Selections: map[*ast.SelectorExpr]*types.Selection{},
 		}
-		imp := &sourceImporter{m: m, pkgs: m.packages(), done: map[string]*types.Package{}, busy: map[string]bool{}}
+		imp := &sourceImporter{m: m, std: importer.ForCompiler(m.fset, "gc", nil), pkgs: m.compiled(),
+			done: map[string]*types.Package{}, busy: map[string]bool{}}
+		var dirs []string
 		for dir := range imp.pkgs {
+			dirs = append(dirs, dir)
+		}
+		sort.Strings(dirs)
+		for _, dir := range dirs {
 			imp.check(dir)
 		}
 	})
 	return m.info
 }
 
-// Import resolves an import of the module from its sources, and any other as an empty package.
+// Import resolves an import of the module from its sources, one of the standard library from the compiler, and
+// any other as an empty package.
 func (s *sourceImporter) Import(importPath string) (*types.Package, error) {
-	if dir := internalDir(importPath); s.pkgs[dir] != nil && !s.busy[dir] {
+	if dir := s.m.moduleDir(importPath); s.pkgs[dir] != nil && !s.busy[dir] {
 		return s.check(dir), nil
 	}
-	pkg := types.NewPackage(importPath, path.Base(importPath))
+	if first, _, _ := strings.Cut(importPath, "/"); !strings.Contains(first, ".") {
+		if pkg, err := s.std.Import(importPath); err == nil {
+			return pkg, nil
+		}
+	}
+	pkg := types.NewPackage(importPath, packageName(importPath))
 	pkg.MarkComplete()
 	return pkg, nil
 }
@@ -442,19 +575,25 @@ func (s *sourceImporter) check(dir string) *types.Package {
 	return pkg
 }
 
-// domainStruct returns the exported struct of the domain t is, through a pointer, as folder.Name, or "".
+// domainStruct returns the exported struct of the domain t is, through aliases and pointers, as folder.Name, or
+// "".
 func (m *module) domainStruct(t types.Type) string {
 	if t == nil {
 		return ""
 	}
-	if p, ok := t.(*types.Pointer); ok {
-		t = p.Elem()
+	t = types.Unalias(t)
+	for {
+		p, ok := t.(*types.Pointer)
+		if !ok {
+			break
+		}
+		t = types.Unalias(p.Elem())
 	}
 	named, ok := t.(*types.Named)
 	if !ok || named.Obj().Pkg() == nil {
 		return ""
 	}
-	key := internalDir(named.Obj().Pkg().Path()) + "." + named.Obj().Name()
+	key := m.internalDir(named.Obj().Pkg().Path()) + "." + named.Obj().Name()
 	if m.domainStructs()[key] {
 		return key
 	}
@@ -501,6 +640,25 @@ func (m *module) domainSymbols() map[string]map[string]bool {
 			if f.kind == kindDomain {
 				for name := range decls(f.ast) {
 					out[dir][name] = true
+				}
+			}
+		}
+	}
+	return out
+}
+
+// domainTypes returns, for each package of internal/, the types its domain files declare: the domain types of
+// GOARCH-23 and GOARCH-33.
+func (m *module) domainTypes() map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for dir, files := range m.packages() {
+		out[dir] = map[string]bool{}
+		for _, f := range files {
+			if f.kind == kindDomain {
+				for name, what := range decls(f.ast) {
+					if what == "type" {
+						out[dir][name] = true
+					}
 				}
 			}
 		}

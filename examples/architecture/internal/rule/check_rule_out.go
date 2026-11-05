@@ -18,9 +18,12 @@ import (
 )
 
 // CheckRuleAdapter implements CheckRulePort on the real disk, git and processes of a repository. The entry fills
-// it and passes it as the port; there is no constructor.
+// it and passes it as the port; there is no constructor. Look and Exists are the PATH and the disk the
+// interpreter of Windows asks; nil takes exec.LookPath and os.Stat, and the tests pass fakes.
 type CheckRuleAdapter struct {
-	Repo *git.Repo // the repository whose rules are checked
+	Repo   *git.Repo                    // the repository whose rules are checked
+	Look   func(string) (string, error) // finds a program in the PATH
+	Exists func(string) bool            // tells whether a file exists
 }
 
 const (
@@ -76,11 +79,12 @@ func (a CheckRuleAdapter) BaseBranches(_ context.Context) ([]string, error) {
 	return wf.BaseBranches(), nil
 }
 
-// Changed asks git for the files changed against the first of candidates that exists.
+// Changed asks git for the files changed against the first of candidates that exists, locally or on origin. When
+// none exists the error says how to name one; a failure of git is returned as it is.
 func (a CheckRuleAdapter) Changed(ctx context.Context, candidates []string) ([]string, error) {
 	ref, err := a.Repo.ResolveBase(ctx, candidates)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: set base in %s or pass --base", err, workflow.File)
 	}
 	return a.Repo.Changed(ctx, ref)
 }
@@ -108,7 +112,8 @@ func (a CheckRuleAdapter) RunScript(ctx context.Context, check string) (string, 
 	return out.String(), err
 }
 
-// interpreter returns the interpreter that runs the script check on Windows. Interpreter, fileExists, winDir,
-// winExt, normWin, inWindowsDir and isStoreAlias of internal/rules/rules.go become unexported methods of the
-// adapter, since the out file holds only the adapter, or move to pkg/ when hook needs them too (open decision 5).
+// interpreter returns the interpreter that runs the script check on Windows, through a.Look and a.Exists. Its body
+// is left out of the draft: it is Interpreter of internal/rules/rules.go, whose helpers on paths (winDir, winExt,
+// normWin, inWindowsDir, isStoreAlias) are pure functions that the out file cannot hold (GOARCH-24), so they go
+// to pkg/ with the rest of the process part (open decision 5).
 func (a CheckRuleAdapter) interpreter(check string) ([]string, error)

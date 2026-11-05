@@ -8,12 +8,14 @@ import (
 )
 
 // GOARCH-36, the part of GOARCH-21 a check can decide: the document of a use case names, between backquotes, every
-// field of <V>Request in ## Request, every field of <V>Response in ## Response and every method of <V>Port in
-// ## Port, so a field or a method added to the code without its documentation fails.
+// field of <V>Request in ## Request, every field of <V>Response and of the structs of the in file it holds in
+// ## Response, and every method of <V>Port in ## Port, so a field or a method added to the code without its
+// documentation fails. A heading inside a fenced code block is not a section.
 func TestGOARCH36DocumentNamesTheCode(t *testing.T) {
 	checkRule(t, checkDocumentNamesCode,
 		"internal/stock/count_stock.md: ## Request does not name `Shop` of CountStockRequest",
 		"internal/stock/count_stock.md: ## Response does not name `Count` of CountStockResponse",
+		"internal/stock/count_stock.md: ## Response does not name `Aisle` of CountStockShelf",
 		"internal/stock/count_stock.md: ## Port does not name `Load` of CountStockPort")
 }
 
@@ -30,17 +32,25 @@ func checkDocumentNamesCode(m *module) []string {
 		}
 		sections := markdownSections(d.text)
 		c := camel(uc.stem)
-		for _, part := range []struct{ section, typ string }{
-			{"Request", c + "Request"}, {"Response", c + "Response"}, {"Port", c + "Port"},
+		for _, part := range []struct {
+			section, typ string
+			nested       bool
+		}{
+			{"Request", c + "Request", false}, {"Response", c + "Response", true}, {"Port", c + "Port", false},
 		} {
 			text, ok := sections[part.section]
 			if !ok {
 				continue // GOARCH-14
 			}
-			for _, name := range memberNames(in.ast, part.typ) {
-				if !strings.Contains(text, "`"+name+"`") {
-					out = append(out, fmt.Sprintf("%s: ## %s does not name `%s` of %s", d.rel, part.section, name,
-						part.typ))
+			typs := []string{part.typ}
+			if part.nested {
+				typs = heldStructs(in.ast, part.typ)
+			}
+			for _, typ := range typs {
+				for _, name := range memberNames(in.ast, typ) {
+					if !strings.Contains(text, "`"+name+"`") {
+						out = append(out, fmt.Sprintf("%s: ## %s does not name `%s` of %s", d.rel, part.section, name, typ))
+					}
 				}
 			}
 		}
@@ -48,14 +58,47 @@ func checkDocumentNamesCode(m *module) []string {
 	return out
 }
 
-// markdownSections maps each heading ## X of text to the text under it.
+// heldStructs returns name and the structs declared in f that its fields hold, directly or through slices, maps
+// and pointers, each once, in order of discovery.
+func heldStructs(f *ast.File, name string) []string {
+	out := []string{name}
+	seen := map[string]bool{name: true}
+	for i := 0; i < len(out); i++ {
+		spec := typeSpec(f, out[i])
+		if spec == nil {
+			continue
+		}
+		st, ok := spec.Type.(*ast.StructType)
+		if !ok {
+			continue
+		}
+		for _, field := range st.Fields.List {
+			ast.Inspect(field.Type, func(n ast.Node) bool {
+				if id, ok := n.(*ast.Ident); ok && !seen[id.Name] && typeSpec(f, id.Name) != nil {
+					seen[id.Name] = true
+					out = append(out, id.Name)
+				}
+				return true
+			})
+		}
+	}
+	return out
+}
+
+// markdownSections maps each heading ## X of text to the text under it, leaving out fenced code blocks.
 func markdownSections(text string) map[string]string {
 	out := map[string]string{}
 	current := ""
+	fenced := false
 	for l := range strings.SplitSeq(text, "\n") {
-		if h, ok := strings.CutPrefix(strings.TrimSpace(l), "## "); ok {
+		if strings.HasPrefix(strings.TrimSpace(l), "```") {
+			fenced = !fenced
+		}
+		if h, ok := strings.CutPrefix(strings.TrimSpace(l), "## "); ok && !fenced {
 			current = h
-			out[current] = ""
+			if _, dup := out[current]; !dup {
+				out[current] = ""
+			}
 			continue
 		}
 		if current != "" {

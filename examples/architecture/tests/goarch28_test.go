@@ -11,11 +11,17 @@ import (
 )
 
 // GOARCH-28: a domain struct changes only through its own methods: no code outside the methods of T assigns to a
-// field of a T (x.F = v, x.F += v, x.F++, x.F[i] = v), not even the methods of another domain struct that holds a T.
+// field of a T (x.F = v, x.F += v, x.F++, x.F[i] = v), reached directly or promoted through embedding, not even
+// the methods of another domain struct that holds a T. The tests are left out.
 func TestGOARCH28ChangeThroughMethods(t *testing.T) {
 	checkRule(t, checkChangeThroughMethods,
-		"internal/order/order_line.go:36: assigns the field SKU of order.Line outside its methods",
-		"internal/order/cancel_order_in.go:21: assigns the field SKU of order.Line outside its methods")
+		"order_line.go: Relabel assigns the field SKU of order.Line outside its methods",
+		"cancel_order_in.go: CancelOrderCommand assigns the field SKU of order.Line outside its methods",
+		"Note.Fix assigns the field SKU of order.Line outside its methods",
+		"Note.Fix assigns the field price of order.Line outside its methods",
+		"Pack.Tag assigns the field Tags of order.Line outside its methods",
+		"Pack.Tag assigns the field SKU of order.Line outside its methods",
+		"Bundle.Mark assigns the field SKU of order.Line outside its methods")
 }
 
 func checkChangeThroughMethods(m *module) []string {
@@ -28,6 +34,10 @@ func checkChangeThroughMethods(m *module) []string {
 				continue
 			}
 			owner := m.receiverOf(f, fn)
+			who := fn.Name.Name
+			if r := receiver(fn); r != "" {
+				who = r + "." + who
+			}
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				var targets []ast.Expr
 				switch s := n.(type) {
@@ -44,9 +54,9 @@ func checkChangeThroughMethods(m *module) []string {
 						if selection == nil || selection.Kind() != types.FieldVal {
 							continue
 						}
-						if key := m.domainStruct(selection.Recv()); key != "" && key != owner {
-							out = append(out, fmt.Sprintf("%s: assigns the field %s of %s outside its methods",
-								m.pos(f, sel), sel.Sel.Name, shortType(key)))
+						if key := m.domainStruct(declaringType(selection)); key != "" && key != owner {
+							out = append(out, fmt.Sprintf("%s: %s assigns the field %s of %s outside its methods", f.rel, who,
+								sel.Sel.Name, shortType(key)))
 						}
 					}
 				}
@@ -55,6 +65,31 @@ func checkChangeThroughMethods(m *module) []string {
 		}
 	}
 	return out
+}
+
+// declaringType returns the type that declares the field or method of a selection: the receiver, or the embedded
+// field the selection is promoted through.
+func declaringType(sel *types.Selection) types.Type {
+	t := sel.Recv()
+	index := sel.Index()
+	for _, i := range index[:len(index)-1] {
+		st, ok := structOf(t)
+		if !ok {
+			return t
+		}
+		t = st.Field(i).Type()
+	}
+	return t
+}
+
+// structOf returns the struct t is, through aliases and pointers.
+func structOf(t types.Type) (*types.Struct, bool) {
+	t = types.Unalias(t)
+	if p, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(p.Elem())
+	}
+	st, ok := t.Underlying().(*types.Struct)
+	return st, ok
 }
 
 // fieldPath returns the selectors along the target of an assignment: x.A.B[i] gives x.A.B and x.A.

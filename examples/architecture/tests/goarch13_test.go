@@ -10,7 +10,7 @@ import (
 // GOARCH-13: in every file the types come first, right after the imports, before constants, variables and
 // functions.
 func TestGOARCH13TypesFirst(t *testing.T) {
-	checkRule(t, checkTypesFirst, "internal/order/order.go:13: type Item after constants, variables or functions")
+	checkRule(t, checkTypesFirst, "internal/order/order.go: type Item after constants, variables or functions")
 }
 
 func checkTypesFirst(m *module) []string {
@@ -24,8 +24,8 @@ func checkTypesFirst(m *module) []string {
 			case ok && g.Tok == token.TYPE:
 				if other {
 					for _, s := range g.Specs {
-						out = append(out, fmt.Sprintf("%s: type %s after constants, variables or functions",
-							m.pos(f, s), s.(*ast.TypeSpec).Name.Name))
+						out = append(out, fmt.Sprintf("%s: type %s after constants, variables or functions", f.rel,
+							s.(*ast.TypeSpec).Name.Name))
 					}
 				}
 			default:

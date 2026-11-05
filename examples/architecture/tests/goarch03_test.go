@@ -7,7 +7,8 @@ import (
 
 // GOARCH-3: a use case is three files, <verb>_<noun>_in.go, <verb>_<noun>_logic.go and <verb>_<noun>_out.go.
 func TestGOARCH03UseCaseFiles(t *testing.T) {
-	checkRule(t, checkUseCaseFiles, "use case cancel_order has no cancel_order_logic.go")
+	checkRule(t, checkUseCaseFiles, "use case cancel_order has no cancel_order_logic.go",
+		"use case drop_stock has no drop_stock_in.go")
 }
 
 func checkUseCaseFiles(m *module) []string {

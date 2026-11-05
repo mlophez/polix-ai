@@ -2,6 +2,7 @@ package rule
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -17,7 +18,7 @@ import (
 type CheckRuleRequest struct {
 	Dir         string // any folder of the repository
 	OnlyChanged bool   // only the rules whose scope matches the files changed by the branch
-	Base        string // branch the change merges into; empty takes the base of polix.yaml
+	Base        string // branch the change merges into, with OnlyChanged; empty takes the bases of polix.yaml
 }
 
 // CheckRuleResponse is what the use case CheckRule gives back to the caller, in the shape of the transport: the
@@ -50,8 +51,8 @@ type CheckRulePort interface {
 }
 
 // CheckRuleCommand is the command `polix rules check`, the entry of the use case CheckRule: it turns the flags
-// into a CheckRuleRequest, injects the adapter as the port, runs the shell and serializes the CheckRuleResponse
-// to the console.
+// into a CheckRuleRequest and validates them, injects the adapter as the port, runs the shell and serializes the
+// CheckRuleResponse to the console.
 func CheckRuleCommand() *cobra.Command {
 	var req CheckRuleRequest
 	c := &cobra.Command{
@@ -61,6 +62,7 @@ func CheckRuleCommand() *cobra.Command {
 			"matches the files changed by the branch. Meant for CI.",
 		Example: "  polix rules check\n  polix rules check --changed --base develop",
 		Args:    cobra.NoArgs,
+		PreRunE: func(*cobra.Command, []string) error { return checkRuleFlags(req) },
 		RunE: func(c *cobra.Command, _ []string) error {
 			var res CheckRuleResponse
 			repo, err := git.Open(req.Dir)
@@ -80,14 +82,22 @@ func CheckRuleCommand() *cobra.Command {
 	}
 	cli.DirFlag(c, &req.Dir, ".")
 	c.Flags().BoolVar(&req.OnlyChanged, "changed", false, "only the rules whose scope matches the changed files")
-	c.Flags().StringVar(&req.Base, "base", "", "branch the change merges into, for --changed "+
-		"(default: the closest of base in "+workflow.File+", else "+workflow.DefaultBase+")")
+	c.Flags().StringVar(&req.Base, "base", "", "branch the change merges into, locally or on origin, for "+
+		"--changed (default: the closest of base in "+workflow.File+", else "+workflow.DefaultBase+")")
 	return c
 }
 
-// checkRule is the shell, from request to response: it reads through the port and turns the request into domain
-// values, calls the logic once, carries out its output through the port and builds the response. It only
-// sequences; the decisions are in the logic and the domain.
+// checkRuleFlags rejects a combination of flags that means nothing: --base only applies with --changed.
+func checkRuleFlags(req CheckRuleRequest) error {
+	if req.Base != "" && !req.OnlyChanged {
+		return errors.New("--base needs --changed")
+	}
+	return nil
+}
+
+// checkRule is the shell, from request to response: it reads through the port what the logic needs, branching on
+// the request to know what to read, calls the logic once, carries out its output through the port and builds the
+// response. It only sequences; the decisions are in the logic and the domain.
 func checkRule(ctx context.Context, port CheckRulePort, req CheckRuleRequest) (CheckRuleResponse, error) {
 	rules, err := port.LoadRules(ctx)
 	if err != nil {
@@ -95,12 +105,14 @@ func checkRule(ctx context.Context, port CheckRulePort, req CheckRuleRequest) (C
 	}
 	var changed []string
 	if req.OnlyChanged {
-		bases, err := port.BaseBranches(ctx)
-		if err != nil {
-			return CheckRuleResponse{}, err
+		var bases []string
+		if req.Base == "" {
+			if bases, err = port.BaseBranches(ctx); err != nil {
+				return CheckRuleResponse{}, err
+			}
 		}
 		if changed, err = port.Changed(ctx, workflow.Bases(req.Base, bases)); err != nil {
-			return CheckRuleResponse{}, fmt.Errorf("%w: set base in %s or pass --base", err, workflow.File)
+			return CheckRuleResponse{}, err
 		}
 	}
 	out := CheckRule(rules, req.OnlyChanged, changed)
@@ -130,7 +142,7 @@ func checkRuleResponse(results []Result) CheckRuleResponse {
 	return res
 }
 
-// print serializes the response to the console: each failure to stderr, and the summary to stdout, or to stderr
+// print serializes the response to the console: each failure to stderr, and the summary to stdout, as a failure
 // when a check failed.
 func (res CheckRuleResponse) print(stdout, stderr io.Writer) {
 	ue := cli.NewUI(stderr)

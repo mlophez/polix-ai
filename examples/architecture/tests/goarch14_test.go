@@ -10,10 +10,14 @@ import (
 var docSections = []string{"Trigger", "Request", "Logic", "Response", "Port", "Errors", "Flow"}
 
 // GOARCH-14, the part a check can decide: each use case has its document <verb>_<noun>.md, titled with the name
-// of the use case and with every section, in order. That it says what the code does is GOARCH-21.
+// of the use case and with every section once, in order; a heading inside a fenced code block is not a section.
+// That it says what the code does is GOARCH-21.
 func TestGOARCH14Document(t *testing.T) {
 	checkRule(t, checkDocument, "use case cancel_order has no document cancel_order.md",
-		"internal/order/place_order.md: no section ## Port")
+		"internal/order/place_order.md: no section ## Port",
+		"internal/stock/count_stock.md: does not start with # CountStock",
+		"internal/stock/count_stock.md: section ## Port out of order",
+		"internal/stock/count_stock.md: section ## Errors appears twice")
 }
 
 func checkDocument(m *module) []string {
@@ -33,10 +37,12 @@ func checkDocument(m *module) []string {
 			out = append(out, fmt.Sprintf("%s: does not start with %s", d.rel, title))
 		}
 		at := map[string]int{}
-		for i, l := range lines {
-			if h, ok := strings.CutPrefix(strings.TrimSpace(l), "## "); ok {
-				at[h] = i
+		for i, h := range headings(d.text) {
+			if _, dup := at[h]; dup {
+				out = append(out, fmt.Sprintf("%s: section ## %s appears twice", d.rel, h))
+				continue
 			}
+			at[h] = i
 		}
 		last := -1
 		for _, s := range docSections {
@@ -49,6 +55,23 @@ func checkDocument(m *module) []string {
 			default:
 				last = i
 			}
+		}
+	}
+	return out
+}
+
+// headings returns the ## headings of a Markdown text in order, leaving out fenced code blocks.
+func headings(text string) []string {
+	var out []string
+	fenced := false
+	for l := range strings.SplitSeq(text, "\n") {
+		l = strings.TrimSpace(l)
+		if strings.HasPrefix(l, "```") {
+			fenced = !fenced
+			continue
+		}
+		if h, ok := strings.CutPrefix(l, "## "); ok && !fenced {
+			out = append(out, h)
 		}
 	}
 	return out

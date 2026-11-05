@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mlophez/polix-ai/internal/state"
+	"github.com/mlophez/polix-ai/pkg/text"
 )
 
 // Result is the outcome of running the check of one rule. It is domain, not of a use case: CheckRule and the hook
@@ -62,7 +62,7 @@ func tail(s string, n int) string {
 	var lines []string
 	for l := range strings.SplitSeq(s, "\n") {
 		if strings.TrimSpace(l) != "" {
-			lines = append(lines, state.Cut(l, MaxLineLen))
+			lines = append(lines, text.Cut(l, MaxLineLen))
 		}
 	}
 	if len(lines) > n {

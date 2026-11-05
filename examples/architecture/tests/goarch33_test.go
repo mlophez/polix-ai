@@ -9,17 +9,20 @@ import (
 
 // GOARCH-33: the port speaks in domain values: every method of <V>Port takes context.Context first, and the rest
 // of its parameters and its results are domain types of any package or predeclared types (error among them), so
-// the types of the infrastructure never leave the adapter; it embeds no interface.
+// the types of the infrastructure never leave the adapter; it embeds no interface. A type named *Output,
+// *Request, *Response, *Port or *Adapter is never domain, whatever its package.
 func TestGOARCH33PortInDomain(t *testing.T) {
 	checkRule(t, checkPortInDomain,
 		"CancelOrderPort.Cancel does not take context.Context first",
 		"CountStockPort.Load takes io.Reader, which is not a domain type",
 		"CountStockPort.Load returns chan int, which is not a domain type",
+		"CountStockPort.Plan returns order.PlaceOrderOutput, which is not a domain type",
+		"CountStockPort.Open takes StockPort, which is not a domain type",
 		"CountStockPort embeds io.Closer: a port lists its own methods")
 }
 
 func checkPortInDomain(m *module) []string {
-	domain := m.domainSymbols()
+	domain := m.domainTypes()
 	var out []string
 	for _, uc := range m.useCases() {
 		in := uc.files[kindIn]
@@ -51,13 +54,13 @@ func checkPortInDomain(m *module) []string {
 				params = params[1:]
 			}
 			for _, p := range params {
-				if !domainType(p, in, domain, imps) {
+				if !m.domainType(p, in, domain, imps) {
 					out = append(out, fmt.Sprintf("%s: %s takes %s, which is not a domain type", m.pos(in, field), name,
 						types.ExprString(p)))
 				}
 			}
 			for _, r := range flatTypes(ft.Results) {
-				if !domainType(r, in, domain, imps) {
+				if !m.domainType(r, in, domain, imps) {
 					out = append(out, fmt.Sprintf("%s: %s returns %s, which is not a domain type", m.pos(in, field), name,
 						types.ExprString(r)))
 				}

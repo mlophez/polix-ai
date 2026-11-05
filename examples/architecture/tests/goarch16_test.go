@@ -7,25 +7,18 @@ import (
 	"testing"
 )
 
-// GOARCH-16, the part a check can decide: every use case declares <Verb><Noun>Request and <Verb><Noun>Response in
-// its entry, and neither the types of its logic nor the exported types of the domain carry tags, the shape of a
-// transport. That the response is built from the output is GOARCH-22.
+// GOARCH-16, the part a check can decide: neither the types of the logic nor the exported types of the domain
+// carry field tags, the shape of a transport, on named or embedded fields. That the use case declares its
+// Request and Response is GOARCH-11; that the response is built from the output is GOARCH-22.
 func TestGOARCH16RequestResponse(t *testing.T) {
-	checkRule(t, checkRequestResponse, "place_order_in.go: declares no type PlaceOrderResponse",
-		"field ID carries the tag `json:\"id\"`", "order_line.go:5: field SKU carries the tag `json:\"sku\"`")
+	checkRule(t, checkRequestResponse,
+		"field ID carries the tag `json:\"id\"`", "order_line.go:5: field SKU carries the tag `json:\"sku\"`",
+		"field Item carries the tag `json:\"item\"`")
 }
 
 func checkRequestResponse(m *module) []string {
 	var out []string
 	for _, uc := range m.useCases() {
-		if in := uc.files[kindIn]; in != nil {
-			have := decls(in.ast)
-			for _, name := range []string{camel(uc.stem) + "Request", camel(uc.stem) + "Response"} {
-				if have[name] != "type" {
-					out = append(out, fmt.Sprintf("%s: declares no type %s", in.rel, name))
-				}
-			}
-		}
 		if logic := uc.files[kindLogic]; logic != nil {
 			out = append(out, tags(m, logic, logic.ast)...)
 		}
@@ -47,14 +40,16 @@ func checkRequestResponse(m *module) []string {
 	return out
 }
 
-// tags returns the fields with a tag under n, a node of f.
+// tags returns the fields with a tag under n, a node of f; an embedded field is named after its type.
 func tags(m *module, f *goFile, n ast.Node) []string {
 	var out []string
 	ast.Inspect(n, func(n ast.Node) bool {
 		field, ok := n.(*ast.Field)
-		if ok && field.Tag != nil && len(field.Names) > 0 {
-			out = append(out, fmt.Sprintf("%s: field %s carries the tag %s: no transport shape out of the entry",
-				m.pos(f, field), field.Names[0].Name, field.Tag.Value))
+		if ok && field.Tag != nil {
+			for _, id := range fieldNames(field) {
+				out = append(out, fmt.Sprintf("%s: field %s carries the tag %s: no transport shape out of the entry",
+					m.pos(f, field), id.Name, field.Tag.Value))
+			}
 		}
 		return true
 	})
