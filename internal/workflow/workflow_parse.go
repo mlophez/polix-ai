@@ -26,6 +26,7 @@ type workflowYAML struct {
 	Vars          map[string]varYAML     `yaml:"vars"`
 	On            map[string][]entryYAML `yaml:"on"`
 	Rules         rulesYAML              `yaml:"rules"`
+	Guidance      guidanceYAML           `yaml:"guidance"`
 }
 
 // varYAML is a variable of vars.
@@ -72,6 +73,13 @@ type rulesYAML struct {
 	keys []string
 }
 
+// guidanceYAML is the key guidance: a switch left out is on.
+type guidanceYAML struct {
+	Commit *bool `yaml:"commit"`
+	Edit   *bool `yaml:"edit"`
+	keys   []string
+}
+
 // runnerYAML is one runner of rules.run: a glob and its command.
 type runnerYAML struct {
 	glob string
@@ -97,12 +105,13 @@ var decodeNames = []string{
 	"workflow.runYAML", "workflow.Run",
 	"workflow.contextYAML", "workflow.Context",
 	"workflow.rulesYAML", "workflow.Rules",
+	"workflow.guidanceYAML", "workflow.Guidance",
 	"workflow.stringsYAML", "[]string",
 	"workflow.argsYAML", "[]string",
 }
 
 // topKeys are the keys of polix.yaml.
-var topKeys = []string{"version", "requires", "base", "max_stop_blocks", "protected", "vars", "on", "rules"}
+var topKeys = []string{"version", "requires", "base", "max_stop_blocks", "protected", "vars", "on", "rules", "guidance"}
 
 // Valid tells why the error is not valid: it names both versions.
 func (e TooOld) Valid() error {
@@ -123,7 +132,8 @@ func (e TooOld) Error() string {
 // the caller can still use it.
 func Parse(data []byte, running string) (Workflow, error) {
 	if data == nil {
-		w := Workflow{Version: 1, MaxStopBlocks: DefaultMaxStopBlocks}
+		guidance, _ := guidanceYAML{}.guidance()
+		w := Workflow{Version: 1, MaxStopBlocks: DefaultMaxStopBlocks, Guidance: guidance}
 		return w, w.Valid()
 	}
 	if req := requires(data); semver.IsRelease(running) && semver.Valid(req) && semver.Compare(running, req) < 0 {
@@ -179,6 +189,7 @@ func (y workflowYAML) workflow() (Workflow, error) {
 		}
 	}
 	rules, _ := y.Rules.rules()
+	guidance, _ := y.Guidance.guidance()
 	w := Workflow{
 		Version:       y.Version,
 		Requires:      y.Requires,
@@ -188,6 +199,7 @@ func (y workflowYAML) workflow() (Workflow, error) {
 		Vars:          vars,
 		On:            on,
 		Rules:         rules,
+		Guidance:      guidance,
 	}
 	return w, w.Valid()
 }
@@ -233,6 +245,12 @@ func (y rulesYAML) rules() (Rules, error) {
 	}
 	r := Rules{Run: runners, Keys: y.keys}
 	return r, r.Valid()
+}
+
+// guidance builds the guidance of the file, with every switch left out turned on.
+func (y guidanceYAML) guidance() (Guidance, error) {
+	g := Guidance{Commit: y.Commit == nil || *y.Commit, Edit: y.Edit == nil || *y.Edit, Keys: y.keys}
+	return g, g.Valid()
 }
 
 func (y runnerYAML) runner() (Runner, error) {
@@ -326,6 +344,21 @@ func (r *rulesYAML) UnmarshalYAML(n *yaml.Node) error {
 	}
 	*r = rulesYAML(p)
 	r.keys = mapKeys(n)
+	return nil
+}
+
+// UnmarshalYAML keeps the keys of guidance, so Valid can reject unknown ones.
+func (g *guidanceYAML) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: guidance must map commit and edit to true or false", n.Line)
+	}
+	type plain guidanceYAML
+	var p plain
+	if err := n.Decode(&p); err != nil {
+		return err
+	}
+	*g = guidanceYAML(p)
+	g.keys = mapKeys(n)
 	return nil
 }
 

@@ -39,7 +39,8 @@ type Workflow struct {
 	Protected []string
 	Vars      map[string]Var
 	On        map[string][]Entry
-	Rules     Rules // how the checks of the rules run
+	Rules     Rules    // how the checks of the rules run
+	Guidance  Guidance // the built-in instructions injected at session start
 }
 
 // Var extracts a variable from the branch name: the first group of the regular expression, or the whole match.
@@ -164,6 +165,7 @@ func (w Workflow) Problems() []string {
 		}
 	}
 	v.rules(w.Rules)
+	v.guidance(w.Guidance)
 	return v.problems
 }
 

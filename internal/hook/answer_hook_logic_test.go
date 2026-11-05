@@ -318,6 +318,87 @@ func TestAnswerHookProtectsState(t *testing.T) {
 	}
 }
 
+// The guidance turned on is injected on session_start only, before the contexts of the entries of the event.
+func TestAnswerHookGuidance(t *testing.T) {
+	both := []string{workflow.GuidanceCommit, workflow.GuidanceEdit}
+	cases := []struct {
+		name, yaml, event string
+		want              []string
+	}{
+		{"defaults", "version: 1\n", workflow.SessionStart, both},
+		{"only edit", "version: 1\nguidance: { commit: false }\n", workflow.SessionStart, []string{workflow.GuidanceEdit}},
+		{"both off", "version: 1\nguidance: { commit: false, edit: false }\n", workflow.SessionStart, nil},
+		{"before the entries", "version: 1\non:\n  session_start:\n    - context: { text: repo }\n",
+			workflow.SessionStart, append(slices.Clone(both), "repo")},
+		{"not on prompt", "version: 1\n", workflow.Prompt, nil},
+		{"not on stop", "version: 1\n", workflow.Stop, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out, _ := answerHookWalk(t, answerHookEval(t, c.yaml, c.event), answerHookFacts{branch: "main"})
+			if out.Answer.Block || !slices.Equal(out.Answer.Contexts, c.want) {
+				t.Fatalf("contexts %q, want %q", out.Answer.Contexts, c.want)
+			}
+		})
+	}
+	ev := answerHookEval(t, "version: 1\n", workflow.PreEdit)
+	ev = Evaluation{Workflow: ev.Workflow, Present: true, Root: ev.Root, GitDir: ev.GitDir, System: "linux",
+		Event: agent.Event{Name: workflow.PreEdit, Agent: agent.Claude, Actor: agent.ActorSession, Path: "src/a.go",
+			AbsPath: filepath.Join(ev.Root, "src", "a.go")}}
+	if out, _ := answerHookWalk(t, ev, answerHookFacts{branch: "main"}); len(out.Answer.Contexts) != 0 {
+		t.Fatalf("pre_edit: %q", out.Answer.Contexts)
+	}
+	// Without polix.yaml, or with an invalid one, nothing of the guidance is injected.
+	start := answerHookEval(t, "version: 1\n", workflow.SessionStart)
+	without := Evaluation{Workflow: start.Workflow, Root: start.Root, GitDir: start.GitDir, Event: start.Event}
+	broken := Evaluation{Workflow: start.Workflow, Present: true, Invalid: errors.New("polix.yaml: unknown key"),
+		Root: start.Root, GitDir: start.GitDir, Event: start.Event}
+	for name, e := range map[string]Evaluation{"without": without, "invalid": broken} {
+		if err := e.Valid(); err != nil {
+			t.Fatal(err)
+		}
+		if out, _ := answerHookWalk(t, e, answerHookFacts{}); len(out.Answer.Contexts) != 0 {
+			t.Fatalf("%s: %q", name, out.Answer.Contexts)
+		}
+	}
+	if out, _ := answerHookWalk(t, broken, answerHookFacts{}); len(out.Answer.Warnings) != 1 {
+		t.Fatalf("an invalid workflow keeps its warning: %+v", out.Answer)
+	}
+}
+
+// A block by protected tells, in English, the path, the glob a folder holds, and who changes it.
+func TestAnswerHookProtectedReasons(t *testing.T) {
+	yaml := "version: 1\nprotected: [\".env\", \"AGENTS.md\", \"ai/rules/**\"]\n"
+	base := answerHookEval(t, yaml, workflow.PreEdit)
+	edit := agent.Event{Name: workflow.PreEdit, Agent: agent.Claude, Actor: agent.ActorSession, Path: ".env",
+		AbsPath: filepath.Join(base.Root, ".env"), Cwd: base.Root}
+	write := agent.Event{Name: workflow.PreCommand, Agent: agent.Claude, Actor: agent.ActorSession,
+		Command: "echo x > AGENTS.md", Cwd: base.Root}
+	remove := agent.Event{Name: workflow.PreCommand, Agent: agent.Claude, Actor: agent.ActorSession,
+		Command: "rm -rf ai", Cwd: base.Root}
+	cases := map[string]struct {
+		event agent.Event
+		want  string
+	}{
+		"edit":    {edit, ".env is protected in polix.yaml: only a person changes it."},
+		"command": {write, "AGENTS.md is protected in polix.yaml: only a person changes it."},
+		"folder":  {remove, "ai holds ai/rules/**, protected in polix.yaml: only a person changes it."},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			ev := Evaluation{Workflow: base.Workflow, Present: true, Root: base.Root, GitDir: base.GitDir,
+				System: "linux", Event: c.event}
+			if err := ev.Valid(); err != nil {
+				t.Fatal(err)
+			}
+			out, _ := answerHookWalk(t, ev, answerHookFacts{branch: "main"})
+			if !out.Answer.Block || !slices.Equal(out.Answer.Reasons, []string{c.want}) {
+				t.Fatalf("reasons %q, want %q", out.Answer.Reasons, c.want)
+			}
+		})
+	}
+}
+
 // Without polix.yaml only the protections apply; an invalid workflow blocks edits but never a stop.
 func TestAnswerHookWithoutOrInvalidWorkflow(t *testing.T) {
 	ev := answerHookEval(t, "version: 1\non:\n  stop:\n    - require: \"x\"\n", workflow.Stop)

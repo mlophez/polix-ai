@@ -110,6 +110,52 @@ func TestParseDecodeErrorsNameDomainTypes(t *testing.T) {
 	}
 }
 
+// A switch of guidance left out is on, with or without polix.yaml; false turns it off.
+func TestParseGuidance(t *testing.T) {
+	cases := []struct {
+		name, src    string
+		commit, edit bool
+	}{
+		{"omitted", "version: 1\n", true, true},
+		{"empty", "version: 1\nguidance: {}\n", true, true},
+		{"null", "version: 1\nguidance:\n", true, true},
+		{"commit off", "version: 1\nguidance: { commit: false }\n", false, true},
+		{"edit off", "version: 1\nguidance: { edit: false }\n", true, false},
+		{"both off", "version: 1\nguidance: { commit: false, edit: false }\n", false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			w, err := Parse([]byte(c.src), "dev")
+			if err != nil || w.Guidance.Commit != c.commit || w.Guidance.Edit != c.edit {
+				t.Fatalf("got %v %+v", err, w.Guidance)
+			}
+		})
+	}
+	if w, err := Parse(nil, "dev"); err != nil || !w.Guidance.Commit || !w.Guidance.Edit {
+		t.Fatalf("without polix.yaml: %v %+v", err, w.Guidance)
+	}
+}
+
+// An unknown key of guidance is a problem; a value that is not a boolean, or a guidance that is not a map, stops
+// the parse with the file in the message.
+func TestParseGuidanceErrors(t *testing.T) {
+	_, err := Parse([]byte("version: 1\nguidance: { commit: true, delegation: false }\n"), "dev")
+	var invalid Invalid
+	if !errors.As(err, &invalid) || !strings.Contains(err.Error(), `unknown key "delegation" in guidance (commit, edit)`) {
+		t.Fatalf("unknown key: %v", err)
+	}
+	cases := map[string]string{
+		"version: 1\nguidance: { commit: maybe }\n": "polix.yaml: yaml: unmarshal errors:\n  line 2: cannot unmarshal !!str `maybe` into bool",
+		"version: 1\nguidance: true\n":              "polix.yaml: line 2: guidance must map commit and edit to true or false",
+		"version: 1\nguidance: [commit]\n":          "polix.yaml: line 2: guidance must map commit and edit to true or false",
+	}
+	for src, want := range cases {
+		if _, err := Parse([]byte(src), "dev"); err == nil || errors.As(err, &invalid) || err.Error() != want {
+			t.Errorf("%q: got %v", src, err)
+		}
+	}
+}
+
 // A glob of rules.run is a string, given once.
 func TestParseRunnerKeys(t *testing.T) {
 	_, err := Parse([]byte("version: 1\nrules:\n  run:\n    \"*.sh\": a\n    \"*.sh\": b\n"), "dev")

@@ -62,6 +62,18 @@ rules:
     "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]   # check: tests/arch/goarch04_test.go of GOARCH-4
     "*.py": [uv, run, python, "{file}"]
 
+# Optional, both true by default. Built-in instructions polix injects into the agent on every session_start
+# (startup, resume, clear, compaction), in English and before the contexts of the session_start entries, so the
+# agent works in the forms the heuristics of polix recognise. They ask for cooperation and block nothing. Injected
+# only with a valid polix.yaml; a switch left out is on, false turns it off, and an unknown key is rejected.
+# - commit: run each commit as a git commit command of its own, not chained with &&, ; or | nor wrapped in sh -c,
+#   so pre_commit sees it.
+# - edit: create and change files with the edit tool of the agent, not from the shell (sed -i, redirections, tee,
+#   heredocs), so pre_edit, post_edit and the rules they inject see the change.
+guidance:
+  commit: true
+  edit: true
+
 # Optional. Variables extracted from the current branch name, usable as {name} in any string.
 # - `branch` is a regular expression (Go RE2 syntax): the value is its first group, or the whole match without
 #   groups.

@@ -60,16 +60,18 @@ The rules it follows, as before this use case:
    workflow or update polix; any other event only warns, so a stop is never blocked. Problems that may come from a
    newer polix hint to run `polix update` (`Unusable`).
 3. Without polix.yaml, and for an edit outside the repository or of a file git ignores, only the protections apply.
-4. The entries of the event run in order: one runs when every condition of `if` holds and, with `unless`, not
+4. On `session_start`, the texts of the `guidance` turned on in polix.yaml (`workflow.Guidance.Instructions`) are
+   injected as contexts first, so the contexts of the entries come after them.
+5. The entries of the event run in order: one runs when every condition of `if` holds and, with `unless`, not
    every condition of `unless` holds. `deny` blocks and stops the evaluation; `allow` stops it; `require` blocks
    and goes on; `run` runs a command or the checks of the rules (`changed`, or a path) and blocks when it fails,
    recording its fact only when it passed on a content that did not change; `context` injects a file, a text or
    the rules of a path (each rule once per session); `record` records a fact on the current content.
-5. The mode of an entry: `warn` turns a block into a context and a warning, `audit` only logs it.
-6. Loop guard: a block of `stop` or `subagent_stop` is counted per session, event, actor, entry and content hash;
+6. The mode of an entry: `warn` turns a block into a context and a warning, `audit` only logs it.
+7. Loop guard: a block of `stop` or `subagent_stop` is counted per session, event, actor, entry and content hash;
    after `max_stop_blocks` the agent may stop with a warning, and when the log cannot be read or written the guard
    fails open.
-7. Facts hold only on a known content hash; when it cannot be computed nothing is recorded nor holds, and the
+8. Facts hold only on a known content hash; when it cannot be computed nothing is recorded nor holds, and the
    call warns once.
 
 The domain decides the rest: `agent.Agent.Parse` and `Render` (the formats of the agents), `agent.Answer.Merge`,

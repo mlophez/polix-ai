@@ -526,7 +526,7 @@ func TestAnswerHookProtectedPaths(t *testing.T) {
 	for _, actor := range []string{"", "builder"} {
 		code, _, stderr := r.edit(".env", actor)
 		answerHookExpect(t, actor+" edits .env", code, 2, stderr)
-		if !strings.Contains(stderr, "solo lo cambia una persona") {
+		if !strings.Contains(stderr, ".env is protected in polix.yaml: only a person changes it.") {
 			t.Fatalf("the reason says who changes it: %q", stderr)
 		}
 		code, _, stderr = r.bashAs("echo x >AGENTS.md", false, actor)
@@ -542,7 +542,7 @@ func TestAnswerHookProtectedPaths(t *testing.T) {
 			answerHookExpect(t, actor+" runs "+cmd, code, 2, stderr)
 		}
 		code, _, stderr = r.bashAs("rm -rf ai", false, actor)
-		if code != 2 || !strings.Contains(stderr, "ai contiene ai/rules/**") {
+		if code != 2 || !strings.Contains(stderr, "ai holds ai/rules/**, protected in polix.yaml: only a person changes it.") {
 			t.Fatalf("the reason names the protected glob the folder holds: %q", stderr)
 		}
 		// Reading a folder that holds protected paths is fine, also with its output redirected away from it.

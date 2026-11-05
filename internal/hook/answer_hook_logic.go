@@ -71,6 +71,12 @@ func (r *answerHookRun) handle() agent.Answer {
 	if outside := r.outsideChange(); r.waiting() || outside {
 		return agent.Answer{}
 	}
+	// The built-in guidance comes before the entries, so the contexts of the repository have the last word.
+	if r.ev.Event.Name == workflow.SessionStart {
+		for _, text := range r.ev.Workflow.Guidance.Instructions() {
+			ans = ans.Inform(text)
+		}
+	}
 	for _, e := range r.ev.Workflow.On[r.ev.Event.Name] {
 		if !r.matches(e.If) || len(e.Unless) > 0 && r.matches(e.Unless) {
 			if r.waiting() {
@@ -145,7 +151,7 @@ func (r *answerHookRun) protect() (agent.Answer, bool) {
 			}
 		}
 		if !ev.Outside && ev.Path != "" && AnyPathFold(protected, ev.Path, fold) {
-			return agent.Answer{}.Refuse(fmt.Sprintf("%s está protegido en %s: solo lo cambia una persona.", ev.Path,
+			return agent.Answer{}.Refuse(fmt.Sprintf("%s is protected in %s: only a person changes it.", ev.Path,
 				workflow.File)), true
 		}
 	case workflow.PreCommand, workflow.PreCommit:
@@ -161,10 +167,10 @@ func (r *answerHookRun) protect() (agent.Answer, bool) {
 		}
 		if p, held, ok := r.writes(protected); ok {
 			if held != "" {
-				return agent.Answer{}.Refuse(fmt.Sprintf("%s contiene %s, protegido en %s: solo lo cambia una persona.",
+				return agent.Answer{}.Refuse(fmt.Sprintf("%s holds %s, protected in %s: only a person changes it.",
 					p, held, workflow.File)), true
 			}
-			return agent.Answer{}.Refuse(fmt.Sprintf("%s está protegido en %s: solo lo cambia una persona.", p,
+			return agent.Answer{}.Refuse(fmt.Sprintf("%s is protected in %s: only a person changes it.", p,
 				workflow.File)), true
 		}
 	}

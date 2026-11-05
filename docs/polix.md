@@ -250,6 +250,9 @@ requires: 0.1.0       # oldest polix that knows every option of the file (option
 base: [main, dev]     # branch, or candidates, a change merges into, for rules check --changed (default main)
 protected: [".env"]   # path globs no agent writes, the main session included (optional)
 max_stop_blocks: 3    # loop guard of every block on stop and subagent_stop, per entry (default 3)
+guidance:             # built-in instructions injected at session start (optional, both true by default)
+  commit: true        # run each commit as a git commit of its own
+  edit: true          # change files with the edit tool of the agent, not the shell
 rules:
   run:                # how a check of ai/rules/ runs, by the base name of its file (optional)
     "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]
@@ -276,6 +279,16 @@ Windows, the py launcher, python3 or python), with the arguments of the runner k
 and each rule runs on its own. `polix check` reports a runner with an empty argv, an invalid glob or an unknown
 placeholder. So a rule may be decided by any file, a Go test among them: with the runner above, `check:
 tests/architecture/goarch04_test.go` of `GOARCH-4` runs `go test ./tests/architecture -run ^TestGOARCH4$`.
+
+`guidance` turns on or off the instructions polix injects into the agent by itself on `session_start`, so the agent
+works in the forms its heuristics recognise. `commit` asks to run each commit as a `git commit` command of its own,
+not chained with `&&`, `;` or `|` nor wrapped in `sh -c`, so `pre_commit` sees it. `edit` asks to create and change
+the files of the repository with the edit tool of the agent instead of the shell (`sed -i`, redirections, `tee`,
+heredocs), since `pre_edit`, `post_edit` and the rules they inject only see what goes through that tool. Both are on
+when the key, or one of its switches, is left out, and `false` turns one off. They are injected only with a valid
+`polix.yaml`, on every source of the event (startup, resume, clear and compaction), before the contexts of the
+`session_start` entries, and in English. They ask the agent to cooperate and block nothing. `polix check` reports an
+unknown key, and a value that is not a boolean, or a `guidance` that is not a map, stops the parse.
 
 Events: `session_start`, `prompt`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
 `subagent_stop` and `stop`.
@@ -513,7 +526,8 @@ In the real rollout Logalty Control would render them and pin the version of the
 - Codex is experimental: its tool names (`shell`, `apply_patch`...), whether it has a subagent stop event and how
   its hooks set a timeout are still to be checked against a running Codex.
 - A `git commit` is recognised by a heuristic (global options and quoted commands included); the text of a
-  commit inside quotes, as in `echo "git commit"`, also triggers `pre_commit`.
+  commit inside quotes, as in `echo "git commit"`, also triggers `pre_commit`. The `commit` switch of `guidance`
+  asks the agent to run each commit on its own, so it stays recognisable.
 - Every hook call reads the whole log, which grows without bound.
 - Releases are not signed: `checksums.txt` protects against a corrupt or swapped download from a mirror, not
   against someone who can publish releases of the repository. Signing them (cosign, or GitHub artifact

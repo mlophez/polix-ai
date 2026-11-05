@@ -2,6 +2,7 @@ package hook
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"slices"
@@ -137,11 +138,34 @@ func TestAnswerHookLocatesEdits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Code != 2 || !strings.Contains(res.Stderr, "src/a.go está protegido") {
+	if res.Code != 2 || !strings.Contains(res.Stderr, "src/a.go is protected in polix.yaml: only a person changes it.") {
 		t.Fatalf("response %+v", res)
 	}
 	if !slices.Contains(port.calls, "Locate /repo/src/a.go") || !slices.Contains(port.calls, "Locate /repo/docs/b.md") {
 		t.Fatalf("calls %q", port.calls)
+	}
+}
+
+// The guidance reaches the session of Claude Code and of Codex as the additionalContext of SessionStart.
+func TestAnswerHookGuidanceRendered(t *testing.T) {
+	for _, agentName := range []string{"claude", "codex"} {
+		port := &answerHookFakePort{yaml: "version: 1\n"}
+		res, err := answerHook(context.Background(), port, AnswerHookRequest{Agent: agentName, Version: "dev",
+			System: "linux", Input: []byte(`{"hook_event_name":"SessionStart","cwd":"/repo"}`)})
+		if err != nil || res.Code != 0 {
+			t.Fatalf("%s: %+v %v", agentName, res, err)
+		}
+		var out struct {
+			HookSpecificOutput struct {
+				AdditionalContext string `json:"additionalContext"`
+			} `json:"hookSpecificOutput"`
+		}
+		if err := json.Unmarshal([]byte(res.Stdout), &out); err != nil {
+			t.Fatalf("%s: stdout %q: %v", agentName, res.Stdout, err)
+		}
+		if want := workflow.GuidanceCommit + "\n\n" + workflow.GuidanceEdit; out.HookSpecificOutput.AdditionalContext != want {
+			t.Fatalf("%s: additionalContext %q", agentName, out.HookSpecificOutput.AdditionalContext)
+		}
 	}
 }
 
