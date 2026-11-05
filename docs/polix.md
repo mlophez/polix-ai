@@ -52,6 +52,17 @@ empty, and an empty `--base` falls back to `base`. On a push to a branch of `bas
 branch is its own base and `--changed` checks nothing: run `polix rules check` without it there. The hooks never
 use `base`.
 
+`polix rules check` reads the rules and `polix.yaml` before running anything, and stops without running a check
+when a file of `ai/rules/` cannot be read or parsed, when a rule is not valid (no id, no description, a `check` on
+a rule that is not `deterministic`, or a `check` given as an absolute path), when `polix.yaml` cannot be read or
+parsed or requires a newer polix (without the file it uses the defaults), when a runner of `rules.run` is not
+valid, and when `--base` is given without `--changed`. The other problems of a `polix.yaml` that parses are left
+to `polix check`. The hint to set `base` or pass
+`--base` only comes when no base branch exists. Each check runs from the root, with 5 minutes to finish, through
+the first runner of `rules.run` whose glob matches its file, or else as a program (see `rules.run` below); it
+prints each failure with the last 15 lines of its output, then `<n> checks, <m> failed`, and exits with 1 when a
+check failed.
+
 The repository commands, `doctor`, `install` and `uninstall` take `--dir <repo>` (`-C`; default: the working
 directory, or the `cwd` of the hook input).
 The CLI is built with cobra and fang: `polix --help` and `polix <command> --help` give styled help, and
@@ -132,18 +143,18 @@ and the hooks of polix rewritten in the repository of the working directory when
 start hook only refreshes the plugin already installed: it never installs anything new nor touches the files of
 the repository.
 
-`polix doctor` checks the version against the latest release, that the `PATH` the hooks use runs this binary,
-git, `polix.yaml`, the rules and that their checks exist and are executable (on Windows, that their interpreter
-is found), the hooks of Claude Code (project,
-local and user settings: every event, every governed tool in the matchers, a timeout above the run budget, and
-never twice), the plugin of the user (its version against the binary and, except in `--hook`, that Claude Code has
-it installed and enabled), the hooks and the plugin of Codex when it is used and that the state can be written. It
-also warns when `SessionStart` does not run `polix update --hook`, or runs the command of an earlier build, which
-`polix install` replaces, and when `PostToolUseFailure` does not run polix, as in the settings of an earlier
-build: only the feedback of failed commands is lost. It exits 1 on any failure.
-`--hook` prints nothing when everything is fine and never fails; otherwise it prints the problems, which Claude
-Code adds to the context of the session, so the agent tells the user and offers to fix them. It does not use
-the network: it compares with the latest release the last `polix update` or `polix doctor` saw.
+`polix doctor` checks the version against the latest release, that the `PATH` the hooks use runs this binary, git,
+`polix.yaml`, the rules and that their checks exist and are executable (on Windows, that their interpreter is found;
+a check that a runner of `rules.run` runs skips both, since its runner runs it), the hooks of Claude Code (project,
+local and user settings: every event, every governed tool in the matchers, a timeout above the run budget, and never
+twice), the plugin of the user (its version against the binary and, except in `--hook`, that Claude Code has it
+installed and enabled), the hooks and the plugin of Codex when it is used and that the state can be written. It also
+warns when `SessionStart` does not run `polix update --hook`, or runs the command of an earlier build, which `polix
+install` replaces, and when `PostToolUseFailure` does not run polix, as in the settings of an earlier build: only
+the feedback of failed commands is lost. It exits 1 on any failure. `--hook` prints nothing when everything is fine
+and never fails; otherwise it prints the problems, which Claude Code adds to the context of the session, so the
+agent tells the user and offers to fix them. It does not use the network: it compares with the latest release the
+last `polix update` or `polix doctor` saw.
 
 To publish a release, from a clean `main`: `just release 0.2.0`. It runs the tests, tags `v0.2.0` and pushes
 the tag. `.github/workflows/release.yml` then runs the tests on Linux, macOS and Windows (`ci.yml`, which also
@@ -155,11 +166,13 @@ The Justfile recipes use `sh`: on Windows, run them from Git Bash.
 
 ## How a hook call is answered
 
-1. The adapter of the agent (`internal/agent`) turns the JSON of stdin into neutral events.
+The use case `AnswerHook` of `internal/hook` (layout in `docs/architecture.md`) answers it:
+
+1. The agent (`internal/agent`, Claude Code or Codex) turns the JSON of stdin into neutral events.
    An edit becomes one `pre_edit` or `post_edit` per path; a `git commit` in a command also produces
    `pre_commit`.
-2. The engine (`internal/engine`) applies the protections, then the entries of the event in order.
-3. The adapter answers: exit 2 with the reasons on stderr to block, or exit 0 with
+2. The logic of the hook (`internal/hook`) applies the protections, then the entries of the event in order.
+3. The agent answers: exit 2 with the reasons on stderr to block, or exit 0 with
    `hookSpecificOutput.additionalContext` on stdout to inject context.
 
 Edits outside the repository (scratchpad, memory, another repository) and of files git ignores are not part of
@@ -237,6 +250,9 @@ requires: 0.1.0       # oldest polix that knows every option of the file (option
 base: [main, dev]     # branch, or candidates, a change merges into, for rules check --changed (default main)
 protected: [".env"]   # path globs no agent writes, the main session included (optional)
 max_stop_blocks: 3    # loop guard of every block on stop and subagent_stop, per entry (default 3)
+rules:
+  run:                # how a check of ai/rules/ runs, by the base name of its file (optional)
+    "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]
 vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # first group of the branch name, used as {key}
 on:
@@ -247,6 +263,19 @@ on:
       why: <reason of the entry>             # optional, for people
       <action>: <value>                      # exactly one
 ```
+
+`rules.run` maps a glob, matched against the base name of the `check` of a rule, to the argv that runs it from the
+root, without a shell; the first glob that matches wins, in the order of the file. The argv may use the placeholders
+`{file}` (the check, relative to the root, with `/`), `{dir}` (its folder as `./<folder>`, `./` at the root), `{id}`
+(the id of the rule, `GOARCH-4`) and `{name}` (the id with only its letters and digits, `GOARCH4`). A check that no
+glob matches runs as a program, as before: through its shebang, or on Windows through its interpreter by extension
+(see `run: { rules }` below). On Windows a runner whose program is `bash`, `sh`, `python`, `python3` or `py` runs
+the program of that name the PATH finds (an active virtualenv wins), unless it is an alias of the Store or, for
+`bash` and `sh`, the bash of WSL in the Windows folder; then the interpreter that lookup finds (the bash of Git for
+Windows, the py launcher, python3 or python), with the arguments of the runner kept. There are no default runners,
+and each rule runs on its own. `polix check` reports a runner with an empty argv, an invalid glob or an unknown
+placeholder. So a rule may be decided by any file, a Go test among them: with the runner above, `check:
+tests/architecture/goarch04_test.go` of `GOARCH-4` runs `go test ./tests/architecture -run ^TestGOARCH4$`.
 
 Events: `session_start`, `prompt`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
 `subagent_stop` and `stop`.
@@ -286,7 +315,9 @@ Actions:
 - `require: <what to do>` blocks `stop` or `subagent_stop` until it is done; only valid there.
 - `run: { command: [..] }` runs a command from the root, without a shell; a failure blocks with its output.
 - `run: { rules: changed }` runs the checks of the deterministic rules whose scope matches the changed files
-  (`rules: "{path}"` for one path); a failure blocks naming the rule ids. On Windows, where a shebang does
+  (`rules: "{path}"` for one path); a failure blocks naming the rule ids. Each check runs with the first runner
+  of `rules.run` whose glob matches it, as `polix rules check` does; a check no runner matches runs as a
+  program. On Windows, where a shebang does
   nothing, a `.sh` check runs with the `bash` of Git for Windows, found next to `git` (else a `bash` of the `PATH`
   outside the Windows folder, never the one of WSL), and a `.py` check with `py -3`, then `python3`, then
   `python`, skipping the aliases of the Microsoft Store; a missing interpreter fails the check naming it, and
@@ -306,7 +337,9 @@ would have blocked, to try a new entry before enforcing it. What each one does o
 
 `polix check` rejects unknown events, conditions, actions and keys (inside `run`, `context` and `vars` too),
 variables and placeholders that are not defined, and conditions on events where they never hold, so a typo
-never turns into an entry that silently stops applying.
+never turns into an entry that silently stops applying. Of `ai/rules/` it reports every problem, not only the
+first: a rule without id or description, an id repeated, a check that does not exist, a `check` on a rule that is
+not `deterministic: true`, and a `check` named by an absolute path instead of one relative to the root.
 
 ### How the entries of an event are evaluated
 

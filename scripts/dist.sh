@@ -25,7 +25,7 @@ for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 wi
   [ "$os" = windows ] && ext=.exe
   echo "building polix $version for $os/$arch"
   (cd "$root" && CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
-    -ldflags "-s -w -X github.com/mlophez/polix-ai/internal/cli.Version=$version" \
+    -ldflags "-s -w -X github.com/mlophez/polix-ai/pkg/build.Version=$version" \
     -o "$out/polix_${os}_${arch}${ext}" ./cmd/polix)
 done
 cp "$root/install.sh" "$root/install.ps1" "$out/"

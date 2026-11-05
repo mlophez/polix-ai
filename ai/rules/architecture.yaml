@@ -1,0 +1,382 @@
+# Architecture rules of the Go code of polix, described in docs/architecture.md. A deterministic rule is decided
+# by its test in tests/architecture/goarchNN_test.go (TestGOARCH<N>), on the Go AST of internal/, pkg/ and cmd/;
+# the part of a rule that no test can decide is a separate rule left to the review. The tests type check the
+# module tolerantly: a name whose type they cannot resolve is accepted, so a rule on types is only as strong as
+# what compiles.
+rules:
+  - id: GOARCH-1
+    description: >-
+      Each Go or Markdown file of a domain package is classified by its name alone: <verb>_<noun>.md,
+      <verb>_<noun>_in.go, <verb>_<noun>_logic.go and <verb>_<noun>_out.go belong to the use case <Verb><Noun>
+      and sort from input to output; *_test.go are tests; any other Go file is domain and must be <noun>.go or
+      <noun>_*.go, where <noun> is the package. The suffixes of a use case take precedence, with a verb that is
+      never empty: a domain file never ends in _in, _logic nor _out. A file that fits none fails, and so does a
+      Markdown file that is not the document of a use case (GOARCH-14). Folders named testdata are left out.
+    scope: ["internal/**"]
+    deterministic: true
+    check: tests/architecture/goarch01_test.go
+
+  - id: GOARCH-2
+    description: >-
+      Each domain package has its entity file <noun>.go, which declares the entity <Noun>, a struct
+      (internal/rule/rule.go declares Rule); the domain may be split into <noun>_*.go (rule_parse.go).
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch02_test.go
+
+  - id: GOARCH-3
+    description: >-
+      A use case is three files, as a pure core and an imperative shell: <verb>_<noun>_in.go (the entry, a cobra
+      command, the shell and the port it needs from the outside), <verb>_<noun>_logic.go (the pure logic) and
+      <verb>_<noun>_out.go (the adapter that implements the port).
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch03_test.go
+
+  - id: GOARCH-4
+    description: >-
+      The domain and the logic of a use case import nothing that touches the outside (os, os/exec, os/signal, net,
+      net/http, io/fs, runtime, syscall, cobra, pkg/git, pkg/cli, pkg/proc, pkg/github, pkg/jsonl, pkg/build, pkg/file),
+      nor randomness (math/rand, math/rand/v2, crypto/rand), nor logs (log, log/slog), and the logic does not import
+      context. They never read the clock (time.Now, Since, Until, Sleep, After, Tick, NewTimer, NewTicker, AfterFunc),
+      write to the console (fmt.Print*, print, println), start goroutines nor panic, and hold no state: a variable of
+      the package is a table, built once in its declaration from literals, regexp.MustCompile or other tables, and never
+      assigned, indexed-assigned nor appended to afterwards; a blank one; or a sentinel error (Err* or err* = errors.New
+      or fmt.Errorf). The logic uses only the domain, pkg/, the packages outside the module and its own logic file,
+      never the port, the request nor the adapter of its use case.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch04_test.go
+
+  - id: GOARCH-5
+    description: >-
+      The adapter implements the port of its own use case: <Verb><Noun>Adapter has every method of
+      <Verb><Noun>Port, declared or promoted from an embedded field. The compiler checks it too, where the entry
+      passes the adapter as the port.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch05_test.go
+
+  - id: GOARCH-6
+    description: >-
+      cmd/ only wires the root command and the entries of each use case: its files declare nothing but func main,
+      and it has no tests (the commands are tested through their entries in internal/).
+    scope: ["cmd/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch06_test.go
+
+  - id: GOARCH-7
+    description: >-
+      The packages of the module form a DAG: no import cycles among internal/ and pkg/, and pkg/ never imports
+      internal/.
+    scope: ["internal/**/*.go", "pkg/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch07_test.go
+
+  - id: GOARCH-8
+    description: >-
+      The domain is shared by the whole app: a use case of any package may import the domain of any other
+      package. A permission: what it leaves out is decided by GOARCH-9 and GOARCH-10.
+    scope: ["internal/**/*.go"]
+    deterministic: false
+
+  - id: GOARCH-9
+    description: >-
+      The domain uses only domain: the domain files of its own package; of another package of internal/, only
+      the names declared in its domain files, never its use cases; and pkg/ and the packages outside the module
+      (standard library, third parties) within what GOARCH-4 allows.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch09_test.go
+
+  - id: GOARCH-10
+    description: >-
+      Use cases are vertical: a use case never calls another use case, of its own package or of another. The
+      files of a use case may only use the files of the same use case, the domain of any package, pkg/ and the
+      packages outside the module. Logic shared by several use cases goes in the domain.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch10_test.go
+
+  - id: GOARCH-11
+    description: >-
+      A use case is named <Verb><Noun>, with the noun of its package, and its files carry the same name in snake
+      case (check_rule_*.go for CheckRule): <verb>_<noun>_logic.go declares <Verb><Noun> and <Verb><Noun>Output;
+      <verb>_<noun>_in.go declares <Verb><Noun>Command, <Verb><Noun>Request, <Verb><Noun>Response and
+      <Verb><Noun>Port; <verb>_<noun>_out.go declares <Verb><Noun>Adapter.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch11_test.go
+
+  - id: GOARCH-12
+    description: >-
+      A port is one interface, never a struct, declared where it is used: <verb>_<noun>_in.go declares the
+      interface <Verb><Noun>Port and no other interface, named or anonymous.
+    scope: ["internal/**/*_in.go"]
+    deterministic: true
+    check: tests/architecture/goarch12_test.go
+
+  - id: GOARCH-13
+    description: >-
+      In every file the types (interfaces and structs) come first, right after the imports, before constants,
+      variables and functions; methods go after all the types.
+    scope: ["internal/**/*.go", "pkg/**/*.go", "cmd/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch13_test.go
+
+  - id: GOARCH-14
+    description: >-
+      Each use case has its document <verb>_<noun>.md next to its files (check_rule.md), starting with
+      # <Verb><Noun> and with the sections, each once and in this order: Trigger, Request, Logic, Response,
+      Port, Errors and Flow. A heading inside a fenced code block is not a section.
+    scope: ["internal/**"]
+    deterministic: true
+    check: tests/architecture/goarch14_test.go
+
+  - id: GOARCH-15
+    description: >-
+      The entry of a use case is the only exported function of <verb>_<noun>_in.go, named as the use case ending
+      in Command (CheckRuleCommand); the shell and the other helpers of the file are unexported.
+    scope: ["internal/**/*_in.go"]
+    deterministic: true
+    check: tests/architecture/goarch15_test.go
+
+  - id: GOARCH-16
+    description: >-
+      Every use case declares <Verb><Noun>Request and <Verb><Noun>Response in <verb>_<noun>_in.go (GOARCH-11),
+      and neither the types of its logic nor the exported types of the domain carry field tags, the shape of a
+      transport, on named or embedded fields. An unexported type of the domain that decodes a format (fileYAML)
+      may.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch16_test.go
+
+  - id: GOARCH-17
+    description: >-
+      Each domain package holds one entity and is named as a noun; a use case is named as a verb and the noun it
+      acts on. A command without an obvious noun gets one from what it acts on (setup for check, install and
+      doctor; workflow for graph and log).
+    scope: ["internal/**/*.go"]
+    deterministic: false
+
+  - id: GOARCH-18
+    description: >-
+      The domain and the logic are pure beyond the imports GOARCH-4 lists: they take data and return data, and
+      never touch disk, git, network, processes, clock nor environment, not even through a library. Concurrency
+      and deadlines live in the adapter: the shell runs the steps of the output in sequence.
+    scope: ["internal/**/*.go"]
+    deterministic: false
+
+  - id: GOARCH-19
+    description: >-
+      A technology shared by several use cases lives in pkg/ as a library without domain, and the adapters wrap
+      it, instead of each adapter repeating it.
+    scope: ["internal/**/*.go", "pkg/**/*.go"]
+    deterministic: false
+
+  - id: GOARCH-20
+    description: >-
+      The in file of a use case is its imperative shell, always with the same shape: it reads through the port
+      what the logic needs, branching on the request to know what to read; calls the logic from one call site
+      (once, or in a loop in the step shape); carries out its output through the port, step by step; and builds
+      the response. What the result of a step means (go on,
+      stop, failed) is asked to the domain (rule.Result.Tail, rule.Failed), never computed in the shell: the
+      shell only sequences, so it can be tested with a fake of the port. When what the logic decides depends on
+      the result of an earlier step (the step shape), the logic returns the next step instead of the whole
+      output: the shell carries it out through the port and calls the logic again with its result, from one call
+      site in a loop, until the logic answers with no step; only such use cases take this shape. Its signature
+      and its calls are GOARCH-32; what its conditions may mention is GOARCH-37.
+    scope: ["internal/**/*_in.go"]
+    deterministic: false
+
+  - id: GOARCH-21
+    description: >-
+      The document of a use case says what its code does, and a change of the behavior of the use case updates
+      its document in the same commit. That it names the fields and the methods of the code is GOARCH-36.
+    scope: ["internal/**"]
+    deterministic: false
+
+  - id: GOARCH-22
+    description: >-
+      The entry turns the flags, or the stdin of a hook, into the Request and validates them before the shell
+      runs (a flag that needs another, allowed values); the shell turns the Request into the Response, built from
+      <Verb><Noun>Output and what the port returned while carrying it out; and the entry serializes the Response
+      to the console and sets the exit code. Only the Request and the Response carry the shape of the transport.
+    scope: ["internal/**/*_in.go", "internal/**/*_logic.go"]
+    deterministic: false
+
+  - id: GOARCH-23
+    description: >-
+      Every use case has the same shape: the logic is one function, <Verb><Noun>, that takes domain values (types
+      of the domain of any package, or predeclared types) and returns its decision, <Verb><Noun>Output, and
+      nothing else: a refusal is data of the output, never an error. <verb>_<noun>_logic.go exports only those
+      two names, and the in file uses only them of its logic. A type named *Output, *Request, *Response, *Port
+      or *Adapter is never a domain type, whatever its package.
+    scope: ["internal/**/*_in.go", "internal/**/*_logic.go"]
+    deterministic: true
+    check: tests/architecture/goarch23_test.go
+
+  - id: GOARCH-24
+    description: >-
+      The out file holds only the adapter of its use case, an object that implements the port: the public struct
+      <Verb><Noun>Adapter, its methods and unexported constants; no other type, no function (no constructor: the
+      entry fills the fields of the adapter and passes it as the port) and no variable. The exported methods of
+      the adapter are the methods of the port and no other; what they need goes in unexported methods of the
+      adapter, or in pkg/ when it is shared (GOARCH-19).
+    scope: ["internal/**/*_out.go"]
+    deterministic: true
+    check: tests/architecture/goarch24_test.go
+
+  - id: GOARCH-25
+    description: >-
+      An exported struct of internal/ has only exported fields: the structs that go from one part to another
+      (domain, Request, Response, Output, Adapter) are open to read. A struct that is a detail of one file, such
+      as the shape of a yaml it decodes, stays unexported.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch25_test.go
+
+  - id: GOARCH-26
+    description: >-
+      Every exported struct of the domain has the method Valid() error, with a value receiver and declared in a
+      domain file (GOARCH-40), which tells why a value is not valid.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch26_test.go
+
+  - id: GOARCH-27
+    description: >-
+      The domain is immutable: the methods of a domain struct have a value receiver, so a method that changes the
+      value returns a copy. They are named after what the use cases do with the value, never setters nor getters:
+      no Set* nor Get*, no method that only returns a field or a field of a field (the fields are public), no
+      method that only copies its parameters into fields.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch27_test.go
+
+  - id: GOARCH-28
+    description: >-
+      A domain struct changes only through its own methods: no code outside the methods of T assigns to a field
+      of a T (x.F = v, x.F += v, x.F++, x.F[i] = v), reached directly or promoted through embedding, not even the
+      methods of another domain struct that holds a T. Its fields are set only in the literal that builds it. The
+      tests are left out.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch28_test.go
+
+  - id: GOARCH-29
+    description: >-
+      A value of a domain struct is built with a literal, never with a constructor (no function New* nor new*
+      in internal/), and validated: a literal with fields (T{...} or &T{...}), in a function or at the top level
+      of a file, is bound to a variable on which the same function calls Valid() afterwards and uses its error,
+      neither alone as a statement, deferred, in a goroutine nor assigned to _. The empty literal T{}, the zero
+      value returned with an error, and the tests are left out.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch29_test.go
+
+  - id: GOARCH-30
+    description: >-
+      Beyond what GOARCH-26 to GOARCH-29 check: Valid covers every invariant of the value and its result is
+      handled before the value is used; a method that changes a slice or a map of the value copies it first, so
+      the copy it returns shares nothing the original can see; and each method is named after an intent of the
+      use cases (Retire, Narrow), not after the field it touches.
+    scope: ["internal/**/*.go"]
+    deterministic: false
+
+  - id: GOARCH-31
+    description: >-
+      Every top-level name of the files of a use case (types, functions, constants and variables; not methods,
+      init nor _) starts with the name of the use case, <Verb><Noun> or <verb><Noun> (CheckRuleFailed,
+      checkRuleTimeout): the use cases of a package share its namespace, and the name tells which use case a
+      symbol belongs to.
+    scope: ["internal/**/*_in.go", "internal/**/*_logic.go", "internal/**/*_out.go"]
+    deterministic: true
+    check: tests/architecture/goarch31_test.go
+
+  - id: GOARCH-32
+    description: >-
+      The in file declares the shell <verb><Noun>, of type func(context.Context, <Verb><Noun>Port,
+      <Verb><Noun>Request) (<Verb><Noun>Response, error). Outside the tests, the shell is the only function or
+      method of its package that calls the logic <Verb><Noun>, from one call site, in a function declaration or
+      in the value of a package variable; and it is the only one that calls methods of the port or of the
+      adapter, apart from the methods of the adapter itself, which never call the logic.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch32_test.go
+
+  - id: GOARCH-33
+    description: >-
+      The port speaks in domain values: every method of <Verb><Noun>Port takes context.Context first, and the
+      rest of its parameters and its results are domain types of any package or predeclared types (error among
+      them), so the types of the infrastructure never leave the adapter. A port embeds no interface: it lists its
+      own methods.
+    scope: ["internal/**/*_in.go"]
+    deterministic: true
+    check: tests/architecture/goarch33_test.go
+
+  - id: GOARCH-34
+    description: >-
+      Every use case has its two tests: <verb>_<noun>_logic_test.go calls the logic <Verb><Noun>, does not mention
+      <Verb><Noun>Port nor <Verb><Noun>Adapter and uses no name declared in <verb>_<noun>_in_test.go, where the
+      fake of the port lives; <verb>_<noun>_in_test.go calls the shell <verb><Noun> and does not mention
+      <Verb><Noun>Adapter. It may have <verb>_<noun>_out_test.go, which tests the adapter against a temporary
+      repository. That the logic is tested with domain values, without fakes, and the shell with a fake of the
+      port is left to the review (GOARCH-20).
+    scope: ["internal/**"]
+    deterministic: true
+    check: tests/architecture/goarch34_test.go
+
+  - id: GOARCH-35
+    description: >-
+      Each test file is named after the file it tests: <stem>_test.go sits next to <stem>.go, so the test of a
+      file is found by its name.
+    scope: ["internal/**/*_test.go", "pkg/**/*_test.go"]
+    deterministic: true
+    check: tests/architecture/goarch35_test.go
+
+  - id: GOARCH-36
+    description: >-
+      The document of a use case names, between backquotes, every field of <Verb><Noun>Request in ## Request,
+      every field of <Verb><Noun>Response and of the structs of the in file it holds in ## Response, and every
+      method of <Verb><Noun>Port in ## Port, so a field or a method added to the code without its documentation
+      fails. A heading inside a fenced code block is not a section.
+    scope: ["internal/**"]
+    deterministic: true
+    check: tests/architecture/goarch36_test.go
+
+  - id: GOARCH-37
+    description: >-
+      The shell decides nothing: every condition of an if, for or switch in the shell <verb><Noun> and in the
+      unexported functions of <verb>_<noun>_in.go is made of fields of the request, errors (err != nil, errors.Is,
+      errors.As), fields or methods of values of the domain or of the output, and len of them, compared only with
+      nil or a zero literal ("", 0, false) and combined with !, && and ||: no other literal, no arithmetic, no
+      ordering (<, >) and no other call. The entry <Verb><Noun>Command and the methods of the file are left out.
+    scope: ["internal/**/*_in.go"]
+    deterministic: true
+    check: tests/architecture/goarch37_test.go
+
+  - id: GOARCH-38
+    description: >-
+      The tests are white box: every *_test.go of internal/ and pkg/ declares the package of its folder, never
+      <noun>_test, so the tests reach the shell, the fakes and the unexported names without exporting anything.
+    scope: ["internal/**/*_test.go", "pkg/**/*_test.go"]
+    deterministic: true
+    check: tests/architecture/goarch38_test.go
+
+  - id: GOARCH-39
+    description: >-
+      No dot import (import . "pkg") in internal/, pkg/ nor cmd/: every name of another package is written with
+      its qualifier, so the file says which package each name comes from.
+    scope: ["internal/**/*.go", "pkg/**/*.go", "cmd/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch39_test.go
+
+  - id: GOARCH-40
+    description: >-
+      The methods of a domain struct are declared in the domain files of its package, never in the files of a use
+      case nor in another package: a method on Rule lives in rule.go or rule_*.go, so no use case adds behavior
+      to the domain that another use case could reach.
+    scope: ["internal/**/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch40_test.go

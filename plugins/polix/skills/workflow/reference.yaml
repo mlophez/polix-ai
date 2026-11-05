@@ -50,6 +50,18 @@ protected: [".env", "AGENTS.md", "CLAUDE.md"]
 # by the same actor and on the same content hash, the agent may stop, and the log records a `loop_guard` decision.
 max_stop_blocks: 3
 
+# Optional. How a check of ai/rules/ runs: `run` maps a glob, matched against the base name of the `check` of a
+# rule, to the argv that runs it from the root, without a shell; the first glob that matches wins, in this order.
+# Placeholders: {file} (the check, relative to the root, with /), {dir} (its folder as ./<folder>, ./ at the root),
+# {id} (the id of the rule, GOARCH-4) and {name} (the id with only its letters and digits, GOARCH4). A check no
+# glob matches runs as a program (its shebang; on Windows its interpreter by extension). Used by
+# `polix rules check` and by `run: { rules }`; `polix check` reports an empty argv, an invalid glob or an unknown
+# placeholder.
+rules:
+  run:
+    "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]   # check: tests/arch/goarch04_test.go of GOARCH-4
+    "*.py": [uv, run, python, "{file}"]
+
 # Optional. Variables extracted from the current branch name, usable as {name} in any string.
 # - `branch` is a regular expression (Go RE2 syntax): the value is its first group, or the whole match without
 #   groups.

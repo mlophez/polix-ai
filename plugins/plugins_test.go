@@ -67,3 +67,10 @@ func TestFrontmatterNames(t *testing.T) {
 		t.Fatal("the plugin has skills and agents")
 	}
 }
+
+func TestFiles(t *testing.T) {
+	files, err := Files()
+	if err != nil || len(files["polix/.claude-plugin/plugin.json"]) == 0 {
+		t.Fatal(len(files), err)
+	}
+}

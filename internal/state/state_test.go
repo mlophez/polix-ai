@@ -1,91 +1,59 @@
 package state
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
 
-// writeLog writes lines as the log of a new store.
-func writeLog(t *testing.T, lines ...string) *Store {
-	t.Helper()
-	s := Open(t.TempDir())
-	if err := os.MkdirAll(s.Dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(s.path(), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return s
-}
-
-// A line over MaxLine is skipped and counted, and the entries around it still load.
-func TestEntriesSkipsHugeLines(t *testing.T) {
-	huge := `{"kind":"decision","reason":"` + strings.Repeat("x", 5*1024*1024) + `"}`
-	s := writeLog(t, `{"kind":"fact","fact":"a"}`, huge, `{"kind":"fact","fact":"b"}`)
-	entries, err := s.Entries()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 2 || entries[0].Fact != "a" || entries[1].Fact != "b" {
-		t.Fatalf("entries: %+v", entries)
-	}
-	if s.Skipped() != 1 {
-		t.Fatalf("skipped %d lines, want 1", s.Skipped())
-	}
-}
-
-// A log without a final newline still loads its last entry.
-func TestEntriesLastLineWithoutNewline(t *testing.T) {
-	s := Open(t.TempDir())
-	_ = os.MkdirAll(s.Dir, 0o755)
-	_ = os.WriteFile(s.path(), []byte(`{"kind":"fact","fact":"a"}`), 0o644)
-	entries, err := s.Entries()
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("entries %+v, err %v", entries, err)
-	}
-}
-
-// Append caps the reason, so no line of the log comes near MaxLine.
-func TestAppendCapsReason(t *testing.T) {
-	s := Open(t.TempDir())
-	if err := s.Append(Entry{Kind: KindDecision, Reason: strings.Repeat("é", 512*1024)}); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(s.path())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(data) > MaxReason+512 {
-		t.Fatalf("the line has %d bytes", len(data))
-	}
-	entries, _ := Open(filepath.Dir(s.Dir)).Entries()
-	if len(entries) != 1 || len(entries[0].Reason) > MaxReason || !strings.HasSuffix(entries[0].Reason, "[recortado]") {
-		t.Fatalf("reason of %d bytes", len(entries[0].Reason))
-	}
-}
-
-// StopBlocks returns the error of a log it cannot read, so the loop guard can let the agent stop.
-func TestStopBlocksUnreadable(t *testing.T) {
-	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("file modes do not deny reading here")
-	}
-	s := writeLog(t, `{"kind":"stop_block"}`)
-	if err := os.Chmod(s.path(), 0); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(s.path(), 0o644) })
-	if _, err := s.StopBlocks("s", "stop", "session", 1, ""); err == nil {
-		t.Fatal("want the error of the unreadable log")
-	}
-}
-
-// Done never holds for an unknown hash.
-func TestDoneUnknownHash(t *testing.T) {
-	s := writeLog(t, `{"kind":"fact","fact":"tested","branch":"main"}`)
+// Done never holds for an unknown hash, and holds for the fact on its branch and hash.
+func TestDone(t *testing.T) {
+	s := State{Entries: []Entry{{Kind: KindFact, Fact: "tested", Branch: "main", Hash: "h"}}}
 	if s.Done("tested", "main", "") {
 		t.Fatal("done holds for an unknown hash")
+	}
+	if !s.Done("tested", "main", "h") || s.Done("tested", "dev", "h") || s.Done("tested", "main", "g") {
+		t.Fatal("done on branch and hash")
+	}
+}
+
+func TestInjected(t *testing.T) {
+	s := State{Entries: []Entry{{Kind: KindInjected, Rule: "GO-2", Session: "s"}}}
+	if !s.Injected("GO-2", "s") || s.Injected("GO-2", "t") || s.Injected("GO-3", "s") {
+		t.Fatal("injected per rule and session")
+	}
+}
+
+// StopBlocks counts per session, event, actor, line and hash.
+func TestStopBlocks(t *testing.T) {
+	b := Entry{Kind: KindStopBlock, Session: "s", Event: "stop", Actor: "session", Line: 4}
+	other := b
+	other.Actor = "reviewer"
+	s := State{Entries: []Entry{b, b, other, {Kind: KindDecision, Session: "s", Event: "stop", Actor: "session", Line: 4}}}
+	if n := s.StopBlocks("s", "stop", "session", 4, ""); n != 2 {
+		t.Fatalf("got %d", n)
+	}
+	if n := s.StopBlocks("s", "stop", "session", 5, ""); n != 0 {
+		t.Fatalf("other line: %d", n)
+	}
+}
+
+// Append returns a copy: the original does not see the new entry.
+func TestAppend(t *testing.T) {
+	s := State{Entries: make([]Entry, 0, 4)}
+	got, err := s.Append(Entry{Kind: KindFact, Fact: "a"})
+	if err != nil || len(got.Entries) != 1 || len(s.Entries) != 0 {
+		t.Fatalf("%v %+v", err, got)
+	}
+	if _, err := s.Append(Entry{}); err == nil {
+		t.Fatal("an entry without kind")
+	}
+}
+
+func TestStateValid(t *testing.T) {
+	if err := (State{Skipped: -1}).Valid(); err == nil || !strings.Contains(err.Error(), "negative") {
+		t.Fatal(err)
+	}
+	if err := (State{Entries: []Entry{{Kind: KindFact}}, Skipped: 1}).Valid(); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -1,646 +1,172 @@
-// Package setup installs what an agent needs to run polix, from the binary.
+// Package setup is the domain of what an agent needs to run polix, from the binary.
 //
-// For the user it installs the plugin polix (plugins/polix of the repository, embedded in the binary): its skills
-// and, for Claude Code, its agents, which help in any repository. The plugin is written to a local marketplace,
+// For the user, the plugin polix (plugins/polix of the repository, embedded in the binary): its skills and, for
+// Claude Code, its agents, which help in any repository. The plugin is written to a local marketplace,
 // ~/.polix/marketplace/, and registered with each agent:
 //   - Claude Code: `claude plugin marketplace add` and `claude plugin install polix@polix`, for the user. Claude Code
 //     copies the plugin to its cache, so a rewrite of the folder needs `claude plugin update` to reach it.
 //   - Codex: `codex plugin marketplace add` and `[plugins."polix@polix"] enabled = true` in ~/.codex/config.toml.
 //
-// For a repository it registers the hooks that call `polix hook`, which belong to the project like its polix.yaml
-// and are committed with it: in <repo>/.claude/settings.json and <repo>/.codex/hooks.json, merged with every other
+// For a repository, the hooks that call `polix hook`, which belong to the project like its polix.yaml and are
+// committed with it: in <repo>/.claude/settings.json and <repo>/.codex/hooks.json, merged with every other
 // setting and hook of the file, whose order is kept. Codex skips new or changed hooks until the user trusts them
 // with /hooks.
 //
-// A new release brings its plugin and hooks with it: install rewrites what changed, removes what the release
-// dropped and leaves the rest alone.
+// Everything here is pure, bytes in and bytes out: reading and writing the files, and running the CLIs of the
+// agents, is the job of the adapters.
 package setup
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 )
 
-// Agents polix installs for.
+// Setup is where polix is set up: the home of the user, the repository whose hooks to register, the agents and
+// the version of the binary. It is built with a literal followed by Valid.
+type Setup struct {
+	Home    string   // home folder of the user: the plugin goes below it
+	Root    string   // root of the repository whose hooks to register; empty registers none
+	Agents  []string // agents to set up: Claude, Codex
+	Version string   // version of polix, written in the manifests of the plugin
+}
+
+// Agents polix sets up.
 const (
 	Claude = "claude"
 	Codex  = "codex"
 )
 
-// HookTimeout is the timeout, in seconds, of every `polix hook` call: above the run budget of a call (10 minutes),
-// so the agent never kills a gate in the middle and lets the action through.
-const HookTimeout = 900
+// Name is the name of the plugin and of the local marketplace that holds it, so its id is polix@polix.
+const Name = "polix"
 
-// updateTimeout bounds the session start check: an update downloads the binary.
-const updateTimeout = 180
+// PluginID is the id of the plugin in Claude Code and Codex.
+const PluginID = Name + "@" + Name
 
-// UpdateCommand is the session start command that keeps polix up to date and reports the problems of the machine:
-// polix update --hook ends with the doctor of the binary it leaves. It is one plain command, with no shell syntax,
-// because it is committed in the hooks files of the repositories, which every release, and every shell an agent
-// runs hooks with, must understand; what it does lives in the binary.
-const UpdateCommand = "polix update --hook"
-
-// legacyCommands are the commands earlier builds registered, recognized so install replaces them.
-var legacyCommands = []string{"polix update --hook; polix doctor --hook"}
-
-// claudeTools are the tools whose use polix governs in Claude Code.
-var claudeTools = "Edit|Write|MultiEdit|NotebookEdit|Bash"
-
-// Options says where to install.
-type Options struct {
-	// Home is the home folder of the user: the plugin goes below it.
-	Home string
-	// Project is the root of the repository whose hooks to register; empty registers none.
-	Project string
-	// Version is the version of polix, written in the manifests of the plugin.
-	Version string
-}
-
-// HooksFile is the file of the project where the hooks of an agent are registered.
-func (o Options) HooksFile(agent string) string {
-	if agent == Codex {
-		return filepath.Join(o.Project, ".codex", "hooks.json")
-	}
-	return filepath.Join(o.Project, ".claude", "settings.json")
-}
-
-// Change is what install or uninstall did with one path, or with the registration of the plugin in an agent.
-type Change struct {
-	Path   string
-	Action string // created, updated, removed, registered, unregistered, or todo: a command to run by hand
-}
-
-// hookGroup and hookHandler are the format of hooks of Claude Code and Codex: event, groups with a matcher, handlers.
-type hookGroup struct {
-	Matcher string        `json:"matcher,omitempty"`
-	Hooks   []hookHandler `json:"hooks"`
-}
-
-type hookHandler struct {
-	Type    string `json:"type"`
-	Command string `json:"command"`
-	Timeout int    `json:"timeout,omitempty"`
-}
-
-// Hooks returns the hooks polix registers for an agent, by event.
-func Hooks(agent string) map[string][]hookGroup {
-	call := hookHandler{Type: "command", Command: "polix hook " + agent, Timeout: HookTimeout}
-	one := func(matcher string) []hookGroup { return []hookGroup{{Matcher: matcher, Hooks: []hookHandler{call}}} }
-	tools := claudeTools
-	if agent == Codex {
-		tools = "" // Codex names its tools differently (shell, apply_patch...): polix reads every call
-	}
-	hooks := map[string][]hookGroup{
-		"SessionStart": append(one(""), hookGroup{Matcher: "startup",
-			Hooks: []hookHandler{{Type: "command", Command: UpdateCommand, Timeout: updateTimeout}}}),
-		"UserPromptSubmit": one(""),
-		"PreToolUse":       one(tools),
-		"PostToolUse":      one(tools),
-		"SubagentStop":     one(""),
-		"Stop":             one(""),
-	}
-	if agent == Claude {
-		// A failed command reaches post_command with its exit code; the adapter ignores failed edits.
-		hooks["PostToolUseFailure"] = one(tools)
-	}
-	return hooks
-}
-
-// IsPolixCommand reports whether a hook command is one polix registers.
-func IsPolixCommand(command string) bool {
-	c := strings.TrimSpace(command)
-	return strings.HasPrefix(c, "polix hook ") || IsUpdateCommand(c)
-}
-
-// IsUpdateCommand reports whether a hook command is the session start command of polix, of this release, of an
-// earlier one or of a later one that adds flags: install replaces it instead of adding a second update next to it.
-func IsUpdateCommand(command string) bool {
-	c := strings.TrimSpace(command)
-	return c == UpdateCommand || strings.HasPrefix(c, UpdateCommand+" ") || strings.HasPrefix(c, UpdateCommand+";")
-}
-
-// IsLegacyCommand reports whether a hook command is one an earlier build registered and install now replaces.
-func IsLegacyCommand(command string) bool {
-	return slices.Contains(legacyCommands, strings.TrimSpace(command))
-}
-
-// hookEvents are the events polix registers, in lifecycle order: the order new events are added to a file.
-var hookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-	"SubagentStop", "Stop"}
-
-// Install writes the plugin polix and registers it with each agent for the user and, when o.Project is set,
-// registers the hooks of each agent in the project. It returns what changed.
-func Install(o Options, agents []string) ([]Change, error) {
-	if err := checkAgents(agents); err != nil {
-		return nil, err
-	}
-	changes, err := WritePlugin(o)
-	if err != nil {
-		return changes, err
-	}
-	// An agent that refuses the plugin does not keep the hooks of the repository from being registered.
-	var errs []error
-	for _, a := range agents {
-		ch, err := registerPlugin(o, a)
-		changes, errs = append(changes, ch...), append(errs, err)
-		if o.Project != "" {
-			ch, err := RegisterHooks(o, a)
-			changes, errs = append(changes, ch...), append(errs, err)
-		}
-	}
-	return changes, errors.Join(errs...)
-}
-
-// Uninstall unregisters the plugin polix from each agent, removes its folder when no agent is left and, when
-// o.Project is set, removes the hooks of polix of the project, keeping every other hook. It returns what changed.
-func Uninstall(o Options, agents []string) ([]Change, error) {
-	if err := checkAgents(agents); err != nil {
-		return nil, err
-	}
-	var changes []Change
-	for _, a := range agents {
-		ch, err := unregisterPlugin(o, a)
-		changes = append(changes, ch...)
-		if err != nil {
-			return changes, err
-		}
-		if o.Project != "" {
-			ch, err := mergeHooks(o.HooksFile(a), nil)
-			changes = append(changes, ch...)
-			if err != nil {
-				return changes, err
-			}
-		}
-	}
-	if slices.Contains(agents, Claude) && slices.Contains(agents, Codex) {
-		ch, err := removePlugin(o)
-		changes = append(changes, ch...)
-		if err != nil {
-			return changes, err
-		}
-	}
-	return changes, nil
-}
-
-// RegisterHooks writes the hooks of polix for an agent in the hooks file of the project.
-func RegisterHooks(o Options, agent string) ([]Change, error) {
-	return mergeHooks(o.HooksFile(agent), Hooks(agent))
-}
-
-func checkAgents(agents []string) error {
-	for _, a := range agents {
+// Valid reports why s is not a setup: every agent must be Claude or Codex, and the version is known.
+func (s Setup) Valid() error {
+	for _, a := range s.Agents {
 		if a != Claude && a != Codex {
 			return fmt.Errorf("unknown agent %q (claude, codex)", a)
 		}
 	}
+	if s.Version == "" {
+		return fmt.Errorf("a setup needs the version of polix")
+	}
 	return nil
 }
 
-// ReadHooks returns the hooks of a settings file of Claude Code or a hooks file of Codex, by event; a missing file
-// has none.
-func ReadHooks(file string) (map[string][]hookGroup, error) {
-	data, err := os.ReadFile(file)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var doc struct {
-		Hooks map[string][]hookGroup `json:"hooks"`
-	}
-	if len(bytes.TrimSpace(data)) > 0 {
-		if err := json.Unmarshal(data, &doc); err != nil {
-			return nil, fmt.Errorf("%s: %w", file, err)
+// ParseAgents reads the agents asked with --agent: trimmed, in lower case and once each; an agent other than
+// Claude or Codex is an error.
+func ParseAgents(asked []string) ([]string, error) {
+	var out []string
+	for _, a := range asked {
+		a = strings.ToLower(strings.TrimSpace(a))
+		if a != Claude && a != Codex {
+			return nil, fmt.Errorf("unknown agent %q (claude, codex)", a)
 		}
-	}
-	return doc.Hooks, nil
-}
-
-// Registered reports whether a hooks file registers any hook of polix.
-func Registered(file string) bool {
-	hooks, _ := ReadHooks(file)
-	for _, groups := range hooks {
-		for _, g := range groups {
-			for _, h := range g.Hooks {
-				if IsPolixCommand(h.Command) {
-					return true
-				}
-			}
+		if !slices.Contains(out, a) {
+			out = append(out, a)
 		}
-	}
-	return false
-}
-
-// mergeHooks replaces the hooks of polix in a hooks file with want (nil removes them). Every other key, event and
-// group of the file is kept in its order, and the groups of polix take the place of the ones they replace, so a
-// file committed by a team only changes where polix changed. The file is not touched when nothing changes, and
-// removed when polix was all it held.
-func mergeHooks(file string, want map[string][]hookGroup) ([]Change, error) {
-	old, err := os.ReadFile(file)
-	existed := err == nil
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
-	}
-	if !existed && want == nil {
-		return nil, nil
-	}
-	top, err := decodeObject(old)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", file, err)
-	}
-	hi := -1
-	var events []member
-	for i, m := range top {
-		if m.key == "hooks" {
-			hi = i
-			if events, err = decodeObject(m.val); err != nil {
-				return nil, fmt.Errorf("%s: hooks: %w", file, err)
-			}
-		}
-	}
-
-	ours := func(ev string) []json.RawMessage {
-		var out []json.RawMessage
-		for _, g := range want[ev] {
-			out = append(out, marshal(g))
-		}
-		return out
-	}
-	done := map[string]bool{}
-	var merged []member
-	for _, ev := range events {
-		var groups []json.RawMessage
-		if err := json.Unmarshal(ev.val, &groups); err != nil {
-			return nil, fmt.Errorf("%s: hooks.%s: %w", file, ev.key, err)
-		}
-		var kept []json.RawMessage
-		for _, g := range groups {
-			rest, polix := withoutPolix(g)
-			if !polix {
-				kept = append(kept, g)
-				continue
-			}
-			if rest != nil {
-				kept = append(kept, rest) // the other commands of a mixed group stay
-			}
-			if !done[ev.key] {
-				kept, done[ev.key] = append(kept, ours(ev.key)...), true
-			}
-		}
-		if !done[ev.key] {
-			kept, done[ev.key] = append(kept, ours(ev.key)...), true
-		}
-		if len(kept) == 0 && len(groups) > 0 {
-			continue // only polix was there
-		}
-		merged = append(merged, member{ev.key, encodeArray(kept)})
-	}
-	for _, ev := range hookEvents {
-		if !done[ev] && len(want[ev]) > 0 {
-			merged = append(merged, member{ev, encodeArray(ours(ev))})
-		}
-	}
-
-	next := slices.Clone(top)
-	switch {
-	case hi >= 0 && len(merged) == 0 && len(events) > 0:
-		next = slices.Delete(next, hi, hi+1)
-	case hi >= 0:
-		next[hi].val = encodeObject(merged)
-	case len(merged) > 0:
-		next = append(next, member{"hooks", encodeObject(merged)})
-	}
-	data := settingsJSON(next)
-	if existed && bytes.Equal(data, settingsJSON(top)) {
-		return nil, nil
-	}
-	if want == nil && len(next) == 0 {
-		if err := os.Remove(file); err != nil {
-			return nil, err
-		}
-		return []Change{{file, "removed"}}, nil
-	}
-	if err := writeFile(file, data); err != nil {
-		return nil, err
-	}
-	if existed {
-		return []Change{{file, "updated"}}, nil
-	}
-	return []Change{{file, "created"}}, nil
-}
-
-// withoutPolix removes the handlers of polix from a group of hooks. It reports whether the group had any, and
-// returns the group with the other handlers, every other key kept, or nil when polix was all it held.
-func withoutPolix(raw json.RawMessage) (json.RawMessage, bool) {
-	g, err := decodeObject(raw)
-	if err != nil {
-		return raw, false
-	}
-	for i, m := range g {
-		if m.key != "hooks" {
-			continue
-		}
-		var handlers []json.RawMessage
-		if json.Unmarshal(m.val, &handlers) != nil {
-			return raw, false
-		}
-		var others []json.RawMessage
-		for _, h := range handlers {
-			var c struct {
-				Command string `json:"command"`
-			}
-			if json.Unmarshal(h, &c) == nil && IsPolixCommand(c.Command) {
-				continue
-			}
-			others = append(others, h)
-		}
-		switch {
-		case len(others) == len(handlers):
-			return raw, false
-		case len(others) == 0:
-			return nil, true
-		}
-		g = slices.Clone(g)
-		g[i].val = encodeArray(others)
-		return encodeObject(g), true
-	}
-	return raw, false
-}
-
-// member is a key of a JSON object with its value as written, so a file is rewritten in its own order.
-type member struct {
-	key string
-	val json.RawMessage
-}
-
-// decodeObject reads a JSON object keeping the order of its keys; empty data is an empty object.
-func decodeObject(data []byte) ([]member, error) {
-	if len(bytes.TrimSpace(data)) == 0 {
-		return nil, nil
-	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
-		return nil, errors.New("not a JSON object")
-	}
-	var out []member
-	for dec.More() {
-		t, err := dec.Token()
-		if err != nil {
-			return nil, err
-		}
-		var v json.RawMessage
-		if err := dec.Decode(&v); err != nil {
-			return nil, err
-		}
-		out = append(out, member{t.(string), v})
-	}
-	if _, err := dec.Token(); err != nil {
-		return nil, err
-	}
-	if _, err := dec.Token(); err != io.EOF {
-		return nil, errors.New("data after the JSON object")
 	}
 	return out, nil
 }
 
-func encodeObject(ms []member) json.RawMessage {
-	var b bytes.Buffer
-	b.WriteByte('{')
-	for i, m := range ms {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.Write(marshal(m.key))
-		b.WriteByte(':')
-		b.Write(m.val)
+// For reports whether the setup includes agent.
+func (s Setup) For(agent string) bool { return slices.Contains(s.Agents, agent) }
+
+// HooksFile is the file of the repository where the hooks of an agent are registered.
+func (s Setup) HooksFile(agent string) string {
+	if agent == Codex {
+		return filepath.Join(s.Root, ".codex", "hooks.json")
 	}
-	b.WriteByte('}')
-	return b.Bytes()
+	return filepath.Join(s.Root, ".claude", "settings.json")
 }
 
-func encodeArray(items []json.RawMessage) json.RawMessage {
-	b := []byte{'['}
-	for i, it := range items {
-		if i > 0 {
-			b = append(b, ',')
-		}
-		b = append(b, it...)
-	}
-	return append(b, ']')
+// MarketplaceDir is the local marketplace polix writes its plugin to.
+func (s Setup) MarketplaceDir() string {
+	return filepath.Join(s.Home, ".polix", "marketplace")
 }
 
-// marshal encodes v without escaping <, > and &, which a shell command may hold.
-func marshal(v any) json.RawMessage {
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(v)
-	return bytes.TrimSpace(b.Bytes())
+// PluginDir is the folder of the plugin inside the marketplace, which Claude Code copies to its cache on install
+// and update.
+func (s Setup) PluginDir() string {
+	return filepath.Join(s.MarketplaceDir(), Name)
 }
 
-// settingsJSON encodes a settings or hooks file indented with two spaces, as Claude Code and Codex write theirs,
-// except that each group of hooks of an event is written inline on one line, so a file with many hooks stays
-// short and a change of polix is one line of the diff.
-func settingsJSON(top []member) []byte {
-	var b bytes.Buffer
-	b.WriteString("{")
-	for i, m := range top {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString("\n  ")
-		b.Write(marshal(m.key))
-		b.WriteString(": ")
-		if events, err := decodeObject(m.val); m.key == "hooks" && err == nil && len(events) > 0 {
-			writeHooks(&b, events)
-			continue
-		}
-		indentTo(&b, m.val, "  ")
-	}
-	if len(top) > 0 {
-		b.WriteByte('\n')
-	}
-	b.WriteString("}\n")
-	return b.Bytes()
+// PluginManifest is the manifest of the plugin written in the marketplace, which holds its version.
+func (s Setup) PluginManifest() string {
+	return filepath.Join(s.PluginDir(), ".claude-plugin", "plugin.json")
 }
 
-// writeHooks writes the object hooks: one event per line, and each of its groups inline on a line of its own.
-func writeHooks(b *bytes.Buffer, events []member) {
-	b.WriteString("{")
-	for i, ev := range events {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString("\n    ")
-		b.Write(marshal(ev.key))
-		b.WriteString(": ")
-		var groups []json.RawMessage
-		if json.Unmarshal(ev.val, &groups) != nil || len(groups) == 0 {
-			indentTo(b, ev.val, "    ")
-			continue
-		}
-		b.WriteString("[")
-		for j, g := range groups {
-			if j > 0 {
-				b.WriteByte(',')
-			}
-			b.WriteString("\n      ")
-			inlineTo(b, g)
-		}
-		b.WriteString("\n    ]")
-	}
-	b.WriteString("\n  }")
+// CodexConfigFile is the configuration of Codex of the user, where the plugin is enabled.
+func (s Setup) CodexConfigFile() string {
+	return filepath.Join(s.Home, ".codex", "config.toml")
 }
 
-// inlineTo writes a JSON value on one line, readable: `{ "key": value, ... }` with a space after `:` and `,` and
-// inside the braces, and `[a, b]` for arrays. Keys keep their order.
-func inlineTo(b *bytes.Buffer, raw json.RawMessage) {
-	raw = bytes.TrimSpace(raw)
-	if len(raw) > 0 && raw[0] == '{' {
-		if members, err := decodeObject(raw); err == nil {
-			if len(members) == 0 {
-				b.WriteString("{}")
-				return
-			}
-			b.WriteString("{ ")
-			for i, m := range members {
-				if i > 0 {
-					b.WriteString(", ")
-				}
-				b.Write(marshal(m.key))
-				b.WriteString(": ")
-				inlineTo(b, m.val)
-			}
-			b.WriteString(" }")
-			return
-		}
+// ClaudeSettingsFiles are the settings of Claude Code that may register hooks: of the project and local when
+// there is a repository, and of the user. Claude Code merges them.
+func (s Setup) ClaudeSettingsFiles() []string {
+	var files []string
+	if s.Root != "" {
+		files = append(files, s.HooksFile(Claude), filepath.Join(s.Root, ".claude", "settings.local.json"))
 	}
-	var items []json.RawMessage
-	if len(raw) > 0 && raw[0] == '[' && json.Unmarshal(raw, &items) == nil {
-		b.WriteString("[")
-		for i, it := range items {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			inlineTo(b, it)
-		}
-		b.WriteString("]")
-		return
+	if s.Home != "" {
+		files = append(files, filepath.Join(s.Home, ".claude", "settings.json"))
 	}
-	if err := json.Compact(b, raw); err != nil {
-		b.Write(raw)
-	}
+	return files
 }
 
-// indentTo writes a JSON value indented with two spaces, nested at prefix.
-func indentTo(b *bytes.Buffer, raw json.RawMessage, prefix string) {
-	if err := json.Indent(b, raw, prefix, "  "); err != nil {
-		b.Write(raw)
-	}
+// CodexHooksFiles are the hooks files of Codex that may register polix: of the project and of the user.
+func (s Setup) CodexHooksFiles() []string {
+	return []string{s.HooksFile(Codex), filepath.Join(s.Home, ".codex", "hooks.json")}
 }
 
-// syncDir makes dir hold exactly files (paths relative to it, with /): it writes the files that differ and removes
-// the ones that are not wanted.
-func syncDir(dir string, files map[string][]byte) ([]Change, error) {
-	var changes []Change
-	names := make([]string, 0, len(files))
-	for rel := range files {
-		names = append(names, rel)
-	}
-	sort.Strings(names)
-	for _, rel := range names {
-		p := filepath.Join(dir, filepath.FromSlash(rel))
-		old, err := os.ReadFile(p)
-		switch {
-		case err == nil && bytes.Equal(old, files[rel]):
-			continue
-		case err == nil:
-			changes = append(changes, Change{p, "updated"})
-		default:
-			changes = append(changes, Change{p, "created"})
-		}
-		if err := writeFile(p, files[rel]); err != nil {
-			return changes, err
-		}
-	}
-	var stale []string
-	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil
-		}
-		rel, _ := filepath.Rel(dir, p)
-		if _, ok := files[filepath.ToSlash(rel)]; !ok {
-			stale = append(stale, p)
-		}
+// Duplicates returns the settings of Claude Code, among files (path to content), other than the one of the
+// repository that also register the hooks of polix: Claude Code merges the settings and would run each hook
+// twice. Only a setup of Claude Code in a repository has them.
+func (s Setup) Duplicates(files map[string][]byte) []string {
+	if !s.For(Claude) || s.Root == "" {
 		return nil
-	})
-	for _, p := range stale {
-		if err := os.Remove(p); err != nil {
-			return changes, err
-		}
-		changes = append(changes, Change{p, "removed"})
-		removeEmptyParents(filepath.Dir(p), dir)
 	}
-	return changes, nil
-}
-
-func removeEmptyParents(d, stop string) {
-	for d != stop && strings.HasPrefix(d, stop) {
-		if os.Remove(d) != nil {
-			return
-		}
-		d = filepath.Dir(d)
-	}
-}
-
-// writeFile writes through a temporary file and a rename, so an agent that starts meanwhile reads the old file
-// or the new one, never half of it. A symlink is followed and its target written, so the link stays; an existing
-// file keeps its permissions, and a new one gets 0644.
-func writeFile(p string, data []byte) error {
-	mode := fs.FileMode(0o644)
-	if real, err := filepath.EvalSymlinks(p); err == nil {
-		p = real
-		if info, err := os.Stat(p); err == nil {
-			mode = info.Mode().Perm()
+	var out []string
+	for _, f := range s.ClaudeSettingsFiles() {
+		if data, ok := files[f]; ok && f != s.HooksFile(Claude) && Registered(data) {
+			out = append(out, f)
 		}
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".*")
-	if err != nil {
-		return err
-	}
-	_, err = tmp.Write(data)
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Chmod(tmp.Name(), mode)
-	}
-	if err == nil {
-		err = os.Rename(tmp.Name(), p)
-	}
-	if err != nil {
-		os.Remove(tmp.Name())
-	}
-	return err
+	return out
 }
 
-// pretty indents JSON with two spaces, as Claude Code and Codex write their files.
-func pretty(raw []byte) []byte {
-	var b bytes.Buffer
-	_ = json.Indent(&b, raw, "", "  ")
-	b.WriteByte('\n')
-	return b.Bytes()
+// quote quotes a path for a command shown to the user when it holds a space.
+func quote(p string) string {
+	if strings.ContainsAny(p, " \t") {
+		return `"` + p + `"`
+	}
+	return p
+}
+
+// oneLine is the first line of a message.
+func oneLine(s string) string {
+	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
+	return s
+}
+
+// Summary tells what install (verb write) or uninstall (verb remove) is about to do, for the person to confirm.
+func (s Setup) Summary(verb string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "polix %s will %s:\n", s.Version, verb)
+	for _, a := range s.Agents {
+		switch a {
+		case Claude:
+			fmt.Fprintf(&b, "\n  Claude Code: the plugin %s, from %s\n", PluginID, s.MarketplaceDir())
+		case Codex:
+			fmt.Fprintf(&b, "\n  Codex: the plugin %s, enabled in %s\n", PluginID, s.CodexConfigFile())
+		}
+		if s.Root != "" {
+			fmt.Fprintf(&b, "         the hooks of %s\n", s.HooksFile(a))
+		}
+	}
+	return b.String()
 }

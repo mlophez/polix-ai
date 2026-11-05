@@ -48,7 +48,7 @@ rules:
       Never call an external API from a handler.
     scope: ["internal/**/*.go"]      # globs of the files it applies to; without scope, the whole project
     deterministic: true              # true when a command can tell whether the code follows it
-    check: tests/rules/arch-3.sh     # optional: the command that checks it, exit 0 when the code follows it
+    check: tests/rules/arch-3.sh     # optional: the file that checks it, exit 0 when the code follows it
 ```
 
 - One file per topic: `architecture.yaml` (ARCH), `code-style.yaml` (STYLE), `testing.yaml` (TEST).
@@ -56,8 +56,9 @@ rules:
 - `retired.yaml` keeps retired rules with their `id`, `description` and `reason`; polix ignores it.
   Its ids stay taken.
 - Globs use `/` and are relative to the root: `*` stays in a segment, `**` crosses segments, `*.md` matches anywhere.
-- `check` is a path relative to the root, run from the root without a shell.
-  On Windows polix runs it with `bash` or `python` by its extension.
+- `check` names any file, relative to the root: a script, a Go test, any file a command can run.
+  The first runner of `rules.run` in `polix.yaml` whose glob matches its base name runs it, from the root and
+  without a shell; with no runner it runs as a program, on Windows with `bash` or `python` by its extension.
 
 ## How to operate
 

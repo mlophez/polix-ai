@@ -2,7 +2,7 @@ package version
 
 import "testing"
 
-func TestCompare(t *testing.T) {
+func TestVersionCompare(t *testing.T) {
 	cases := []struct {
 		a, b string
 		want int
@@ -14,26 +14,41 @@ func TestCompare(t *testing.T) {
 		{"0.2.0-rc1", "0.2.0", -1},
 		{"0.2.0", "0.2.0-rc1", 1},
 		{"0.2.0-rc1", "0.2.0-rc2", -1},
+		{"0.2.0-rc2", "0.2.0-rc1", 1},
 	}
 	for _, c := range cases {
-		if got := Compare(c.a, c.b); got != c.want {
-			t.Errorf("Compare(%q, %q) = %d, want %d", c.a, c.b, got, c.want)
+		a, errA := Parse(c.a)
+		b, errB := Parse(c.b)
+		if errA != nil || errB != nil {
+			t.Fatalf("Parse(%q), Parse(%q): %v, %v", c.a, c.b, errA, errB)
+		}
+		if got := a.Compare(b); got != c.want {
+			t.Errorf("%s.Compare(%s) = %d, want %d", c.a, c.b, got, c.want)
 		}
 	}
 }
 
-func TestIsRelease(t *testing.T) {
-	for v, want := range map[string]bool{"0.2.0": true, "1.0.0-rc1": true, "dev": false, "": false, "0.0.0": false} {
-		if got := IsRelease(v); got != want {
-			t.Errorf("IsRelease(%q) = %v, want %v", v, got, want)
+func TestVersionIsRelease(t *testing.T) {
+	for v, want := range map[Version]bool{{Minor: 2}: true, {Major: 1, Pre: "rc1"}: true, {}: false} {
+		if got := v.IsRelease(); got != want {
+			t.Errorf("%s.IsRelease() = %v, want %v", v, got, want)
 		}
 	}
 }
 
-func TestValid(t *testing.T) {
-	for v, want := range map[string]bool{"0.2.0": true, "v1.2.3": true, "1.0.0-rc.1": true, "0.2": false, "dev": false, "": false, "1.2.3.4": false} {
-		if got := Valid(v); got != want {
-			t.Errorf("Valid(%q) = %v, want %v", v, got, want)
+func TestVersionValid(t *testing.T) {
+	for v, ok := range map[Version]bool{{Major: 1}: true, {Major: 1, Pre: "rc.1"}: true, {Major: -1}: false,
+		{Patch: -2}: false, {Major: 1, Pre: "rc 1"}: false} {
+		if err := v.Valid(); (err == nil) != ok {
+			t.Errorf("%+v.Valid() = %v, want ok %v", v, err, ok)
+		}
+	}
+}
+
+func TestVersionString(t *testing.T) {
+	for v, want := range map[Version]string{{Major: 1, Minor: 2, Patch: 3}: "1.2.3", {Minor: 2, Pre: "rc1"}: "0.2.0-rc1"} {
+		if got := v.String(); got != want {
+			t.Errorf("String() = %q, want %q", got, want)
 		}
 	}
 }

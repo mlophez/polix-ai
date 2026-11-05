@@ -33,6 +33,8 @@ The prompt names:
 
 - Apply the `Rules` of the skill `add-rule`.
 - A contradiction or an unconfirmed `scope` or `check` stops you: return it with its options.
+- A `check` names any file relative to the root: the first runner of `rules.run` in `polix.yaml` whose glob
+  matches its base name runs it, else it runs as a program; never change `polix.yaml` to add a runner.
 
 ## How to operate
 

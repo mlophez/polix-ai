@@ -36,6 +36,9 @@ Find why polix does not apply as expected and fix it with the user.
   The skills `workflow` and `add-rule` of polix know their formats.
   When `polix.yaml` requires a newer polix, run `polix update` and leave `polix.yaml` alone.
   An unknown option may belong to a newer polix: run `polix update` and check again before removing it.
+- **runners**: `polix check` reports a runner of `rules.run` with an empty argv, an invalid glob or an unknown
+  placeholder; fix it with the skill `workflow`. A check that no runner matches must be executable, or on Windows
+  have its interpreter: add a runner for its kind of file or fix the file.
 - **state**: the folder `<git-dir>/polix/` must be writable; never edit it by hand, read it with `polix log`.
 
 ### Installing polix

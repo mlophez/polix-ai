@@ -10,6 +10,11 @@ base: main
 # A stop gate that keeps failing on the same content lets the agent stop after 3 blocks, so it never loops.
 max_stop_blocks: 3
 
+# The checks of ai/rules/ that are Go tests (the AST tests of tests/architecture/) run as one `go test` of their
+# package, only the test named after the rule: GOARCH-4 runs TestGOARCH4.
+rules:
+  run: { "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"] }
+
 on:
   # post_edit: after the agent edits a file, once per edited path.
   post_edit:

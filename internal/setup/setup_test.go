@@ -1,23 +1,17 @@
 package setup
 
 import (
-	"encoding/json"
-	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/mlophez/polix-ai/internal/engine"
 )
 
-func opts(t *testing.T) Options {
-	t.Helper()
-	return Options{Home: t.TempDir(), Version: "1.2.3"}
-}
-
+// read returns the content of p, failing the test when it cannot be read.
 func read(t *testing.T, p string) string {
 	t.Helper()
 	data, err := os.ReadFile(p)
@@ -38,485 +32,169 @@ func write(t *testing.T, p, data string) {
 	}
 }
 
-// fakeCLI stands for the CLIs of Claude Code and Codex: it records every call and answers like `claude plugin`
-// does with --json.
-type fakeCLI struct {
-	calls     []string
-	installed string // version recorded by install, empty when not installed
-	folder    string // version of the plugin folder, read on install
-	added     bool
+// fakeCLI is the fake CLI of the agents (testdata/fakecli), built once by TestMain.
+var fakeCLI string
+
+// TestMain builds the fake CLI of the agents, which the tests put on the PATH as claude and codex.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "polix-fakecli-")
+	if err != nil {
+		panic(err)
+	}
+	fakeCLI = filepath.Join(dir, "fakecli"+exeSuffix())
+	if out, err := exec.Command("go", "build", "-o", fakeCLI, "./testdata/fakecli").CombinedOutput(); err != nil {
+		panic(fmt.Sprintf("go build fakecli: %v\n%s", err, out))
+	}
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
 }
 
-func fakeAgents(t *testing.T, claude, codex bool) *fakeCLI {
+// exeSuffix is the extension of programs on this system.
+func exeSuffix() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
+}
+
+// copyFile copies the program src to dst.
+func copyFile(t *testing.T, src, dst string) {
 	t.Helper()
-	f := &fakeCLI{folder: "1.2.3"}
-	oldLook, oldRun := LookPath, Run
-	t.Cleanup(func() { LookPath, Run = oldLook, oldRun })
-	LookPath = func(name string) (string, error) {
-		if name == "claude" && claude || name == "codex" && codex {
-			return "/bin/" + name, nil
-		}
-		return "", errors.New("not found")
-	}
-	Run = func(name string, args ...string) (string, error) {
-		call := name + " " + strings.Join(args, " ")
-		f.calls = append(f.calls, call)
-		ok := `{"outcome":"ok"}`
-		switch {
-		case name == "codex":
-			return "", nil
-		case strings.HasPrefix(call, "claude plugin marketplace add"):
-			f.added = true
-			return ok, nil
-		case strings.HasPrefix(call, "claude plugin install"):
-			if f.installed != "" {
-				return `{"outcome":"ok","installedVersion":"` + f.installed + `","availableVersion":"` + f.folder + `"}`, nil
-			}
-			f.installed = f.folder
-			return ok, nil
-		case strings.HasPrefix(call, "claude plugin update"):
-			f.installed = f.folder
-			return ok, nil
-		case strings.HasPrefix(call, "claude plugin uninstall"):
-			if f.installed == "" {
-				return `{"outcome":"failed","failureCode":"not_installed","message":"not installed"}`, errors.New("exit status 1")
-			}
-			f.installed = ""
-			return ok, nil
-		case strings.HasPrefix(call, "claude plugin marketplace remove"):
-			if !f.added {
-				return `{"outcome":"failed","failureCode":"not_configured","message":"not found"}`, errors.New("exit status 1")
-			}
-			f.added = false
-			return ok, nil
-		case strings.HasPrefix(call, "claude plugin list"):
-			if f.installed == "" {
-				return "[]", nil
-			}
-			return `[{"id":"polix@polix","scope":"user","enabled":true,"version":"` + f.installed + `"}]`, nil
-		}
-		return "", errors.New("unexpected call: " + call)
-	}
-	return f
-}
-
-// install writes the plugin embedded in the binary to the local marketplace, with the version of the binary, and
-// installs it in Claude Code from there.
-func TestInstallClaude(t *testing.T) {
-	o := opts(t)
-	cli := fakeAgents(t, true, false)
-	cli.folder = o.Version
-	changes, err := Install(o, []string{Claude})
+	data, err := os.ReadFile(src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, ok := PluginVersion(o); !ok || v != "1.2.3" {
-		t.Fatalf("plugin version: %q %v", v, ok)
-	}
-	if !slices.Contains(changes, Change{PluginID + " in Claude Code", "registered"}) {
-		t.Fatalf("a first install registers the plugin: %+v", changes)
-	}
-	want := []string{
-		"claude plugin marketplace add " + o.MarketplaceDir() + " --scope user --json",
-		"claude plugin install polix@polix --scope user --json",
-	}
-	if !slices.Equal(cli.calls, want) {
-		t.Fatalf("calls:\n%s", strings.Join(cli.calls, "\n"))
-	}
-	var codex map[string]any
-	if err := json.Unmarshal([]byte(read(t, filepath.Join(o.PluginDir(), ".codex-plugin", "plugin.json"))), &codex); err != nil || codex["version"] != "1.2.3" {
-		t.Fatalf("manifest of Codex: %v %v", codex, err)
-	}
-	// The manifests are read with the exact names of their fields: owner.name is required by Claude Code.
-	var cm struct {
-		Name  string `json:"name"`
-		Owner struct {
-			Name string `json:"name"`
-		} `json:"owner"`
-		Plugins []struct {
-			Name   string `json:"name"`
-			Source string `json:"source"`
-		} `json:"plugins"`
-	}
-	if err := json.Unmarshal([]byte(read(t, filepath.Join(o.MarketplaceDir(), ".claude-plugin", "marketplace.json"))), &cm); err != nil ||
-		cm.Name != Name || cm.Owner.Name == "" || len(cm.Plugins) != 1 || cm.Plugins[0].Source != "./polix" {
-		t.Fatalf("marketplace of Claude Code: %+v %v", cm, err)
-	}
-	var xm struct {
-		Name    string `json:"name"`
-		Plugins []struct {
-			Source struct {
-				Source string `json:"source"`
-				Path   string `json:"path"`
-			} `json:"source"`
-		} `json:"plugins"`
-	}
-	if err := json.Unmarshal([]byte(read(t, filepath.Join(o.MarketplaceDir(), ".agents", "plugins", "marketplace.json"))), &xm); err != nil ||
-		xm.Name != Name || len(xm.Plugins) != 1 || xm.Plugins[0].Source.Path != "./polix" {
-		t.Fatalf("marketplace of Codex: %+v %v", xm, err)
-	}
-	skill := read(t, filepath.Join(o.PluginDir(), "skills", "add-rule", "SKILL.md"))
-	if !strings.Contains(skill, "name: add-rule\n") {
-		t.Fatalf("skill:\n%s", skill)
-	}
-	if _, err := os.Stat(filepath.Join(o.Home, ".claude")); err == nil {
-		t.Fatal("install only touches ~/.claude through the CLI of Claude Code")
-	}
-
-	// A second install changes nothing; a file of an earlier release that this one dropped is removed.
-	stale := filepath.Join(o.PluginDir(), "skills", "gone", "SKILL.md")
-	write(t, stale, "old")
-	changes, err = Install(o, []string{Claude})
-	if err != nil || len(changes) != 1 || changes[0].Action != "removed" || changes[0].Path != stale {
-		t.Fatalf("second install: %v %+v", err, changes)
-	}
-	if _, err := os.Stat(filepath.Dir(stale)); err == nil {
-		t.Fatal("the emptied folder of a dropped skill is removed")
-	}
-
-	// A new binary rewrites the plugin in place and has Claude Code record its version.
-	o.Version, cli.folder = "1.2.4", "1.2.4"
-	cli.calls = nil
-	if changes, err := Refresh(o); err != nil || len(changes) == 0 {
-		t.Fatalf("refresh: %v %+v", err, changes)
-	}
-	if v, _ := PluginVersion(o); v != "1.2.4" || cli.installed != "1.2.4" {
-		t.Fatalf("refresh: folder %s, Claude Code %s, calls %v", v, cli.installed, cli.calls)
-	}
-	if changes, _ := Refresh(o); len(changes) != 0 {
-		t.Fatalf("nothing to refresh: %+v", changes)
-	}
-
-	if _, err := Uninstall(o, []string{Claude}); err != nil || cli.installed != "" || cli.added {
-		t.Fatalf("uninstall: %v, calls %v", err, cli.calls)
-	}
-	if _, err := Uninstall(o, []string{Claude, Codex}); err != nil {
-		t.Fatalf("uninstall what is not installed: %v", err)
-	}
-	if _, err := os.Stat(o.MarketplaceDir()); err == nil {
-		t.Fatal("uninstall for every agent removes the plugin")
-	}
-	if changes, _ := Refresh(o); len(changes) != 0 {
-		t.Fatal("refresh installs nothing")
+	if err := os.WriteFile(dst, data, 0o755); err != nil {
+		t.Fatal(err)
 	}
 }
 
-// Without the CLI of Claude Code, install writes the plugin and says what to run.
-func TestInstallWithoutClaude(t *testing.T) {
-	o := opts(t)
-	fakeAgents(t, false, false)
-	changes, err := Install(o, []string{Claude})
-	if err != nil || len(changes) == 0 {
-		t.Fatal(err)
-	}
-	last := changes[len(changes)-1]
-	if last.Action != "todo" || !strings.Contains(last.Path, "claude plugin install polix@polix --scope user") {
-		t.Fatalf("the command to run by hand: %+v", last)
-	}
-}
-
-// For Codex, install adds the marketplace and enables the plugin in its configuration, keeping the rest of it.
-func TestInstallCodex(t *testing.T) {
-	o := opts(t)
-	cli := fakeAgents(t, false, true)
-	config := o.CodexConfigFile()
-	mine := "model = \"gpt-5\"\n\n[plugins.\"other@x\"]\nenabled = true\n"
-	write(t, config, mine)
-
-	if _, err := Install(o, []string{Codex}); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Contains(cli.calls, "codex plugin marketplace add "+o.MarketplaceDir()) {
-		t.Fatalf("calls: %v", cli.calls)
-	}
-	got := read(t, config)
-	if !strings.HasPrefix(got, mine) || !strings.Contains(got, "[plugins.\"polix@polix\"]\nenabled = true\n") || !CodexEnabled(o) {
-		t.Fatalf("config of Codex:\n%s", got)
-	}
-	if changes, err := Install(o, []string{Codex}); err != nil || len(changes) != 0 {
-		t.Fatalf("second install: %v %+v", err, changes)
-	}
-
-	// A plugin disabled by hand is enabled again.
-	write(t, config, strings.Replace(got, "polix@polix\"]\nenabled = true", "polix@polix\"]\nenabled = false", 1))
-	if _, err := Install(o, []string{Codex}); err != nil || !CodexEnabled(o) {
-		t.Fatalf("enable again: %v\n%s", err, read(t, config))
-	}
-
-	if _, err := Uninstall(o, []string{Codex}); err != nil {
-		t.Fatal(err)
-	}
-	if got := read(t, config); got != mine || CodexEnabled(o) {
-		t.Fatalf("uninstall leaves the rest of the config:\n%q", got)
-	}
-	if !slices.Contains(cli.calls, "codex plugin marketplace remove polix") {
-		t.Fatalf("calls: %v", cli.calls)
-	}
-}
-
-// A config of Codex that only enabled polix goes with it.
-func TestUninstallCodexRemovesItsConfig(t *testing.T) {
-	o := opts(t)
-	fakeAgents(t, false, false)
-	if _, err := Install(o, []string{Codex}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Uninstall(o, []string{Codex}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(o.CodexConfigFile()); err == nil {
-		t.Fatal("the config of polix alone is removed")
-	}
-}
-
-// In a project, install registers the hooks in its settings, keeping the rest of the file in its order, and puts
-// the plugin in the home of the user, not in the repository.
-func TestRegisterHooksInTheProject(t *testing.T) {
-	o := opts(t)
-	fakeAgents(t, true, false)
-	o.Project = t.TempDir()
-	settings := o.HooksFile(Claude)
-	mine := `{
-  "permissions": {"allow": ["Bash(go test:*)"]},
-  "hooks": {
-    "Stop": [
-      {"hooks": [{"type": "command", "command": "notify-send done"}]},
-      {"hooks": [{"type": "command", "command": "polix hook claude"}]}
-    ]
-  },
-  "model": "opus"
-}`
-	write(t, settings, mine)
-
-	if _, err := Install(o, []string{Claude, Codex}); err != nil {
-		t.Fatal(err)
-	}
-	got := read(t, settings)
-	if p, h, m := strings.Index(got, `"permissions"`), strings.Index(got, `"hooks"`), strings.Index(got, `"model"`); p >= h || h >= m {
-		t.Fatalf("the order of the keys is kept:\n%s", got)
-	}
-	hooks, err := ReadHooks(settings)
+// machine gives a test a home, a cache and a PATH of its own: git, and the fake CLIs of the agents asked, which
+// record their calls. It returns the folder of their state.
+func machine(t *testing.T, claude, codex bool) string {
+	t.Helper()
+	git, err := exec.LookPath("git")
 	if err != nil {
-		t.Fatal(err)
+		t.Skip("git is not on the PATH")
 	}
-	if len(hooks["Stop"]) != 2 || hooks["Stop"][0].Hooks[0].Command != "notify-send done" ||
-		hooks["Stop"][1].Hooks[0].Command != "polix hook claude" || hooks["Stop"][1].Hooks[0].Timeout != HookTimeout {
-		t.Fatalf("the hooks of the user are kept and the one of polix replaced in place: %+v", hooks["Stop"])
+	bin, st := t.TempDir(), t.TempDir()
+	path := bin
+	if err := os.Symlink(git, filepath.Join(bin, filepath.Base(git))); err != nil {
+		path += string(os.PathListSeparator) + filepath.Dir(git) // Windows without symlinks: the folder of git
 	}
-	if len(hooks) != len(Hooks(Claude)) || hooks["PreToolUse"][0].Matcher != claudeTools {
-		t.Fatalf("every event of polix: %+v", hooks)
+	if claude {
+		copyFile(t, fakeCLI, filepath.Join(bin, "claude"+exeSuffix()))
 	}
-	if !Registered(o.HooksFile(Codex)) {
-		t.Fatal("the hooks of Codex go to the .codex/hooks.json of the project")
+	if codex {
+		copyFile(t, fakeCLI, filepath.Join(bin, "codex"+exeSuffix()))
 	}
-	if _, ok := PluginVersion(o); !ok {
-		t.Fatal("the plugin goes to the home of the user")
-	}
-	for _, p := range []string{filepath.Join(o.Project, ".claude", "skills"), filepath.Join(o.Project, ".agents")} {
-		if _, err := os.Stat(p); err == nil {
-			t.Fatalf("no plugin in the repository: %s", p)
+	t.Setenv("PATH", path)
+	t.Setenv("FAKE_STATE", st)
+	home(t)
+	return st
+}
+
+// home gives a test a home and a cache of its own.
+func home(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	t.Setenv("POLIX_CACHE_DIR", t.TempDir())
+}
+
+// calls returns the calls recorded by the fake CLIs.
+func calls(st string) []string {
+	data, _ := os.ReadFile(filepath.Join(st, "calls"))
+	return strings.Split(strings.TrimSpace(string(data)), "\n")
+}
+
+// gitRepo creates a repository with one commit on main.
+func gitRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, args := range [][]string{{"init", "--quiet", "--initial-branch=main"},
+		{"-c", "user.name=t", "-c", "user.email=t@x", "commit", "--quiet", "--allow-empty", "-m", "init"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
+	real, _ := filepath.EvalSymlinks(dir)
+	return real
+}
 
-	// Installing again changes nothing but the command of Codex, which is not on the PATH, to run by hand.
-	if changes, err := Install(o, []string{Claude, Codex}); err != nil || len(changes) != 1 || changes[0].Action != "todo" {
-		t.Fatalf("second install: %v %+v", err, changes)
-	}
-
-	// Uninstall leaves the rest of the settings; a hooks file that only held polix goes with it.
-	if _, err := Uninstall(o, []string{Claude, Codex}); err != nil {
+func TestSetupValid(t *testing.T) {
+	s := Setup{Home: "/h", Agents: []string{Claude, Codex}, Version: "1.2.3"}
+	if err := s.Valid(); err != nil {
 		t.Fatal(err)
 	}
-	var doc map[string]any
-	if err := json.Unmarshal([]byte(read(t, settings)), &doc); err != nil {
-		t.Fatal(err)
+	bad := Setup{Agents: []string{"cursor"}, Version: "1"}
+	if err := bad.Valid(); err == nil || !strings.Contains(err.Error(), `unknown agent "cursor" (claude, codex)`) {
+		t.Fatalf("unknown agent: %v", err)
 	}
-	hooks, _ = ReadHooks(settings)
-	if doc["model"] != "opus" || doc["permissions"] == nil || len(hooks) != 1 || len(hooks["Stop"]) != 1 || Registered(settings) {
-		t.Fatalf("uninstall leaves the rest of the file: %v", doc)
-	}
-	if _, err := os.Stat(o.HooksFile(Codex)); err == nil {
-		t.Fatal("the hooks file of polix alone is removed")
+	noVersion := Setup{}
+	if err := noVersion.Valid(); err == nil {
+		t.Fatal("a setup needs the version")
 	}
 }
 
-// The session start command of an earlier build is replaced in place, not kept next to the new one.
-func TestRegisterHooksReplacesALegacyCommand(t *testing.T) {
-	o := opts(t)
-	o.Project = t.TempDir()
-	settings := o.HooksFile(Claude)
-	write(t, settings, `{"hooks": {"SessionStart": [
-  {"hooks": [{"type": "command", "command": "polix hook claude", "timeout": 900}]},
-  {"matcher": "startup", "hooks": [{"type": "command", "command": "polix update --hook; polix doctor --hook", "timeout": 180}]}
-]}}`)
-	if _, err := RegisterHooks(o, Claude); err != nil {
-		t.Fatal(err)
+func TestParseAgents(t *testing.T) {
+	got, err := ParseAgents([]string{" Claude", "codex", "claude"})
+	if err != nil || !slices.Equal(got, []string{Claude, Codex}) {
+		t.Fatalf("%v %v", got, err)
 	}
-	got := read(t, settings)
-	if strings.Contains(got, "polix doctor --hook") || strings.Count(got, `"`+UpdateCommand+`"`) != 1 {
-		t.Fatalf("the legacy command is replaced:\n%s", got)
-	}
-	for _, c := range []string{"polix update --hook", "polix update --hook --flag-of-a-later-release", "polix update --hook; polix doctor --hook"} {
-		if !IsPolixCommand(c) {
-			t.Errorf("%q is the update of polix", c)
-		}
-	}
-	if IsPolixCommand("polix update --check") || IsPolixCommand("polix update --hookx") {
-		t.Error("only the session start command is the update of polix")
+	if _, err := ParseAgents([]string{"cursor"}); err == nil || err.Error() != `unknown agent "cursor" (claude, codex)` {
+		t.Fatalf("unknown agent: %v", err)
 	}
 }
 
-// The example hooks files of the repository are, byte for byte, what install writes for each agent in an empty
-// repository. POLIX_UPDATE_EXAMPLES=1 rewrites them.
-func TestHooksExamples(t *testing.T) {
-	for agent, example := range map[string]string{Claude: "claude-settings.json", Codex: "codex-hooks.json"} {
-		o := Options{Project: t.TempDir()}
-		if _, err := RegisterHooks(o, agent); err != nil {
-			t.Fatal(err)
+func TestSetupPaths(t *testing.T) {
+	s := Setup{Home: "/h", Root: "/r", Agents: []string{Claude}, Version: "1"}
+	for got, want := range map[string]string{
+		s.HooksFile(Claude): "/r/.claude/settings.json",
+		s.HooksFile(Codex):  "/r/.codex/hooks.json",
+		s.PluginDir():       "/h/.polix/marketplace/polix",
+		s.PluginManifest():  "/h/.polix/marketplace/polix/.claude-plugin/plugin.json",
+		s.CodexConfigFile(): "/h/.codex/config.toml",
+	} {
+		if got != filepath.FromSlash(want) {
+			t.Errorf("got %s, want %s", got, want)
 		}
-		got := read(t, o.HooksFile(agent))
-		p := filepath.Join("..", "..", "examples", example)
-		if os.Getenv("POLIX_UPDATE_EXAMPLES") == "1" {
-			if err := os.WriteFile(p, []byte(got), 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if want := read(t, p); want != got {
-			t.Errorf("examples/%s differs from what install writes:\n%s", example, got)
-		}
+	}
+	if got := s.ClaudeSettingsFiles(); len(got) != 3 {
+		t.Fatalf("project, local and user: %v", got)
+	}
+	userOnly := Setup{Home: "/h", Version: "1"}
+	if got := userOnly.ClaudeSettingsFiles(); len(got) != 1 {
+		t.Fatalf("only the user outside a repository: %v", got)
 	}
 }
 
-// Every group of hooks is written on one line, and a second install changes nothing.
-func TestHooksGroupsInline(t *testing.T) {
-	o := Options{Project: t.TempDir()}
-	if _, err := RegisterHooks(o, Claude); err != nil {
-		t.Fatal(err)
+// The other settings of Claude Code that register polix too are duplicates; the one of the repository is not.
+func TestDuplicates(t *testing.T) {
+	s := Setup{Home: "/h", Root: "/r", Agents: []string{Claude}, Version: "1"}
+	hooks, _, _ := RegisterHooks(nil, false, Claude)
+	user := filepath.FromSlash("/h/.claude/settings.json")
+	files := map[string][]byte{s.HooksFile(Claude): hooks, user: hooks}
+	if got := s.Duplicates(files); !slices.Equal(got, []string{user}) {
+		t.Fatalf("duplicates: %v", got)
 	}
-	got := read(t, o.HooksFile(Claude))
-	for _, l := range strings.Split(got, "\n") {
-		oneLine := strings.HasPrefix(l, "      { ") && strings.Contains(l, `"hooks": [{ "type": "command"`)
-		if strings.Contains(l, `"command"`) && !oneLine {
-			t.Fatalf("a group spans lines:\n%s", got)
+	codexOnly := Setup{Home: "/h", Root: "/r", Agents: []string{Codex}, Version: "1"}
+	if got := codexOnly.Duplicates(files); got != nil {
+		t.Fatalf("only for Claude Code: %v", got)
+	}
+}
+
+func TestSummary(t *testing.T) {
+	s := Setup{Home: "/h", Root: "/r", Agents: []string{Claude, Codex}, Version: "1.2.3"}
+	got := s.Summary("write")
+	for _, want := range []string{"polix 1.2.3 will write:", "Claude Code: the plugin polix@polix", "Codex: the plugin",
+		"the hooks of " + s.HooksFile(Codex)} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary lacks %q:\n%s", want, got)
 		}
-	}
-	if !strings.Contains(got, `"PostToolUseFailure"`) {
-		t.Fatalf("Claude Code gets PostToolUseFailure:\n%s", got)
-	}
-	if _, ok := Hooks(Codex)["PostToolUseFailure"]; ok {
-		t.Fatal("Codex keeps its events")
-	}
-	if changes, err := RegisterHooks(o, Claude); err != nil || len(changes) != 0 {
-		t.Fatalf("second install: %v %+v", err, changes)
-	}
-}
-
-// A group that mixes polix with another command keeps the other command, and polix ends once on the event.
-func TestRegisterHooksMixedGroup(t *testing.T) {
-	o := Options{Project: t.TempDir()}
-	settings := o.HooksFile(Claude)
-	write(t, settings, `{"hooks": {"Stop": [{"hooks": [
-  {"type": "command", "command": "polix hook claude"},
-  {"type": "command", "command": "notify-send done"}
-]}]}}`)
-	if _, err := RegisterHooks(o, Claude); err != nil {
-		t.Fatal(err)
-	}
-	hooks, _ := ReadHooks(settings)
-	polix, other := 0, 0
-	for _, g := range hooks["Stop"] {
-		for _, h := range g.Hooks {
-			switch h.Command {
-			case "polix hook claude":
-				polix++
-			case "notify-send done":
-				other++
-			}
-		}
-	}
-	if polix != 1 || other != 1 {
-		t.Fatalf("one polix and the other command: %+v", hooks["Stop"])
-	}
-	if _, err := Uninstall(o, []string{Claude}); err != nil {
-		t.Fatal(err)
-	}
-	hooks, _ = ReadHooks(settings)
-	if Registered(settings) || len(hooks["Stop"]) != 1 || hooks["Stop"][0].Hooks[0].Command != "notify-send done" {
-		t.Fatalf("uninstall leaves the other command: %+v", hooks)
-	}
-}
-
-// Install writes through a symlinked settings file to its target and keeps the mode of the file.
-func TestRegisterHooksKeepsLinkAndMode(t *testing.T) {
-	o := Options{Project: t.TempDir()}
-	target := filepath.Join(t.TempDir(), "settings.json")
-	if err := os.WriteFile(target, []byte(`{"model": "opus"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	settings := o.HooksFile(Claude)
-	if err := os.MkdirAll(filepath.Dir(settings), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(target, settings); err != nil {
-		t.Skipf("cannot create symlinks here: %v", err)
-	}
-	if _, err := RegisterHooks(o, Claude); err != nil {
-		t.Fatal(err)
-	}
-	if info, err := os.Lstat(settings); err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("the link stays: %v", err)
-	}
-	if !Registered(target) {
-		t.Fatal("the target is written")
-	}
-	if info, _ := os.Stat(target); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
-		t.Fatalf("the mode is kept: %v", info.Mode())
-	}
-}
-
-// The hooks give polix more time than the run budget of a call, so the agent never kills a gate in the middle.
-func TestHookTimeouts(t *testing.T) {
-	for _, agent := range []string{Claude, Codex} {
-		for ev, groups := range Hooks(agent) {
-			for _, g := range groups {
-				for _, h := range g.Hooks {
-					if strings.HasPrefix(h.Command, "polix hook") && float64(h.Timeout) <= engine.RunBudget.Seconds() {
-						t.Errorf("%s %s: timeout %d", agent, ev, h.Timeout)
-					}
-				}
-			}
-		}
-	}
-}
-
-func TestPluginNames(t *testing.T) {
-	if got := strings.Join(Skills(), " "); got != "add-rule audit doctor init plan review workflow" {
-		t.Fatalf("skills: %s", got)
-	}
-	if got := strings.Join(Agents(), " "); got != "auditor reviewer rules-author rules-reviewer workflow-author" {
-		t.Fatalf("agents: %s", got)
-	}
-}
-
-// A development build is always "dev", so the plugin carries a hash of its contents as version: Claude Code only
-// copies a plugin to its cache when its version changes.
-func TestManifestVersionOfDevelopmentBuild(t *testing.T) {
-	if v := ManifestVersion("1.2.3"); v != "1.2.3" {
-		t.Fatalf("a release writes its own version: %s", v)
-	}
-	dev := ManifestVersion("dev")
-	if !strings.HasPrefix(dev, "0.0.0-dev+") || len(dev) != len("0.0.0-dev+")+12 || ManifestVersion("") != dev {
-		t.Fatalf("a development build writes 0.0.0-dev+<hash>: %s", dev)
-	}
-	o := Options{Home: t.TempDir(), Version: "dev"}
-	if _, err := WritePlugin(o); err != nil {
-		t.Fatal(err)
-	}
-	if v, _ := PluginVersion(o); v != dev {
-		t.Fatalf("plugin version: %s, want %s", v, dev)
-	}
-	m := read(t, filepath.Join(o.MarketplaceDir(), Name, ".codex-plugin", "plugin.json"))
-	if !strings.Contains(m, `"version": "`+dev+`"`) {
-		t.Fatalf("both manifests carry it: %s", m)
 	}
 }

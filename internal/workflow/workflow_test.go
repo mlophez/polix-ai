@@ -8,18 +8,22 @@ import (
 	"testing"
 )
 
-// validate parses src and returns its problems joined, failing the test on a parse error.
+// validate parses src and returns its problems joined, failing the test on an error other than Invalid.
 func validate(t *testing.T, src string) string {
 	t.Helper()
-	w, err := Parse([]byte(src))
-	if err != nil {
+	w, err := Parse([]byte(src), "dev")
+	var invalid Invalid
+	if err != nil && !errors.As(err, &invalid) {
 		t.Fatalf("parse: %v", err)
 	}
-	return strings.Join(Validate(w), "\n")
+	if got, want := strings.Join(w.Problems(), "\n"), strings.Join(invalid, "\n"); got != want {
+		t.Fatalf("Problems and the error of Parse differ:\n%s\n---\n%s", got, want)
+	}
+	return strings.Join(w.Problems(), "\n")
 }
 
 // Every mistake of this list is reported: a typo never turns into an entry that silently stops applying.
-func TestValidateRejects(t *testing.T) {
+func TestValidRejects(t *testing.T) {
 	cases := []struct {
 		name, src, want string
 	}{
@@ -43,6 +47,8 @@ func TestValidateRejects(t *testing.T) {
 		{"empty protected glob", "version: 1\nprotected: [\".env\", \"\"]\n", "protected: a path glob cannot be empty"},
 		{"empty base name", "version: 1\nbase: [main, \"\"]\n", "base: a branch name cannot be empty"},
 		{"allow on post_edit", "version: 1\non:\n  post_edit:\n    - allow: true\n", "allow cannot let post_edit through"},
+		{"empty runner", "version: 1\nrules:\n  run:\n    \"*_test.go\": []\n", `polix.yaml:4: rules.run "*_test.go": the command is empty`},
+		{"unknown key in rules", "version: 1\nrules:\n  runs: {}\n", `unknown key "runs" in rules (run)`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -54,7 +60,7 @@ func TestValidateRejects(t *testing.T) {
 }
 
 // Valid constructs that look like mistakes are accepted.
-func TestValidateAccepts(t *testing.T) {
+func TestValidAccepts(t *testing.T) {
 	src := `version: 1
 vars:
   key: { branch: "^([A-Z]+-[0-9]{1,5})" }
@@ -74,63 +80,52 @@ on:
     - if: { changed: "src/**", not: { branch: "^main$" } }
       unless: { done: tested, var: key }
       require: "Ejecuta just test"
+rules:
+  run:
+    "*_test.go": go test {dir} -run ^Test{name}$
 `
 	if got := validate(t, src); got != "" {
 		t.Fatalf("unexpected problems:\n%s", got)
 	}
 }
 
-// requires is read before the rest of the file, so a polix older than the workflow asks to be updated instead of
-// reporting the options it does not know; a development build is never too old.
-func TestLoadRequires(t *testing.T) {
-	root := t.TempDir()
-	write := func(s string) {
-		if err := os.WriteFile(filepath.Join(root, File), []byte(s), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("version: 1\nrequires: 0.3.0\nan_option_of_0_3: true\n")
-	_, err := Load(root, "0.2.1")
-	var old *TooOld
-	if !errors.As(err, &old) || old.Requires != "0.3.0" || old.Running != "0.2.1" {
-		t.Fatalf("an older polix: %v", err)
-	}
-	if _, err := Load(root, "dev"); err == nil || errors.As(err, &old) {
-		t.Fatalf("a dev build parses the file and reports what it does not know: %v", err)
-	}
-	if _, err := Load(root, "0.3.0"); err == nil || errors.As(err, &old) {
-		t.Fatalf("the required version parses the file: %v", err)
-	}
-
-	write("version: 1\nrequires: v0.2.0\n")
-	w, err := Load(root, "0.2.0")
-	if err != nil || w.Requires != "v0.2.0" || len(Validate(w)) != 0 {
-		t.Fatalf("a polix as new as required: %v %+v %v", err, w, Validate(w))
-	}
-	write("version: 1\nrequires: 0.2\n")
-	if w, err := Load(root, "0.2.0"); err != nil || len(Validate(w)) != 1 {
-		t.Fatalf("requires must be a full version: %v", err)
+// The problems of a context on stop come in the order polix check reports them: its keys, then the event.
+func TestContextProblemsOrder(t *testing.T) {
+	got := validate(t, "version: 1\non:\n  stop:\n    - context: { text: x, fiel: y }\n")
+	want := "polix.yaml:4: unknown key \"fiel\" in context (file, text, rules)\n" +
+		"polix.yaml:4: context does not reach the agent on stop, which cannot receive context"
+	if got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
 
-// base takes one branch or a list, and main is the default.
-func TestBaseBranches(t *testing.T) {
-	for src, want := range map[string]string{
-		"version: 1\n":                    "main",
-		"version: 1\nbase: dev\n":         "dev",
-		"version: 1\nbase: [dev, main]\n": "dev,main",
-	} {
-		w, err := Parse([]byte(src))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := strings.Join(w.BaseBranches(), ","); got != want || len(Validate(w)) != 0 {
-			t.Errorf("%q: BaseBranches = %q, want %q (%v)", src, got, want, Validate(w))
+// Valid joins every problem in one Invalid error, whose list is that of Problems.
+func TestValidJoinsProblems(t *testing.T) {
+	w := Workflow{Version: 2, MaxStopBlocks: -1}
+	err := w.Valid()
+	var invalid Invalid
+	if !errors.As(err, &invalid) || len(invalid) != 2 || err.Error() != strings.Join(w.Problems(), "\n") {
+		t.Fatalf("Valid: %v", err)
+	}
+	if err := (Workflow{Version: 1}).Valid(); err != nil {
+		t.Fatalf("a minimal workflow: %v", err)
+	}
+}
+
+// A variable outside a workflow reports its own problems, without a name.
+func TestVarValid(t *testing.T) {
+	cases := map[string]Var{
+		"var needs branch":                {},
+		"var: error parsing regexp":       {Branch: "("},
+		`unknown key "x" in var (branch)`: {Branch: "x", Keys: []string{"branch", "x"}},
+	}
+	for want, v := range cases {
+		if err := v.Valid(); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%+v: want %q, got %v", v, want, err)
 		}
 	}
-	w, err := Parse([]byte("version: 1\nprotected: [.env, \"ai/rules/**\"]\n"))
-	if err != nil || len(w.Protected) != 2 || len(Validate(w)) != 0 {
-		t.Fatalf("protected: %v %+v", err, w)
+	if err := (Var{Branch: "^main$"}).Valid(); err != nil {
+		t.Fatal(err)
 	}
 }
 

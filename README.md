@@ -273,7 +273,8 @@ on:
 untracked).
 
 **Top-level keys:** `version`, `requires`, `base` (the branch, or candidates, `rules check --changed` compares
-with), `protected` (paths no agent writes), `max_stop_blocks`, `vars`, `on`.
+with), `protected` (paths no agent writes), `max_stop_blocks`, `vars`, `on`, `rules` (`run`: the command that runs
+each kind of `check`, by the glob of its file name).
 
 **Actions:** `deny`, `allow`, `require`, `run` (a command or the checks of the matching rules, optionally
 recording a fact when it passes), `context` (a
@@ -365,8 +366,8 @@ just check      # install, then check this repository's config, rules and machin
 just release 0.2.0
 ```
 
-Code lives in `cmd/polix` and `internal/` (`agent`, `engine`, `workflow`, `rules`, `state`, `cli`, `setup`,
-`update`, `version`, `gitx`, `glob`, `shell`). The plugin lives in `plugins/polix/`, embedded in the binary; check it with
+Code lives in `cmd/polix`, `internal/` (`agent`, `hook`, `rule`, `setup`, `state`, `version`, `workflow`) and
+`pkg/`, with the layout of `docs/architecture.md`; `tests/` holds the architecture and installer tests. The plugin lives in `plugins/polix/`, embedded in the binary; check it with
 `claude plugin validate plugins/polix`. CI runs on Linux, macOS and Windows, including the PowerShell installer
 under Windows PowerShell 5.1 and PowerShell 7.
 
