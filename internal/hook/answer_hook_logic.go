@@ -223,7 +223,9 @@ func (r *answerHookRun) outsideChange() bool {
 	return ev.Outside || r.ignored(ev.Path)
 }
 
-// apply runs the action of a matching entry and reports whether the evaluation of the event stops there.
+// apply runs the action of a matching entry and reports whether the evaluation of the event stops there. Once the
+// action applied, the fact of the entry is recorded (recordEntry), before the evaluation stops when it does; a run
+// records it itself, only when it passed (runEntry).
 func (r *answerHookRun) apply(e workflow.Entry, ans agent.Answer) (agent.Answer, bool) {
 	switch e.Action() {
 	case "deny":
@@ -232,9 +234,12 @@ func (r *answerHookRun) apply(e workflow.Entry, ans agent.Answer) (agent.Answer,
 		if r.waiting() {
 			return ans, false
 		}
-		return r.block(e, ans, reason)
+		ans, stop := r.block(e, ans, reason)
+		r.recordEntry(e)
+		return ans, stop
 	case "allow":
 		r.log("allow", e.Line, "allow", "")
+		r.recordEntry(e)
 		return ans, true
 	case "require":
 		reason := r.expand(*e.Require)
@@ -242,6 +247,7 @@ func (r *answerHookRun) apply(e workflow.Entry, ans agent.Answer) (agent.Answer,
 			return ans, false
 		}
 		ans, _ = r.block(e, ans, reason)
+		r.recordEntry(e)
 		return ans, false
 	case "run":
 		return r.runEntry(e, ans), false
@@ -249,15 +255,27 @@ func (r *answerHookRun) apply(e workflow.Entry, ans agent.Answer) (agent.Answer,
 		if t := r.context(*e.Context); t != "" && !r.waiting() {
 			ans = ans.Inform(t)
 		}
+		r.recordEntry(e)
 		return ans, false
 	case "record":
-		fact := r.expand(*e.Record)
-		if !r.waiting() {
-			r.recordFact(fact)
-		}
+		r.recordEntry(e)
 		return ans, false
 	}
 	return ans, false
+}
+
+// recordEntry records the fact of the entry e, if it has one, on the current content: its action applied, blocked,
+// warned or let through by the loop guard. An entry in audit mode records nothing, so trying an entry never
+// changes what the others see.
+func (r *answerHookRun) recordEntry(e workflow.Entry) {
+	if e.Record == nil || e.EffectiveMode() == workflow.ModeAudit {
+		return
+	}
+	fact := r.expand(*e.Record)
+	if r.waiting() {
+		return
+	}
+	r.recordFact(fact)
 }
 
 // block applies a block of the entry e in its mode and reports whether the event is actually blocked. On stop and
@@ -302,11 +320,12 @@ func (r *answerHookRun) block(e workflow.Entry, ans agent.Answer, reason string)
 
 // runEntry runs the action run of the entry e. The fact is about the content the run saw: it is pinned before
 // running, and nothing is recorded if the run (or anyone else meanwhile) changed it, or if the hash is unknown.
-// Only a run that passed records, whatever the mode. Any run may rewrite files, so the content hash and the
+// Only a run that passed records, and never in audit mode. Any run may rewrite files, so the content hash and the
 // files read after it are those of a new epoch.
 func (r *answerHookRun) runEntry(e workflow.Entry, ans agent.Answer) agent.Answer {
+	records := e.Record != nil && e.EffectiveMode() != workflow.ModeAudit
 	before, knownBefore := "", true
-	if e.Run.Record != "" {
+	if records {
 		before, knownBefore = r.hash()
 	}
 	reason := r.run(*e.Run)
@@ -318,10 +337,10 @@ func (r *answerHookRun) runEntry(e workflow.Entry, ans agent.Answer) agent.Answe
 		ans, _ = r.block(e, ans, reason)
 		return ans
 	}
-	if e.Run.Record == "" {
+	if !records {
 		return ans
 	}
-	fact := r.expand(e.Run.Record)
+	fact := r.expand(*e.Record)
 	after, knownAfter := r.hash()
 	if r.waiting() {
 		return ans

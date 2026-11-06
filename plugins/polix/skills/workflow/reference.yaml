@@ -121,6 +121,11 @@ on:
   #   mode:   optional, enforce (default) | warn | audit; how a block of the entry is applied (see deny).
   #   why:    optional free text for people; the engine ignores it.
   #   <action>: exactly one of deny, allow, require, run, context, record.
+  #   record: alone it is the action record; next to any other action, the name of a fact (placeholders allowed)
+  #           recorded on the current content once that action applied: blocked, warned or let through by the
+  #           loop guard, and a run only when it passed on a content that did not change. In audit mode nothing
+  #           is recorded. A deny or require that records the fact its own `unless` checks asks once per content
+  #           instead of enforcing.
   # Unknown events, keys (also inside run, context and vars), conditions, actions and modes are rejected by
   # `polix check`, and so are conditions on events where they never hold (path, command, writes, exit).
   #
@@ -183,8 +188,8 @@ on:
     #   zero exit blocks with the last 15 lines of its output;
     # - rules: `changed` (the changed files) or a path such as "{path}": runs the check of every deterministic
     #   rule with a check whose scope matches; a failure names the rule ids and their output.
-    # Optional record: the name of a fact recorded on the current content when the run passes (never when it
-    # fails, whatever the mode), as `record` does.
+    # A `record` next to run names a fact recorded on the current content when the run passes (never when it
+    # fails, nor in audit mode).
     - if: { path: "**/*.py" }
       mode: warn
       run: { command: ["uv", "run", "ruff", "check", "{path}"] }
@@ -249,11 +254,15 @@ on:
     # A run that records a fact: the tests run on stop without the agent, once per content.
     - if: { changed: "src/**" }
       unless: { done: tested }
-      run: { command: ["just", "test"], record: tested }
+      run: { command: ["just", "test"] }
+      record: tested
     # require: what the agent must do before it stops; only valid on stop and subagent_stop. In enforce mode it
     # blocks with the text and counts for the loop guard (max_stop_blocks), like any block of a stop; it never
     # stops the evaluation, so every pending require is reported at once.
     # context is not valid on stop and subagent_stop: the agent cannot receive it there.
-    - if: { changed: "src/**" }
+    # With record, the request is made once per content: the review runs in the background, and the next stop on
+    # the same content does not block again; subagent_stop records reviewed when the reviewer ends.
+    - if: { changed: "src/**", not: { done: review_asked } }
       unless: { done: reviewed }
       require: "Lanza el subagente polix:reviewer sobre el diff actual"
+      record: review_asked

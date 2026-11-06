@@ -57,7 +57,6 @@ type entryYAML struct {
 type runYAML struct {
 	Command argsYAML `yaml:"command"`
 	Rules   string   `yaml:"rules"`
-	Record  string   `yaml:"record"`
 	keys    []string
 }
 
@@ -244,7 +243,7 @@ func (y entryYAML) entry() (Entry, error) {
 }
 
 func (y runYAML) run() (Run, error) {
-	r := Run{Command: []string(y.Command), Rules: y.Rules, Record: y.Record, Keys: y.keys}
+	r := Run{Command: []string(y.Command), Rules: y.Rules, Keys: y.keys}
 	return r, r.Valid()
 }
 

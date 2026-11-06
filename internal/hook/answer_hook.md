@@ -68,14 +68,18 @@ The rules it follows, as before this use case:
    `plans.path` and `reports.path`; nothing when every switch is off.
 5. The entries of the event run in order: one runs when every condition of `if` holds and, with `unless`, not
    every condition of `unless` holds. `deny` blocks and stops the evaluation; `allow` stops it; `require` blocks
-   and goes on; `run` runs a command or the checks of the rules (`changed`, or a path) and blocks when it fails,
-   recording its fact only when it passed on a content that did not change; `context` injects a file, a text or
-   the rules of a path (each rule once per session); `record` records a fact on the current content.
-6. The mode of an entry: `warn` turns a block into a context and a warning, `audit` only logs it.
-7. Loop guard: a block of `stop` or `subagent_stop` is counted per session, event, actor, entry and content hash;
+   and goes on; `run` runs a command or the checks of the rules (`changed`, or a path) and blocks when it fails;
+   `context` injects a file, a text or the rules of a path (each rule once per session); `record` alone records a
+   fact on the current content.
+6. The `record` of an entry with another action records its fact once that action applied, before a `deny` or an
+   `allow` stops the evaluation: a block, a warning and a stop let through by the loop guard all count, and a
+   `run` records only when it passed on a content that did not change.
+7. The mode of an entry: `warn` turns a block into a context and a warning, `audit` only logs it and records no
+   fact, whatever the action.
+8. Loop guard: a block of `stop` or `subagent_stop` is counted per session, event, actor, entry and content hash;
    after `max_stop_blocks` the agent may stop with a warning, and when the log cannot be read or written the guard
    fails open.
-8. Facts hold only on a known content hash; when it cannot be computed nothing is recorded nor holds, and the
+9. Facts hold only on a known content hash; when it cannot be computed nothing is recorded nor holds, and the
    call warns once.
 
 The domain decides the rest: `agent.Agent.Parse` and `Render` (the formats of the agents), `agent.Answer.Merge`,

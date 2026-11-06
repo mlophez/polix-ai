@@ -276,9 +276,9 @@ untracked).
 with), `protected` (paths no agent writes), `max_stop_blocks`, `vars`, `on`, `rules` (`run`: the command that runs
 each kind of `check`, by the glob of its file name).
 
-**Actions:** `deny`, `allow`, `require`, `run` (a command or the checks of the matching rules, optionally
-recording a fact when it passes), `context` (a
-file, a text or the matching rules), `record`.
+**Actions:** `deny`, `allow`, `require`, `run` (a command or the checks of the matching rules), `context` (a
+file, a text or the matching rules), `record`. `record` also goes next to any other action, to record a fact once
+it applied (a `run`, once it passed).
 
 **Modes:** `enforce`, `warn`, `audit`.
 

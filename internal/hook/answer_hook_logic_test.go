@@ -260,7 +260,7 @@ func TestAnswerHookLoopGuardFailsOpen(t *testing.T) {
 
 // A run with record records only when it passes on stable content, and a failing run blocks with its output.
 func TestAnswerHookRunRecord(t *testing.T) {
-	ev := answerHookEval(t, "version: 1\non:\n  stop:\n    - run: { command: [just, test], record: tested }\n",
+	ev := answerHookEval(t, "version: 1\non:\n  stop:\n    - run: { command: [just, test] }\n      record: tested\n",
 		workflow.Stop)
 	out, steps := answerHookWalk(t, ev, answerHookFacts{branch: "main", hashes: []string{"h", "h"}})
 	if out.Answer.Block || len(answerHookAppended(steps)) != 1 || answerHookAppended(steps)[0].Fact != "tested" {
@@ -275,6 +275,95 @@ func TestAnswerHookRunRecord(t *testing.T) {
 		runErr: errors.New("exit status 1")})
 	if !out.Answer.Block || !strings.HasPrefix(out.Answer.Reasons[0], "Falla just test: exit status 1\n  salida") {
 		t.Fatalf("a failing run blocks with its output: %+v", out.Answer)
+	}
+}
+
+// answerHookRecorded returns the facts the steps appended to the log, in order.
+func answerHookRecorded(steps []Step) []string {
+	var out []string
+	for _, e := range answerHookAppended(steps) {
+		if e.Kind == state.KindFact {
+			out = append(out, e.Fact)
+		}
+	}
+	return out
+}
+
+// A require with record blocks once and records that it asked, so the next stop on the same content passes.
+func TestAnswerHookRequireRecordsOnce(t *testing.T) {
+	ev := answerHookEval(t, `version: 1
+on:
+  stop:
+    - if: { not: { done: asked } }
+      require: "revisa"
+      record: asked
+`, workflow.Stop)
+	out, steps := answerHookWalk(t, ev, answerHookFacts{branch: "main", hashes: []string{"h"}})
+	if !out.Answer.Block || !slices.Equal(answerHookRecorded(steps), []string{"asked"}) {
+		t.Fatalf("the first stop blocks and records: %+v %v", out.Answer, answerHookRecorded(steps))
+	}
+	asked := state.State{Entries: []state.Entry{{Kind: state.KindFact, Fact: "asked", Branch: "main", Hash: "h"}}}
+	out, steps = answerHookWalk(t, ev, answerHookFacts{branch: "main", hashes: []string{"h"}, state: asked})
+	if out.Answer.Block || len(answerHookRecorded(steps)) != 0 {
+		t.Fatalf("the next stop on the same content passes: %+v", out.Answer)
+	}
+}
+
+// Every action records the fact of its entry once it applied: a deny in enforce records and stops the evaluation,
+// in warn records and goes on; allow and context record too.
+func TestAnswerHookEveryActionRecords(t *testing.T) {
+	cases := []struct {
+		name, yaml, event string
+		block             bool
+		want              []string
+	}{
+		{"deny enforce", "    - deny: no\n      record: denied\n    - record: after\n", workflow.PreCommit, true,
+			[]string{"denied"}},
+		{"deny warn", "    - deny: no\n      mode: warn\n      record: denied\n    - record: after\n", workflow.PreCommit,
+			false, []string{"denied", "after"}},
+		{"allow", "    - allow: true\n      record: allowed\n    - record: after\n", workflow.PreCommit, false,
+			[]string{"allowed"}},
+		{"context", "    - context: { text: x }\n      record: told\n", workflow.PreCommit, false, []string{"told"}},
+	}
+	for _, c := range cases {
+		ev := answerHookEval(t, "version: 1\non:\n  "+c.event+":\n"+c.yaml, c.event)
+		out, steps := answerHookWalk(t, ev, answerHookFacts{branch: "main", hashes: []string{"h"}})
+		if out.Answer.Block != c.block || !slices.Equal(answerHookRecorded(steps), c.want) {
+			t.Errorf("%s: block %v, recorded %v", c.name, out.Answer.Block, answerHookRecorded(steps))
+		}
+	}
+}
+
+// An entry in audit mode records nothing: not a require, not a passing run, not a lone record.
+func TestAnswerHookAuditRecordsNothing(t *testing.T) {
+	ev := answerHookEval(t, `version: 1
+on:
+  stop:
+    - require: "revisa"
+      mode: audit
+      record: asked
+    - run: { command: [just, test] }
+      mode: audit
+      record: tested
+    - record: alone
+      mode: audit
+`, workflow.Stop)
+	out, steps := answerHookWalk(t, ev, answerHookFacts{branch: "main", hashes: []string{"h", "h"}})
+	if out.Answer.Block || len(answerHookRecorded(steps)) != 0 {
+		t.Fatalf("audit records nothing: %+v %v", out.Answer, answerHookRecorded(steps))
+	}
+}
+
+// A require let through by the loop guard applied, with a warning: it records its fact.
+func TestAnswerHookLoopGuardRecords(t *testing.T) {
+	ev := answerHookEval(t, "version: 1\nmax_stop_blocks: 1\non:\n  stop:\n    - require: \"revisa\"\n      record: asked\n",
+		workflow.Stop)
+	block := state.Entry{Kind: state.KindStopBlock, Session: "s1", Event: workflow.Stop, Actor: agent.ActorSession,
+		Line: 5, Hash: "h"}
+	out, steps := answerHookWalk(t, ev, answerHookFacts{branch: "main", hashes: []string{"h"},
+		state: state.State{Entries: []state.Entry{block}}})
+	if out.Answer.Block || !slices.Equal(answerHookRecorded(steps), []string{"asked"}) {
+		t.Fatalf("the loop guard lets the stop through and records: %+v %v", out.Answer, answerHookRecorded(steps))
 	}
 }
 

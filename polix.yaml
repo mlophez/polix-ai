@@ -76,7 +76,7 @@ on:
     #  unless: { done: checked }
     #  run: { rules: changed }
     #  record: checked
-      
+
     # Every change is reviewed by polix:reviewer before the turn ends, once per content. In audit mode until
     # polix log shows it blocks what it should.
     #- if: { changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"] }

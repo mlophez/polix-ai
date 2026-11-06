@@ -18,9 +18,11 @@ type Entry struct {
 	Require *string
 	Run     *Run
 	Context *Context
-	Record  *string
-	Line    int      // line in the file, for messages
-	Keys    []string // the keys the file used, so Valid rejects unknown ones
+	// Record names a fact recorded on the current content when the entry applies its action: alone it is the
+	// action record; next to another action it records once that action applied (a run, once it passed).
+	Record *string
+	Line   int      // line in the file, for messages
+	Keys   []string // the keys the file used, so Valid rejects unknown ones
 }
 
 // Run executes a command, or the check of the rules that apply to the changed files (`rules: changed`) or to
@@ -28,9 +30,7 @@ type Entry struct {
 type Run struct {
 	Command []string // never run through a shell; a string in the file is split on spaces
 	Rules   string
-	// Record names a fact recorded on the current content when the run passes.
-	Record string
-	Keys   []string // the keys the file used, so Valid rejects unknown ones
+	Keys    []string // the keys the file used, so Valid rejects unknown ones
 }
 
 // Context injects text into the session: a file, a text or the rules that apply to a path.
@@ -123,13 +123,15 @@ func (e Entry) actions() []string {
 	if e.Context != nil {
 		out = append(out, "context")
 	}
-	if e.Record != nil {
+	// record is the action only when it is alone: next to another action it is the fact that action records.
+	if e.Record != nil && len(out) == 0 {
 		out = append(out, "record")
 	}
 	return out
 }
 
-// Valid tells why the run is not valid: an unknown key, not exactly one of command or rules, an empty record.
+// Valid tells why the run is not valid: an unknown key (record among them, which goes next to run), not exactly one
+// of command or rules.
 func (r Run) Valid() error {
 	v := &validator{}
 	v.run(0, r)
@@ -194,7 +196,8 @@ func (v *validator) action(ev string, e Entry) {
 		v.run(e.Line, *e.Run)
 	case "context":
 		v.context(ev, e.Line, *e.Context)
-	case "record":
+	}
+	if e.Record != nil {
 		if *e.Record == "" {
 			v.add(e.Line, "record needs the name of the fact")
 		}
@@ -203,14 +206,18 @@ func (v *validator) action(ev string, e Entry) {
 }
 
 func (v *validator) run(line int, r Run) {
-	v.unknownKeys(line, "run", r.Keys, []string{"command", "rules", "record"})
+	keys := make([]string, 0, len(r.Keys))
+	for _, k := range r.Keys {
+		if k == "record" {
+			v.add(line, "record goes next to run, as a key of the entry, not inside run")
+			continue
+		}
+		keys = append(keys, k)
+	}
+	v.unknownKeys(line, "run", keys, []string{"command", "rules"})
 	if (len(r.Command) == 0) == (r.Rules == "") {
 		v.add(line, "run needs exactly one of command or rules")
 	}
-	if contains(r.Keys, "record") && r.Record == "" {
-		v.add(line, "record in run needs the name of the fact")
-	}
-	v.placeholders(line, r.Record)
 	for _, a := range r.Command {
 		v.placeholders(line, a)
 	}

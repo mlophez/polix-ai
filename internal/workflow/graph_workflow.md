@@ -35,8 +35,9 @@ it follows:
 3. Each entry is a node `n<k>`, numbered across the whole flowchart, linked to the previous entry of its event
    with `-->`.
 4. The label of a node joins with `<br/>` its `if` and `unless` conditions, as `key=value` ordered by key, and its
-   action: `deny`, `require` and `record` with their text, `run` with its rules or its command and the fact it
-   records, and the mode in parentheses when it is not `enforce`. Double quotes become single ones.
+   action: `deny`, `require` and `record` with their text, `run` with its rules or its command, then
+   `→ record <fact>` when an entry with another action records a fact, and the mode in parentheses when it is not
+   `enforce`. Double quotes become single ones.
 
 ## Response
 

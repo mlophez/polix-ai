@@ -91,7 +91,8 @@ const (
 // Events lists every neutral event in lifecycle order.
 var Events = []string{SessionStart, Prompt, PreEdit, PostEdit, PreCommand, PostCommand, PreCommit, SubagentStop, Stop}
 
-// Actions an entry can take; each entry has exactly one.
+// Actions an entry can take; each entry has exactly one, and record may also go next to any other one, as the
+// fact that action records once it applied.
 var Actions = []string{"deny", "allow", "require", "run", "context", "record"}
 
 // Conditions an `if` or `unless` can use.
