@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/agent"
+	"github.com/mlophez/polix-ai/internal/diff"
 	"github.com/mlophez/polix-ai/internal/workflow"
 )
 
@@ -27,12 +28,27 @@ func TestVars(t *testing.T) {
 // Expand replaces the placeholders of the event, the branch and the variables.
 func TestExpand(t *testing.T) {
 	ev := agent.Event{Path: "src/a.go", Command: "ls"}
-	got := Expand("{path} {command} {branch} {key} {other}", ev, "main", map[string]string{"key": "K-1"})
-	if got != "src/a.go ls main K-1 {other}" {
+	got := Expand("{path} {command} {branch} {key} {other} {risk_score}", ev, "main", map[string]string{"key": "K-1"}, nil)
+	if got != "src/a.go ls main K-1 {other} {risk_score}" {
 		t.Fatalf("%q", got)
 	}
-	if Expand("plain", ev, "", nil) != "plain" {
+	if Expand("plain", ev, "", nil, nil) != "plain" {
 		t.Fatal("plain")
+	}
+}
+
+// The measures expand as integers, or ? when the diff could not be measured.
+func TestExpandMeasures(t *testing.T) {
+	d := diff.Diff{Changes: []diff.Change{{Path: "a.go", Added: 3}, {Path: "b.png", Binary: true}}}
+	s := "{changed_lines} {changed_files} {risk_score}"
+	if got := Expand(s, agent.Event{}, "", nil, Measures(d, []workflow.Weight{{Glob: "a.go", Factor: 2}}, true)); got != "3 2 4" {
+		t.Fatalf("known: %q", got)
+	}
+	if got := Expand(s, agent.Event{}, "", nil, Measures(d, nil, false)); got != "? ? ?" {
+		t.Fatalf("unknown: %q", got)
+	}
+	if !UsesMeasures("riesgo {risk_score}") || UsesMeasures("{branch}") {
+		t.Fatal("UsesMeasures")
 	}
 }
 

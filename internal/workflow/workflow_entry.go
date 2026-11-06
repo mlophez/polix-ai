@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -43,6 +44,54 @@ type Context struct {
 
 // Cond is a set of conditions that must all hold.
 type Cond map[string]any
+
+// Measure is the value of a measure condition (changed_lines, changed_files, risk_score): it holds when the
+// measure is at least AtLeast.
+type Measure struct {
+	AtLeast int
+}
+
+// measureKeys are the keys of the map of a measure condition.
+var measureKeys = []string{"at_least"}
+
+// Valid tells why the measure is not valid: a negative minimum.
+func (m Measure) Valid() error {
+	if m.AtLeast < 0 {
+		return fmt.Errorf("at_least must be a non-negative integer, got %d", m.AtLeast)
+	}
+	return nil
+}
+
+// Measured reads the value of a measure condition, a map with one key, at_least, a non-negative integer.
+func Measured(v any) (Measure, error) {
+	m, ok := Nested(v)
+	if !ok {
+		return Measure{}, fmt.Errorf("needs a map { at_least: N }, got %v", v)
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if !contains(measureKeys, k) {
+			return Measure{}, fmt.Errorf("unknown key %q (%s)", k, strings.Join(measureKeys, ", "))
+		}
+	}
+	raw, ok := m["at_least"]
+	if !ok {
+		return Measure{}, errors.New("needs at_least, a non-negative integer")
+	}
+	n, ok := raw.(int)
+	if !ok {
+		return Measure{}, fmt.Errorf("at_least must be a non-negative integer, got %v", raw)
+	}
+	measure := Measure{AtLeast: n}
+	if err := measure.Valid(); err != nil {
+		return Measure{}, err
+	}
+	return measure, nil
+}
 
 // Nested reads the value of a `not` condition as a Cond; a nested mapping may come as a Cond or as a
 // map[string]any, and both are accepted.
@@ -267,6 +316,20 @@ func (v *validator) cond(ev string, c Cond, line int) {
 				continue
 			}
 			v.cond(ev, nested, line)
+		case "any":
+			nested, ok := Nested(val)
+			if !ok {
+				v.add(line, "any needs a map of conditions")
+				continue
+			}
+			if len(nested) == 0 {
+				v.add(line, "any needs at least one condition")
+			}
+			v.cond(ev, nested, line)
+		case "changed_lines", "changed_files", "risk_score":
+			if _, err := Measured(val); err != nil {
+				v.add(line, "%s: %v", k, err)
+			}
 		case "branch":
 			s, ok := val.(string)
 			if !ok {

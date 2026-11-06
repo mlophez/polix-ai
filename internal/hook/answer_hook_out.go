@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/mlophez/polix-ai/internal/diff"
 	"github.com/mlophez/polix-ai/internal/rule"
 	"github.com/mlophez/polix-ai/internal/state"
 	"github.com/mlophez/polix-ai/internal/workflow"
@@ -74,6 +75,28 @@ func (a *AnswerHookAdapter) Hash(ctx context.Context) (string, error) {
 func (a *AnswerHookAdapter) Changed(ctx context.Context) []string {
 	files, _ := a.Repo.Changed(context.WithoutCancel(ctx), "")
 	return files
+}
+
+// Diff returns the size of the change of each file not committed yet, from git, validated; a failure of git or an
+// invalid diff is the error. Like Changed, it runs detached from the cancellation of ctx.
+func (a *AnswerHookAdapter) Diff(ctx context.Context) (diff.Diff, error) {
+	stats, err := a.Repo.Stats(context.WithoutCancel(ctx), "")
+	if err != nil {
+		return diff.Diff{}, err
+	}
+	changes := make([]diff.Change, 0, len(stats))
+	for _, s := range stats {
+		c := diff.Change{Path: s.Path, Added: s.Added, Deleted: s.Deleted, Binary: s.Binary}
+		if err := c.Valid(); err != nil {
+			return diff.Diff{}, err
+		}
+		changes = append(changes, c)
+	}
+	d := diff.Diff{Changes: changes}
+	if err := d.Valid(); err != nil {
+		return diff.Diff{}, err
+	}
+	return d, nil
 }
 
 // Files returns the files of the working tree that git does not ignore; a failure of git reads as no files. Like

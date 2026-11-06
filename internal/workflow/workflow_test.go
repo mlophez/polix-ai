@@ -38,6 +38,17 @@ func TestValidRejects(t *testing.T) {
 		{"undefined placeholder", "version: 1\non:\n  pre_edit:\n    - deny: \"falta {kye}\"\n", "unknown placeholder {kye}"},
 		{"placeholder in a condition", "version: 1\non:\n  pre_edit:\n    - unless: { file: \"plans/{kye}.md\" }\n      deny: x\n", "unknown placeholder {kye}"},
 		{"reserved var name", "version: 1\nvars:\n  path: { branch: x }\n", "var path: the name is a built-in placeholder"},
+		{"reserved measure var name", "version: 1\nvars:\n  risk_score: { branch: x }\n", "var risk_score: the name is a built-in placeholder"},
+		{"bare number measure", "version: 1\non:\n  pre_commit:\n    - if: { changed_lines: 150 }\n      deny: x\n", "changed_lines: needs a map { at_least: N }"},
+		{"measure without at_least", "version: 1\non:\n  pre_commit:\n    - if: { changed_files: {} }\n      deny: x\n", "changed_files: needs at_least"},
+		{"negative at_least", "version: 1\non:\n  pre_commit:\n    - if: { risk_score: { at_least: -1 } }\n      deny: x\n", "risk_score: at_least must be a non-negative integer"},
+		{"float at_least", "version: 1\non:\n  pre_commit:\n    - if: { risk_score: { at_least: 2.5 } }\n      deny: x\n", "risk_score: at_least must be a non-negative integer"},
+		{"unknown key of a measure", "version: 1\non:\n  pre_commit:\n    - if: { changed_lines: { at_least: 1, at_most: 3 } }\n      deny: x\n", `changed_lines: unknown key "at_most"`},
+		{"empty any", "version: 1\non:\n  pre_commit:\n    - if: { any: {} }\n      deny: x\n", "any needs at least one condition"},
+		{"any not a map", "version: 1\non:\n  pre_commit:\n    - if: { any: [a] }\n      deny: x\n", "any needs a map of conditions"},
+		{"invalid condition inside any", "version: 1\non:\n  pre_commit:\n    - if: { any: { changed_lines: 3 } }\n      deny: x\n", "changed_lines: needs a map"},
+		{"empty weight glob", "version: 1\nrisk:\n  weights:\n    \"\": 1\n", "risk.weights: weight: empty glob"},
+		{"negative weight", "version: 1\nrisk:\n  weights:\n    a: -1\n", `risk.weights: weight "a": the factor must be a finite, non-negative number`},
 		{"negative max_stop_blocks", "version: 1\nmax_stop_blocks: -1\n", "max_stop_blocks must be positive"},
 		{"context on stop", "version: 1\non:\n  stop:\n    - context: { text: x }\n", "context does not reach the agent on stop"},
 		{"exit outside post_command", "version: 1\non:\n  pre_command:\n    - if: { exit: 0 }\n      deny: x\n", "exit never holds on pre_command"},
@@ -81,9 +92,22 @@ on:
     - if: { changed: "src/**", not: { branch: "^main$" } }
       unless: { done: tested, var: key }
       require: "Ejecuta just test"
+  pre_commit:
+    - if:
+        changed: "*.go"
+        any:
+          changed_lines: { at_least: 150 }
+          changed_files: { at_least: 5 }
+          risk_score: { at_least: 25 }
+          not: { any: { branch: "^main$" } }
+      deny: "Revisa {changed_lines} lineas en {changed_files} ficheros, riesgo {risk_score}"
 rules:
   run:
     "*_test.go": go test {dir} -run ^Test{name}$
+risk:
+  weights:
+    "*_test.go": 0.5
+    "internal/**": 3
 `
 	if got := validate(t, src); got != "" {
 		t.Fatalf("unexpected problems:\n%s", got)

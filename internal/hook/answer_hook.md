@@ -41,7 +41,8 @@ outcome from the journal, in order, and the first one the journal lacks is the n
 is that step; when it is none, `AnswerHookOutput.Answer` is the answer to the event and `AnswerHookOutput.Facts`
 what the next event of the call starts from.
 
-A `Step` asks for one of: the branch, the content hash (of an epoch), the changed files, the files, the rules, the
+A `Step` asks for one of: the branch, the content hash (of an epoch), the changed files, the diff (`Diff`: the
+added and deleted lines of each file not committed yet, the same files as the changed ones), the files, the rules, the
 log, whether git ignores a path, the real paths of some paths, the content of a file (of an epoch), or acts: runs
 a command, runs the checks of one or several rules (`rule.Run`, with the argv of its runner of `rules.run`) or
 appends an entry to the log. A check step may decide several rules: the runs come from `rule.Plan`, and a failed
@@ -81,9 +82,19 @@ The rules it follows, as before this use case:
    fails open.
 9. Facts hold only on a known content hash; when it cannot be computed nothing is recorded nor holds, and the
    call warns once.
+10. The measures `changed_lines`, `changed_files` and `risk_score` compare the lines, the files or the risk score
+    (`diff.Diff.Lines`, `Count` and `Risk` with `risk.weights`) of the diff against their `at_least`. They measure
+    the files of the nearest `changed`: the one of their own map, else the one of the enclosing map (`any` and
+    `not` nest maps), else the whole diff. `any` holds when one of the conditions of its map holds. The diff is read
+    once per call (`Facts.Diff`, `Facts.HasDiff`), only when a condition or a string needs it. When it cannot be
+    measured (`Facts.DiffErr`), the three measures hold, so a broken git never skips a review, and the call warns
+    once: `polix no puede medir el diff (<cause>): changed_lines, changed_files y risk_score se cumplen`.
+11. The placeholders `{changed_lines}`, `{changed_files}` and `{risk_score}` of every string of an entry expand to
+    the measures over the `changed` of its `if`, else the whole diff, or to `?` when it cannot be measured
+    (`Measures`).
 
 The domain decides the rest: `agent.Agent.Parse` and `Render` (the formats of the agents), `agent.Answer.Merge`,
-`Writes`, `NamesState`, `Within`, `Expand`, `Vars`, `MatchingCommands`, `state.State` (`Done`, `Injected`,
+`Writes`, `NamesState`, `Within`, `Expand`, `Measures`, `Measure`, `diff.Diff`, `Vars`, `MatchingCommands`, `state.State` (`Done`, `Injected`,
 `StopBlocks`), `rule.Matching`, `rule.Result.Tail`, `rule.Plan` and `rule.Run.Settle`.
 
 ## Response
@@ -104,6 +115,9 @@ take it; `Stderr`, the reasons and contexts of a block, else one `polix: <warnin
 - `Locate`: turns the path of an edit into one relative to the root, symlinks resolved.
 - `Branch`, `Hash`, `Changed`, `Files` and `Ignored`: the facts of git; `Changed` and `Files` read a failure as no
   files and, like `Branch` and `Ignored`, run detached from the cancellation of the caller.
+- `Diff`: the added and deleted lines of each file not committed yet (`git.Repo.Stats` against HEAD, untracked
+  files read whole), as a validated `diff.Diff`; a failure of git or an invalid diff is its error, kept in the
+  facts as a warning. Like `Changed`, it runs detached from the cancellation of the caller.
 - `LoadRules`: the rules of the folder it is given (`Workflow.RulesPath`: `rules.path`, `ai/rules/` by default),
   `retired.yaml` left out, ordered by id.
 - `LoadState`: the log through `pkg/jsonl`, the lines over `state.MaxLine` skipped and counted.
@@ -127,7 +141,8 @@ The failure policy of the hook, so a broken polix never traps the agent:
 - An input that cannot be read or parsed prints `polix hook: <error>` and lets the action go on (exit 0).
 - Outside a git repository, or without events (a `Read`), everything goes through.
 - A workflow that cannot be used is data of the answer (Logic, rule 2), never an error.
-- The errors of the steps are data too: an unknown hash warns, rules that cannot be loaded fail the `run` that
+- The errors of the steps are data too: an unknown hash warns, a diff that cannot be measured warns and makes the
+  measures hold, rules that cannot be loaded fail the `run` that
   needs them (`No se pueden cargar las rules`), a log that cannot be used lets a stop through, a file that cannot
   be read gives no context, a failing command or check blocks with its output.
 

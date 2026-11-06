@@ -77,6 +77,26 @@ func TestEntryRecordNextToAction(t *testing.T) {
 	}
 }
 
+// A measure condition is a map with at_least, a non-negative integer, and nothing else.
+func TestCondMeasured(t *testing.T) {
+	m, err := Measured(map[string]any{"at_least": 150})
+	if err != nil || m.AtLeast != 150 {
+		t.Fatalf("Measured = %+v, %v", m, err)
+	}
+	if m, err := Measured(Cond{"at_least": 0}); err != nil || m.AtLeast != 0 {
+		t.Fatalf("Measured of a Cond = %+v, %v", m, err)
+	}
+	for _, v := range []any{150, "150", map[string]any{}, map[string]any{"at_least": -1}, map[string]any{"at_least": "3"},
+		map[string]any{"at_least": 1, "at_most": 2}} {
+		if _, err := Measured(v); err == nil {
+			t.Errorf("Measured(%v) is valid", v)
+		}
+	}
+	if (Measure{AtLeast: -1}).Valid() == nil || (Measure{AtLeast: 3}).Valid() != nil {
+		t.Fatal("Measure.Valid")
+	}
+}
+
 func TestNestedAndStrings(t *testing.T) {
 	if c, ok := Nested(map[string]any{"actor": "session"}); !ok || c["actor"] != "session" {
 		t.Fatal("a map is a Cond")

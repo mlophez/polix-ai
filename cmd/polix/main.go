@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/mlophez/polix-ai/internal/diff"
 	"github.com/mlophez/polix-ai/internal/hook"
 	"github.com/mlophez/polix-ai/internal/rule"
 	"github.com/mlophez/polix-ai/internal/setup"
@@ -38,7 +39,8 @@ func main() {
 		root.AddCommand(c)
 	}
 	root.AddCommand(setup.RefreshSetupCommand())
-	for _, c := range []*cobra.Command{workflow.GraphWorkflowCommand(), workflow.LogWorkflowCommand()} {
+	for _, c := range []*cobra.Command{workflow.GraphWorkflowCommand(), workflow.LogWorkflowCommand(),
+		diff.MeasureDiffCommand()} {
 		c.GroupID = "repo"
 		root.AddCommand(c)
 	}

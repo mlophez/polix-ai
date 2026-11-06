@@ -255,3 +255,119 @@ func TestSwallowingCallsIgnoreCancel(t *testing.T) {
 		t.Fatal("Ignored with a cancelled context lost the answer")
 	}
 }
+
+// writeBytes writes data to the repository relative path rel under dir.
+func writeBytes(t *testing.T, dir, rel string, data string) {
+	t.Helper()
+	p := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Stats counts the lines of the tracked changes, and reads the untracked files whole.
+func TestStats(t *testing.T) {
+	ctx := context.Background()
+	dir, git, _ := gitRepo(t)
+	writeBytes(t, dir, ".gitignore", "build/\n")
+	writeBytes(t, dir, "a.txt", "1\n2\n3\n")
+	writeBytes(t, dir, "gone.txt", "x\ny\n")
+	git("add", "--all")
+	git("commit", "--quiet", "-m", "init")
+	writeBytes(t, dir, "a.txt", "1\nnew\n3\nmore\n")
+	if err := os.Remove(filepath.Join(dir, "gone.txt")); err != nil {
+		t.Fatal(err)
+	}
+	writeBytes(t, dir, "dir con espacio/año.go", "one\ntwo")
+	writeBytes(t, dir, "bin.dat", "a\x00b\n")
+	writeBytes(t, dir, "build/out.txt", "ignored\n")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.Stats(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Stat{
+		{Path: "a.txt", Added: 2, Deleted: 1},
+		{Path: "bin.dat", Binary: true},
+		{Path: "dir con espacio/año.go", Added: 2},
+		{Path: "gone.txt", Deleted: 2},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Stats = %+v, want %+v", got, want)
+	}
+}
+
+// Without a commit, every tracked and untracked file counts whole.
+func TestStatsWithoutCommits(t *testing.T) {
+	ctx := context.Background()
+	dir, git, _ := gitRepo(t)
+	writeBytes(t, dir, "a.txt", "1\n2\n")
+	git("add", "--all")
+	writeBytes(t, dir, "b.txt", "")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.Stats(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []Stat{{Path: "a.txt", Added: 2}, {Path: "b.txt"}}; !slices.Equal(got, want) {
+		t.Fatalf("Stats = %+v, want %+v", got, want)
+	}
+}
+
+// CommitStats measures a commit against its first parent, or a root commit against the empty tree.
+func TestCommitStats(t *testing.T) {
+	ctx := context.Background()
+	dir, git, _ := gitRepo(t)
+	writeBytes(t, dir, "a.txt", "1\n2\n")
+	git("add", "--all")
+	git("commit", "--quiet", "-m", "root")
+	root := git("rev-parse", "HEAD")
+	writeBytes(t, dir, "a.txt", "1\nchanged\n")
+	writeBytes(t, dir, "bin.dat", "\x00\x01")
+	git("add", "--all")
+	git("commit", "--quiet", "-m", "second")
+	git("checkout", "--quiet", "-b", "side", root)
+	writeBytes(t, dir, "side.txt", "s\n")
+	git("add", "--all")
+	git("commit", "--quiet", "-m", "side")
+	git("checkout", "--quiet", "main")
+	git("merge", "--quiet", "--no-ff", "--no-edit", "side")
+	writeBytes(t, dir, "a.txt", "uncommitted\n")
+	writeBytes(t, dir, "untracked.txt", "u\n")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string][]Stat{
+		root:     {{Path: "a.txt", Added: 2}},
+		"HEAD~1": {{Path: "a.txt", Added: 1, Deleted: 1}, {Path: "bin.dat", Binary: true}},
+		"HEAD":   {{Path: "side.txt", Added: 1}},
+	}
+	for rev, want := range cases {
+		got, err := r.CommitStats(ctx, rev)
+		if err != nil {
+			t.Fatalf("CommitStats(%s): %v", rev, err)
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("CommitStats(%s) = %+v, want %+v", rev, got, want)
+		}
+	}
+	if _, err := r.CommitStats(ctx, "nope"); err == nil || !strings.Contains(err.Error(), `"nope" is not a commit`) {
+		t.Fatalf("CommitStats of a missing revision = %v", err)
+	}
+	if s, err := r.Summary(ctx, "HEAD~1"); err != nil || !strings.HasSuffix(s, " second") {
+		t.Fatalf("Summary = %q, %v", s, err)
+	}
+	if _, err := r.Summary(ctx, "--all"); err == nil {
+		t.Fatal("Summary of an option is an error")
+	}
+}

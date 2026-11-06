@@ -2,9 +2,15 @@
 # examples/polix.yaml; design and limits: docs/polix.md. Validate with `polix check`, draw with `polix graph`.
 #
 # The hooks of .claude/settings.json send every event to polix, but this workflow only acts on four of them:
-# post_edit (format the edited Go file), pre_commit (no commit of Go code without a review), subagent_stop
-# (record the review of polix:reviewer) and stop (lint and test before the turn ends). On the other events polix
-# only applies its protections: the built-in one (no agent writes the state of polix) and the paths of `protected`.
+# post_edit (format the edited Go file), pre_commit (no commit of a large or risky change of Go code without a
+# review), subagent_stop (record the review of polix:reviewer) and stop (lint and test before the turn ends). On the
+# other events polix only applies its protections: the built-in one (no agent writes the state of polix) and the
+# paths of `protected`.
+#
+# The review before a commit is asked only past a threshold of the uncommitted Go change: 150 changed lines, 5
+# changed files or a risk score of 25, weighted by `risk.weights` below. Small changes commit without a review; lint
+# and tests still run on every stop. Tune the thresholds and the weights with `polix risk --changed '*.go'`, and on
+# the history with `polix risk --commit <rev> --changed '*.go'`.
 version: 1
 base: main
 # A stop gate that keeps failing on the same content lets the agent stop after 3 blocks, so it never loops.
@@ -32,6 +38,17 @@ plans:
 reports:
   path: ai/reports
 
+# The weight of each path in the risk score of a change: the first glob that matches a file wins, and any other file
+# weighs 1. Tests weigh least, even those of the core, so their globs come first; the hook engine and the state of
+# polix are the core, and pkg/git feeds every fact of the hook.
+risk:
+  weights:
+    "*_test.go": 0.5
+    "tests/**": 0.5
+    "internal/hook/**": 3
+    "internal/state/**": 3
+    "pkg/git/**": 2
+
 on:
   # post_edit: after the agent edits a file, once per edited path.
   post_edit:
@@ -45,14 +62,20 @@ on:
       mode: warn
       run: { command: ["golangci-lint", "fmt", "{path}"] }
 
-  # pre_commit: before a git commit runs. A change of the Go code is committed only once polix:reviewer reviewed
-  # that exact content; any later edit asks for a new review. The deny does not record: only subagent_stop records
-  # the fact.
+  # pre_commit: before a git commit runs. A large or risky change of the Go code is committed only once
+  # polix:reviewer reviewed that exact content; any later edit asks for a new review. The `changed` of the `if`
+  # scopes the measures to the Go files, and a change git cannot measure asks for the review too. The deny does not
+  # record: only subagent_stop records the fact.
   pre_commit:
-    - if: { changed: ["*.go", "go.mod", "go.sum"] }
+    - if:
+        changed: ["*.go", "go.mod", "go.sum"]
+        any:
+          changed_lines: { at_least: 150 }
+          changed_files: { at_least: 5 }
+          risk_score: { at_least: 25 }
       unless: { done: reviewed }
-      why: no change of the Go code is committed without a review of its final diff
-      deny: "This diff is not reviewed: run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again."
+      why: no large or risky change of the Go code is committed without a review of its final diff
+      deny: "This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score}): run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again."
 
   # subagent_stop: when a subagent ends. polix:reviewer never edits and the main session waits for it without
   # editing, so the content hash when it ends is the one it reviewed, and that content is recorded as reviewed.

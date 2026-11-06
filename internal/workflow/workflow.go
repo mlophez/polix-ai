@@ -43,6 +43,9 @@ type Workflow struct {
 	Plans     Folder   // the folder of the plans
 	Reports   Folder   // the folder of the reports
 	Guidance  Guidance // the built-in instructions injected at session start
+	// Weights are the factors of the risk score per path glob (risk.weights), in file order: the first glob that
+	// matches a file gives its weight, and a file no glob matches weighs 1.
+	Weights []Weight
 }
 
 // Var extracts a variable from the branch name: the first group of the regular expression, or the whole match.
@@ -96,10 +99,14 @@ var Events = []string{SessionStart, Prompt, PreEdit, PostEdit, PreCommand, PostC
 var Actions = []string{"deny", "allow", "require", "run", "context", "record"}
 
 // Conditions an `if` or `unless` can use.
-var Conditions = []string{"branch", "var", "path", "changed", "file", "contains", "command", "writes", "exit", "actor", "done", "not"}
+var Conditions = []string{"branch", "var", "path", "changed", "file", "contains", "command", "writes", "exit", "actor", "done", "not",
+	"any", "changed_lines", "changed_files", "risk_score"}
+
+// Measures are the conditions that measure the uncommitted diff, over the files of the nearest `changed`.
+var Measures = []string{"changed_lines", "changed_files", "risk_score"}
 
 // Builtins are the placeholders every string may use; a variable cannot take their names.
-var Builtins = []string{"path", "command", "branch"}
+var Builtins = []string{"path", "command", "branch", "changed_lines", "changed_files", "risk_score"}
 
 // conditionEvents limits the conditions that only make sense on some events; the rest hold on any event.
 var conditionEvents = map[string][]string{
@@ -171,6 +178,11 @@ func (w Workflow) Problems() []string {
 	v.folder("plans", w.Plans)
 	v.folder("reports", w.Reports)
 	v.guidance(w.Guidance)
+	for _, wt := range w.Weights {
+		if err := wt.Valid(); err != nil {
+			v.add(0, "risk.weights: %v", err)
+		}
+	}
 	return v.problems
 }
 

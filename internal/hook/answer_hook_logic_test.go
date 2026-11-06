@@ -4,10 +4,12 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/agent"
+	"github.com/mlophez/polix-ai/internal/diff"
 	"github.com/mlophez/polix-ai/internal/rule"
 	"github.com/mlophez/polix-ai/internal/state"
 	"github.com/mlophez/polix-ai/internal/workflow"
@@ -26,6 +28,8 @@ type answerHookFacts struct {
 	appendErr error
 	runErr    error // the outcome of every run and check
 	changed   []string
+	diff      diff.Diff
+	diffErr   error
 	rules     []rule.Rule
 	found     bool // whether a file holds the text of a search
 	// checkFails, when set, decides each check instead of runErr: it fails when it covers one of these rules
@@ -58,6 +62,8 @@ func answerHookWalk(t *testing.T, ev Evaluation, f answerHookFacts) (AnswerHookO
 			ev = ev.KnowHash(s.Epoch, h, f.hashErr)
 		case s.Changed:
 			ev = ev.KnowChanged(f.changed)
+		case s.Diff:
+			ev = ev.KnowDiff(f.diff, f.diffErr)
 		case s.Files:
 			ev = ev.KnowFiles(nil)
 		case s.Rules:
@@ -640,6 +646,142 @@ vars:
 		}
 		if out.Answer.Block != block || len(searches) != 1 || searches[0].Text != "Ticket: PLAT-7" {
 			t.Errorf("found %v: %+v %+v", found, out.Answer, searches)
+		}
+	}
+}
+
+// answerHookDiff is a diff of Go files, tests and docs for the measures: 120 lines in 3 Go files, 300 in all.
+var answerHookDiff = diff.Diff{Changes: []diff.Change{
+	{Path: "internal/hook/a.go", Added: 50, Deleted: 13},
+	{Path: "internal/hook/a_test.go", Added: 40},
+	{Path: "main.go", Added: 17},
+	{Path: "docs/polix.md", Added: 180},
+}}
+
+// answerHookBlocks walks a pre_commit with the workflow of yaml on the diff and reports whether it blocked.
+func answerHookBlocks(t *testing.T, yaml string, f answerHookFacts) (AnswerHookOutput, []Step) {
+	t.Helper()
+	ev := answerHookEval(t, yaml, workflow.PreCommit)
+	if f.branch == "" {
+		f.branch = "main"
+	}
+	if f.diff.Changes == nil {
+		f.diff = answerHookDiff
+	}
+	if f.changed == nil {
+		for _, c := range f.diff.Changes {
+			f.changed = append(f.changed, c.Path)
+		}
+	}
+	return answerHookWalk(t, ev, f)
+}
+
+// Each measure holds at its at_least and not below, over the files of the changed next to it or the whole diff.
+func TestAnswerHookMeasures(t *testing.T) {
+	cases := []struct {
+		cond  string
+		block bool
+	}{
+		{`{ changed: "*.go", changed_lines: { at_least: 120 } }`, true},
+		{`{ changed: "*.go", changed_lines: { at_least: 121 } }`, false},
+		{`{ changed_lines: { at_least: 300 } }`, true},
+		{`{ changed_lines: { at_least: 301 } }`, false},
+		{`{ changed: "*.go", changed_files: { at_least: 3 } }`, true},
+		{`{ changed: "*.go", changed_files: { at_least: 4 } }`, false},
+		{`{ changed_files: { at_least: 4 } }`, true},
+		// log2(64) + log2(41) + log2(18) = 6 + 5.36 + 4.17 = 15.5, rounded 16
+		{`{ changed: "*.go", risk_score: { at_least: 16 } }`, true},
+		{`{ changed: "*.go", risk_score: { at_least: 17 } }`, false},
+	}
+	for _, c := range cases {
+		out, _ := answerHookBlocks(t, "version: 1\non:\n  pre_commit:\n    - if: "+c.cond+"\n      deny: \"no\"\n", answerHookFacts{})
+		if out.Answer.Block != c.block {
+			t.Errorf("%s: block %v, want %v", c.cond, out.Answer.Block, c.block)
+		}
+	}
+}
+
+// risk_score takes the first matching weight of risk.weights.
+func TestAnswerHookRiskWeights(t *testing.T) {
+	yaml := `version: 1
+risk:
+  weights:
+    "*_test.go": 0
+    "internal/hook/**": 3
+on:
+  pre_commit:
+    - if: { changed: "*.go", risk_score: { at_least: %d } }
+      deny: "riesgo {risk_score}"
+`
+	// 3 * 6 + 0 + log2(18) = 22.17, rounded 22
+	for n, block := range map[int]bool{22: true, 23: false} {
+		out, _ := answerHookBlocks(t, strings.Replace(yaml, "%d", strconv.Itoa(n), 1), answerHookFacts{})
+		if out.Answer.Block != block {
+			t.Errorf("at_least %d: %+v", n, out.Answer)
+		}
+		if block && out.Answer.Reasons[0] != "riesgo 22" {
+			t.Errorf("reason %q", out.Answer.Reasons[0])
+		}
+	}
+}
+
+// any holds when one of its conditions holds; a measure inside it takes the changed of the enclosing map unless
+// its own map has one.
+func TestAnswerHookAny(t *testing.T) {
+	cases := []struct {
+		cond  string
+		block bool
+	}{
+		{`{ changed: "*.go", any: { changed_lines: { at_least: 150 }, changed_files: { at_least: 3 } } }`, true},
+		{`{ changed: "*.go", any: { changed_lines: { at_least: 150 }, changed_files: { at_least: 4 } } }`, false},
+		{`{ changed: "*.go", any: { changed: "**", changed_lines: { at_least: 300 } } }`, true},
+		{`{ changed: "*.go", not: { any: { changed_lines: { at_least: 150 } } } }`, true},
+		{`{ any: { not: { branch: "^main$" }, changed_files: { at_least: 9 } } }`, false},
+	}
+	for _, c := range cases {
+		out, _ := answerHookBlocks(t, "version: 1\non:\n  pre_commit:\n    - if: "+c.cond+"\n      deny: \"no\"\n", answerHookFacts{})
+		if out.Answer.Block != c.block {
+			t.Errorf("%s: block %v, want %v", c.cond, out.Answer.Block, c.block)
+		}
+	}
+}
+
+// A diff that cannot be measured makes the measures hold, with one warning for the call, and shows ? in the text.
+func TestAnswerHookMeasuresFailClosed(t *testing.T) {
+	yaml := "version: 1\non:\n  pre_commit:\n    - if: { changed_lines: { at_least: 1000 }, changed_files: { at_least: 1000 } }\n" +
+		"      deny: \"{changed_lines} {changed_files} {risk_score}\"\n"
+	out, _ := answerHookBlocks(t, yaml, answerHookFacts{diffErr: errors.New("git roto")})
+	if !out.Answer.Block || out.Answer.Reasons[0] != "? ? ?" {
+		t.Fatalf("answer: %+v", out.Answer)
+	}
+	want := "polix no puede medir el diff (git roto): changed_lines, changed_files y risk_score se cumplen"
+	if len(out.Answer.Warnings) != 1 || out.Answer.Warnings[0] != want {
+		t.Fatalf("warnings: %q", out.Answer.Warnings)
+	}
+}
+
+// A placeholder of a measure in a deny measures the changed of the if of the entry; the whole diff without one.
+func TestAnswerHookMeasurePlaceholders(t *testing.T) {
+	yaml := "version: 1\non:\n  pre_commit:\n    - if: { changed: \"*.go\" }\n      deny: \"{changed_lines}/{changed_files}\"\n" +
+		"    - deny: \"{changed_lines}/{changed_files}\"\n      mode: warn\n"
+	out, _ := answerHookBlocks(t, yaml, answerHookFacts{})
+	if !out.Answer.Block || out.Answer.Reasons[0] != "120/3" {
+		t.Fatalf("answer: %+v", out.Answer)
+	}
+	yaml = "version: 1\non:\n  pre_commit:\n    - deny: \"{changed_lines}/{changed_files}\"\n"
+	out, _ = answerHookBlocks(t, yaml, answerHookFacts{})
+	if out.Answer.Reasons[0] != "300/4" {
+		t.Fatalf("answer: %+v", out.Answer)
+	}
+}
+
+// An event whose entries use no measure never asks for the diff.
+func TestAnswerHookNoDiffWithoutMeasures(t *testing.T) {
+	yaml := "version: 1\non:\n  pre_commit:\n    - if: { changed: \"*.go\" }\n      deny: \"{branch}\"\n"
+	_, steps := answerHookBlocks(t, yaml, answerHookFacts{changed: []string{"a.go"}})
+	for _, s := range steps {
+		if s.Diff {
+			t.Fatalf("steps %+v", steps)
 		}
 	}
 }

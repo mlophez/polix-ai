@@ -75,6 +75,19 @@ plans:
 reports:
   path: ai/reports
 
+# Optional. The options of the risk score of the condition risk_score.
+# - `weights`: an ordered map of path glob to a non-negative number, the weight of the matching files. The first
+#   glob that matches a file, in this order, gives its weight; a file no glob matches weighs 1. So list the tests
+#   of a critical folder before the folder, to make them weigh less.
+# The risk score of a set of files is the sum of weight times log2(1 + added + deleted lines) of each, rounded.
+# `polix check` reports an empty glob or a negative weight; a weight that is not a number, a `risk` or `weights`
+# that is not a map, and a key of `risk` other than `weights` stop the parse. Calibrate with `polix risk`.
+risk:
+  weights:
+    "*_test.go": 0.5
+    "src/core/**": 3
+    "docs/**": 0.2
+
 # Optional, every switch true by default. Built-in instructions polix injects into the agent on every
 # session_start (startup, resume, clear, compaction), in English, as one context before those of the session_start
 # entries. Its text is the template templates/session_start.md.tmpl of the binary. They ask for cooperation and
@@ -94,7 +107,8 @@ guidance:
 # - `branch` is a regular expression (Go RE2 syntax): the value is its first group, or the whole match without
 #   groups.
 # - When it does not match, the variable has no value: the `var` condition fails and {name} is left as is.
-# - A variable cannot be called path, command or branch, the built-in placeholders.
+# - A variable cannot be called path, command, branch, changed_lines, changed_files or risk_score, the built-in
+#   placeholders.
 vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # PLAT-123-add-retry -> PLAT-123
 
@@ -103,6 +117,9 @@ vars:
 # - {path}: the edited path, relative to the root (pre_edit and post_edit; empty elsewhere);
 # - {command}: the whole command line (pre_command, post_command and pre_commit; empty elsewhere);
 # - {branch}: the current branch;
+# - {changed_lines}, {changed_files}, {risk_score}: the measures of the change not committed yet, over the files of
+#   the `changed` of the `if` of the entry, else the whole change; `?` when git cannot measure it. The change is
+#   only read when a string or a condition needs it;
 # - {<var>}: each variable of `vars`.
 #
 # Path globs (`path`, `changed`, `file`, rule scopes) are relative to the root and use `/`: `*` and `?` stay
@@ -235,8 +252,21 @@ on:
     # back. Facts are not tied to the session.
     - unless: { done: tested }
       deny: "Los tests no han pasado sobre este diff: ejecuta just test"
-    - unless: { done: reviewed }
-      deny: "El diff no está revisado: lanza el subagente polix:reviewer"
+    # changed_lines, changed_files, risk_score: measures of the change not committed yet (the files of `changed`,
+    # untracked ones whole), each a map with `at_least`, a non-negative integer; there is no short form. They
+    # measure the files of the nearest `changed` (in their own map, else in the enclosing one), else the whole
+    # change. changed_lines sums added and deleted lines; changed_files counts files, deleted and binary included;
+    # risk_score uses risk.weights. When git cannot measure the change they hold and the call warns (fail closed).
+    # any: a map of nested conditions; it holds when at least one of them holds. It may hold `not` and sit in it.
+    # Here a small change of the source commits without a review; a large or risky one needs it.
+    - if:
+        changed: "src/**"
+        any:
+          changed_lines: { at_least: 150 }
+          changed_files: { at_least: 5 }
+          risk_score: { at_least: 25 }
+      unless: { done: reviewed }
+      deny: "Cambio de {changed_lines} líneas en {changed_files} ficheros (riesgo {risk_score}): lanza el subagente polix:reviewer"
 
   # subagent_stop: a subagent is about to stop; actor is its type. require blocks it until the condition is met.
   subagent_stop:

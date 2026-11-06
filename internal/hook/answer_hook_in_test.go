@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mlophez/polix-ai/internal/diff"
 	"github.com/mlophez/polix-ai/internal/rule"
 	"github.com/mlophez/polix-ai/internal/state"
 	"github.com/mlophez/polix-ai/internal/workflow"
@@ -25,6 +26,7 @@ type answerHookFakePort struct {
 	runErr    error
 	appendErr error
 	readErr   error
+	diffErr   error
 	rules     []rule.Rule
 	calls     []string
 	appended  []state.Entry
@@ -66,6 +68,14 @@ func (p *answerHookFakePort) Hash(context.Context) (string, error) {
 }
 
 func (p *answerHookFakePort) Changed(context.Context) []string { return []string{"src/a.go"} }
+
+func (p *answerHookFakePort) Diff(context.Context) (diff.Diff, error) {
+	p.calls = append(p.calls, "Diff")
+	if p.diffErr != nil {
+		return diff.Diff{}, p.diffErr
+	}
+	return diff.Diff{Changes: []diff.Change{{Path: "src/a.go", Added: 200, Deleted: 10}}}, nil
+}
 
 func (p *answerHookFakePort) Files(context.Context) []string { return []string{"ai/plans/p.md"} }
 
@@ -283,5 +293,22 @@ func TestAnswerHookUnusableWorkflow(t *testing.T) {
 	res, err = answerHook(context.Background(), port, answerHookClaude(`{"hook_event_name":"Stop","cwd":"/repo"}`))
 	if err != nil || res.Code != 0 || !strings.HasPrefix(res.Stderr, "polix: el workflow no es válido") {
 		t.Fatalf("stop: %+v %v", res, err)
+	}
+}
+
+// The shell answers the Diff step through the port; its error makes the measures hold, with a warning.
+func TestAnswerHookMeasuresTheDiff(t *testing.T) {
+	yaml := "version: 1\non:\n  pre_commit:\n    - if: { changed: \"*.go\", changed_lines: { at_least: 150 } }\n" +
+		"      deny: \"{changed_lines} lineas\"\n"
+	commit := `{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git commit -m x"}}`
+	port := &answerHookFakePort{yaml: yaml}
+	res, err := answerHook(context.Background(), port, answerHookClaude(commit))
+	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, "210 lineas") || !slices.Contains(port.calls, "Diff") {
+		t.Fatalf("measured: %+v %v %v", res, err, port.calls)
+	}
+	port = &answerHookFakePort{yaml: yaml, diffErr: errors.New("git roto")}
+	res, err = answerHook(context.Background(), port, answerHookClaude(commit))
+	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, "? lineas") {
+		t.Fatalf("not measured: %+v %v", res, err)
 	}
 }

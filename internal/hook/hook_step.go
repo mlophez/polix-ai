@@ -15,6 +15,7 @@ type Step struct {
 	Hash     bool     // the content hash, at Epoch
 	Epoch    int      // the runs carried out before the fact of Hash or Read, which a run may change
 	Changed  bool     // the files not committed yet
+	Diff     bool     // the size of the change of each file not committed yet
 	Files    bool     // the files of the working tree git does not ignore
 	Rules    bool     // the rules of ai/rules/
 	State    bool     // the log of polix
@@ -38,7 +39,7 @@ type Outcome struct {
 // Valid tells why the step is not one step: it asks for several things at once, or a negative epoch.
 func (s Step) Valid() error {
 	n := 0
-	for _, asks := range []bool{s.Branch, s.Hash, s.Changed, s.Files, s.Rules, s.State, s.Ignored != "",
+	for _, asks := range []bool{s.Branch, s.Hash, s.Changed, s.Diff, s.Files, s.Rules, s.State, s.Ignored != "",
 		s.Real != nil, s.Contains != nil, s.Read != "", s.Run != nil, s.Check != nil, s.Append != nil} {
 		if asks {
 			n++
@@ -59,7 +60,7 @@ func (s Step) Valid() error {
 
 // None reports whether the step asks for nothing: the answer is ready.
 func (s Step) None() bool {
-	return !s.Branch && !s.Hash && !s.Changed && !s.Files && !s.Rules && !s.State && s.Ignored == "" &&
+	return !s.Branch && !s.Hash && !s.Changed && !s.Diff && !s.Files && !s.Rules && !s.State && s.Ignored == "" &&
 		s.Real == nil && s.Contains == nil && s.Read == "" && s.Run == nil && s.Check == nil && s.Append == nil
 }
 

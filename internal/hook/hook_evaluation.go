@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mlophez/polix-ai/internal/agent"
+	"github.com/mlophez/polix-ai/internal/diff"
 	"github.com/mlophez/polix-ai/internal/rule"
 	"github.com/mlophez/polix-ai/internal/state"
 	"github.com/mlophez/polix-ai/internal/workflow"
@@ -42,6 +43,9 @@ type Facts struct {
 	Epoch      int            // runs carried out by the earlier events of the call
 	Changed    []string
 	HasChanged bool
+	Diff       diff.Diff // the size of the change of each file not committed yet
+	DiffErr    error     // the diff could not be measured: the measure conditions hold
+	HasDiff    bool
 	Files      []string
 	HasFiles   bool
 	Rules      []rule.Rule
@@ -97,6 +101,13 @@ func (e Evaluation) KnowHash(epoch int, hash string, err error) Evaluation {
 // KnowChanged returns the evaluation knowing the files not committed yet.
 func (e Evaluation) KnowChanged(files []string) Evaluation {
 	e.Facts = e.Facts.learnChanged(files)
+	return e
+}
+
+// KnowDiff returns the evaluation knowing the size of the change of each file not committed yet, or why it could
+// not be measured: then the measure conditions hold, and the call warns once.
+func (e Evaluation) KnowDiff(d diff.Diff, err error) Evaluation {
+	e.Facts = e.Facts.learnDiff(d, err)
 	return e
 }
 
@@ -222,6 +233,16 @@ func (f Facts) learnHash(epoch int, hash string, err error) Facts {
 
 func (f Facts) learnChanged(files []string) Facts {
 	f.Changed, f.HasChanged = slices.Clone(files), true
+	return f
+}
+
+func (f Facts) learnDiff(d diff.Diff, err error) Facts {
+	if err != nil {
+		d = diff.Diff{}
+		f.Warnings = appendNew(f.Warnings, fmt.Sprintf(
+			"polix no puede medir el diff (%v): changed_lines, changed_files y risk_score se cumplen", err))
+	}
+	f.Diff, f.DiffErr, f.HasDiff = d.Narrow(nil), err, true
 	return f
 }
 

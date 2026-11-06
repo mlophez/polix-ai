@@ -173,3 +173,26 @@ func TestParseRunnerKeys(t *testing.T) {
 		t.Fatalf("empty glob: %v", err)
 	}
 }
+
+// risk.weights keeps the order of the file; a section or a value of the wrong shape stops the parse.
+func TestParseRisk(t *testing.T) {
+	w, err := Parse([]byte("version: 1\nrisk:\n  weights:\n    \"*_test.go\": 0.5\n    \"internal/**\": 3\n    \"docs/**\": 0\n"), "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.Weights) != 3 || w.Weights[0].Glob != "*_test.go" || w.Weights[0].Factor != 0.5 ||
+		w.Weights[1].Glob != "internal/**" || w.Weights[1].Factor != 3 || w.Weights[2].Factor != 0 {
+		t.Fatalf("weights = %+v", w.Weights)
+	}
+	var invalid Invalid
+	for want, src := range map[string]string{
+		"risk must be a map":                 "version: 1\nrisk: [a]\n",
+		`unknown key "weight" in risk`:       "version: 1\nrisk:\n  weight: {}\n",
+		"risk.weights must map a glob":       "version: 1\nrisk:\n  weights: [a]\n",
+		`the weight of "a" must be a number`: "version: 1\nrisk:\n  weights:\n    a: high\n",
+	} {
+		if _, err := Parse([]byte(src), "dev"); err == nil || errors.As(err, &invalid) || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v", want, err)
+		}
+	}
+}

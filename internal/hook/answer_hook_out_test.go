@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mlophez/polix-ai/internal/diff"
 	"github.com/mlophez/polix-ai/internal/state"
 	"github.com/mlophez/polix-ai/pkg/build"
 	"github.com/mlophez/polix-ai/pkg/cli"
@@ -828,6 +829,25 @@ func TestAnswerHookNonASCIIChangedFiles(t *testing.T) {
 	r.write("diseño/año.md", "x\n")
 	code, _, stderr := r.stop()
 	answerHookExpect(t, "stop with a changed año.md", code, 2, stderr)
+}
+
+// Diff measures a tracked change and an untracked file of the repository.
+func TestAnswerHookAdapterDiff(t *testing.T) {
+	r := answerHookNewRepo(t, "main")
+	r.write("README.md", "test\nmore\n")
+	r.write("src/a.go", "package a\n\nfunc A() {}\n")
+	a := &AnswerHookAdapter{}
+	if _, _, err := a.Open(context.Background(), r.dir); err != nil {
+		t.Fatal(err)
+	}
+	d, err := a.Diff(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []diff.Change{{Path: "README.md", Added: 1}, {Path: "src/a.go", Added: 3}}
+	if !slices.Equal(d.Changes, want) {
+		t.Fatalf("Diff = %+v, want %+v", d.Changes, want)
+	}
 }
 
 // In the hooks, changed is what is not committed yet, whatever base says.

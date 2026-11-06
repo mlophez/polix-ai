@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mlophez/polix-ai/internal/agent"
+	"github.com/mlophez/polix-ai/internal/diff"
 	"github.com/mlophez/polix-ai/internal/rule"
 	"github.com/mlophez/polix-ai/internal/state"
 	"github.com/mlophez/polix-ai/internal/workflow"
@@ -51,6 +52,9 @@ type AnswerHookPort interface {
 	Hash(ctx context.Context) (string, error)
 	// Changed returns the files not committed yet: changed since HEAD, or untracked.
 	Changed(ctx context.Context) []string
+	// Diff returns the size of the change of each file not committed yet, the same files as Changed, or why it
+	// could not be measured.
+	Diff(ctx context.Context) (diff.Diff, error)
 	// Files returns the files of the working tree that git does not ignore.
 	Files(ctx context.Context) []string
 	// LoadRules returns the rules of the folder dir, relative to the root, retired ones excluded, ordered by id.
@@ -169,6 +173,8 @@ func answerHook(ctx context.Context, port AnswerHookPort, req AnswerHookRequest)
 				ev = ev.KnowHash(s.Epoch, hash, err)
 			case s.Changed:
 				ev = ev.KnowChanged(port.Changed(ctx))
+			case s.Diff:
+				ev = ev.KnowDiff(port.Diff(ctx))
 			case s.Files:
 				ev = ev.KnowFiles(port.Files(ctx))
 			case s.Rules:

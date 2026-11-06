@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mlophez/polix-ai/internal/agent"
+	"github.com/mlophez/polix-ai/internal/diff"
 	"github.com/mlophez/polix-ai/internal/rule"
 	"github.com/mlophez/polix-ai/internal/state"
 	"github.com/mlophez/polix-ai/internal/workflow"
@@ -31,6 +32,8 @@ type answerHookRun struct {
 	state state.State // the log as this pass left it
 	next  int         // the next outcome of the journal
 	step  *Step       // the step the pass waits for; nil while it goes on
+	// entryIf is the `if` of the entry being evaluated, whose `changed` scopes the measure placeholders.
+	entryIf workflow.Cond
 }
 
 // answerHookOutputLines is how many lines of the output of a failing command its reason keeps, the last ones.
@@ -77,7 +80,8 @@ func (r *answerHookRun) handle() agent.Answer {
 		}
 	}
 	for _, e := range r.ev.Workflow.On[r.ev.Event.Name] {
-		if !r.matches(e.If) || len(e.Unless) > 0 && r.matches(e.Unless) {
+		r.entryIf = e.If
+		if !r.matches(e.If, nil) || len(e.Unless) > 0 && r.matches(e.Unless, nil) {
 			if r.waiting() {
 				return ans
 			}
@@ -470,8 +474,23 @@ func (r *answerHookRun) contextRules(target string) string {
 		strings.Join(lines, "\n"))
 }
 
-// matches reports whether every condition of c holds for the event, in the order of their names.
-func (r *answerHookRun) matches(c workflow.Cond) bool {
+// matches reports whether every condition of c holds for the event, cheapest first, then in the order of their
+// names. scope holds the globs of the nearest `changed` of the enclosing maps, which the measures take; a
+// `changed` of c replaces it for c and the maps nested in it.
+func (r *answerHookRun) matches(c workflow.Cond, scope []string) bool {
+	if v, ok := c["changed"]; ok {
+		scope = r.list(v)
+	}
+	for _, k := range answerHookKeys(c) {
+		if !r.condition(k, c[k], c, scope) || r.waiting() {
+			return false
+		}
+	}
+	return true
+}
+
+// answerHookKeys returns the conditions of c, cheapest first, then in the order of their names.
+func answerHookKeys(c workflow.Cond) []string {
 	keys := make([]string, 0, len(c))
 	for k := range c {
 		keys = append(keys, k)
@@ -480,12 +499,7 @@ func (r *answerHookRun) matches(c workflow.Cond) bool {
 		ri, rj := answerHookCost(keys[i]), answerHookCost(keys[j])
 		return ri < rj || ri == rj && keys[i] < keys[j]
 	})
-	for _, k := range keys {
-		if !r.condition(k, c[k], c) || r.waiting() {
-			return false
-		}
-	}
-	return true
+	return keys
 }
 
 // answerHookCost ranks a condition by what it reads: the event first, then what git or the log give, so a cheap
@@ -500,20 +514,51 @@ func answerHookCost(k string) int {
 		return 2
 	case "changed", "file":
 		return 3
-	case "done":
+	case "changed_lines", "changed_files", "risk_score":
 		return 4
+	case "done":
+		return 5
 	}
-	return 5 // not, which may read anything
+	return 6 // not and any, which may read anything
 }
 
-// condition evaluates one condition of all.
-func (r *answerHookRun) condition(k string, v any, all workflow.Cond) bool {
+// condition evaluates one condition of all; scope holds the globs the measures take (see matches).
+func (r *answerHookRun) condition(k string, v any, all workflow.Cond, scope []string) bool {
 	ev := r.ev.Event
 	switch k {
 	case "not":
 		nested, _ := workflow.Nested(v)
-		m := r.matches(nested)
+		m := r.matches(nested, scope)
 		return !r.waiting() && !m
+	case "any":
+		nested, _ := workflow.Nested(v)
+		// The `changed` of the nested map scopes its measures, as in matches.
+		if cv, ok := nested["changed"]; ok {
+			scope = r.list(cv)
+		}
+		for _, nk := range answerHookKeys(nested) {
+			holds := r.condition(nk, nested[nk], nested, scope)
+			if r.waiting() {
+				return false
+			}
+			if holds {
+				return true
+			}
+		}
+		return false
+	case "changed_lines", "changed_files", "risk_score":
+		m, err := workflow.Measured(v)
+		if err != nil {
+			return false
+		}
+		d, measured := r.diff()
+		if r.waiting() {
+			return false
+		}
+		if !measured {
+			return true // fails closed: a diff that cannot be measured never skips what the measure guards
+		}
+		return Measure(k, m, d.Narrow(scope), r.ev.Workflow.Weights)
 	case "branch":
 		s, _ := v.(string)
 		return Branch(s, r.branch())
@@ -621,13 +666,39 @@ func (r *answerHookRun) writes(patterns []string) (p, held string, ok bool) {
 	return Writes(patterns, ev.Command, ev.Cwd, r.ev.Root, reals, r.ev.Fold(), r.ev.Windows())
 }
 
-// expand replaces {var}, {path}, {command} and {branch} in s.
+// expand replaces {var}, {path}, {command}, {branch} and the measures in s. The diff is read only when s holds a
+// measure placeholder, and measured over the globs of the `changed` of the `if` of the entry, else whole.
 func (r *answerHookRun) expand(s string) string {
 	if !strings.Contains(s, "{") {
 		return s
 	}
 	branch := r.branch()
-	return Expand(s, r.ev.Event, branch, Vars(r.ev.Workflow, branch))
+	vars := Vars(r.ev.Workflow, branch)
+	var measures map[string]string
+	if UsesMeasures(s) {
+		d, measured := r.diff()
+		if r.waiting() {
+			return s
+		}
+		// The globs are expanded without the measures, so a glob never asks for the diff it scopes.
+		globs, _ := workflow.Strings(r.entryIf["changed"])
+		scope := make([]string, len(globs))
+		for i, g := range globs {
+			scope[i] = Expand(g, r.ev.Event, branch, vars, nil)
+		}
+		measures = Measures(d.Narrow(scope), r.ev.Workflow.Weights, measured)
+	}
+	return Expand(s, r.ev.Event, branch, vars, measures)
+}
+
+// diff returns the size of the change of each file not committed yet, and whether it could be measured.
+func (r *answerHookRun) diff() (diff.Diff, bool) {
+	if r.ev.Facts.HasDiff {
+		return r.ev.Facts.Diff, r.ev.Facts.DiffErr == nil
+	}
+	s := Step{Diff: true}
+	r.ask(s, s.Valid())
+	return diff.Diff{}, false
 }
 
 // recordFact records fact on the current content; nothing without a known hash, whose cause the facts already

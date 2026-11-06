@@ -29,7 +29,22 @@ type workflowYAML struct {
 	Plans         folderYAML             `yaml:"plans"`
 	Reports       folderYAML             `yaml:"reports"`
 	Guidance      guidanceYAML           `yaml:"guidance"`
+	Risk          riskYAML               `yaml:"risk"`
 }
+
+// riskYAML is the key risk: the options of the risk score.
+type riskYAML struct {
+	Weights weightsYAML `yaml:"weights"`
+}
+
+// weightYAML is one weight of risk.weights: a glob and its factor.
+type weightYAML struct {
+	glob   string
+	factor float64
+}
+
+// weightsYAML is the map of risk.weights, in file order.
+type weightsYAML []weightYAML
 
 // varYAML is a variable of vars.
 type varYAML struct {
@@ -122,7 +137,10 @@ var decodeNames = []string{
 
 // topKeys are the keys of polix.yaml.
 var topKeys = []string{"version", "requires", "base", "max_stop_blocks", "protected", "vars", "on", "rules", "plans",
-	"reports", "guidance"}
+	"reports", "guidance", "risk"}
+
+// riskKeys are the keys of the section risk.
+var riskKeys = []string{"weights"}
 
 // Valid tells why the error is not valid: it names both versions.
 func (e TooOld) Valid() error {
@@ -203,7 +221,9 @@ func (y workflowYAML) workflow() (Workflow, error) {
 	plans, _ := y.Plans.folder()
 	reports, _ := y.Reports.folder()
 	guidance, _ := y.Guidance.guidance()
+	weights := y.Risk.Weights.weights()
 	w := Workflow{
+		Weights:       weights,
 		Version:       y.Version,
 		Requires:      y.Requires,
 		Base:          []string(y.Base),
@@ -272,6 +292,25 @@ func (y guidanceYAML) guidance() (Guidance, error) {
 	g := Guidance{Commit: y.Commit == nil || *y.Commit, Edit: y.Edit == nil || *y.Edit,
 		Layout: y.Layout == nil || *y.Layout, Keys: y.keys}
 	return g, g.Valid()
+}
+
+// weights builds the weights of risk.weights in file order. The problems of each weight are reported by
+// Workflow.Valid.
+func (ws weightsYAML) weights() []Weight {
+	if len(ws) == 0 {
+		return nil
+	}
+	out := make([]Weight, 0, len(ws))
+	for _, y := range ws {
+		w, _ := y.weight()
+		out = append(out, w)
+	}
+	return out
+}
+
+func (y weightYAML) weight() (Weight, error) {
+	w := Weight{Glob: y.glob, Factor: y.factor}
+	return w, w.Valid()
 }
 
 func (y runnerYAML) runner() (Runner, error) {
@@ -419,6 +458,51 @@ func (rs *runnersYAML) UnmarshalYAML(n *yaml.Node) error {
 		out = append(out, runnerYAML{glob: n.Content[i].Value, argv: argv, line: n.Content[i].Line})
 	}
 	*rs = out
+	return nil
+}
+
+// UnmarshalYAML reads the section risk, a map whose only key is weights.
+func (y *riskYAML) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: risk must be a map with weights", n.Line)
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if k := n.Content[i]; !contains(riskKeys, k.Value) {
+			return fmt.Errorf("line %d: unknown key %q in risk (%s)", k.Line, k.Value, strings.Join(riskKeys, ", "))
+		}
+	}
+	type plain riskYAML
+	var p plain
+	if err := n.Decode(&p); err != nil {
+		return err
+	}
+	*y = riskYAML(p)
+	return nil
+}
+
+// UnmarshalYAML reads the map of risk.weights in file order: a glob to a number.
+func (ws *weightsYAML) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: risk.weights must map a glob to a number", n.Line)
+	}
+	var out weightsYAML
+	seen := map[string]int{}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		key, val := n.Content[i], n.Content[i+1]
+		if key.Kind != yaml.ScalarNode {
+			return fmt.Errorf("line %d: a glob of risk.weights must be a string", key.Line)
+		}
+		if first, ok := seen[key.Value]; ok {
+			return fmt.Errorf("line %d: mapping key %q already defined at line %d", key.Line, key.Value, first)
+		}
+		seen[key.Value] = key.Line
+		var f float64
+		if val.Kind != yaml.ScalarNode || (val.Tag != "!!int" && val.Tag != "!!float") || val.Decode(&f) != nil {
+			return fmt.Errorf("line %d: the weight of %q must be a number", val.Line, key.Value)
+		}
+		out = append(out, weightYAML{glob: key.Value, factor: f})
+	}
+	*ws = out
 	return nil
 }
 

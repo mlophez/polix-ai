@@ -34,6 +34,8 @@ polix rules check --changed  # only the rules whose scope matches the files chan
                              # it fails when no base exists, locally or on origin)
 polix graph                # print the workflow as a Mermaid diagram
 polix log --tail 20        # print the last entries of the state log (--json for the raw lines)
+polix risk                 # print the lines, files and risk score of the uncommitted change, file by file
+                           # (--changed GLOB, repeatable; --commit REV for the changes of one commit)
 polix doctor               # check that this machine and repository are ready (--hook, --offline)
 polix install              # plugin for the user, hooks for the repository (--user, --agent)
 polix uninstall            # remove what install wrote (--user, --agent)
@@ -62,6 +64,21 @@ to `polix check`. The hint to set `base` or pass
 the first runner of `rules.run` whose glob matches its file, or else as a program (see `rules.run` below); it
 prints each failure with the last 15 lines of its output, then `<n> checks, <m> failed`, and exits with 1 when a
 check failed.
+
+`polix risk` prints what the conditions `changed_lines`, `changed_files` and `risk_score` would compare (see
+[Measures of the change](#measures-of-the-change)): what was measured, the three totals, and one line per file with
+its added and deleted lines, its weight and its share of the risk score, the highest first. `--changed` narrows the
+measure as the condition `changed` does, so `polix risk --changed '*.go'` shows the numbers of a gate scoped to the
+Go files. `--commit <rev>` measures the changes a commit introduced instead (against its first parent, a root commit
+against the empty tree), with the weights of the current `polix.yaml`, to calibrate thresholds and weights on the
+history:
+
+```bash
+for c in $(git log --format=%h -20); do polix risk --commit "$c" --changed '*.go' | head -4; done
+```
+
+It fails, exiting with 1, outside a repository, with a `polix.yaml` that does not parse or is not valid, with a
+revision that is not a commit, or when git fails.
 
 The repository commands, `doctor`, `install` and `uninstall` take `--dir <repo>` (`-C`; default: the working
 directory, or the `cwd` of the hook input).
@@ -235,6 +252,8 @@ heuristic, aimed at accidents rather than at an agent determined to get around i
   the repository or of ignored files go through as always. The built-in protections still apply. It never blocks a stop, which
   would trap the agent in a loop. When a problem names something unknown, the reason adds that it may be an
   option of a newer polix, to update instead of removing it.
+- A diff that cannot be measured makes `changed_lines`, `changed_files` and `risk_score` hold (fail closed), with
+  one warning per call that names the cause.
 - A workflow that `requires` a newer polix than the one running is not broken but ahead: it blocks the same way,
   asking to run `polix update`, and not even the main session may edit `polix.yaml`, so the agent does not take
   options out of it to please an old binary. A development build ignores `requires`, and `polix check` rejects one
@@ -263,6 +282,10 @@ plans:
   path: ai/plans      # the folder of the plans (optional, default ai/plans)
 reports:
   path: ai/reports    # the folder of the reports (optional, default ai/reports)
+risk:
+  weights:            # factor of each path glob in risk_score, first match wins (optional, default 1)
+    "*_test.go": 0.5
+    "internal/core/**": 3
 vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # first group of the branch name, used as {key}
 on:
@@ -347,11 +370,60 @@ Conditions:
   `polix:rules-reviewer`; an agent of `.claude/agents/` by its bare name.
 - `done`: a fact was recorded on this branch for exactly the current content.
 - `not`: a map of nested conditions; it holds unless every one of them holds.
+- `any`: a map of nested conditions; it holds when at least one of them holds. It may hold `not` and sit inside
+  it, and an empty `any` is a problem.
+- `changed_lines: { at_least: N }`, `changed_files: { at_least: N }` and `risk_score: { at_least: N }`: the
+  measures of the change not committed yet reach `N`, a non-negative integer. See
+  [Measures of the change](#measures-of-the-change).
 
 Globs are relative to the root and use `/`: `*` stays inside a segment, `**` crosses segments, a pattern
 without `/` matches the base name anywhere (`*.md`), and a leading `/` anchors it to the root, as in `.gitignore`
 (`/polix.yaml` is the file of the root, not `examples/polix.yaml`).
-Strings may use `{path}`, `{command}`, `{branch}` and the variables, which cannot take those three names.
+Strings may use `{path}`, `{command}`, `{branch}`, `{changed_lines}`, `{changed_files}`, `{risk_score}` and the
+variables, which cannot take those built-in names.
+
+### Measures of the change
+
+The measure conditions look at the same files as `changed`: the diff against HEAD plus the untracked files not
+ignored (every file, without a commit yet). An untracked file counts all its lines as added; a binary file counts as
+a changed file with zero lines.
+
+- `changed_lines` holds when the added plus deleted lines of the measured files are at least `at_least`.
+- `changed_files` holds when at least `at_least` measured files changed, deleted and binary ones included.
+- `risk_score` holds when the risk score of the measured files is at least `at_least`: the sum over the files of
+  weight times log2(1 + added + deleted lines), rounded half away from zero. The weight of a file is the number of
+  the first glob of `risk.weights` that matches it, in the order of the file, else 1; so a test of a critical
+  folder can weigh less than the folder if its glob comes first.
+
+Each value is a map with one key, `at_least`; there is no short form, so `changed_lines: 150` is a problem.
+A measure has no globs of its own: it measures the files of the nearest `changed`, the one in its own map, else
+the one of the enclosing map (`any` and `not` nest maps), else the whole uncommitted diff, docs and plans included.
+Write it next to a `changed`:
+
+```yaml
+on:
+  pre_commit:
+    - if:
+        changed: ["*.go", go.mod, go.sum]   # scopes the measures below
+        any:
+          changed_lines: { at_least: 150 }
+          changed_files: { at_least: 5 }
+          risk_score: { at_least: 25 }
+      unless: { done: reviewed }
+      deny: "Cambio de {changed_lines} líneas en {changed_files} ficheros (riesgo {risk_score}): revísalo"
+```
+
+`{changed_lines}`, `{changed_files}` and `{risk_score}` expand in every string of an entry to the measures over the
+`changed` of its `if`, else the whole diff, so a message shows the numbers its thresholds compare. The diff is read
+once per call, and only when a condition or a string needs it. When it cannot be measured (git fails), the three
+conditions hold and the call warns once with the cause, as `done` with an unknown content hash: a broken git never
+skips a review. The placeholders then show `?`. The measures are those of the start of the call: a `run` that
+rewrites files on the same event does not change them, as for `changed`.
+
+`polix check` reports a measure that is not a map, without `at_least`, with an `at_least` that is not a
+non-negative integer or with another key, an empty `any`, and a weight with an empty glob or a negative number. A
+`risk` or `risk.weights` that is not a map, a key of `risk` other than `weights`, and a weight that is not a number
+stop the parse. Calibrate the thresholds and the weights with `polix risk`.
 
 Actions:
 
