@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" width="960" height="380" role="img" aria-labelledby="title desc">
-  <title id="title">How polix works</title>
-  <desc id="desc">Claude Code and Codex call polix through their hooks. polix reads the declarative workflow in polix.yaml and the rules in ai/rules, keeps facts and decisions in a log, and answers each hook by blocking, injecting context or allowing the action.</desc>
+  <title id="title">How Polix works</title>
+  <desc id="desc">Claude Code and Codex call Polix through their hooks. Polix reads the declarative workflow in polix.yaml and the rules in ai/rules, keeps facts and decisions in a log, and answers each hook by blocking, injecting context or allowing the action.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -43,7 +43,7 @@
   <text class="t" x="60" y="250" font-size="16" font-weight="600">Codex</text>
   <text class="m" x="60" y="272" font-size="12">hooks (experimental)</text>
 
-  <!-- Agent hooks to polix -->
+  <!-- Agent hooks to Polix -->
   <path class="wire" d="M240,146 C305,146 305,186 366,186" marker-end="url(#arrow)"/>
   <path class="wire" d="M240,254 C305,254 305,214 366,214" marker-end="url(#arrow)"/>
   <text class="m mono" x="305" y="204" font-size="11" text-anchor="middle">event</text>
@@ -61,7 +61,7 @@
 
   <!-- Engine -->
   <rect class="core" x="370" y="150" width="220" height="100" rx="14"/>
-  <text class="on-core" x="480" y="200" font-size="28" font-weight="700" text-anchor="middle">polix</text>
+  <text class="on-core" x="480" y="200" font-size="28" font-weight="700" text-anchor="middle">Polix</text>
   <text class="on-core-m" x="480" y="224" font-size="12" text-anchor="middle">one binary, every repository</text>
 
   <!-- State -->
