@@ -624,7 +624,8 @@ on:
   stop:
     - unless: { done: tested }
       mode: warn
-      run: { command: [git, rev-parse, --verify, --quiet, no-such-ref], record: tested }
+      run: { command: [git, rev-parse, --verify, --quiet, no-such-ref] }
+      record: tested
 `+gate)
 	r.write("src/a.go", "package a\n")
 	code, _, stderr := r.stop()
@@ -636,7 +637,8 @@ on:
 on:
   stop:
     - unless: { done: tested }
-      run: { command: [git, rev-parse, --verify, --quiet, HEAD], record: tested }
+      run: { command: [git, rev-parse, --verify, --quiet, HEAD] }
+      record: tested
 `+gate)
 	code, _, stderr = r.stop()
 	answerHookExpect(t, "stop with the run passing", code, 0, stderr)
@@ -652,7 +654,8 @@ on:
 on:
   stop:
     - mode: warn
-      run: { command: [git, rev-parse, --verify, --quiet, HEAD], record: tested }
+      run: { command: [git, rev-parse, --verify, --quiet, HEAD] }
+      record: tested
 `+gate)
 	r.stop()
 	code, _, stderr = r.bash("git commit -m x", false)
@@ -662,7 +665,7 @@ on:
 // Rules that cannot be loaded fail run: { rules }, instead of passing with no checks and recording a fact.
 func TestAnswerHookRunRulesFailsOnBadRules(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - run: { rules: changed, record: checked }\n")
+	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - run: { rules: changed }\n      record: checked\n")
 	r.write("ai/rules/bad.yaml", "rules: [\n")
 	code, _, stderr := r.stop()
 	answerHookExpect(t, "stop with rules that do not load", code, 2, stderr)
@@ -677,7 +680,8 @@ func TestAnswerHookRunRecordSkipsChangedContent(t *testing.T) {
 	r.write("polix.yaml", `version: 1
 on:
   stop:
-    - run: { command: [git, checkout, --, README.md], record: tested }
+    - run: { command: [git, checkout, --, README.md] }
+      record: tested
   pre_commit:
     - unless: { done: tested }
       deny: "Faltan los tests"

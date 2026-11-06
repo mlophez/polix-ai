@@ -68,9 +68,9 @@ func graphWorkflowLabel(e Entry) string {
 		} else {
 			act += " " + strings.Join(e.Run.Command, " ")
 		}
-		if e.Run.Record != "" {
-			act += " → record " + e.Run.Record
-		}
+	}
+	if e.Record != nil && e.Action() != "record" {
+		act += " → record " + *e.Record
 	}
 	if m := e.Mode; m != "" && m != ModeEnforce {
 		act += " (" + m + ")"

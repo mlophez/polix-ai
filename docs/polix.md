@@ -272,6 +272,7 @@ on:
       mode: enforce | warn | audit           # optional, enforce by default
       why: <reason of the entry>             # optional, for people
       <action>: <value>                      # exactly one
+      record: <fact>                         # optional next to another action: recorded once it applied
 ```
 
 `rules.path`, `plans.path` and `reports.path` place the folders of the AI, relative to the root: the rules polix
@@ -371,11 +372,26 @@ Actions:
 - `context: { file | text | rules }` injects a file, a text, or the rules whose scope matches a path
   (`rules: "{path}"`), each rule once per session. Not valid on `stop` or `subagent_stop`, which cannot
   receive context.
-- `record: <fact>` records a fact on the current content.
-- `run: { ..., record: <fact> }` also records the fact when the run passes, in any mode, on the content the run
-  saw: a failing run records nothing, and neither does one during which the content changed (a formatter that
-  rewrites files, another agent editing). A gate on `stop` with `unless: { done: <fact> }` then runs until it
-  passes, and once per content after that. A rules file that cannot be loaded fails `run: { rules }`.
+- `record: <fact>` alone records a fact on the current content. A rules file that cannot be loaded fails
+  `run: { rules }`.
+
+`record` may also go next to any other action of the entry, as the fact that action records once it applied:
+
+- `deny` and `require` record when they block, when they warn and when the loop guard lets a stop through; a
+  `deny` that blocks records before it stops the evaluation.
+- `allow` and `context` record when the entry applies, `context` even when every rule it would inject was
+  already injected in the session.
+- `run` records only when it passes, on the content it saw: a failing run records nothing, and neither does one
+  during which the content changed (a formatter that rewrites files, another agent editing). A gate on `stop`
+  with `unless: { done: <fact> }` then runs until it passes, and once per content after that.
+- In `audit` mode no entry records anything, whatever its action, so trying an entry never changes what the
+  others see.
+
+`record` goes next to `run`, never inside it: `polix check` reports `run: { ..., record }` and names the fix.
+A `deny` or `require` that records the fact its own `unless` (or a `not: { done }` of its `if`) checks asks once
+per content instead of enforcing: the next stop or commit on the same content passes even if nothing was done.
+That suits a request the agent answers in the background, such as a review; keep a `deny` on `pre_commit` without
+`record` when the gate must hold.
 
 Modes: `enforce` applies the entry; `warn` turns a block into a warning for the agent; `audit` only logs what it
 would have blocked, to try a new entry before enforcing it. What each one does on each event is in
@@ -429,10 +445,11 @@ The mode of the entry decides whether a block happens and who learns about it:
 - `audit`: nothing is blocked and the agent learns nothing; the log records an `audit` decision, read with
   `polix log`.
 
-In every mode a `run` that passes records its fact, and an entry that does not block lets the evaluation go on.
+In `enforce` and `warn` mode an entry that applies records its fact, if it has one, and in `audit` none does; an
+entry that does not block lets the evaluation go on.
 
-The `stop` of this repository shows it. It has two entries, golangci-lint and `go test ./...`, both in `enforce` mode
-and each with `unless: { done: <fact> }`. When the agent ends a turn after changing a Go file:
+The `stop` of this repository shows it. It has two entries, golangci-lint and `go test ./...`, both in `enforce`
+mode, each with `record` and `unless: { done: <fact> }`. When the agent ends a turn after changing a Go file:
 
 1. golangci-lint runs. When it fails, the stop blocks and nothing is recorded, but the evaluation goes on.
 2. `go test ./...` runs anyway. When it passes, it records `tested` on the current content.

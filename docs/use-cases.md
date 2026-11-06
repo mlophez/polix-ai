@@ -72,6 +72,21 @@ How it works:
   and it has to review again: a review never covers code it did not see.
 - The reviewer reports and never fixes, so its run does not change the content it just approved.
 
+When the reviewer runs in the background, the stop above blocks again on every turn until it ends. To ask once
+per content instead, let the require record that it asked, and skip it once that fact holds:
+
+```yaml
+on:
+  stop:
+    - if: { changed: ["src/**", "internal/**"], not: { done: review_asked } }
+      unless: { done: reviewed }
+      require: "Run /polix:review on the current diff before you finish"
+      record: review_asked
+```
+
+The require then stops enforcing: a second stop on the same content passes even if no review ran. Keep the
+`deny` of `pre_commit` to make the review a hard gate.
+
 ### Document at the end of every task
 
 A `documenter` subagent updates the docs and comments the change made stale, and the agent cannot stop until it
@@ -122,7 +137,8 @@ on:
   stop:
     - if: { changed: ["*.go", "go.mod", "go.sum"] }
       unless: { done: tested }
-      run: { command: ["just", "test"], record: tested }
+      run: { command: ["just", "test"] }
+      record: tested
 ```
 
 How it works:
@@ -600,7 +616,8 @@ on:
     # Tests only once the docs are written, review only once the tests pass.
     - if: { changed: "src/**", done: documented }
       unless: { done: tested }
-      run: { command: ["just", "test"], record: tested }
+      run: { command: ["just", "test"] }
+      record: tested
     - if: { changed: "src/**", done: [documented, tested] }
       unless: { done: reviewed }
       require: "Run /polix:review on the final diff"

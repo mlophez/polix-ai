@@ -73,7 +73,8 @@ max_stop_blocks: 5
 on:
   stop:
     - if: { changed: "src/**" }
-      run: { command: just test, record: tested }
+      run: { command: just test }
+      record: tested
       mode: warn
 rules:
   run:
@@ -85,12 +86,12 @@ rules:
 		t.Fatal(err)
 	}
 	e := w.On[Stop][0]
-	if e.Line != 5 || e.Run == nil || strings.Join(e.Run.Command, ",") != "just,test" || e.Run.Record != "tested" ||
+	if e.Line != 5 || e.Run == nil || strings.Join(e.Run.Command, ",") != "just,test" || e.Record == nil || *e.Record != "tested" ||
 		e.EffectiveMode() != ModeWarn || w.MaxStopBlocks != 5 {
 		t.Fatalf("entry: %+v %+v", e, e.Run)
 	}
 	r := w.Rules.Run
-	if len(r) != 2 || r[0].Glob != "*_test.go" || r[0].Line != 10 || strings.Join(r[1].Argv, " ") != "bash {file}" {
+	if len(r) != 2 || r[0].Glob != "*_test.go" || r[0].Line != 11 || strings.Join(r[1].Argv, " ") != "bash {file}" {
 		t.Fatalf("runners: %+v", r)
 	}
 }

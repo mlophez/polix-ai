@@ -18,7 +18,7 @@ guidance:
 protected: 
   - AGENTS.md
   - CLAUDE.md
-  - /polix.yaml
+  #- /polix.yaml
 
 
 # The checks of ai/rules/ that are Go tests (the AST tests of tests/architecture/) run as one `go test` of their
@@ -43,21 +43,25 @@ on:
 
   # stop: when the agent ends its turn. The entries run in order, and a failing one blocks the stop but does not
   # skip the next, so the agent gets every failure in one answer. Each one runs once per content: its fact
-  # (linted, tested) is recorded when it passes, and `unless: done` skips it until the files change again.
+  # (linted, tested), in the record next to its run, is recorded when it passes, and `unless: done` skips it until
+  # the files change again.
   stop:
     # golangci-lint with .golangci.yml over the whole module: the gofmt formatter and the standard linters, govet
     # (go vet) among them. Only when a Go file or the lint configuration changed.
     - if: { changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"] }
       unless: { done: linted }
-      run: { command: ["golangci-lint", "run", "./..."], record: linted }
+      run: { command: ["golangci-lint", "run", "./..."] }
+      record: linted
 
     # Every test of the module, without the agent asking for it. The install scripts and scripts/ are tested from
     # Go, so a change in them runs the tests too. Go caches the results, so a run on code already tested is fast.
     - if: { changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"] }
       unless: { done: tested }
-      run: { command: ["go", "test", "./..."], record: tested }
+      run: { command: ["go", "test", "./..."] }
+      record: tested
 
     # Ya lo ejecuta el go test
     #- if: { changed: ["*.go"] }
     #  unless: { done: checked }
-    #  run: { rules: changed, record: checked }
+    #  run: { rules: changed }
+    #  record: checked
