@@ -1,8 +1,9 @@
 # Workflow of this repository, enforced by polix itself (dogfooding). Reference of every option:
 # examples/polix.yaml; design and limits: docs/polix.md. Validate with `polix check`, draw with `polix graph`.
 #
-# The hooks of .claude/settings.json send every event to polix, but this workflow only acts on two of them:
-# post_edit (format the edited Go file) and stop (lint and test before the turn ends). On the other events polix
+# The hooks of .claude/settings.json send every event to polix, but this workflow only acts on four of them:
+# post_edit (format the edited Go file), pre_commit (no commit without a review), subagent_stop (record the review
+# of polix:reviewer) and stop (lint and test before the turn ends). On the other events polix
 # only applies its protections: the built-in one (no agent writes the state of polix) and the paths of `protected`.
 version: 1
 base: main
@@ -44,6 +45,20 @@ on:
       mode: warn
       run: { command: ["golangci-lint", "fmt", "{path}"] }
 
+  # pre_commit: before a git commit runs. A change is committed only once polix:reviewer reviewed that exact
+  # content; any later edit asks for a new review. The deny does not record: only subagent_stop records the fact.
+  pre_commit:
+    - if: { changed: "**" }
+      unless: { done: reviewed }
+      why: no change is committed without a review of its final diff
+      deny: "This diff is not reviewed: run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again."
+
+  # subagent_stop: when a subagent ends. polix:reviewer never edits, so the content hash when it ends is the one it
+  # reviewed, and that content is recorded as reviewed.
+  subagent_stop:
+    - if: { actor: polix:reviewer }
+      record: reviewed
+
   # stop: when the agent ends its turn. The entries run in order, and a failing one blocks the stop but does not
   # skip the next, so the agent gets every failure in one answer. Each one runs once per content: its fact
   # (linted, tested), in the record next to its run, is recorded when it passes, and `unless: done` skips it until
@@ -64,17 +79,3 @@ on:
       run: { command: ["go", "test", "./..."] }
       record: tested
 
-    # Ya lo ejecuta el go test
-    #- if: { changed: ["*.go"] }
-    #  unless: { done: checked }
-    #  run: { rules: changed }
-    #  record: checked
-
-    # Every change is reviewed by polix:reviewer before the turn ends, once per content. In audit mode until
-    # polix log shows it blocks what it should.
-    #- if: { changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"] }
-    - if: { changed: "**" }
-      unless: { done: reviewed }
-      why: a change with no review must not end a turn
-      require: "Changes not reviewed: run polix:reviewer sub-agent to review current diff. Not make changes while reviewer is active."
-      record: reviewed
