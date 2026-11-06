@@ -44,13 +44,6 @@ on:
       mode: warn
       run: { command: ["golangci-lint", "fmt", "{path}"] }
 
-  # subagent_stop: a subagent is about to stop. When the reviewer ends, the review is recorded on the current
-  # content, so the stop below lets the turn end until a file changes again.
-  subagent_stop:
-    - if: { actor: polix:reviewer }
-      why: the stop below needs to know the diff was reviewed
-      record: reviewed
-
   # stop: when the agent ends its turn. The entries run in order, and a failing one blocks the stop but does not
   # skip the next, so the agent gets every failure in one answer. Each one runs once per content: its fact
   # (linted, tested), in the record next to its run, is recorded when it passes, and `unless: done` skips it until
@@ -80,7 +73,8 @@ on:
     # Every change is reviewed by polix:reviewer before the turn ends, once per content. In audit mode until
     # polix log shows it blocks what it should.
     #- if: { changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"] }
-    #- if: { changed: "**" }
-    #  unless: { done: reviewed }
-    #  why: a change with no review must not end a turn
-    #  require: "Changes not reviewed: run polix:reviewer sub-agent to review current diff. Not make changes while reviewer is active."
+    - if: { changed: "**" }
+      unless: { done: reviewed }
+      why: a change with no review must not end a turn
+      require: "Changes not reviewed: run polix:reviewer sub-agent to review current diff. Not make changes while reviewer is active."
+      record: reviewed
