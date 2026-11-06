@@ -483,10 +483,9 @@ it. Running it again rewrites what changed and removes what the release dropped.
 - The plugin `polix`, for the user, since it helps in any repository. It is the folder `plugins/polix/` of this
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
   the folder of rules, `doctor` fixes the setup, `plan` writes a plan in the folder of plans, `review` reviews the
-  current change
-  with the agent `reviewer`, `audit` audits the repository with several `auditor` agents in parallel) and, for
-  Claude Code, agents (`workflow-author`, `rules-author` and the read-only `reviewer`, `rules-reviewer` and
-  `auditor`). Install writes it, with the version of the binary in its manifests, to the local marketplace
+  current change with the agent `reviewer`, `audit` audits the repository with several `auditor` agents in
+  parallel and saves the report in the folder of reports) and, for Claude Code, agents (`workflow-author`,
+  `rules-author` and the read-only `reviewer`, `rules-reviewer` and `auditor`). Install writes it, with the version of the binary in its manifests, to the local marketplace
   `~/.polix/marketplace/` and registers it. A development build, whose version is always `dev`, writes
   `0.0.0-dev+<hash of the plugin>` instead, so every change of the plugin is a new version.
   - Claude Code: `claude plugin marketplace add ~/.polix/marketplace --scope user` and

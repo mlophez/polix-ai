@@ -2,7 +2,7 @@
 name: audit
 description: >
   Audits the repository, or part of it, for bugs, flaws and inconsistencies with several polix:auditor subagents in
-  parallel, one per area, and merges their reports into one ranked by severity.
+  parallel, one per area, and merges their reports into one ranked by severity, saved in the folder of reports.
   Use it when the user asks to audit the project, a part of it or one kind of problem.
   It never fixes what it finds.
 effort: high
@@ -15,6 +15,7 @@ argument-hint: "[paths and an optional focus, e.g. internal/setup security; empt
 # Auditing
 
 Split the scope into areas, audit each with its own `polix:auditor` subagent in parallel and merge their reports.
+Save the merged report in the folder of reports: `reports.path` of `polix.yaml`, `ai/reports/` without it.
 
 ## Requirements
 
@@ -30,7 +31,7 @@ Split the scope into areas, audit each with its own `polix:auditor` subagent in 
 
 ## Rules
 
-- Never edit a file during the audit.
+- Never edit a file of the project: the report file is the only file you write.
 - Launch every auditor in a single message, so they run in parallel.
 - Launch at most 6 auditors.
 - Give each auditor an area no other auditor has.
@@ -65,6 +66,19 @@ Checks: <run for the first auditor, skip for the others>
 - Take the checks from the auditor that ran them.
 - Join the coverage and the pending of every auditor.
 
+### Report file
+
+Path: `<reports>/<date>-audit-<name>.md`, where `<reports>` is the folder of reports, `<date>` is today as
+`YYYY-MM-DD` and `<name>` is short kebab-case English from the scope and the focus (`repository` for the whole one).
+Example: `ai/reports/2026-11-05-audit-use-cases.md`.
+When the file exists, add a numeric suffix (`-2`) instead of overwriting it.
+
+- Title `# Audit of <scope>`, then a paragraph with the date, the base (`git rev-parse --short HEAD` and the branch,
+  plus whether the working tree had uncommitted changes), the areas and their auditors, and what was out of scope.
+- Then the sections of `Output format`, from `Summary` to `Pending`, as `##` headings.
+- Write it in the language of the docs of the repository, English when there are none.
+- One sentence per line, each line at most 120 characters, with no tables.
+
 ## How to operate
 
 Copy this checklist and track your progress:
@@ -76,12 +90,14 @@ Audit progress:
 - [ ] Step 3: Launch one `polix:auditor` per area in a single message (see `Prompt`) and wait for every report.
 - [ ] Step 4: Relaunch once each auditor that failed or returned no report; report it in `Pending` if it fails again.
 - [ ] Step 5: Merge the reports (see `Merge`).
-- [ ] Step 6: Relay the merged report (see `Output format`).
-- [ ] Step 7: Stop and return control to the user.
+- [ ] Step 6: Write the merged report to its file (see `Report file`).
+- [ ] Step 7: Relay the merged report and the path of its file (see `Output format`).
+- [ ] Step 8: Stop and return control to the user.
 ```
 
 ## Output format
 
+- **Report**: the path of the report file.
 - **Summary**: the scope, the areas and their auditors, the findings per severity and the three that matter most.
 - **Findings**: each as severity, category, confidence, `file:line`, what is wrong, the evidence and the direction
   of the fix.
