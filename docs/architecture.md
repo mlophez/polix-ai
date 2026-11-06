@@ -113,6 +113,11 @@ The flow of `polix rules check`:
 - **Names**: every top-level name of the files of a use case starts with its name (`CheckRuleFailed`,
   `checkRuleTimeout`); the shell is `<verb><Noun>(ctx, port, req) (<Verb><Noun>Response, error)`, the only one
   that calls the logic, from one call site, and the port.
+- **Imports**: a nested package of the module, `internal/<parent>/<child>` or `pkg/<parent>/<child>`, is always
+  imported with the alias `<parent><child>` (`internal/rules/check` as `rulescheck`), so the qualifier tells
+  where a name comes from even when several packages share the last element of their path. The linter
+  `importas` of `.golangci.yml` checks it with one pattern for every such package, without listing them, and
+  fails both a missing alias and a different one.
 - **Tests**: white box, in the package of the folder; `<stem>_test.go` next to the `<stem>.go` it tests. Each
   use case has `_logic_test.go` (domain values, no fakes, nothing from `_in_test.go`), `_in_test.go` (the shell
   with a fake of the port) and, when the adapter does more than call a library, `_out_test.go` (the adapter

@@ -1,8 +1,17 @@
-# golangci-lint of polix: the standard linters (errcheck, govet, ineffassign, staticcheck, unused) and the gofmt
-# formatter. polix.yaml runs it on stop and CI on every system (version pinned in .github/workflows/ci.yml).
+# golangci-lint of polix: the standard linters (errcheck, govet, ineffassign, staticcheck, unused), importas and
+# the gofmt formatter. polix.yaml runs it on stop and CI on every system (version pinned in .github/workflows/ci.yml).
 version: "2"
 linters:
   default: standard
+  enable: [importas]
+  settings:
+    importas:
+      # A nested package of the module is imported as <parent><child> (internal/rules/check as rulescheck), as
+      # docs/architecture.md says: one pattern covers every such package, and an import without the alias fails.
+      no-unaliased: true
+      alias:
+        - pkg: ^github\.com/mlophez/polix-ai/(?:internal|pkg)/(\w+)/(\w+)$
+          alias: $1$2
   exclusions:
     # The usual unchecked errors: Close of a deferred cleanup, os.Remove of a temporary file, fmt.Print...
     presets: [std-error-handling]

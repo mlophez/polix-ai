@@ -1,6 +1,6 @@
 {
   "autoMemoryEnabled": false,
-  "effortLevel": "high",
+  "effortLevel": "medium",
   "model": "opus",
   "hooks": {
     "SessionStart": [

@@ -51,6 +51,7 @@ on:
       unless: { done: tested }
       run: { command: ["go", "test", "./..."], record: tested }
 
-    - if: { changed: ["*.go"] }
-      unless: { done: checked }
-      run: { rules: changed, record: checked }
+    # Ya lo ejecuta el go test
+    #- if: { changed: ["*.go"] }
+    #  unless: { done: checked }
+    #  run: { rules: changed, record: checked }
