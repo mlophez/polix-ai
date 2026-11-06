@@ -155,7 +155,7 @@ func TestUseCasesAreValid(t *testing.T) {
 			t.Fatalf("block %d: not closed", i+1)
 		}
 		workflow := false
-		for _, line := range strings.Split(src, "\n") {
+		for line := range strings.SplitSeq(src, "\n") {
 			for _, key := range []string{"version:", "protected:", "vars:", "on:"} {
 				workflow = workflow || strings.HasPrefix(line, key)
 			}

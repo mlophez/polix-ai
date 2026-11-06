@@ -141,7 +141,7 @@ func answerHook(ctx context.Context, port AnswerHookPort, req AnswerHookRequest)
 	}
 	root, gitDir, err := port.Open(ctx, h.Folder(req.Dir))
 	if err != nil {
-		return AnswerHookResponse{}, nil // outside a repository there is nothing to govern
+		return AnswerHookResponse{}, nil //nolint:nilerr // outside a repository there is nothing to govern
 	}
 	wf, present, problem := port.LoadWorkflow(ctx, req.Version)
 	invalid := Unusable(problem, req.Version)

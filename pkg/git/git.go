@@ -195,8 +195,8 @@ func (r *Repo) Rel(p, cwd string) (rel string, ok bool) {
 func RealPath(p string) string {
 	rest := ""
 	for cur := p; ; {
-		if real, err := filepath.EvalSymlinks(cur); err == nil {
-			return filepath.Join(real, rest)
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(resolved, rest)
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {

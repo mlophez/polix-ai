@@ -54,14 +54,14 @@ func updateReleases(t *testing.T, bin, sum []byte) *atomic.Int32 {
 	mux.HandleFunc("/latest", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/tag/v0.2.0", http.StatusFound)
 	})
-	mux.HandleFunc("/download/v0.2.0/checksums.txt", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/download/v0.2.0/checksums.txt", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprintf(w, "0000  polix_other_os\n%s  %s\n", hex.EncodeToString(digest[:]), updateAsset)
 	})
 	// The binary is served through a redirect, as GitHub does.
 	mux.HandleFunc("/download/v0.2.0/"+updateAsset, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/assets/"+updateAsset, http.StatusFound)
 	})
-	mux.HandleFunc("/assets/"+updateAsset, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(bin) })
+	mux.HandleFunc("/assets/"+updateAsset, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(bin) })
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		mux.ServeHTTP(w, r)

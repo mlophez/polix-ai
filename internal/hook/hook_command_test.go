@@ -133,9 +133,9 @@ func TestWrites(t *testing.T) {
 // Writes resolves the words of the line from the cwd of the call and through the real paths it is given, so a root
 // reached through a symlink still holds what it writes.
 func TestWritesRealPaths(t *testing.T) {
-	root, real := filepath.FromSlash("/link/repo"), filepath.FromSlash("/real/repo")
+	root, resolved := filepath.FromSlash("/link/repo"), filepath.FromSlash("/real/repo")
 	cwd := filepath.Join(root, "ai")
-	reals := map[string]string{root: real, filepath.Join(root, "ai", "rules", "x.yaml"): filepath.Join(real, "ai", "rules", "x.yaml")}
+	reals := map[string]string{root: resolved, filepath.Join(root, "ai", "rules", "x.yaml"): filepath.Join(resolved, "ai", "rules", "x.yaml")}
 	p, _, ok := Writes([]string{"ai/rules/**"}, "echo x > rules/x.yaml", cwd, root, reals, false, false)
 	if !ok || p != "ai/rules/x.yaml" {
 		t.Fatalf("Writes = %q %v", p, ok)

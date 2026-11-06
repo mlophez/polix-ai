@@ -66,7 +66,7 @@ func (a UninstallSetupAdapter) UnregisterPlugin(ctx context.Context, s Setup, ag
 		})
 	}
 	if _, err := exec.LookPath("claude"); err != nil {
-		return nil, nil
+		return nil, nil //nolint:nilerr // without the CLI of Claude Code there is no plugin to unregister
 	}
 	outcome, _, _, err := a.claude(ctx, []string{"not_installed"}, "plugin", "uninstall", PluginID, "--scope", "user", "--json")
 	if err != nil {

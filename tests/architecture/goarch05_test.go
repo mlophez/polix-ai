@@ -73,8 +73,7 @@ func missingByTypes(info *types.Info, port, adapter *ast.TypeSpec) ([]string, bo
 		}
 	}
 	var missing []string
-	for i := range iface.NumMethods() {
-		mth := iface.Method(i)
+	for mth := range iface.Methods() {
 		if obj, _, _ := types.LookupFieldOrMethod(a.Type(), true, a.Pkg(), mth.Name()); obj == nil {
 			missing = append(missing, mth.Name())
 		}

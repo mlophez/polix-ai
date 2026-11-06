@@ -82,7 +82,7 @@ func readLines(r io.Reader, limit int, fn func(line []byte, tooLong bool)) error
 			fn(line, tooLong)
 		}
 		buf, tooLong = buf[:0], false
-		if err != nil {
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 	}

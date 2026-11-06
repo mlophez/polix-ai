@@ -113,7 +113,7 @@ func TestRegisterHooksMixedGroup(t *testing.T) {
 // Every group of hooks is written on one line.
 func TestHooksGroupsInline(t *testing.T) {
 	got, _, _ := RegisterHooks(nil, false, Claude)
-	for _, l := range strings.Split(string(got), "\n") {
+	for l := range strings.SplitSeq(string(got), "\n") {
 		inline := strings.HasPrefix(l, "      { ") && strings.Contains(l, `"hooks": [{ "type": "command"`)
 		if strings.Contains(l, `"command"`) && !inline {
 			t.Fatalf("a group spans lines:\n%s", got)

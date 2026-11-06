@@ -77,6 +77,8 @@ func CheckSetupCommand() *cobra.Command {
 
 // checkSetup is the shell, from request to response: it reads through the port the workflow, the rules, whether
 // each check exists and whether a base branch exists, calls the logic once and builds the response.
+//
+//nolint:unparam // every shell returns (response, error), as docs/architecture.md says, even when it cannot fail
 func checkSetup(ctx context.Context, port CheckSetupPort, req CheckSetupRequest) (CheckSetupResponse, error) {
 	wf, found, wfErr := port.LoadWorkflow(ctx, req.Version)
 	rulesPath := wf.RulesPath()

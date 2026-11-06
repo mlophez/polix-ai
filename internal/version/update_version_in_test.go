@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -51,7 +52,7 @@ func (f *updateVersionFake) Latest(context.Context) (string, error) {
 	return f.latest, f.latestErr
 }
 
-func (f *updateVersionFake) Install(_ context.Context, exe, version string) error {
+func (f *updateVersionFake) Install(_ context.Context, _, version string) error {
 	f.calls = append(f.calls, "install "+version)
 	if f.installErr == nil {
 		f.binary = version
@@ -59,7 +60,7 @@ func (f *updateVersionFake) Install(_ context.Context, exe, version string) erro
 	return f.installErr
 }
 
-func (f *updateVersionFake) Refresh(_ context.Context, exe string, hook bool) (string, string, error) {
+func (f *updateVersionFake) Refresh(_ context.Context, _ string, hook bool) (string, string, error) {
 	f.calls = append(f.calls, fmt.Sprintf("refresh hook=%v", hook))
 	if hook {
 		return "polix ha actualizado su plugin: se carga en la próxima sesión.\n", "", f.refreshErr
@@ -74,12 +75,7 @@ func (f *updateVersionFake) Doctor(context.Context, string) (string, string, err
 
 // asked reports whether the shell made the call.
 func (f *updateVersionFake) asked(call string) bool {
-	for _, c := range f.calls {
-		if c == call {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(f.calls, call)
 }
 
 var updateNow = time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
@@ -309,8 +305,7 @@ func updateCommand(t *testing.T, args ...string) (int, string, string) {
 	code := 0
 	if err := c.ExecuteContext(context.Background()); err != nil {
 		code = 1
-		var exit cli.ExitCode
-		if errors.As(err, &exit) {
+		if exit, ok := errors.AsType[cli.ExitCode](err); ok {
 			code = int(exit)
 		}
 	}

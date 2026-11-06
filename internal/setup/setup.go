@@ -17,6 +17,7 @@
 package setup
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -52,7 +53,7 @@ func (s Setup) Valid() error {
 		}
 	}
 	if s.Version == "" {
-		return fmt.Errorf("a setup needs the version of polix")
+		return errors.New("a setup needs the version of polix")
 	}
 	return nil
 }

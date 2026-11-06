@@ -24,14 +24,14 @@ func releases(t *testing.T, asset string, bin []byte, sum string) *httptest.Serv
 		}
 		http.Redirect(w, r, "/tag/v0.2.0", http.StatusFound)
 	})
-	mux.HandleFunc("/download/v0.2.0/checksums.txt", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/download/v0.2.0/checksums.txt", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("0000  polix_other_os\n" + sum + "  " + asset + "\n"))
 	})
 	// The asset is served through a redirect, as GitHub does.
 	mux.HandleFunc("/download/v0.2.0/"+asset, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/assets/"+asset, http.StatusFound)
 	})
-	mux.HandleFunc("/assets/"+asset, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(bin) })
+	mux.HandleFunc("/assets/"+asset, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(bin) })
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv

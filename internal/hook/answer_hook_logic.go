@@ -330,7 +330,7 @@ func (r *answerHookRun) runEntry(e workflow.Entry, ans agent.Answer) agent.Answe
 	case !knownBefore || !knownAfter:
 		r.log("run", e.Line, "warn", "hash del contenido desconocido; no se registra "+fact)
 	case after != before:
-		reason := fmt.Sprintf("el contenido cambió durante el run; no se registra %s", fact)
+		reason := "el contenido cambió durante el run; no se registra " + fact
 		ans = ans.Warn(reason)
 		r.log("run", e.Line, "warn", reason)
 	default:

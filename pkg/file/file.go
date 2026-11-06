@@ -48,8 +48,8 @@ func ReadDir(dir, ext string) (map[string][]byte, error) {
 // file keeps its permissions, a new one gets 0644, and the folder is created.
 func Write(path string, data []byte) error {
 	mode := fs.FileMode(0o644)
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		path = real
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
 		if info, err := os.Stat(path); err == nil {
 			mode = info.Mode().Perm()
 		}
@@ -103,7 +103,7 @@ func Sync(dir string, files map[string][]byte) (created, updated, removed []stri
 	var stale []string
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
-			return nil
+			return nil //nolint:nilerr // an entry that cannot be read is skipped, not removed as stale
 		}
 		rel, _ := filepath.Rel(dir, p)
 		if _, ok := files[filepath.ToSlash(rel)]; !ok {

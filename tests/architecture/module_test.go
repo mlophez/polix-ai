@@ -624,7 +624,7 @@ func (m *module) domainStructs() map[string]bool {
 }
 
 // receiverOf returns the domain struct whose method fn is, as folder.Name, or "".
-func (m *module) receiverOf(f *goFile, fn *ast.FuncDecl) string {
+func (m *module) receiverOf(fn *ast.FuncDecl) string {
 	if fn.Recv == nil || len(fn.Recv.List) == 0 {
 		return ""
 	}

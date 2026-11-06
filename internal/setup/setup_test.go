@@ -122,8 +122,8 @@ func gitRepo(t *testing.T) string {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
-	real, _ := filepath.EvalSymlinks(dir)
-	return real
+	resolved, _ := filepath.EvalSymlinks(dir)
+	return resolved
 }
 
 func TestSetupValid(t *testing.T) {

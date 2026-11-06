@@ -15,10 +15,7 @@ func Cut(s string, limit int) string {
 	if len(s) <= limit {
 		return s
 	}
-	n := limit - len(Mark)
-	if n < 0 {
-		n = 0
-	}
+	n := max(limit-len(Mark), 0)
 	for n > 0 && !utf8.RuneStart(s[n]) {
 		n--
 	}

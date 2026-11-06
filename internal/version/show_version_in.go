@@ -22,7 +22,7 @@ type ShowVersionResponse struct {
 
 // ShowVersionPort is what the shell of ShowVersion needs from the outside: nothing, since the entry passes the
 // version in the request.
-type ShowVersionPort interface{}
+type ShowVersionPort interface{} //nolint:modernize // GOARCH-12: a port is an interface literal, and any is a named type
 
 // ShowVersionCommand is the command `polix version`, the entry of the use case ShowVersion: it passes the version
 // of the binary in a ShowVersionRequest, runs the shell and prints the ShowVersionResponse.
@@ -43,6 +43,8 @@ func ShowVersionCommand() *cobra.Command {
 }
 
 // showVersion is the shell, from request to response: it calls the logic and builds the response.
+//
+//nolint:unparam // every shell returns (response, error), as docs/architecture.md says, even when it cannot fail
 func showVersion(_ context.Context, _ ShowVersionPort, req ShowVersionRequest) (ShowVersionResponse, error) {
 	out := ShowVersion(req.Version)
 	return ShowVersionResponse(out), nil

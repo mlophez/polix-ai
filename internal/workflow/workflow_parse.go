@@ -309,80 +309,80 @@ func (a *argsYAML) UnmarshalYAML(n *yaml.Node) error {
 }
 
 // UnmarshalYAML keeps the line of the entry and the keys it uses, so Valid can reject unknown ones.
-func (e *entryYAML) UnmarshalYAML(n *yaml.Node) error {
+func (y *entryYAML) UnmarshalYAML(n *yaml.Node) error {
 	type plain entryYAML
 	var p plain
 	if err := n.Decode(&p); err != nil {
 		return err
 	}
-	*e = entryYAML(p)
-	e.line = n.Line
-	e.keys = mapKeys(n)
+	*y = entryYAML(p)
+	y.line = n.Line
+	y.keys = mapKeys(n)
 	return nil
 }
 
 // UnmarshalYAML keeps the keys of plans or reports, so Valid can reject unknown ones.
-func (f *folderYAML) UnmarshalYAML(n *yaml.Node) error {
+func (y *folderYAML) UnmarshalYAML(n *yaml.Node) error {
 	type plain folderYAML
 	var p plain
 	if err := n.Decode(&p); err != nil {
 		return err
 	}
-	*f = folderYAML(p)
-	f.keys = mapKeys(n)
+	*y = folderYAML(p)
+	y.keys = mapKeys(n)
 	return nil
 }
 
 // UnmarshalYAML keeps the keys of the variable, so Valid can reject unknown ones.
-func (v *varYAML) UnmarshalYAML(n *yaml.Node) error {
+func (y *varYAML) UnmarshalYAML(n *yaml.Node) error {
 	type plain varYAML
 	var p plain
 	if err := n.Decode(&p); err != nil {
 		return err
 	}
-	*v = varYAML(p)
-	v.keys = mapKeys(n)
+	*y = varYAML(p)
+	y.keys = mapKeys(n)
 	return nil
 }
 
 // UnmarshalYAML keeps the keys of the run, so Valid can reject unknown ones.
-func (r *runYAML) UnmarshalYAML(n *yaml.Node) error {
+func (y *runYAML) UnmarshalYAML(n *yaml.Node) error {
 	type plain runYAML
 	var p plain
 	if err := n.Decode(&p); err != nil {
 		return err
 	}
-	*r = runYAML(p)
-	r.keys = mapKeys(n)
+	*y = runYAML(p)
+	y.keys = mapKeys(n)
 	return nil
 }
 
 // UnmarshalYAML keeps the keys of the context, so Valid can reject unknown ones.
-func (c *contextYAML) UnmarshalYAML(n *yaml.Node) error {
+func (y *contextYAML) UnmarshalYAML(n *yaml.Node) error {
 	type plain contextYAML
 	var p plain
 	if err := n.Decode(&p); err != nil {
 		return err
 	}
-	*c = contextYAML(p)
-	c.keys = mapKeys(n)
+	*y = contextYAML(p)
+	y.keys = mapKeys(n)
 	return nil
 }
 
 // UnmarshalYAML keeps the keys of rules, so Valid can reject unknown ones.
-func (r *rulesYAML) UnmarshalYAML(n *yaml.Node) error {
+func (y *rulesYAML) UnmarshalYAML(n *yaml.Node) error {
 	type plain rulesYAML
 	var p plain
 	if err := n.Decode(&p); err != nil {
 		return err
 	}
-	*r = rulesYAML(p)
-	r.keys = mapKeys(n)
+	*y = rulesYAML(p)
+	y.keys = mapKeys(n)
 	return nil
 }
 
 // UnmarshalYAML keeps the keys of guidance, so Valid can reject unknown ones.
-func (g *guidanceYAML) UnmarshalYAML(n *yaml.Node) error {
+func (y *guidanceYAML) UnmarshalYAML(n *yaml.Node) error {
 	if n.Kind != yaml.MappingNode {
 		return fmt.Errorf("line %d: guidance must map commit and edit to true or false", n.Line)
 	}
@@ -391,8 +391,8 @@ func (g *guidanceYAML) UnmarshalYAML(n *yaml.Node) error {
 	if err := n.Decode(&p); err != nil {
 		return err
 	}
-	*g = guidanceYAML(p)
-	g.keys = mapKeys(n)
+	*y = guidanceYAML(p)
+	y.keys = mapKeys(n)
 	return nil
 }
 

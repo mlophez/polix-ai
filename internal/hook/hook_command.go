@@ -383,7 +383,7 @@ func parentOnly(rel string) bool {
 	if rel == "" {
 		return false
 	}
-	for _, s := range strings.Split(rel, "/") {
+	for s := range strings.SplitSeq(rel, "/") {
 		if s != ".." {
 			return false
 		}

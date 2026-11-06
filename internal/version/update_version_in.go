@@ -109,12 +109,14 @@ func UpdateVersionCommand() *cobra.Command {
 // binary, the cache, with --hook the workflow, and the latest release when the update goes on for it), calls the
 // logic once, carries out its output through the port (install, refresh, and with --hook doctor) and builds the
 // response. Every failure goes to the response: the session start hook never fails.
+//
+//nolint:unparam // every shell returns (response, error), as docs/architecture.md says, even when it cannot fail
 func updateVersion(ctx context.Context, port UpdateVersionPort, req UpdateVersionRequest) (UpdateVersionResponse, error) {
 	res := UpdateVersionResponse{Hook: req.Hook}
 	exe, err := port.Executable(ctx)
 	if err != nil {
 		res.Failure = err.Error()
-		return res, nil
+		return res, nil //nolint:nilerr // every failure goes to the response: the session start hook never fails
 	}
 	cache := port.LoadCache(ctx)
 	var rejected error

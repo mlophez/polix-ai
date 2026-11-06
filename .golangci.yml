@@ -1,9 +1,26 @@
-# golangci-lint of polix: the standard linters (errcheck, govet, ineffassign, staticcheck, unused), importas and
-# the gofmt formatter. polix.yaml runs it on stop and CI on every system (version pinned in .github/workflows/ci.yml).
+# golangci-lint of polix: the standard linters (errcheck, govet, ineffassign, staticcheck, unused), the linters of
+# idiomatic Go below, importas, and the gofmt and goimports formatters. polix.yaml runs it on stop and CI on every
+# system (version pinned in .github/workflows/ci.yml).
 version: "2"
 linters:
   default: standard
-  enable: [importas]
+  enable:
+    - importas
+    # Errors: a checked error that returns nil, %v instead of %w, a comparison instead of errors.Is or errors.As.
+    - nilerr
+    - errorlint
+    # Idioms and style: names, receivers, unused parameters, shadowed builtins (revive, successor of golint).
+    - revive
+    # Newer APIs of the standard library over hand-written loops (slices, maps, min, max, range over int).
+    - modernize
+    # Results and parameters that are always the same, and conversions that do nothing.
+    - unparam
+    - unconvert
+    # fmt where a plain concatenation or errors.New does, constants of net/http over literals.
+    - perfsprint
+    - usestdlibvars
+    # A //nolint must name the linter and say why, and must still silence something.
+    - nolintlint
   settings:
     importas:
       # A nested package of the module is imported as <parent><child> (internal/rules/check as rulescheck), as
@@ -12,11 +29,18 @@ linters:
       alias:
         - pkg: ^github\.com/mlophez/polix-ai/(?:internal|pkg)/(\w+)/(\w+)$
           alias: $1$2
+    nolintlint:
+      require-specific: true
+      require-explanation: true
   exclusions:
     # The usual unchecked errors: Close of a deferred cleanup, os.Remove of a temporary file, fmt.Print...
     presets: [std-error-handling]
 formatters:
-  enable: [gofmt]
+  enable: [gofmt, goimports]
+  settings:
+    goimports:
+      # The imports of the module go in their own group, after the standard library and the third parties.
+      local-prefixes: [github.com/mlophez/polix-ai]
 issues:
   # Report every finding, not only the first ones of each kind, so one run shows all there is to fix.
   max-issues-per-linter: 0

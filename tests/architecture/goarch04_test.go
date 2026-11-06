@@ -104,7 +104,7 @@ func effects(m *module, f *goFile) []string {
 	ast.Inspect(f.ast, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.GoStmt:
-			out = append(out, fmt.Sprintf("%s: starts a goroutine", m.pos(f, x)))
+			out = append(out, m.pos(f, x)+": starts a goroutine")
 		case *ast.CallExpr:
 			switch fn := x.Fun.(type) {
 			case *ast.Ident:

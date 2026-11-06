@@ -40,7 +40,7 @@ func TestResultTailKeepsTheLastLinesAndTheError(t *testing.T) {
 // the console whole.
 func TestResultTailBoundsTheOutput(t *testing.T) {
 	var lines []string
-	for i := 0; i < TailLines+5; i++ {
+	for i := range TailLines + 5 {
 		lines = append(lines, strings.Repeat("x", i+1))
 	}
 	r := Result{Rule: goRule, Output: strings.Join(lines, "\n") + "\n" + strings.Repeat("y", 10000)}

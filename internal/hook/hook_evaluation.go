@@ -3,6 +3,7 @@ package hook
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -195,9 +196,7 @@ func (f Facts) Found(epoch int, patterns []string, text string) (found, known bo
 
 func (f Facts) learnFound(epoch int, patterns []string, text string, found bool) Facts {
 	m := make(map[string]bool, len(f.Searches)+1)
-	for k, v := range f.Searches {
-		m[k] = v
-	}
+	maps.Copy(m, f.Searches)
 	m[foundKey(epoch, patterns, text)] = found
 	f.Searches = m
 	return f
@@ -215,9 +214,7 @@ func (f Facts) learnHash(epoch int, hash string, err error) Facts {
 			"polix no puede calcular el hash del contenido (%v): no se registran ni se cumplen hechos", err))
 	}
 	hashes := make(map[int]string, len(f.Hashes)+1)
-	for k, v := range f.Hashes {
-		hashes[k] = v
-	}
+	maps.Copy(hashes, f.Hashes)
 	hashes[epoch] = hash
 	f.Hashes = hashes
 	return f
@@ -248,9 +245,7 @@ func (f Facts) learnState(s state.State, err error, at int) Facts {
 
 func (f Facts) learnIgnored(path string, ignored bool) Facts {
 	m := make(map[string]bool, len(f.Ignored)+1)
-	for k, v := range f.Ignored {
-		m[k] = v
-	}
+	maps.Copy(m, f.Ignored)
 	m[path] = ignored
 	f.Ignored = m
 	return f
@@ -258,9 +253,7 @@ func (f Facts) learnIgnored(path string, ignored bool) Facts {
 
 func (f Facts) learnReal(paths, reals []string) Facts {
 	m := make(map[string]string, len(f.Reals)+len(paths))
-	for k, v := range f.Reals {
-		m[k] = v
-	}
+	maps.Copy(m, f.Reals)
 	for i, p := range paths {
 		if i < len(reals) {
 			m[p] = reals[i]
@@ -274,17 +267,13 @@ func (f Facts) learnContent(epoch int, path, data string, err error) Facts {
 	key := contentKey(epoch, path)
 	if err != nil {
 		m := make(map[string]bool, len(f.Unreadable)+1)
-		for k, v := range f.Unreadable {
-			m[k] = v
-		}
+		maps.Copy(m, f.Unreadable)
 		m[key] = true
 		f.Unreadable = m
 		return f
 	}
 	m := make(map[string]string, len(f.Contents)+1)
-	for k, v := range f.Contents {
-		m[k] = v
-	}
+	maps.Copy(m, f.Contents)
 	m[key] = data
 	f.Contents = m
 	return f

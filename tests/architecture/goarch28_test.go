@@ -33,7 +33,7 @@ func checkChangeThroughMethods(m *module) []string {
 			if !ok || fn.Body == nil {
 				continue
 			}
-			owner := m.receiverOf(f, fn)
+			owner := m.receiverOf(fn)
 			who := fn.Name.Name
 			if r := receiver(fn); r != "" {
 				who = r + "." + who

@@ -4,6 +4,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/mlophez/polix-ai/pkg/glob"
@@ -88,11 +89,8 @@ func holdsAny(patterns []string, dir string, fold bool) (string, bool) {
 		dir = strings.ToLower(dir)
 	}
 	for _, pattern := range patterns {
-		folders, _ := literalFolders(pattern, fold)
-		for _, f := range folders {
-			if f == dir {
-				return pattern, true
-			}
+		if folders, _ := literalFolders(pattern, fold); slices.Contains(folders, dir) {
+			return pattern, true
 		}
 	}
 	return "", false

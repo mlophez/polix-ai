@@ -86,8 +86,8 @@ func (a DiagnoseSetupAdapter) LookPath(_ context.Context, name string) (string, 
 	if err != nil {
 		return "", err
 	}
-	if real, err := filepath.EvalSymlinks(found); err == nil {
-		found = real
+	if resolved, err := filepath.EvalSymlinks(found); err == nil {
+		found = resolved
 	}
 	return found, nil
 }
@@ -138,7 +138,7 @@ func (a DiagnoseSetupAdapter) Runnable(_ context.Context, root, check string) er
 	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(check)))
 	switch {
 	case err != nil:
-		return nil
+		return nil //nolint:nilerr // a missing check is left to Missing
 	case a.OS == "windows":
 		_, err := proc.Interpreter(check, a.Look, proc.FileExists)
 		return err

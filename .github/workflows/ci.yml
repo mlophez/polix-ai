@@ -24,7 +24,9 @@ jobs:
           go-version-file: go.mod
       - name: Vet
         run: go vet ./...
-      # The linters and the gofmt formatter of .golangci.yml.
+      # golangci-lint with .golangci.yml, the same configuration the stop hook of polix.yaml runs: the standard
+      # linters, those of idiomatic Go, and the gofmt and goimports formatters, which fail on a file not formatted
+      # (fix it with `golangci-lint fmt`). The version is pinned so CI and the local binary report the same findings.
       - name: Lint
         uses: golangci/golangci-lint-action@v8
         with:

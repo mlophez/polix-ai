@@ -15,29 +15,22 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/mlophez/polix-ai/pkg/github"
 )
 
-// fakeRelease serves a releases page whose latest release, v0.2.0, holds files with their checksums.txt, and
-// counts the requests.
-type fakeRelease struct {
-	srv      *httptest.Server
-	requests atomic.Int32
-}
-
 // asset is the name of the binary of this platform in a release.
 var asset = github.AssetName("polix", runtime.GOOS, runtime.GOARCH)
 
 // newFakeRelease serves bin as the binary of this platform.
-func newFakeRelease(t *testing.T, bin []byte) *fakeRelease {
-	return newFakeReleaseFiles(t, map[string][]byte{asset: bin}, nil)
+func newFakeRelease(t *testing.T, bin []byte) {
+	newFakeReleaseFiles(t, map[string][]byte{asset: bin}, nil)
 }
 
-// newFakeReleaseFiles serves files; sums overrides the checksum of some of them, to serve a tampered release.
-func newFakeReleaseFiles(t *testing.T, files map[string][]byte, sums map[string][]byte) *fakeRelease {
+// newFakeReleaseFiles serves a releases page whose latest release, v0.2.0, holds files with their checksums.txt;
+// sums overrides the checksum of some of them, to serve a tampered release.
+func newFakeReleaseFiles(t *testing.T, files map[string][]byte, sums map[string][]byte) {
 	t.Helper()
 	var listing strings.Builder
 	for name, data := range files {
@@ -47,26 +40,21 @@ func newFakeReleaseFiles(t *testing.T, files map[string][]byte, sums map[string]
 		sum := sha256.Sum256(data)
 		fmt.Fprintf(&listing, "%s  %s\n", hex.EncodeToString(sum[:]), name)
 	}
-	f := &fakeRelease{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/latest", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/tag/v0.2.0", http.StatusFound)
 	})
 	for _, prefix := range []string{"/download/v0.2.0/", "/latest/download/"} {
-		mux.HandleFunc(prefix+"checksums.txt", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc(prefix+"checksums.txt", func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(listing.String()))
 		})
 		for name, data := range files {
-			mux.HandleFunc(prefix+name, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(data) })
+			mux.HandleFunc(prefix+name, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(data) })
 		}
 	}
-	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.requests.Add(1)
-		mux.ServeHTTP(w, r)
-	}))
-	t.Cleanup(f.srv.Close)
-	t.Setenv("POLIX_RELEASES_URL", f.srv.URL)
-	return f
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	t.Setenv("POLIX_RELEASES_URL", srv.URL)
 }
 
 func content(t *testing.T, path string) string {
@@ -96,7 +84,7 @@ func buildRelease(version string) ([]byte, error) {
 		"-X github.com/mlophez/polix-ai/pkg/build.Version="+version, "github.com/mlophez/polix-ai/cmd/polix")
 	cmd.Dir = moduleDir
 	if msg, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("go build: %v\n%s", err, msg)
+		return nil, fmt.Errorf("go build: %w\n%s", err, msg)
 	}
 	return os.ReadFile(out)
 }

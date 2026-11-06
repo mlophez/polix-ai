@@ -198,6 +198,7 @@ func Replace(exe, prefix string, data []byte) error {
 	}
 	if err := rename(tmp.Name(), exe); err != nil {
 		if rerr := rename(old, exe); rerr != nil {
+			//nolint:errorlint // only the failed update is wrapped: errors.Is must not match the failed restore
 			return fmt.Errorf("%w; and the old binary could not be put back from %s: %v", err, old, rerr)
 		}
 		return err
