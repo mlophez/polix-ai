@@ -2,8 +2,8 @@
 # examples/polix.yaml; design and limits: docs/polix.md. Validate with `polix check`, draw with `polix graph`.
 #
 # The hooks of .claude/settings.json send every event to polix, but this workflow only acts on four of them:
-# post_edit (format the edited Go file), pre_commit (no commit without a review), subagent_stop (record the review
-# of polix:reviewer) and stop (lint and test before the turn ends). On the other events polix
+# post_edit (format the edited Go file), pre_commit (no commit of Go code without a review), subagent_stop
+# (record the review of polix:reviewer) and stop (lint and test before the turn ends). On the other events polix
 # only applies its protections: the built-in one (no agent writes the state of polix) and the paths of `protected`.
 version: 1
 base: main
@@ -45,16 +45,17 @@ on:
       mode: warn
       run: { command: ["golangci-lint", "fmt", "{path}"] }
 
-  # pre_commit: before a git commit runs. A change is committed only once polix:reviewer reviewed that exact
-  # content; any later edit asks for a new review. The deny does not record: only subagent_stop records the fact.
+  # pre_commit: before a git commit runs. A change of the Go code is committed only once polix:reviewer reviewed
+  # that exact content; any later edit asks for a new review. The deny does not record: only subagent_stop records
+  # the fact.
   pre_commit:
-    - if: { changed: "**" }
+    - if: { changed: ["*.go", "go.mod", "go.sum"] }
       unless: { done: reviewed }
-      why: no change is committed without a review of its final diff
+      why: no change of the Go code is committed without a review of its final diff
       deny: "This diff is not reviewed: run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again."
 
-  # subagent_stop: when a subagent ends. polix:reviewer never edits, so the content hash when it ends is the one it
-  # reviewed, and that content is recorded as reviewed.
+  # subagent_stop: when a subagent ends. polix:reviewer never edits and the main session waits for it without
+  # editing, so the content hash when it ends is the one it reviewed, and that content is recorded as reviewed.
   subagent_stop:
     - if: { actor: polix:reviewer }
       record: reviewed
@@ -78,4 +79,3 @@ on:
       unless: { done: tested }
       run: { command: ["go", "test", "./..."] }
       record: tested
-
