@@ -16,6 +16,13 @@ func TestPath(t *testing.T) {
 		{"*.md", "docs/guide.md", true}, // no slash: matches the base name anywhere
 		{"docs/*.md", "docs/a/guide.md", false},
 		{"polix.yaml", "polix.yaml", true},
+		{"polix.yaml", "examples/polix.yaml", true}, // no slash: any folder
+		{"/polix.yaml", "polix.yaml", true},         // a leading slash anchors to the root
+		{"/polix.yaml", "./polix.yaml", true},
+		{"/polix.yaml", "examples/polix.yaml", false},
+		{"/docs/*.md", "docs/a.md", true},
+		{"/docs/*.md", "x/docs/a.md", false},
+		{"/*.md", "docs/a.md", false},
 		{"file?.txt", "file1.txt", true},
 		{"a.b", "aXb", false}, // dots are literal
 	}

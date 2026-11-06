@@ -2,7 +2,8 @@
 //
 // Path patterns use slash separated, repository relative paths: `*` matches inside one path segment, `**`
 // matches any number of segments and `?` one character. A pattern without `/` also matches the base name of a
-// path anywhere in the tree, like .gitignore, so `*.md` matches `docs/guide.md`.
+// path anywhere in the tree, like .gitignore, so `*.md` matches `docs/guide.md`. A leading `/` anchors the pattern
+// to the root, also like .gitignore: `/polix.yaml` matches `polix.yaml`, not `examples/polix.yaml`.
 package glob
 
 import (
@@ -18,6 +19,9 @@ var cache sync.Map
 // Path reports whether the repository relative path p matches pattern.
 func Path(pattern, p string) bool {
 	p = strings.TrimPrefix(p, "./")
+	if rooted, ok := strings.CutPrefix(pattern, "/"); ok {
+		return compile(rooted, true).MatchString(strings.TrimPrefix(p, "/"))
+	}
 	if compile(pattern, true).MatchString(p) {
 		return true
 	}

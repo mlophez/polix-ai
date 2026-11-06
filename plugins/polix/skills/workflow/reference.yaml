@@ -1,5 +1,5 @@
 # Example polix.yaml: the current Logalty flow (ticket, plan, builder, tests, reviewer, commit) plus the
-# rules of ai/rules/ injected and checked, annotated as a reference of every option of the schema.
+# rules of rules.path (ai/rules/) injected and checked, annotated as a reference of every option of the schema.
 # Validate it with `polix check`; draw it with `polix graph`. Design and limits: docs/polix.md.
 #
 # How a hook call is answered:
@@ -42,37 +42,53 @@ base: [main, dev]
 # Optional. Path globs that no agent writes, the main session included: only a person changes them by hand. It
 # applies before the workflow, so files git ignores (.env) are covered too. It blocks edits and commands that write
 # files and name a matching path (the heuristic of `writes`), never reads. Protecting polix.yaml or ai/rules/ keeps
-# the skills `workflow` and `add-rule` from writing them.
-protected: [".env", "AGENTS.md", "CLAUDE.md"]
+# the skills `workflow` and `add-rule` from writing them. A glob without `/` matches the name in any folder (`.env`
+# keeps every .env); a leading `/` anchors it to the root, as in .gitignore (`/AGENTS.md` is only the one of the root).
+protected: [".env", "/AGENTS.md", "/CLAUDE.md"]
 
 # Optional, default 3 (0 also means 3; negative is rejected). Loop guard of every block of stop and subagent_stop
 # in enforce mode (require, deny or a failing run): after this many blocks of the same entry, in the same session,
 # by the same actor and on the same content hash, the agent may stop, and the log records a `loop_guard` decision.
 max_stop_blocks: 3
 
-# Optional. How a check of ai/rules/ runs: `run` maps a glob, matched against the base name of the `check` of a
-# rule, to the argv that runs it from the root, without a shell; the first glob that matches wins, in this order.
+# Optional. The rules on how to write the code, which polix injects and checks.
+# - `path`, default ai/rules: the folder of the rules, relative to the root (no absolute path, no `..` out of the
+#   root, no glob). polix reads its *.yaml but retired.yaml, not its subfolders.
+# - `run`: how a check of a rule runs. It maps a glob, matched against the base name of the `check` of a rule, to
+#   the argv that runs it from the root, without a shell; the first glob that matches wins, in this order.
 # Placeholders: {file} (the check, relative to the root, with /), {dir} (its folder as ./<folder>, ./ at the root),
 # {id} (the id of the rule, GOARCH-4) and {name} (the id with only its letters and digits, GOARCH4). A check no
 # glob matches runs as a program (its shebang; on Windows its interpreter by extension). Used by
 # `polix rules check` and by `run: { rules }`; `polix check` reports an empty argv, an invalid glob or an unknown
 # placeholder.
 rules:
+  path: ai/rules
   run:
     "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]   # check: tests/arch/goarch04_test.go of GOARCH-4
     "*.py": [uv, run, python, "{file}"]
 
-# Optional, both true by default. Built-in instructions polix injects into the agent on every session_start
-# (startup, resume, clear, compaction), in English and before the contexts of the session_start entries, so the
-# agent works in the forms the heuristics of polix recognise. They ask for cooperation and block nothing. Injected
-# only with a valid polix.yaml; a switch left out is on, false turns it off, and an unknown key is rejected.
+# Optional. The folders of the plans (written by the skill plan) and of the reports (audits, reviews), relative to
+# the root, with the same limits as rules.path. polix does not read them: it tells the agent where they are
+# (guidance.layout), and the skills write there.
+plans:
+  path: ai/plans
+reports:
+  path: ai/reports
+
+# Optional, every switch true by default. Built-in instructions polix injects into the agent on every
+# session_start (startup, resume, clear, compaction), in English, as one context before those of the session_start
+# entries. Its text is the template templates/session_start.md.tmpl of the binary. They ask for cooperation and
+# block nothing. Injected only with a valid polix.yaml; a switch left out is on, false turns it off, and an unknown
+# key is rejected.
 # - commit: run each commit as a git commit command of its own, not chained with &&, ; or | nor wrapped in sh -c,
 #   so pre_commit sees it.
 # - edit: create and change files with the edit tool of the agent, not from the shell (sed -i, redirections, tee,
 #   heredocs), so pre_edit, post_edit and the rules they inject see the change.
+# - layout: the folders of rules.path, plans.path and reports.path, so the agent and the skills use them.
 guidance:
   commit: true
   edit: true
+  layout: true
 
 # Optional. Variables extracted from the current branch name, usable as {name} in any string.
 # - `branch` is a regular expression (Go RE2 syntax): the value is its first group, or the whole match without
@@ -90,8 +106,9 @@ vars:
 # - {<var>}: each variable of `vars`.
 #
 # Path globs (`path`, `changed`, `file`, rule scopes) are relative to the root and use `/`: `*` and `?` stay
-# inside a segment, `**` crosses segments, and a pattern without `/` also matches the base name anywhere
-# (`*.md` matches docs/guide.md), like .gitignore. The whole path must match.
+# inside a segment, `**` crosses segments, a pattern without `/` also matches the base name anywhere
+# (`*.md` matches docs/guide.md), and a leading `/` anchors it to the root (`/polix.yaml` is not
+# examples/polix.yaml), like .gitignore. The whole path must match.
 #
 # Command patterns (`command`) match each command of the line as a whole, with surrounding spaces trimmed:
 # `*` matches any text, spaces and slashes included, and `?` one character. So "just test" only matches the bare
@@ -121,7 +138,7 @@ on:
     # context: inject text into the session. Exactly one of:
     # - file: a file of the repository (placeholders allowed); a missing file injects nothing;
     # - text: a literal text (placeholders allowed);
-    # - rules: the rules of ai/rules/ whose scope matches a path (rules without scope match any path), injected
+    # - rules: the rules of rules.path whose scope matches a path (rules without scope match any path), injected
     #   at most once per session each, as "- <id>: <description>".
     - context: { text: "Rama {branch}: el flujo es ticket, plan, build, review y commit." }
 

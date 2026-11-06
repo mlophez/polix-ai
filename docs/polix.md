@@ -191,7 +191,8 @@ the state is found in any case.
 polix protects nothing else on its own: `AGENTS.md`, `CLAUDE.md`, `ai/rules/` and `polix.yaml` may be edited by
 any agent unless the workflow protects them. The key `protected` of `polix.yaml` lists path globs that no actor
 writes, the main session included: an edit of a matching path is denied, and so is a command that writes files
-and names one. Reading is allowed. It applies before the workflow, so files git ignores, such as `.env`, are
+and names one. Reading is allowed. A glob without `/` matches the name in any folder, so `polix.yaml` also keeps
+`examples/polix.yaml`; write `/polix.yaml` to protect only the file of the root. It applies before the workflow, so files git ignores, such as `.env`, are
 covered too, and it binds the skills as well: protecting `polix.yaml` or `ai/rules/` keeps the skills `workflow`
 and `add-rule` from writing them. For finer control, such as keeping only subagents away, use the condition
 `writes` with `actor` in a `pre_command` entry and `path` in a `pre_edit` entry.
@@ -346,8 +347,9 @@ Conditions:
 - `done`: a fact was recorded on this branch for exactly the current content.
 - `not`: a map of nested conditions; it holds unless every one of them holds.
 
-Globs are relative to the root and use `/`: `*` stays inside a segment, `**` crosses segments, and a pattern
-without `/` matches the base name anywhere (`*.md`).
+Globs are relative to the root and use `/`: `*` stays inside a segment, `**` crosses segments, a pattern
+without `/` matches the base name anywhere (`*.md`), and a leading `/` anchors it to the root, as in `.gitignore`
+(`/polix.yaml` is the file of the root, not `examples/polix.yaml`).
 Strings may use `{path}`, `{command}`, `{branch}` and the variables, which cannot take those three names.
 
 Actions:

@@ -564,6 +564,33 @@ func TestAnswerHookProtectedPaths(t *testing.T) {
 	}
 }
 
+// A protected glob with a leading slash is anchored to the root: /polix.yaml keeps polix.yaml, not
+// examples/polix.yaml, which a glob without slash would keep too.
+func TestAnswerHookProtectedRootedPath(t *testing.T) {
+	r := answerHookNewRepo(t, "main")
+	r.write("polix.yaml", "version: 1\nprotected: [\"/polix.yaml\", \"AGENTS.md\"]\n")
+	r.write("examples/polix.yaml", "version: 1\n")
+	r.write("docs/AGENTS.md", "x\n")
+	code, _, stderr := r.edit("polix.yaml", "")
+	answerHookExpect(t, "edits polix.yaml", code, 2, stderr)
+	if !strings.Contains(stderr, "polix.yaml is protected in polix.yaml") {
+		t.Fatalf("the reason: %q", stderr)
+	}
+	for _, cmd := range []string{"echo x > polix.yaml", "rm -f polix.yaml", "rm -f ./polix.yaml", "rm -f *.yaml"} {
+		code, _, stderr = r.bash(cmd, false)
+		answerHookExpect(t, "runs "+cmd, code, 2, stderr)
+	}
+	code, _, stderr = r.edit("examples/polix.yaml", "")
+	answerHookExpect(t, "edits examples/polix.yaml", code, 0, stderr)
+	for _, cmd := range []string{"echo x > examples/polix.yaml", "rm -f examples/polix.yaml", "rm -rf examples"} {
+		code, _, stderr = r.bash(cmd, false)
+		answerHookExpect(t, "runs "+cmd, code, 0, stderr)
+	}
+	// Without the slash the glob still matches the name in any folder.
+	code, _, stderr = r.edit("docs/AGENTS.md", "")
+	answerHookExpect(t, "edits docs/AGENTS.md", code, 2, stderr)
+}
+
 // writes lets an entry keep only subagents away from a path.
 func TestAnswerHookWritesCondition(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
