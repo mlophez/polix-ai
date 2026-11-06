@@ -254,8 +254,8 @@ guidance:             # built-in instructions injected at session start (optiona
   commit: true        # run each commit as a git commit of its own
   edit: true          # change files with the edit tool of the agent, not the shell
 rules:
-  run:                # how a check of ai/rules/ runs, by the base name of its file (optional)
-    "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]
+  run:                # how a check of ai/rules/ runs, by the glob of its file (optional)
+    "*_test.go": [go, test, "{dir}", -run, "^Test({names})$"]
 vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # first group of the branch name, used as {key}
 on:
@@ -267,18 +267,32 @@ on:
       <action>: <value>                      # exactly one
 ```
 
-`rules.run` maps a glob, matched against the base name of the `check` of a rule, to the argv that runs it from the
-root, without a shell; the first glob that matches wins, in the order of the file. The argv may use the placeholders
-`{file}` (the check, relative to the root, with `/`), `{dir}` (its folder as `./<folder>`, `./` at the root), `{id}`
-(the id of the rule, `GOARCH-4`) and `{name}` (the id with only its letters and digits, `GOARCH4`). A check that no
+`rules.run` maps a glob, matched against the `check` of a rule as the globs of `scope` are (without `/` against its
+base name, with `/` against its path relative to the root, `**` crossing folders), to the argv that runs it from the
+root, without a shell; the first glob that matches wins, in the order of the file. So `tests/architecture/*_test.go`
+and `tests/e2e/*_test.go` may have different runners. The argv may use the singular placeholders `{file}` (the
+check, relative to the root, with `/`), `{dir}` (its folder as `./<folder>`, `./` at the root), `{id}` (the id of
+the rule, `GOARCH-4`) and `{name}` (the id with only its letters and digits, `GOARCH4`), and the plural ones
+`{names}` (the names of a group joined with `|`, a regex alternation), `{files}` and `{dirs}` (one argument per
+distinct file or folder of the group, in the order of the rules; each must be a whole argument).
+
+The checks of one runner whose argv, with the singular placeholders expanded, is the same share one invocation,
+where the plural placeholders cover them all: `[go, test, "{dir}", -run, "^Test({names})$"]` runs once per folder,
+`[go, test, ./...]` once for all its rules, and a runner with `{name}` once per rule. A shared invocation that
+passes makes every rule of it pass. One that fails runs each of its rules again alone, with the plural placeholders
+reduced to that rule, and those runs decide them; when the argv of a rule alone is the shared one (no placeholder
+tells the rules apart), every rule of the group fails with the shared output. The runs are sequential, and the
+timeout of a check (5 minutes) applies to each invocation. A check that no
 glob matches runs as a program, as before: through its shebang, or on Windows through its interpreter by extension
 (see `run: { rules }` below). On Windows a runner whose program is `bash`, `sh`, `python`, `python3` or `py` runs
 the program of that name the PATH finds (an active virtualenv wins), unless it is an alias of the Store or, for
 `bash` and `sh`, the bash of WSL in the Windows folder; then the interpreter that lookup finds (the bash of Git for
-Windows, the py launcher, python3 or python), with the arguments of the runner kept. There are no default runners,
-and each rule runs on its own. `polix check` reports a runner with an empty argv, an invalid glob or an unknown
-placeholder. So a rule may be decided by any file, a Go test among them: with the runner above, `check:
-tests/architecture/goarch04_test.go` of `GOARCH-4` runs `go test ./tests/architecture -run ^TestGOARCH4$`.
+Windows, the py launcher, python3 or python), with the arguments of the runner kept. There are no default runners.
+`polix check` reports a runner with an empty argv, an empty glob, `{files}` or `{dirs}` inside a longer argument,
+or an unknown placeholder. So a rule may be decided by any file, a Go test among them: with the runner above, the
+rules of `tests/architecture/` run together as `go test ./tests/architecture -run ^Test(GOARCH1|GOARCH2|...)$`, and
+when it fails, `GOARCH-4` (`check: tests/architecture/goarch04_test.go`) runs alone as
+`go test ./tests/architecture -run ^Test(GOARCH4)$`.
 
 `guidance` turns on or off the instructions polix injects into the agent by itself on `session_start`, so the agent
 works in the forms its heuristics recognise. `commit` asks to run each commit as a `git commit` command of its own,
@@ -329,7 +343,8 @@ Actions:
 - `run: { command: [..] }` runs a command from the root, without a shell; a failure blocks with its output.
 - `run: { rules: changed }` runs the checks of the deterministic rules whose scope matches the changed files
   (`rules: "{path}"` for one path); a failure blocks naming the rule ids. Each check runs with the first runner
-  of `rules.run` whose glob matches it, as `polix rules check` does; a check no runner matches runs as a
+  of `rules.run` whose glob matches it, grouped and rerun on failure as `polix rules check` does, so the block
+  names only the rules that fail; a check no runner matches runs as a
   program. On Windows, where a shebang does
   nothing, a `.sh` check runs with the `bash` of Git for Windows, found next to `git` (else a `bash` of the `PATH`
   outside the Windows folder, never the one of WSL), and a `.py` check with `py -3`, then `python3`, then

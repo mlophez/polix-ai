@@ -97,7 +97,11 @@ func (p *answerHookFakePort) Run(_ context.Context, argv []string) (string, erro
 }
 
 func (p *answerHookFakePort) RunCheck(_ context.Context, run rule.Run) (string, error) {
-	p.calls = append(p.calls, "RunCheck "+run.Rule.ID)
+	var ids []string
+	for _, r := range run.Rules {
+		ids = append(ids, r.ID)
+	}
+	p.calls = append(p.calls, "RunCheck "+strings.Join(ids, " "))
 	return "salida", p.runErr
 }
 
@@ -240,6 +244,29 @@ func TestAnswerHookPortErrors(t *testing.T) {
 	res, _ = answerHook(context.Background(), port, answerHookClaude(`{"hook_event_name":"UserPromptSubmit","cwd":"/repo"}`))
 	if !strings.Contains(res.Stdout, `"additionalContext":"Ticket: PLAT-1"`) {
 		t.Fatalf("context: %+v", res)
+	}
+}
+
+// A batch runner checks a passing group of rules with one call of the port.
+func TestAnswerHookRunsAPassingGroupOnce(t *testing.T) {
+	port := &answerHookFakePort{yaml: "version: 1\nrules:\n  run:\n    \"*_test.go\": [go, test, \"{dir}\", -run, " +
+		"\"^Test({names})$\"]\non:\n  stop:\n    - run: { rules: changed }\n",
+		rules: []rule.Rule{
+			{ID: "A-1", Description: "d", Deterministic: true, Check: "t/a1_test.go"},
+			{ID: "A-2", Description: "d", Deterministic: true, Check: "t/a2_test.go"},
+		}}
+	res, err := answerHook(context.Background(), port, answerHookClaude(`{"hook_event_name":"Stop","cwd":"/repo"}`))
+	if err != nil || res.Code != 0 {
+		t.Fatalf("got %+v %v", res, err)
+	}
+	var checks []string
+	for _, c := range port.calls {
+		if strings.HasPrefix(c, "RunCheck") {
+			checks = append(checks, c)
+		}
+	}
+	if !slices.Equal(checks, []string{"RunCheck A-1 A-2"}) {
+		t.Fatalf("checks: %v", checks)
 	}
 }
 

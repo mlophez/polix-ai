@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -34,12 +35,98 @@ func TestCheckCommand(t *testing.T) {
 	}
 }
 
+func TestCheckCommands(t *testing.T) {
+	batch := Runner{Glob: "*_test.go", Argv: []string{"go", "test", "{dir}", "-run", "^Test({names})$"}}
+	all := Runner{Glob: "*_test.go", Argv: []string{"go", "test", "./..."}}
+	single := Runner{Glob: "*_test.go", Argv: []string{"go", "test", "{dir}", "-run", "^Test{name}$"}}
+	plural := Runner{Glob: "*", Argv: []string{"lint", "{files}", "{dirs}"}}
+	arch := Runner{Glob: "tests/architecture/*_test.go", Argv: []string{"arch", "{names}"}}
+	e2e := Runner{Glob: "tests/e2e/*_test.go", Argv: []string{"e2e", "{names}"}}
+	cases := []struct {
+		name       string
+		w          Workflow
+		files, ids []string
+		want       []string // each invocation as "argv|positions"
+	}{
+		{"grouped by dir with names", runners(batch),
+			[]string{"a/x_test.go", "b/y_test.go", "a/z_test.go"}, []string{"R-1", "R-2", "R-3"},
+			[]string{"go test ./a -run ^Test(R1|R3)$|0 2", "go test ./b -run ^Test(R2)$|1"}},
+		{"one invocation without placeholders", runners(all),
+			[]string{"a/x_test.go", "b/y_test.go"}, []string{"R-1", "R-2"}, []string{"go test ./...|0 1"}},
+		{"one invocation per rule with name", runners(single),
+			[]string{"a/x_test.go", "a/y_test.go"}, []string{"R-1", "R-2"},
+			[]string{"go test ./a -run ^TestR1$|0", "go test ./a -run ^TestR2$|1"}},
+		{"files and dirs deduplicated in rule order", runners(plural),
+			[]string{"b/y.sh", "a/x.sh", "b/y.sh"}, []string{"R-1", "R-2", "R-3"},
+			[]string{"lint b/y.sh a/x.sh ./b ./a|0 1 2"}},
+		{"two runners by path, in order of their first check", runners(e2e, arch),
+			[]string{"tests/architecture/a_test.go", "tests/e2e/b_test.go", "tests/architecture/c_test.go"},
+			[]string{"A-1", "E-1", "A-2"}, []string{"arch A1|A2|0 2", "e2e E1|1"}},
+		{"checks without runner run alone", runners(arch),
+			[]string{"x.sh", "tests/architecture/a_test.go", "y.sh"}, []string{"R-1", "A-1", "R-2"},
+			[]string{"|0", "arch A1|1", "|2"}},
+		{"a glob with / matches only under its folder", runners(arch),
+			[]string{"other/a_test.go"}, []string{"R-1"}, []string{"|0"}},
+		{"a glob without / matches any folder", runners(batch),
+			[]string{"deep/er/a_test.go"}, []string{"R-1"}, []string{"go test ./deep/er -run ^Test(R1)$|0"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var got []string
+			for _, inv := range c.w.CheckCommands(c.files, c.ids) {
+				if err := inv.Valid(); err != nil {
+					t.Fatal(err)
+				}
+				pos := make([]string, len(inv.Checks))
+				for i, p := range inv.Checks {
+					pos[i] = strconv.Itoa(p)
+				}
+				got = append(got, strings.Join(inv.Argv, " ")+"|"+strings.Join(pos, " "))
+			}
+			if strings.Join(got, "\n") != strings.Join(c.want, "\n") {
+				t.Fatalf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestCheckCommandIsTheSingleCheckCommands(t *testing.T) {
+	batch := Runner{Glob: "*_test.go", Argv: []string{"go", "test", "{files}", "{dirs}", "-run", "^Test({names})$"}}
+	w := runners(batch)
+	got := strings.Join(w.CheckCommand("a/x_test.go", "R-1"), " ")
+	want := strings.Join(w.CheckCommands([]string{"a/x_test.go"}, []string{"R-1"})[0].Argv, " ")
+	if got != want || got != "go test a/x_test.go ./a -run ^Test(R1)$" {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestInvocationValid(t *testing.T) {
+	cases := map[string]Invocation{
+		"no checks":                 {Argv: []string{"x"}},
+		"a repeated check":          {Argv: []string{"x"}, Checks: []int{0, 0}},
+		"a negative position":       {Argv: []string{"x"}, Checks: []int{-1}},
+		"several without a command": {Checks: []int{0, 1}},
+	}
+	for name, inv := range cases {
+		if inv.Valid() == nil {
+			t.Errorf("%s is valid", name)
+		}
+	}
+	for _, inv := range []Invocation{{Checks: []int{0}}, {Argv: []string{"x"}, Checks: []int{2, 0}}} {
+		if err := inv.Valid(); err != nil {
+			t.Error(err)
+		}
+	}
+}
+
 func TestRunnerValid(t *testing.T) {
 	cases := map[string]Runner{
-		"the command is empty":        {Glob: "*_test.go"},
-		"a glob cannot be empty":      {Argv: []string{"x"}},
-		"invalid glob":                {Glob: "[", Argv: []string{"x"}},
-		"unknown placeholder {other}": {Glob: "*", Argv: []string{"x", "--{other}"}},
+		"the command is empty":   {Glob: "*_test.go"},
+		"a glob cannot be empty": {Argv: []string{"x"}},
+		"unknown placeholder {other} (file, dir, id, name, files, dirs, names)": {Glob: "*",
+			Argv: []string{"x", "--{other}"}},
+		"{files} must be a whole argument": {Glob: "*", Argv: []string{"x", "--x={files}"}},
+		"{dirs} must be a whole argument":  {Glob: "*", Argv: []string{"x", "{dirs}/y"}},
 	}
 	for want, r := range cases {
 		if err := r.Valid(); err == nil || !strings.Contains(err.Error(), want) {
@@ -49,7 +136,8 @@ func TestRunnerValid(t *testing.T) {
 			t.Errorf("%s in a workflow: got %v", want, err)
 		}
 	}
-	ok := Runner{Glob: "*_test.go", Argv: []string{"go", "test", "{dir}", "{file}", "{id}", "{name}"}}
+	ok := Runner{Glob: "[x", Argv: []string{"go", "test", "{dir}", "{file}", "{id}", "{name}", "{files}", "{dirs}",
+		"-run=^({names})$"}}
 	if err := ok.Valid(); err != nil {
 		t.Fatal(err)
 	}

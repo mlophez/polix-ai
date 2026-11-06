@@ -68,7 +68,8 @@ type AnswerHookPort interface {
 	Read(ctx context.Context, path string) (string, error)
 	// Run runs a command from the root within the budget of the call and returns its output.
 	Run(ctx context.Context, argv []string) (string, error)
-	// RunCheck runs the check of a rule from the root within the budget of the call and returns its output.
+	// RunCheck runs one invocation of the checks of one or several rules from the root within the budget of the
+	// call and returns its output.
 	RunCheck(ctx context.Context, run rule.Run) (string, error)
 	// Append appends an entry to the log, stamped with the time.
 	Append(ctx context.Context, e state.Entry) error

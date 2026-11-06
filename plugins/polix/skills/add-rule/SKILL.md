@@ -57,7 +57,7 @@ rules:
   Its ids stay taken.
 - Globs use `/` and are relative to the root: `*` stays in a segment, `**` crosses segments, `*.md` matches anywhere.
 - `check` names any file, relative to the root: a script, a Go test, any file a command can run.
-  The first runner of `rules.run` in `polix.yaml` whose glob matches its base name runs it, from the root and
+  The first runner of `rules.run` in `polix.yaml` whose glob matches it (its base name, or its path when the glob has a `/`) runs it, from the root and
   without a shell; with no runner it runs as a program, on Windows with `bash` or `python` by its extension.
 
 ## How to operate

@@ -357,8 +357,9 @@ func (r *answerHookRun) run(run workflow.Run) string {
 		Indent(text.LastLines(o.Output, answerHookOutputLines, rule.MaxLineLen)))
 }
 
-// runRules runs the checks of the rules that apply to the changed files (`changed`) or to a path, each through
-// the runner of rules.run that matches its file or as a program, and returns the rules that failed, or "".
+// runRules runs the checks of the rules that apply to the changed files (`changed`) or to a path, through the
+// runners of rules.run that match their files or as programs, grouped as the runners group them (rule.Plan); a
+// failed shared run is rerun per rule (Run.Settle). It returns the rules that failed, or "".
 func (r *answerHookRun) runRules(target string) string {
 	all, err := r.rules()
 	if r.waiting() {
@@ -374,18 +375,21 @@ func (r *answerHookRun) runRules(target string) string {
 		paths = []string{r.expand(target)}
 	}
 	var results []rule.Result
-	for _, rl := range rule.Matching(all, paths) {
-		run := rule.Run{Rule: rl, Argv: r.ev.Workflow.CheckCommand(rl.Check, rl.ID)}
-		if err := run.Valid(); err != nil && !rl.HasCheck() {
-			continue // a rule without check has nothing to run; an invalid rule with one still runs, as it always did
-		}
+	queue := rule.Plan(rule.Matching(all, paths), r.ev.Workflow)
+	for len(queue) > 0 {
+		run := queue[0]
 		s := Step{Check: &run}
 		o := r.act(s, s.Valid())
-		res := rule.Result{Rule: rl, Output: o.Output, Err: o.Err}
-		if err := res.Valid(); r.waiting() || err != nil && !rl.HasCheck() {
+		if r.waiting() {
 			return ""
 		}
-		results = append(results, res)
+		outcome := rule.Outcome{Output: o.Output, Err: o.Err}
+		if err := outcome.Valid(); err != nil {
+			return ""
+		}
+		res, reruns := run.Settle(outcome, r.ev.Workflow)
+		results = append(results, res...)
+		queue = append(reruns, queue[1:]...)
 	}
 	failed := rule.Failed(results)
 	if len(failed) == 0 {

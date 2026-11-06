@@ -46,12 +46,57 @@ func (f *fakeCheckRulePort) Changed(_ context.Context, candidates []string) ([]s
 }
 
 func (f *fakeCheckRulePort) RunCheck(_ context.Context, run Run) (string, error) {
-	f.calls = append(f.calls, "RunCheck "+run.Rule.Check)
+	var checks []string
+	var err error
+	for _, r := range run.Rules {
+		checks = append(checks, r.Check)
+		err = errors.Join(err, f.fails[r.Check])
+	}
+	check := strings.Join(checks, " ")
+	f.calls = append(f.calls, "RunCheck "+check)
 	if f.argv == nil {
 		f.argv = map[string][]string{}
 	}
-	f.argv[run.Rule.Check] = run.Argv
-	return "ran " + run.Rule.Check, f.fails[run.Rule.Check]
+	f.argv[check] = run.Argv
+	return "ran " + check, err
+}
+
+// batchShellFlow runs the Go tests of a folder together, selected by their names.
+var batchShellFlow = workflow.Workflow{Rules: workflow.Rules{Run: []workflow.Runner{
+	{Glob: "*_test.go", Argv: []string{"go", "test", "{dir}", "-run", "^Test({names})$"}},
+}}}
+
+// batchShellRules are three rules whose checks are tests of one folder.
+var batchShellRules = []Rule{
+	{ID: "A-1", Description: "a1", Deterministic: true, Check: "t/a1_test.go"},
+	{ID: "A-2", Description: "a2", Deterministic: true, Check: "t/a2_test.go"},
+	{ID: "A-3", Description: "a3", Deterministic: true, Check: "t/a3_test.go"},
+}
+
+func TestCheckRuleShellRunsAPassingGroupOnce(t *testing.T) {
+	port := &fakeCheckRulePort{rules: batchShellRules, wf: batchShellFlow}
+	res, err := checkRule(context.Background(), port, CheckRuleRequest{})
+	if err != nil || res.Ran != 3 || len(res.Failed) != 0 {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+	if want := []string{"LoadRules", "LoadWorkflow", "RunCheck t/a1_test.go t/a2_test.go t/a3_test.go"}; !slices.Equal(port.calls, want) {
+		t.Fatalf("called %v, want %v", port.calls, want)
+	}
+}
+
+func TestCheckRuleShellRerunsAFailedGroupPerRule(t *testing.T) {
+	port := &fakeCheckRulePort{rules: batchShellRules, wf: batchShellFlow,
+		fails: map[string]error{"t/a2_test.go": errors.New("exit 1")}}
+	res, err := checkRule(context.Background(), port, CheckRuleRequest{})
+	if err != nil || res.Ran != 3 {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+	if len(port.calls) != 2+1+3 {
+		t.Fatalf("one shared run and one per rule: %v", port.calls)
+	}
+	if len(res.Failed) != 1 || res.Failed[0].ID != "A-2" || res.Failed[0].Output != "ran t/a2_test.go\nexit 1" {
+		t.Fatalf("only the failing rule, with its own output: %+v", res.Failed)
+	}
 }
 
 // shellRules are two rules with a check and one without.

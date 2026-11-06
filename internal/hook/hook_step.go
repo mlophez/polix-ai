@@ -24,7 +24,7 @@ type Step struct {
 	Text     string
 	Read     string       // the content of this file, relative to the root with slashes, at Epoch
 	Run      []string     // run this command from the root
-	Check    *rule.Run    // run the check of this rule from the root
+	Check    *rule.Run    // run this invocation of the checks of one or several rules from the root
 	Append   *state.Entry // append this entry to the log
 }
 

@@ -43,8 +43,10 @@ what the next event of the call starts from.
 
 A `Step` asks for one of: the branch, the content hash (of an epoch), the changed files, the files, the rules, the
 log, whether git ignores a path, the real paths of some paths, the content of a file (of an epoch), or acts: runs
-a command, runs the check of a rule (`rule.Run`, with the argv of its runner of `rules.run`) or appends an entry to
-the log. The epoch is the number of runs carried out before: any run may rewrite files, so the hash and the files
+a command, runs the checks of one or several rules (`rule.Run`, with the argv of its runner of `rules.run`) or
+appends an entry to the log. A check step may decide several rules: the runs come from `rule.Plan`, and a failed
+shared run is rerun once per rule (`rule.Run.Settle`), each rerun a step of its own, so the block names only the
+rules whose own run fails. The epoch is the number of runs carried out before: any run may rewrite files, so the hash and the files
 read after it are those of a new epoch, read again.
 
 The rules it follows, as before this use case:
@@ -76,7 +78,7 @@ The rules it follows, as before this use case:
 
 The domain decides the rest: `agent.Agent.Parse` and `Render` (the formats of the agents), `agent.Answer.Merge`,
 `Writes`, `NamesState`, `Within`, `Expand`, `Vars`, `MatchingCommands`, `state.State` (`Done`, `Injected`,
-`StopBlocks`), `rule.Matching`, `rule.Result.Tail` and `workflow.Workflow.CheckCommand`.
+`StopBlocks`), `rule.Matching`, `rule.Result.Tail`, `rule.Plan` and `rule.Run.Settle`.
 
 ## Response
 
@@ -103,8 +105,8 @@ take it; `Stderr`, the reasons and contexts of a block, else one `polix: <warnin
   its `contains`; one step per search and epoch, the contents never leave the adapter.
 - `Read`: the content of a file of the repository.
 - `Run`: runs a command from the root through `pkg/proc`, within the budget of the call.
-- `RunCheck`: runs the check of a rule from the root, with 5 minutes and within the budget: the argv of its runner or,
-  when empty, the file as a program (on Windows through its interpreter by extension). On Windows a runner whose
+- `RunCheck`: runs one invocation from the root, which may decide several rules, with 5 minutes and within the
+  budget: the argv of its runner or, when empty, the check of its only rule as a program (on Windows through its interpreter by extension). On Windows a runner whose
   program is `bash`, `sh`, `python`, `python3` or `py` runs the program of that name the PATH finds (an active
   virtualenv wins), unless it is an alias of the Store or, for `bash` and `sh`, the bash of WSL in the Windows folder;
   then the interpreter of its kind (`proc.Command`), with the arguments of the runner kept.

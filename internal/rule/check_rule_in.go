@@ -49,7 +49,8 @@ type CheckRulePort interface {
 	LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, error)
 	// Changed returns the files changed against the first of candidates that exists.
 	Changed(ctx context.Context, candidates []string) ([]string, error)
-	// RunCheck runs the check of run from the root of the repository and returns its output.
+	// RunCheck runs one invocation of run from the root of the repository, which may decide several rules, and
+	// returns its output.
 	RunCheck(ctx context.Context, run Run) (string, error)
 }
 
@@ -63,7 +64,8 @@ func CheckRuleCommand() *cobra.Command {
 		Short: "Run the checks of the deterministic rules",
 		Long: "Run the checks of the deterministic rules: all of them, or with --changed only those whose scope " +
 			"matches the files changed by the branch. Each check runs through the first runner of rules.run in " +
-			workflow.File + " whose glob matches its file, or as a program. Meant for CI.",
+			workflow.File + " whose glob matches its file, or as a program; a runner with {names}, {files} or " +
+			"{dirs} runs its checks together, and reruns each alone when they fail. Meant for CI.",
 		Example: "  polix rules check\n  polix rules check --changed --base develop",
 		Args:    cobra.NoArgs,
 		PreRunE: func(*cobra.Command, []string) error { return checkRuleFlags(req) },
@@ -71,7 +73,7 @@ func CheckRuleCommand() *cobra.Command {
 			var res CheckRuleResponse
 			repo, err := git.Open(c.Context(), req.Dir)
 			if err == nil {
-				res, err = checkRule(c.Context(), CheckRuleAdapter{Repo: repo}, req)
+				res, err = checkRule(c.Context(), CheckRuleAdapter{Repo: repo, Log: c.ErrOrStderr()}, req)
 			}
 			if err != nil {
 				return err
@@ -99,7 +101,8 @@ func checkRuleFlags(req CheckRuleRequest) error {
 }
 
 // checkRule is the shell, from request to response: it reads through the port what the logic needs, branching on
-// the request to know what to read, calls the logic once, carries out its output through the port and builds the
+// the request to know what to read, calls the logic in a loop from one call site (the step shape), carries out
+// each run it asks for through the port and gives the logic its outcome, and builds the
 // response. It only sequences; the decisions are in the logic and the domain.
 func checkRule(ctx context.Context, port CheckRulePort, req CheckRuleRequest) (CheckRuleResponse, error) {
 	rules, err := port.LoadRules(ctx)
@@ -124,17 +127,24 @@ func checkRule(ctx context.Context, port CheckRulePort, req CheckRuleRequest) (C
 			return CheckRuleResponse{}, err
 		}
 	}
-	out := CheckRule(rules, wf, req.OnlyChanged, changed)
-	var results []Result
-	for _, run := range out.Run {
-		text, err := port.RunCheck(ctx, run)
-		res := Result{Rule: run.Rule, Output: text, Err: err}
-		if err := res.Valid(); err != nil {
+	var outcomes []Outcome
+	for {
+		out := CheckRule(rules, wf, req.OnlyChanged, changed, outcomes)
+		if out.Next == nil {
+			for _, res := range out.Results {
+				if err := res.Valid(); err != nil {
+					return CheckRuleResponse{}, err
+				}
+			}
+			return checkRuleResponse(out.Results), nil
+		}
+		text, err := port.RunCheck(ctx, *out.Next)
+		o := Outcome{Output: text, Err: err}
+		if err := o.Valid(); err != nil {
 			return CheckRuleResponse{}, err
 		}
-		results = append(results, res)
+		outcomes = append(outcomes, o)
 	}
-	return checkRuleResponse(results), nil
 }
 
 // checkRuleResponse turns the results of carrying out the output into the response the caller sees.

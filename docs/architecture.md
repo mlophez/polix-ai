@@ -69,9 +69,10 @@ The flow of `polix rules check`:
 2. `checkRule` (shell) reads through the port: the rules, polix.yaml whenever it exists (`LoadWorkflow`, for the
    runners of `rules.run`) and, with `--changed`, the changed files against its base branches, which `--base`
    only replaces when given.
-3. `CheckRule` (logic) decides which checks run: `CheckRuleOutput`.
-4. `checkRule` carries out the output: it runs each check through the port and builds a `rule.Result` (domain)
-   from each run, followed by `Valid()`.
+3. `CheckRule` (logic) takes the outcomes carried out so far and decides the next run, which may decide several
+   rules at once, or, when none is left, the result of every rule: `CheckRuleOutput` (the step shape).
+4. `checkRule` carries out each next run through the port, builds a `rule.Outcome` (domain) from it, followed by
+   `Valid()`, and calls the logic again, in a loop, until it has no next run.
 5. `checkRule` builds the `CheckRuleResponse` from the results.
 6. `CheckRuleCommand` serializes the response to the console and sets the exit code.
 

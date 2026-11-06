@@ -146,7 +146,7 @@ func TestCheckRuleAdapterRunCheckThroughARunner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run := Run{Rule: Rule{ID: "X-1", Description: "x", Deterministic: true, Check: "x/a_test.go"},
+	run := Run{Rules: []Rule{{ID: "X-1", Description: "x", Deterministic: true, Check: "x/a_test.go"}},
 		Argv: []string{"git", "ls-files", "--others", "x"}}
 	out, err := a.RunCheck(context.Background(), run)
 	if err != nil || strings.TrimSpace(out) != "x/a_test.go" {
@@ -155,6 +155,19 @@ func TestCheckRuleAdapterRunCheckThroughARunner(t *testing.T) {
 	run.Argv = []string{self, "-test.run", "^$", "-not-a-flag"}
 	if _, err := a.RunCheck(context.Background(), run); err == nil {
 		t.Fatal("a runner that fails passes")
+	}
+}
+
+// A run of several rules runs its argv once from the root.
+func TestCheckRuleAdapterRunCheckOfSeveralRules(t *testing.T) {
+	a := checkRuleAdapterOf(t, map[string]string{"x/a_test.go": "package x\n", "x/b_test.go": "package x\n"})
+	run := Run{Rules: []Rule{
+		{ID: "X-1", Description: "x", Deterministic: true, Check: "x/a_test.go"},
+		{ID: "X-2", Description: "x", Deterministic: true, Check: "x/b_test.go"},
+	}, Argv: []string{"git", "ls-files", "--others", "x"}}
+	out, err := a.RunCheck(context.Background(), run)
+	if err != nil || strings.Fields(out)[0] != "x/a_test.go" || len(strings.Fields(out)) != 2 {
+		t.Fatalf("the shared argv ran once: %q %v", out, err)
 	}
 }
 
@@ -170,12 +183,37 @@ func TestCheckRuleAdapterRunCheckAsAProgram(t *testing.T) {
 		"checks/fail.sh": "#!/bin/sh\necho broken\nexit 1\n",
 	})
 	rule := Rule{ID: "S-1", Description: "s", Deterministic: true, Check: "checks/ok.sh"}
-	if out, err := a.RunCheck(context.Background(), Run{Rule: rule}); err != nil || !strings.Contains(out, "fine") {
+	if out, err := a.RunCheck(context.Background(), Run{Rules: []Rule{rule}}); err != nil ||
+		!strings.Contains(out, "fine") {
 		t.Fatalf("got %q %v", out, err)
 	}
 	rule.Check = "checks/fail.sh"
-	if out, err := a.RunCheck(context.Background(), Run{Rule: rule}); err == nil || !strings.Contains(out, "broken") {
+	if out, err := a.RunCheck(context.Background(), Run{Rules: []Rule{rule}}); err == nil || !strings.Contains(out, "broken") {
 		t.Fatalf("got %q %v, want the error with the output", out, err)
+	}
+}
+
+// With Log, RunCheck reports the command and the rules before running, and the verdict after; a long group is
+// counted and cut to its first ids.
+func TestCheckRuleAdapterRunCheckLog(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rules []Rule
+	for _, id := range []string{"A-1", "A-2", "A-3", "A-4", "A-5", "A-6"} {
+		rules = append(rules, Rule{ID: id, Description: "d", Deterministic: true, Check: "c_test.go"})
+	}
+	var log strings.Builder
+	a := CheckRuleAdapter{Repo: &git.Repo{Root: t.TempDir()}, Log: &log}
+	if _, err := a.RunCheck(context.Background(), Run{Rules: rules, Argv: []string{exe, "-test.run=^$"}}); err != nil {
+		t.Fatal(err)
+	}
+	got := log.String()
+	for _, want := range []string{"run " + exe + " -test.run=^$ (6 rules: A-1, A-2, A-3, A-4, A-5, ...)\n", "    ok in "} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("log %q lacks %q", got, want)
+		}
 	}
 }
 
@@ -190,7 +228,7 @@ func TestCheckRuleAdapterRunCheckTimeoutWithGrandchild(t *testing.T) {
 	defer cancel()
 	start := time.Now()
 	a := CheckRuleAdapter{Repo: &git.Repo{Root: root}}
-	run := Run{Rule: Rule{ID: "T-1", Description: "t", Deterministic: true, Check: "check.sh"}}
+	run := Run{Rules: []Rule{{ID: "T-1", Description: "t", Deterministic: true, Check: "check.sh"}}}
 	if _, err := a.RunCheck(ctx, run); err == nil {
 		t.Fatal("the check should fail on its deadline")
 	}

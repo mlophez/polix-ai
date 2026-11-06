@@ -131,14 +131,17 @@ func (a *AnswerHookAdapter) Run(ctx context.Context, argv []string) (string, err
 	return proc.Run(ctx, a.Repo.Root, argv, RunBudget)
 }
 
-// RunCheck runs the check of run from the root within the budget of the call: the argv of its runner, or without
-// one the file as a program (on Windows through its interpreter by extension, elsewhere through its shebang).
+// RunCheck runs one invocation of run from the root within the budget of the call, which may decide several
+// rules: the argv of its runner, or without one the check of its first rule, the only one then, as a program (on Windows through its interpreter by extension, elsewhere through its shebang).
 // On Windows a runner of bash, sh, python, python3 or py runs the program the PATH names unless it is a Store
 // alias or, for bash and sh, the bash of WSL in the Windows folder; then the interpreter of its kind (proc.Command).
 func (a *AnswerHookAdapter) RunCheck(ctx context.Context, run rule.Run) (string, error) {
 	ctx, cancel := context.WithDeadline(ctx, a.Deadline)
 	defer cancel()
-	check := filepath.Join(a.Repo.Root, filepath.FromSlash(run.Rule.Check))
+	var check string
+	if len(run.Rules) > 0 {
+		check = filepath.Join(a.Repo.Root, filepath.FromSlash(run.Rules[0].Check))
+	}
 	return proc.RunCheck(ctx, a.Repo.Root, run.Argv, check, answerHookCheckTimeout)
 }
 

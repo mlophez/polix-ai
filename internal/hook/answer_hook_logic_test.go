@@ -28,6 +28,8 @@ type answerHookFacts struct {
 	changed   []string
 	rules     []rule.Rule
 	found     bool // whether a file holds the text of a search
+	// checkFails, when set, decides each check instead of runErr: it fails when it covers one of these rules
+	checkFails map[string]bool
 }
 
 // answerHookWalk asks the logic for steps until it answers, feeding each one from f, and returns the output and
@@ -70,6 +72,14 @@ func answerHookWalk(t *testing.T, ev Evaluation, f answerHookFacts) (AnswerHookO
 			ev = ev.KnowFound(s.Epoch, s.Contains, s.Text, f.found)
 		case s.Read != "":
 			ev = ev.KnowContent(s.Epoch, s.Read, "", errors.New("no file"))
+		case s.Check != nil && f.checkFails != nil:
+			var err error
+			for _, r := range s.Check.Rules {
+				if f.checkFails[r.ID] {
+					err = errors.New("exit status 1")
+				}
+			}
+			ev = ev.Note("salida", err)
 		case s.Run != nil, s.Check != nil:
 			ev = ev.Note("salida", f.runErr)
 		case s.Append != nil:
@@ -296,6 +306,53 @@ on:
 		t.Fatalf("checks: %+v", checks)
 	}
 	if !out.Answer.Block || !strings.HasPrefix(out.Answer.Reasons[0], "Rules que no se cumplen:\n- GO-1 (tests/go1_test.go): d") {
+		t.Fatalf("answer: %+v", out.Answer)
+	}
+}
+
+// A batch runner checks every matching rule in one step; a failed group is rerun per rule and the block names
+// only the rules whose rerun fails.
+func TestAnswerHookRunRulesBatch(t *testing.T) {
+	ev := answerHookEval(t, `version: 1
+rules:
+  run:
+    "*_test.go": [go, test, "{dir}", -run, "^Test({names})$"]
+on:
+  stop:
+    - run: { rules: changed }
+`, workflow.Stop)
+	rules := []rule.Rule{
+		{ID: "A-1", Description: "a1", Scope: []string{"src/**"}, Deterministic: true, Check: "tests/a1_test.go"},
+		{ID: "A-2", Description: "a2", Scope: []string{"src/**"}, Deterministic: true, Check: "tests/a2_test.go"},
+		{ID: "A-3", Description: "a3", Scope: []string{"src/**"}, Deterministic: true, Check: "tests/a3_test.go"},
+	}
+	checksOf := func(steps []Step) []rule.Run {
+		var out []rule.Run
+		for _, s := range steps {
+			if s.Check != nil {
+				out = append(out, *s.Check)
+			}
+		}
+		return out
+	}
+	facts := answerHookFacts{branch: "main", changed: []string{"src/a.go"}, rules: rules,
+		checkFails: map[string]bool{}}
+	out, steps := answerHookWalk(t, ev, facts)
+	checks := checksOf(steps)
+	if len(checks) != 1 || len(checks[0].Rules) != 3 ||
+		!slices.Equal(checks[0].Argv, []string{"go", "test", "./tests", "-run", "^Test(A1|A2|A3)$"}) {
+		t.Fatalf("checks: %+v", checks)
+	}
+	if out.Answer.Block {
+		t.Fatalf("a passing group lets the stop through: %+v", out.Answer)
+	}
+	facts.checkFails = map[string]bool{"A-2": true}
+	out, steps = answerHookWalk(t, ev, facts)
+	if checks = checksOf(steps); len(checks) != 4 || len(checks[2].Rules) != 1 || checks[2].Rules[0].ID != "A-2" {
+		t.Fatalf("a failed group is rerun per rule: %+v", checks)
+	}
+	if !out.Answer.Block || !strings.HasPrefix(out.Answer.Reasons[0], "Rules que no se cumplen:\n- A-2 (tests/a2_test.go): a2") ||
+		strings.Contains(out.Answer.Reasons[0], "A-1") || strings.Contains(out.Answer.Reasons[0], "A-3") {
 		t.Fatalf("answer: %+v", out.Answer)
 	}
 }

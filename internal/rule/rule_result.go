@@ -14,6 +14,14 @@ type Result struct {
 	Err    error  // why the run failed: the check exited with an error, timed out or could not start; nil if it passed
 }
 
+// Outcome is what carrying out a Run gave: everything its invocation printed and why it failed (it exited with an
+// error, timed out or could not start), nil if it passed. Run.Settle turns it into results. It is built with a
+// literal followed by Valid.
+type Outcome struct {
+	Output string
+	Err    error
+}
+
 const (
 	// TailLines is how many lines of the output of a check Tail keeps, the last ones.
 	TailLines = 15
@@ -31,6 +39,10 @@ func (r Result) Valid() error {
 	}
 	return nil
 }
+
+// Valid reports why the outcome is not one: it never is, as it has no invariant beyond its types; any output and
+// error may come from a run.
+func (o Outcome) Valid() error { return nil }
 
 // Passed reports whether the check passed.
 func (r Result) Passed() bool { return r.Err == nil }

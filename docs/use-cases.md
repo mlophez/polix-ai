@@ -468,7 +468,8 @@ injected by `context: { rules }` are not repeated after a compaction, since poli
 ### The same checks for the agent and for CI
 
 A deterministic rule has a `check`, any file of the repository that passes or fails: a script, run as a program, or
-a test, run by its runner of `rules.run` in polix.yaml (`"*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]`).
+a test, run by its runner of `rules.run` in polix.yaml (`"*_test.go": [go, test, "{dir}", -run, "^Test({names})$"]`, one `go test` per folder for all its rules, each
+rule rerun alone only when it fails).
 The agent runs the checks of the changed files before it stops, and CI runs the very same ones.
 
 ```yaml

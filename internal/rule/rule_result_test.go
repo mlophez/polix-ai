@@ -20,6 +20,12 @@ func TestResultValid(t *testing.T) {
 	}
 }
 
+func TestOutcomeValid(t *testing.T) {
+	if err := (Outcome{Output: "x", Err: errors.New("exit status 1")}).Valid(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestResultTailKeepsTheLastLinesAndTheError(t *testing.T) {
 	r := Result{Rule: goRule, Output: "a.go: not formatted\n\n", Err: errors.New("exit status 1")}
 	if r.Passed() {
