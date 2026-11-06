@@ -69,7 +69,7 @@ func (p *answerHookFakePort) Changed(context.Context) []string { return []string
 
 func (p *answerHookFakePort) Files(context.Context) []string { return []string{"ai/plans/p.md"} }
 
-func (p *answerHookFakePort) LoadRules(context.Context) ([]rule.Rule, error) {
+func (p *answerHookFakePort) LoadRules(context.Context, string) ([]rule.Rule, error) {
 	return p.rules, p.rulesErr
 }
 
@@ -167,7 +167,8 @@ func TestAnswerHookGuidanceRendered(t *testing.T) {
 		if err := json.Unmarshal([]byte(res.Stdout), &out); err != nil {
 			t.Fatalf("%s: stdout %q: %v", agentName, res.Stdout, err)
 		}
-		if want := workflow.GuidanceCommit + "\n\n" + workflow.GuidanceEdit; out.HookSpecificOutput.AdditionalContext != want {
+		wf, _ := workflow.Parse([]byte("version: 1\n"), "dev")
+		if want := wf.SessionContext(); want == "" || out.HookSpecificOutput.AdditionalContext != want {
 			t.Fatalf("%s: additionalContext %q", agentName, out.HookSpecificOutput.AdditionalContext)
 		}
 	}

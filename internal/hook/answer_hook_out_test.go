@@ -1101,8 +1101,22 @@ func TestAnswerHookAdapter(t *testing.T) {
 	if reals := a.Real(ctx, []string{r.dir}); len(reals) != 1 || reals[0] == "" {
 		t.Fatalf("Real = %q", reals)
 	}
-	if rules, err := a.LoadRules(ctx); err != nil || rules != nil {
+	if rules, err := a.LoadRules(ctx, "ai/rules"); err != nil || rules != nil {
 		t.Fatalf("no ai/rules: %v %v", rules, err)
+	}
+}
+
+// With rules.path the rules come from that folder, not from ai/rules/, and the context names it.
+func TestAnswerHookRulesOfRulesPath(t *testing.T) {
+	r := answerHookNewRepo(t, "main")
+	r.write("polix.yaml", "version: 1\nrules: { path: governance/rules }\non:\n  pre_edit:\n    - context: { rules: \"{path}\" }\n")
+	r.write("ai/rules/old.yaml", "rules:\n  - id: OLD-1\n    description: Old rule.\n")
+	r.write("governance/rules/style.yaml", "rules:\n  - id: NEW-1\n    description: New rule.\n")
+	r.write("src/a.txt", "x\n")
+	_, stdout, _ := r.edit("src/a.txt", "")
+	if !strings.Contains(stdout, "NEW-1: New rule.") || !strings.Contains(stdout, "(governance/rules/)") ||
+		strings.Contains(stdout, "OLD-1") {
+		t.Fatalf("the rules of rules.path: %q", stdout)
 	}
 }
 

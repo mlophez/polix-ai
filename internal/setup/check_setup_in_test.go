@@ -22,13 +22,15 @@ type fakeCheckSetupPort struct {
 	missing map[string]bool
 	baseErr error
 	asked   []string
+	dir     string // the folder LoadRules was asked for
 }
 
 func (f *fakeCheckSetupPort) LoadWorkflow(_ context.Context, _ string) (workflow.Workflow, bool, error) {
-	return workflow.Workflow{Base: []string{"trunk"}}, f.found, f.wfErr
+	return workflow.Workflow{Base: []string{"trunk"}, Rules: workflow.Rules{Path: "docs/rules"}}, f.found, f.wfErr
 }
 
-func (f *fakeCheckSetupPort) LoadRules(_ context.Context) ([]rule.Rule, []string, error) {
+func (f *fakeCheckSetupPort) LoadRules(_ context.Context, dir string) ([]rule.Rule, []string, error) {
+	f.dir = dir
 	return f.rules, nil, nil
 }
 
@@ -47,6 +49,9 @@ func TestCheckSetupShell(t *testing.T) {
 	if err != nil || len(res.Problems) != 1 || !strings.Contains(res.Problems[0], "does not exist") ||
 		port.asked[0] != "trunk" {
 		t.Fatalf("%+v %v", res, err)
+	}
+	if port.dir != "docs/rules" || res.RulesPath != "docs/rules" {
+		t.Fatalf("rules read from %q and reported as %q, want rules.path", port.dir, res.RulesPath)
 	}
 }
 
@@ -90,6 +95,15 @@ func TestCheckSetupCommand(t *testing.T) {
 	write(t, filepath.Join(r, "checks", "s.sh"), "#!/bin/sh\n")
 	if code, _, stderr := runCheckSetup(r); code != 0 || !strings.Contains(stderr, "rules check --changed would fail") {
 		t.Fatalf("a missing base is a warning: %d %q", code, stderr)
+	}
+	write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase: trunk\nrules: { path: docs/rules/ }\n")
+	write(t, filepath.Join(r, "docs", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n")
+	if code, stdout, _ := runCheckSetup(r); code != 0 || !strings.HasSuffix(stdout, "1 rules of docs/rules/\n") {
+		t.Fatalf("the rules of rules.path, not of ai/rules/: %d %q", code, stdout)
+	}
+	write(t, filepath.Join(r, "polix.yaml"), "version: 1\nrules: { path: ../rules }\n")
+	if code, _, stderr := runCheckSetup(r); code != 1 || !strings.Contains(stderr, `rules.path "../rules" must be below the root`) {
+		t.Fatalf("a folder outside the root: %d %q", code, stderr)
 	}
 	if code, _, stderr := runCheckSetup(t.TempDir()); code != 1 || !strings.Contains(stderr, "not inside a git repository") {
 		t.Fatalf("outside a repository: %d %q", code, stderr)

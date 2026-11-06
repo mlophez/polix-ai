@@ -59,8 +59,8 @@ type DiagnoseSetupPort interface {
 	// LoadWorkflow returns the workflow of polix.yaml of root for the polix of version running and whether the
 	// file exists; the error tells why it cannot be read or parsed, or is a workflow.Invalid.
 	LoadWorkflow(ctx context.Context, root, running string) (workflow.Workflow, bool, error)
-	// LoadRules returns every rule of ai/rules/ of root, ordered by id, and the problems of the invalid ones.
-	LoadRules(ctx context.Context, root string) ([]rule.Rule, []string, error)
+	// LoadRules returns every rule of the folder dir of root, ordered by id, and the problems of the invalid ones.
+	LoadRules(ctx context.Context, root, dir string) ([]rule.Rule, []string, error)
 	// Missing reports whether the file of a check, relative to root, does not exist.
 	Missing(ctx context.Context, root, check string) bool
 	// Runnable returns why a check, relative to root, cannot run as a program; nil when it can or does not exist.
@@ -140,7 +140,7 @@ func diagnoseSetup(ctx context.Context, port DiagnoseSetupPort, req DiagnoseSetu
 	missing, runnable := map[string]bool{}, map[string]error{}
 	if gitErr == nil && repoErr == nil {
 		wf, found, wfErr = port.LoadWorkflow(ctx, root, req.Version)
-		rules, invalid, rulesErr = port.LoadRules(ctx, root)
+		rules, invalid, rulesErr = port.LoadRules(ctx, root, wf.RulesPath())
 		for _, r := range rules {
 			if r.HasCheck() {
 				missing[r.Check] = port.Missing(ctx, root, r.Check)

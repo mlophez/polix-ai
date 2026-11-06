@@ -23,11 +23,12 @@ type CheckSetupRequest struct {
 // CheckSetupResponse is what the use case CheckSetup gives back to the caller, in the shape of the transport: the
 // command serializes it to the console.
 type CheckSetupResponse struct {
-	Problems []string // every problem of polix.yaml and of ai/rules/
-	Hint     string   // the hint that the problems may come from a newer polix; empty for none
-	Warning  string   // the warning that rules check --changed would fail; empty for none
-	Found    bool     // whether polix.yaml exists
-	Rules    int      // how many rules ai/rules/ holds
+	Problems  []string // every problem of polix.yaml and of the rules
+	Hint      string   // the hint that the problems may come from a newer polix; empty for none
+	Warning   string   // the warning that rules check --changed would fail; empty for none
+	Found     bool     // whether polix.yaml exists
+	Rules     int      // how many rules the folder of rules holds
+	RulesPath string   // the folder of the rules, relative to the root
 }
 
 // CheckSetupPort is what the shell of CheckSetup needs from the outside: the workflow, the rules, their checks and
@@ -38,9 +39,9 @@ type CheckSetupPort interface {
 	// the default workflow without it. The error tells why it cannot be read or parsed, or is a workflow.Invalid
 	// with the problems of a workflow that parses, returned with it.
 	LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, bool, error)
-	// LoadRules returns every rule of ai/rules/, retired ones excluded, ordered by id, and the problems of the
-	// invalid ones; the error tells why a file cannot be read or parsed.
-	LoadRules(ctx context.Context) ([]rule.Rule, []string, error)
+	// LoadRules returns every rule of the folder dir, relative to the root, retired ones excluded, ordered by id,
+	// and the problems of the invalid ones; the error tells why a file cannot be read or parsed.
+	LoadRules(ctx context.Context, dir string) ([]rule.Rule, []string, error)
 	// Missing reports whether the file of a check, relative to the root, does not exist.
 	Missing(ctx context.Context, check string) bool
 	// ResolveBase returns why none of candidates exists as a branch, locally or on origin; nil when one does.
@@ -54,7 +55,7 @@ func CheckSetupCommand() *cobra.Command {
 	req := CheckSetupRequest{Version: build.Current()}
 	c := &cobra.Command{
 		Use:   "check",
-		Short: "Validate polix.yaml and ai/rules/",
+		Short: "Validate polix.yaml and the rules",
 		Long: "Validate the workflow and the rules and print every problem: unknown events, conditions, actions and " +
 			"keys, undefined variables and conditions on events where they never hold.",
 		Args: cobra.NoArgs,
@@ -78,7 +79,8 @@ func CheckSetupCommand() *cobra.Command {
 // each check exists and whether a base branch exists, calls the logic once and builds the response.
 func checkSetup(ctx context.Context, port CheckSetupPort, req CheckSetupRequest) (CheckSetupResponse, error) {
 	wf, found, wfErr := port.LoadWorkflow(ctx, req.Version)
-	rules, invalid, rulesErr := port.LoadRules(ctx)
+	rulesPath := wf.RulesPath()
+	rules, invalid, rulesErr := port.LoadRules(ctx, rulesPath)
 	missing := map[string]bool{}
 	for _, r := range rules {
 		if r.HasCheck() {
@@ -86,7 +88,7 @@ func checkSetup(ctx context.Context, port CheckSetupPort, req CheckSetupRequest)
 		}
 	}
 	baseErr := port.ResolveBase(ctx, wf.BaseBranches())
-	out := CheckSetup(req.Version, found, wfErr, rules, invalid, rulesErr, missing, baseErr)
+	out := CheckSetup(req.Version, found, wfErr, rulesPath, rules, invalid, rulesErr, missing, baseErr)
 	return CheckSetupResponse(out), nil
 }
 
@@ -109,9 +111,9 @@ func (res CheckSetupResponse) print(stdout, stderr io.Writer) int {
 	u := cli.NewUI(stdout)
 	if !res.Found {
 		u.Line("%s no %s (only the built-in protections apply) and %d rules of %s/", cli.OKText("ok:"), workflow.File,
-			res.Rules, rule.Dir)
+			res.Rules, res.RulesPath)
 		return 0
 	}
-	u.Line("%s %s and %d rules of %s/", cli.OKText("ok:"), workflow.File, res.Rules, rule.Dir)
+	u.Line("%s %s and %d rules of %s/", cli.OKText("ok:"), workflow.File, res.Rules, res.RulesPath)
 	return 0
 }

@@ -83,14 +83,14 @@ func (a *AnswerHookAdapter) Files(ctx context.Context) []string {
 	return files
 }
 
-// LoadRules reads the rules from the yaml files of ai/rules/ (rule.ParseFilesAll), without retired.yaml, ordered
-// by id, invalid ones included. Without the folder there are no rules.
-func (a *AnswerHookAdapter) LoadRules(_ context.Context) ([]rule.Rule, error) {
-	files, err := file.ReadDir(filepath.Join(a.Repo.Root, rule.Dir), ".yaml")
+// LoadRules reads the rules from the yaml files of the folder dir (rule.ParseFilesAll), without retired.yaml,
+// ordered by id, invalid ones included. Without the folder there are no rules.
+func (a *AnswerHookAdapter) LoadRules(_ context.Context, dir string) ([]rule.Rule, error) {
+	files, err := file.ReadDir(filepath.Join(a.Repo.Root, filepath.FromSlash(dir)), ".yaml")
 	if err != nil {
 		return nil, err
 	}
-	rules, _, err := rule.ParseFilesAll(files)
+	rules, _, err := rule.ParseFilesAll(dir, files)
 	return rules, err
 }
 

@@ -28,14 +28,14 @@ const checkRuleTimeout = 5 * time.Minute
 // checkRuleLogIDs is how many ids of the rules of an invocation the log names before it only counts them.
 const checkRuleLogIDs = 5
 
-// LoadRules reads the rules from the yaml files of ai/rules/ (ParseFiles), without retired.yaml, ordered by id.
-// Without the folder there are no rules.
-func (a CheckRuleAdapter) LoadRules(_ context.Context) ([]Rule, error) {
-	files, err := file.ReadDir(filepath.Join(a.Repo.Root, Dir), ".yaml")
+// LoadRules reads the rules from the yaml files of the folder dir (ParseFiles), without retired.yaml, ordered by
+// id. Without the folder there are no rules.
+func (a CheckRuleAdapter) LoadRules(_ context.Context, dir string) ([]Rule, error) {
+	files, err := file.ReadDir(filepath.Join(a.Repo.Root, filepath.FromSlash(dir)), ".yaml")
 	if err != nil {
 		return nil, err
 	}
-	return ParseFiles(files)
+	return ParseFiles(dir, files)
 }
 
 // LoadWorkflow reads polix.yaml with the domain of workflow, as a use case of workflow would break the vertical

@@ -70,7 +70,7 @@ func TestParseAll(t *testing.T) {
 	}
 }
 
-// The files of ai/rules/: retired.yaml and other files left out, every rule ordered by id; strict or lenient.
+// The files of a folder of rules, named by their path below it: retired.yaml and other files left out, every rule ordered by id; strict or lenient.
 func TestParseFiles(t *testing.T) {
 	files := map[string][]byte{
 		"b.yaml":       []byte("rules:\n  - id: B-1\n    description: d\n  - id: A-2\n"),
@@ -78,19 +78,22 @@ func TestParseFiles(t *testing.T) {
 		"retired.yaml": []byte("rules:\n  - id: R-1\n"),
 		"notes.md":     []byte("x"),
 	}
-	rules, problems, err := ParseFilesAll(files)
+	rules, problems, err := ParseFilesAll("ai/rules", files)
 	if err != nil || len(rules) != 3 || rules[0].ID != "A-1" || rules[1].ID != "A-2" || len(problems) != 1 {
 		t.Fatal(rules, problems, err)
 	}
-	if _, err := ParseFiles(files); err == nil || !strings.Contains(err.Error(), "ai/rules/b.yaml") {
+	if rules[0].File != "ai/rules/a.yaml" {
+		t.Fatalf("file %q, want below the folder given", rules[0].File)
+	}
+	if _, err := ParseFiles("docs/rules", files); err == nil || !strings.Contains(err.Error(), "docs/rules/b.yaml") {
 		t.Fatalf("strict: %v", err)
 	}
 	delete(files, "b.yaml")
-	if rules, err := ParseFiles(files); err != nil || len(rules) != 1 {
+	if rules, err := ParseFiles("ai/rules", files); err != nil || len(rules) != 1 {
 		t.Fatal(rules, err)
 	}
 	files["c.yaml"] = []byte("rules: [\n")
-	if _, _, err := ParseFilesAll(files); err == nil {
+	if _, _, err := ParseFilesAll("ai/rules", files); err == nil {
 		t.Fatal("broken yaml")
 	}
 }

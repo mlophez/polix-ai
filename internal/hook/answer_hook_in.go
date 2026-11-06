@@ -53,8 +53,8 @@ type AnswerHookPort interface {
 	Changed(ctx context.Context) []string
 	// Files returns the files of the working tree that git does not ignore.
 	Files(ctx context.Context) []string
-	// LoadRules returns the rules of ai/rules/, retired ones excluded, ordered by id.
-	LoadRules(ctx context.Context) ([]rule.Rule, error)
+	// LoadRules returns the rules of the folder dir, relative to the root, retired ones excluded, ordered by id.
+	LoadRules(ctx context.Context, dir string) ([]rule.Rule, error)
 	// LoadState reads the log of polix.
 	LoadState(ctx context.Context) (state.State, error)
 	// Ignored reports whether git ignores the path, relative to the root.
@@ -172,7 +172,7 @@ func answerHook(ctx context.Context, port AnswerHookPort, req AnswerHookRequest)
 			case s.Files:
 				ev = ev.KnowFiles(port.Files(ctx))
 			case s.Rules:
-				ev = ev.KnowRules(port.LoadRules(ctx))
+				ev = ev.KnowRules(port.LoadRules(ctx, wf.RulesPath()))
 			case s.State:
 				ev = ev.KnowState(port.LoadState(ctx))
 			case s.Ignored != "":

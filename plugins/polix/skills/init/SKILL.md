@@ -25,7 +25,8 @@ Write `README.md` from [readme.md](readme.md) for human readers.
 - **Project**: the current `AGENTS.md` when present, `README.md`, the folder tree and `Justfile`/`Makefile`.
   Also the manifests (`package.json`, `pyproject.toml`, `go.mod`, `pom.xml`...) and test configurations.
   Also the CI pipelines (`.github/workflows/`, `.gitlab-ci.yml`, `bitbucket-pipelines.yml`...).
-  Also `polix.yaml` and `ai/rules/` when present.
+  Also `polix.yaml` and the folders of `rules.path`, `plans.path` and `reports.path` when present (`ai/rules/`,
+  `ai/plans/` and `ai/reports/` without them).
 
 ## Rules
 

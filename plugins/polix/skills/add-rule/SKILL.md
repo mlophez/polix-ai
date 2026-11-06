@@ -1,8 +1,9 @@
 ---
 name: add-rule
 description: >
-  Adds rules on how the code of the project must be written to ai/rules/, the rules polix injects and checks.
-  Use it when the user asks to add a rule or a coding convention, or to migrate rules from a document into ai/rules/.
+  Adds rules on how the code of the project must be written to the folder of rules (ai/rules/ by default), the
+  rules polix injects and checks.
+  Use it when the user asks to add a rule or a coding convention, or to migrate rules from a document into them.
   It never changes the code nor polix.yaml.
 effort: medium
 model: inherit
@@ -13,7 +14,8 @@ argument-hint: "[the rule or the document to migrate, e.g. docs/conventions.md; 
 
 # Adding rules
 
-Turn each requested or migrated rule into an item of `rules:` of a file of `ai/rules/`.
+Turn each requested or migrated rule into an item of `rules:` of a file of the folder of rules.
+The folder of rules is `rules.path` of `polix.yaml`, `ai/rules/` without it; polix names it at session start.
 Polix reads `id`, `description`, `scope`, `deterministic` and `check`; any other key is kept for people and skills.
 
 ## Requirements
@@ -32,7 +34,7 @@ Polix reads `id`, `description`, `scope`, `deterministic` and `check`; any other
 - Show a rule that contradicts another of the same scope with both ids, and let the user decide.
 - Set `check` only to a command that already exists; leave a deterministic rule without one as pending.
 - Never write a `scope` or `check` the user did not confirm.
-- Only write `ai/rules/` and the migrated sources.
+- Only write the folder of rules and the migrated sources.
 - When the request is about when rules are injected or checked, point to the skill `workflow` of polix.
 - Talk to the user in the language of the session.
 
@@ -66,7 +68,7 @@ Copy this checklist and track your progress:
 
 ```text
 Rules progress:
-- [ ] Step 1: Read every file of ai/rules/, retired.yaml included, to know the topics and the free ids.
+- [ ] Step 1: Read every file of the folder of rules, retired.yaml included, to know the topics and the free ids.
 - [ ] Step 2: Split the request or the source into one rule per item and give each its file and id (see `Rule format`).
 - [ ] Step 3: Propose `scope` and `check` from the code of the project, saying where each proposal comes from.
 - [ ] Step 4: Show the rules to write, the duplicates and the contradictions, and confirm once before writing.

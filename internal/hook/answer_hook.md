@@ -62,8 +62,10 @@ The rules it follows, as before this use case:
    workflow or update polix; any other event only warns, so a stop is never blocked. Problems that may come from a
    newer polix hint to run `polix update` (`Unusable`).
 3. Without polix.yaml, and for an edit outside the repository or of a file git ignores, only the protections apply.
-4. On `session_start`, the texts of the `guidance` turned on in polix.yaml (`workflow.Guidance.Instructions`) are
-   injected as contexts first, so the contexts of the entries come after them.
+4. On `session_start`, the session context (`workflow.Workflow.SessionContext`) is injected as one context first,
+   so the contexts of the entries come after it: the template `templates/session_start.md.tmpl` rendered with the
+   switches of `guidance` turned on in polix.yaml (commit, edit, layout) and the folders of `rules.path`,
+   `plans.path` and `reports.path`; nothing when every switch is off.
 5. The entries of the event run in order: one runs when every condition of `if` holds and, with `unless`, not
    every condition of `unless` holds. `deny` blocks and stops the evaluation; `allow` stops it; `require` blocks
    and goes on; `run` runs a command or the checks of the rules (`changed`, or a path) and blocks when it fails,
@@ -98,7 +100,8 @@ take it; `Stderr`, the reasons and contexts of a block, else one `polix: <warnin
 - `Locate`: turns the path of an edit into one relative to the root, symlinks resolved.
 - `Branch`, `Hash`, `Changed`, `Files` and `Ignored`: the facts of git; `Changed` and `Files` read a failure as no
   files and, like `Branch` and `Ignored`, run detached from the cancellation of the caller.
-- `LoadRules`: the rules of `ai/rules/`, `retired.yaml` left out, ordered by id.
+- `LoadRules`: the rules of the folder it is given (`Workflow.RulesPath`: `rules.path`, `ai/rules/` by default),
+  `retired.yaml` left out, ordered by id.
 - `LoadState`: the log through `pkg/jsonl`, the lines over `state.MaxLine` skipped and counted.
 - `Real`: the real path of each path.
 - `Contains`: whether a file git does not ignore, matching the patterns of a `file` condition, holds the text of

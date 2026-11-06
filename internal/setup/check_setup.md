@@ -1,6 +1,6 @@
 # CheckSetup
 
-Validates the workflow (polix.yaml) and the rules (ai/rules/) of a repository and prints every problem, so a
+Validates the workflow (polix.yaml) and the rules (the folder `rules.path`, `ai/rules/` by default) of a repository and prints every problem, so a
 person or CI learns what polix would reject before a hook does.
 
 ## Trigger
@@ -20,8 +20,8 @@ polix check [--dir <dir>]
 
 ## Logic
 
-`CheckSetup(running string, found bool, wfErr error, rules []rule.Rule, invalid []string, rulesErr error,
-missing map[string]bool, baseErr error) CheckSetupOutput` gathers the problems, with the domain of
+`CheckSetup(running string, found bool, wfErr error, rulesPath string, rules []rule.Rule, invalid []string,
+rulesErr error, missing map[string]bool, baseErr error) CheckSetupOutput` gathers the problems, with the domain of
 `setup_problems.go`, which `polix doctor` shares:
 
 1. `WorkflowProblems`: the error of loading polix.yaml is one problem, or each problem of a workflow that parses
@@ -35,9 +35,10 @@ missing map[string]bool, baseErr error) CheckSetupOutput` gathers the problems, 
 
 ## Response
 
-`CheckSetupResponse` is the output: `Problems`, `Hint`, `Warning`, `Found` (whether polix.yaml exists) and
-`Rules` (how many rules). The command prints each problem to stderr and the hint as a warning, and exits with 1;
-else it prints the warning to stderr and `ok: polix.yaml and <n> rules of ai/rules/` (or `ok: no polix.yaml
+`CheckSetupResponse` is the output: `Problems`, `Hint`, `Warning`, `Found` (whether polix.yaml exists), `Rules`
+(how many rules) and `RulesPath` (the folder they were read from, `Workflow.RulesPath`). The command prints each
+problem to stderr and the hint as a warning, and exits with 1; else it prints the warning to stderr and
+`ok: polix.yaml and <n> rules of <rules path>/` (or `ok: no polix.yaml
 (only the built-in protections apply) and ...`) to stdout, and exits with 0.
 
 ## Port
@@ -46,8 +47,9 @@ else it prints the warning to stderr and `ok: polix.yaml and <n> rules of ai/rul
 
 - `LoadWorkflow`: reads polix.yaml; without it, the default workflow and false; a workflow that parses with
   problems comes back with its `workflow.Invalid`.
-- `LoadRules`: reads `ai/rules/*.yaml` but `retired.yaml` with `rule.ParseAll`, ordered by id; without the folder,
-  none; a file that cannot be read or parsed is an error.
+- `LoadRules`: reads the `*.yaml` of the folder it is given (`rules.path` of the workflow, `ai/rules/` by
+  default) but `retired.yaml` with `rule.ParseAll`, ordered by id; without the folder, none; a file that cannot be
+  read or parsed is an error.
 - `Missing`: whether the file of a check does not exist below the root.
 - `ResolveBase`: why no base branch of the workflow exists, locally or on origin.
 
@@ -59,6 +61,7 @@ else it prints the warning to stderr and `ok: polix.yaml and <n> rules of ai/rul
 ## Flow
 
 1. `CheckSetupCommand` opens the repository of `--dir` and injects `CheckSetupAdapter{Repo: repo}`.
-2. The shell reads the workflow, the rules, whether each check exists and whether a base branch exists.
+2. The shell reads the workflow, then the rules of its `rules.path`, whether each check exists and whether a base
+   branch exists.
 3. `CheckSetup` decides the problems, the hint and the warning.
 4. The shell builds the response, and the command prints it and sets the exit code.

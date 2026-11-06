@@ -375,18 +375,24 @@ func TestAnswerHookProtectsState(t *testing.T) {
 	}
 }
 
-// The guidance turned on is injected on session_start only, before the contexts of the entries of the event.
+// The session context of the guidance turned on is injected on session_start only, as one context before those of
+// the entries of the event.
 func TestAnswerHookGuidance(t *testing.T) {
-	both := []string{workflow.GuidanceCommit, workflow.GuidanceEdit}
+	session := func(yaml string) []string {
+		wf, _ := workflow.Parse([]byte(yaml), "dev")
+		return []string{wf.SessionContext()}
+	}
+	defaults := session("version: 1\n")
 	cases := []struct {
 		name, yaml, event string
 		want              []string
 	}{
-		{"defaults", "version: 1\n", workflow.SessionStart, both},
-		{"only edit", "version: 1\nguidance: { commit: false }\n", workflow.SessionStart, []string{workflow.GuidanceEdit}},
-		{"both off", "version: 1\nguidance: { commit: false, edit: false }\n", workflow.SessionStart, nil},
+		{"defaults", "version: 1\n", workflow.SessionStart, defaults},
+		{"only edit", "version: 1\nguidance: { commit: false, layout: false }\n", workflow.SessionStart,
+			session("version: 1\nguidance: { commit: false, layout: false }\n")},
+		{"all off", "version: 1\nguidance: { commit: false, edit: false, layout: false }\n", workflow.SessionStart, nil},
 		{"before the entries", "version: 1\non:\n  session_start:\n    - context: { text: repo }\n",
-			workflow.SessionStart, append(slices.Clone(both), "repo")},
+			workflow.SessionStart, append(slices.Clone(defaults), "repo")},
 		{"not on prompt", "version: 1\n", workflow.Prompt, nil},
 		{"not on stop", "version: 1\n", workflow.Stop, nil},
 	}
@@ -397,6 +403,11 @@ func TestAnswerHookGuidance(t *testing.T) {
 				t.Fatalf("contexts %q, want %q", out.Answer.Contexts, c.want)
 			}
 		})
+	}
+	edit := session("version: 1\nguidance: { commit: false, layout: false }\n")[0]
+	if !strings.HasPrefix(edit, "This project is managed by polix.\nFollow these rules:\n- Create and change files") ||
+		strings.Contains(edit, "git commit") {
+		t.Fatalf("only the guidance on edits: %q", edit)
 	}
 	ev := answerHookEval(t, "version: 1\n", workflow.PreEdit)
 	ev = Evaluation{Workflow: ev.Workflow, Present: true, Root: ev.Root, GitDir: ev.GitDir, System: "linux",

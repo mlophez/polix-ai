@@ -38,7 +38,7 @@ Cover the data model and the error handling.>
 
 - Covers: <the acceptance criteria the task fulfils, e.g. `AC1, AC2`, or `none` for a supporting task>.
 - Files: `<path>` (create), `<path>` (`<function, type or method>`, modify).
-- Rules: <the ids of the rules of ai/rules/ whose trigger holds for the task and whose `scope` matches its `Files:`.
+- Rules: <the ids of the rules of the folder of rules whose trigger holds for the task and whose `scope` matches its `Files:`.
   E.g. `ARCH-7, STYLE-3`, or `none`>.
 - Reuse: `<function, type or utility>` from `<path>`, or `none`.
 - Changes: <what changes in each file and why, in prose, never code.
@@ -61,6 +61,6 @@ Cover the data model and the error handling.>
 
 ## Missing docs
 
-<Only when `AGENTS.md` has no project facts or the repository has no `ai/rules/`: say which are missing.
+<Only when `AGENTS.md` has no project facts or the repository has no folder of rules: say which are missing.
 Rules are written with `/polix:add-rule`.
 Delete the section otherwise.>

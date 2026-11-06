@@ -19,7 +19,7 @@ import (
 func main() {
 	root := cli.Root("polix",
 		"Applies the polix.yaml and ai/rules/ of a repository to Claude Code and Codex",
-		"polix applies the workflow (polix.yaml) and the rules (ai/rules/) of a repository to Claude Code and "+
+		"polix applies the workflow (polix.yaml) and the rules (ai/rules/, or rules.path) of a repository to Claude Code and "+
 			"Codex through their hooks: it blocks, requires, runs, injects and records what the workflow says.",
 		"  # Set up this machine: the polix plugin with its skills and hooks\n"+
 			"  polix install\n\n"+
@@ -51,7 +51,7 @@ func main() {
 	answer.GroupID = "agent"
 	root.AddCommand(answer)
 
-	rules := &cobra.Command{Use: "rules", Short: "Work with the rules of ai/rules/", Args: cobra.NoArgs, GroupID: "repo"}
+	rules := &cobra.Command{Use: "rules", Short: "Work with the rules of rules.path (ai/rules/)", Args: cobra.NoArgs, GroupID: "repo"}
 	rules.AddCommand(rule.CheckRuleCommand())
 	root.AddCommand(rules)
 

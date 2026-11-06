@@ -12,6 +12,7 @@ max_stop_blocks: 3
 guidance:
   commit: true
   edit: true
+  layout: true
 
 # No agent writes the instructions of the repository, the main session included: only a person changes them.
 protected: 
@@ -23,7 +24,12 @@ protected:
 # The checks of ai/rules/ that are Go tests (the AST tests of tests/architecture/) run as one `go test` of their
 # package, only the test named after the rule: GOARCH-4 runs TestGOARCH4.
 rules:
+  path: ai/rules
   run: { "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"] }
+plans:
+  path: ai/plans
+reports:
+  path: ai/reports
 
 on:
   # post_edit: after the agent edits a file, once per edited path.

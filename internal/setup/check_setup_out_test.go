@@ -27,12 +27,12 @@ func TestCheckSetupAdapter(t *testing.T) {
 	}
 	write(t, filepath.Join(dir, "ai", "rules", "b.yaml"), "rules:\n  - id: B-1\n    description: d\n  - id: A-2\n")
 	write(t, filepath.Join(dir, "ai", "rules", "retired.yaml"), "rules:\n  - id: R-1\n")
-	rules, invalid, err := a.LoadRules(ctx)
+	rules, invalid, err := a.LoadRules(ctx, "ai/rules")
 	if err != nil || len(rules) != 2 || rules[0].ID != "A-2" || len(invalid) != 1 {
 		t.Fatal(rules, invalid, err)
 	}
 	write(t, filepath.Join(dir, "ai", "rules", "c.yaml"), "rules: [\n")
-	if _, _, err := a.LoadRules(ctx); err == nil {
+	if _, _, err := a.LoadRules(ctx, "ai/rules"); err == nil {
 		t.Fatal("broken yaml")
 	}
 	if !a.Missing(ctx, "checks/x.sh") || a.Missing(ctx, "polix.yaml") {

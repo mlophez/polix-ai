@@ -42,8 +42,8 @@ type CheckRuleFailed struct {
 // an interface so its implementation can change; the entry injects the adapter, and the logic never sees it. It
 // speaks in domain values, and every method takes the context of the caller.
 type CheckRulePort interface {
-	// LoadRules returns the rules of the repository, retired ones excluded, ordered by id.
-	LoadRules(ctx context.Context) ([]Rule, error)
+	// LoadRules returns the rules of the folder dir, relative to the root, retired ones excluded, ordered by id.
+	LoadRules(ctx context.Context, dir string) ([]Rule, error)
 	// LoadWorkflow returns the workflow of polix.yaml for the polix of version running, the default one without
 	// the file.
 	LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, error)
@@ -105,7 +105,14 @@ func checkRuleFlags(req CheckRuleRequest) error {
 // each run it asks for through the port and gives the logic its outcome, and builds the
 // response. It only sequences; the decisions are in the logic and the domain.
 func checkRule(ctx context.Context, port CheckRulePort, req CheckRuleRequest) (CheckRuleResponse, error) {
-	rules, err := port.LoadRules(ctx)
+	wf, err := port.LoadWorkflow(ctx, req.Version)
+	if err != nil {
+		return CheckRuleResponse{}, err
+	}
+	if err := wf.Rules.Valid(); err != nil {
+		return CheckRuleResponse{}, err
+	}
+	rules, err := port.LoadRules(ctx, wf.RulesPath())
 	if err != nil {
 		return CheckRuleResponse{}, err
 	}
@@ -113,13 +120,6 @@ func checkRule(ctx context.Context, port CheckRulePort, req CheckRuleRequest) (C
 		if err := r.Valid(); err != nil {
 			return CheckRuleResponse{}, err
 		}
-	}
-	wf, err := port.LoadWorkflow(ctx, req.Version)
-	if err != nil {
-		return CheckRuleResponse{}, err
-	}
-	if err := wf.Rules.Valid(); err != nil {
-		return CheckRuleResponse{}, err
 	}
 	var changed []string
 	if req.OnlyChanged {

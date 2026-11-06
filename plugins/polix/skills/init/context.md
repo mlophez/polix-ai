@@ -4,7 +4,7 @@
 Never add, remove, rename or reorder the # and ## headings of this file, nor add ### subsections.
 Every section holds only bullets, one fact per item, with exact values.
 Every item is a short summary on a single line of at most 120 characters, never wrapped; the detail belongs in docs/.
-It describes how the project is; the rules on how to write its code go to ai/rules/.
+It describes how the project is; the rules on how to write its code go to the folder of rules (rules.path).
 Under 100 lines.
 Only the init skill or a human changes this file: any other skill or agent reports the change it needs instead. -->
 
@@ -26,11 +26,13 @@ Install, build, run, test, single test, lint, format, and any other the flow nee
 
 ## Layout
 
-<!-- Keep the fixed items that apply: ai/ items when the folder exists, polix.yaml when the file exists.
+<!-- Keep the fixed items that apply: each folder of the AI when it exists, polix.yaml when the file exists.
+The folders of the AI are rules.path, plans.path and reports.path of polix.yaml; write the paths it sets.
 Add one item per other top-level folder, in alphabetical order, as `- **<folder>/**: <what it holds>`. -->
 
 - **ai/**: instructions for the AI only; without it the repository is a plain project.
 - **ai/plans/**: one plan per file, written by the `plan` skill.
+- **ai/reports/**: the reports of audits and reviews, one per file.
 - **ai/rules/**: rules on how to write the code, one `yaml` file per topic.
 - **polix.yaml**: the workflow of the agents, enforced by polix through the hooks.
 
@@ -43,7 +45,7 @@ Example: `- **Unit**: pytest, in tests/unit/.` -->
 
 ## Rules
 
-<!-- Keep the item when ai/rules/ exists; otherwise write `Not applicable.` -->
+<!-- Keep the item when the folder of rules exists, with its path (rules.path); otherwise write `Not applicable.` -->
 
 - The rules for the AI are in `ai/rules/*.yaml`.
 

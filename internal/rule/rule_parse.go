@@ -55,13 +55,13 @@ func ParseAll(file string, data []byte) ([]Rule, []string, error) {
 	return rules, problems, nil
 }
 
-// ParseFiles reads the files of ai/rules/ (by name, as pkg/file.ReadDir gives them), retired.yaml and files that
-// are not yaml left out, in the order of their names, and returns every rule ordered by id, stably. Like Parse,
-// the first invalid rule stops it.
-func ParseFiles(files map[string][]byte) ([]Rule, error) {
+// ParseFiles reads the files of the folder of rules dir, relative to the root (by name, as pkg/file.ReadDir gives
+// them), retired.yaml and files that are not yaml left out, in the order of their names, and returns every rule
+// ordered by id, stably. Like Parse, the first invalid rule stops it.
+func ParseFiles(dir string, files map[string][]byte) ([]Rule, error) {
 	var all []Rule
 	for _, name := range ruleFiles(files) {
-		rules, err := Parse(Dir+"/"+name, files[name])
+		rules, err := Parse(dir+"/"+name, files[name])
 		if err != nil {
 			return nil, err
 		}
@@ -71,13 +71,14 @@ func ParseFiles(files map[string][]byte) ([]Rule, error) {
 	return all, nil
 }
 
-// ParseFilesAll reads the files of ai/rules/ like ParseFiles, but like ParseAll goes on past an invalid rule: it
-// returns every rule, ordered by id, and the problems of the invalid ones. Only broken YAML stops it.
-func ParseFilesAll(files map[string][]byte) ([]Rule, []string, error) {
+// ParseFilesAll reads the files of the folder of rules dir like ParseFiles, but like ParseAll goes on past an
+// invalid rule: it returns every rule, ordered by id, and the problems of the invalid ones. Only broken YAML stops
+// it.
+func ParseFilesAll(dir string, files map[string][]byte) ([]Rule, []string, error) {
 	var all []Rule
 	var problems []string
 	for _, name := range ruleFiles(files) {
-		rules, invalid, err := ParseAll(Dir+"/"+name, files[name])
+		rules, invalid, err := ParseAll(dir+"/"+name, files[name])
 		if err != nil {
 			return nil, nil, err
 		}

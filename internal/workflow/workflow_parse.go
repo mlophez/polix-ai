@@ -26,6 +26,8 @@ type workflowYAML struct {
 	Vars          map[string]varYAML     `yaml:"vars"`
 	On            map[string][]entryYAML `yaml:"on"`
 	Rules         rulesYAML              `yaml:"rules"`
+	Plans         folderYAML             `yaml:"plans"`
+	Reports       folderYAML             `yaml:"reports"`
 	Guidance      guidanceYAML           `yaml:"guidance"`
 }
 
@@ -69,7 +71,14 @@ type contextYAML struct {
 
 // rulesYAML is the key rules.
 type rulesYAML struct {
+	Path string      `yaml:"path"`
 	Run  runnersYAML `yaml:"run"`
+	keys []string
+}
+
+// folderYAML is the key plans or reports.
+type folderYAML struct {
+	Path string `yaml:"path"`
 	keys []string
 }
 
@@ -77,6 +86,7 @@ type rulesYAML struct {
 type guidanceYAML struct {
 	Commit *bool `yaml:"commit"`
 	Edit   *bool `yaml:"edit"`
+	Layout *bool `yaml:"layout"`
 	keys   []string
 }
 
@@ -105,13 +115,15 @@ var decodeNames = []string{
 	"workflow.runYAML", "workflow.Run",
 	"workflow.contextYAML", "workflow.Context",
 	"workflow.rulesYAML", "workflow.Rules",
+	"workflow.folderYAML", "workflow.Folder",
 	"workflow.guidanceYAML", "workflow.Guidance",
 	"workflow.stringsYAML", "[]string",
 	"workflow.argsYAML", "[]string",
 }
 
 // topKeys are the keys of polix.yaml.
-var topKeys = []string{"version", "requires", "base", "max_stop_blocks", "protected", "vars", "on", "rules", "guidance"}
+var topKeys = []string{"version", "requires", "base", "max_stop_blocks", "protected", "vars", "on", "rules", "plans",
+	"reports", "guidance"}
 
 // Valid tells why the error is not valid: it names both versions.
 func (e TooOld) Valid() error {
@@ -189,6 +201,8 @@ func (y workflowYAML) workflow() (Workflow, error) {
 		}
 	}
 	rules, _ := y.Rules.rules()
+	plans, _ := y.Plans.folder()
+	reports, _ := y.Reports.folder()
 	guidance, _ := y.Guidance.guidance()
 	w := Workflow{
 		Version:       y.Version,
@@ -199,6 +213,8 @@ func (y workflowYAML) workflow() (Workflow, error) {
 		Vars:          vars,
 		On:            on,
 		Rules:         rules,
+		Plans:         plans,
+		Reports:       reports,
 		Guidance:      guidance,
 	}
 	return w, w.Valid()
@@ -243,13 +259,19 @@ func (y rulesYAML) rules() (Rules, error) {
 		r, _ := ry.runner()
 		runners = append(runners, r)
 	}
-	r := Rules{Run: runners, Keys: y.keys}
+	r := Rules{Path: y.Path, Run: runners, Keys: y.keys}
 	return r, r.Valid()
+}
+
+func (y folderYAML) folder() (Folder, error) {
+	f := Folder{Path: y.Path, Keys: y.keys}
+	return f, f.Valid()
 }
 
 // guidance builds the guidance of the file, with every switch left out turned on.
 func (y guidanceYAML) guidance() (Guidance, error) {
-	g := Guidance{Commit: y.Commit == nil || *y.Commit, Edit: y.Edit == nil || *y.Edit, Keys: y.keys}
+	g := Guidance{Commit: y.Commit == nil || *y.Commit, Edit: y.Edit == nil || *y.Edit,
+		Layout: y.Layout == nil || *y.Layout, Keys: y.keys}
 	return g, g.Valid()
 }
 
@@ -296,6 +318,18 @@ func (e *entryYAML) UnmarshalYAML(n *yaml.Node) error {
 	*e = entryYAML(p)
 	e.line = n.Line
 	e.keys = mapKeys(n)
+	return nil
+}
+
+// UnmarshalYAML keeps the keys of plans or reports, so Valid can reject unknown ones.
+func (f *folderYAML) UnmarshalYAML(n *yaml.Node) error {
+	type plain folderYAML
+	var p plain
+	if err := n.Decode(&p); err != nil {
+		return err
+	}
+	*f = folderYAML(p)
+	f.keys = mapKeys(n)
 	return nil
 }
 

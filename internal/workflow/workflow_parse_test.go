@@ -141,7 +141,7 @@ func TestParseGuidance(t *testing.T) {
 func TestParseGuidanceErrors(t *testing.T) {
 	_, err := Parse([]byte("version: 1\nguidance: { commit: true, delegation: false }\n"), "dev")
 	var invalid Invalid
-	if !errors.As(err, &invalid) || !strings.Contains(err.Error(), `unknown key "delegation" in guidance (commit, edit)`) {
+	if !errors.As(err, &invalid) || !strings.Contains(err.Error(), `unknown key "delegation" in guidance (commit, edit, layout)`) {
 		t.Fatalf("unknown key: %v", err)
 	}
 	cases := map[string]string{

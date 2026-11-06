@@ -29,8 +29,8 @@ type fakeCheckRulePort struct {
 	argv       map[string][]string
 }
 
-func (f *fakeCheckRulePort) LoadRules(_ context.Context) ([]Rule, error) {
-	f.calls = append(f.calls, "LoadRules")
+func (f *fakeCheckRulePort) LoadRules(_ context.Context, dir string) ([]Rule, error) {
+	f.calls = append(f.calls, "LoadRules "+dir)
 	return f.rules, f.rulesErr
 }
 
@@ -79,7 +79,7 @@ func TestCheckRuleShellRunsAPassingGroupOnce(t *testing.T) {
 	if err != nil || res.Ran != 3 || len(res.Failed) != 0 {
 		t.Fatalf("got %+v, %v", res, err)
 	}
-	if want := []string{"LoadRules", "LoadWorkflow", "RunCheck t/a1_test.go t/a2_test.go t/a3_test.go"}; !slices.Equal(port.calls, want) {
+	if want := []string{"LoadWorkflow", "LoadRules ai/rules", "RunCheck t/a1_test.go t/a2_test.go t/a3_test.go"}; !slices.Equal(port.calls, want) {
 		t.Fatalf("called %v, want %v", port.calls, want)
 	}
 }
@@ -124,7 +124,7 @@ func TestCheckRuleShellRunsTheChecksAndReportsTheFailures(t *testing.T) {
 	if res.Ran != want.Ran || !slices.Equal(res.Failed, want.Failed) {
 		t.Fatalf("got %+v, want %+v", res, want)
 	}
-	calls := []string{"LoadRules", "LoadWorkflow", "RunCheck ai/checks/gofmt_test.go", "RunCheck ai/checks/shfmt.sh"}
+	calls := []string{"LoadWorkflow", "LoadRules ai/rules", "RunCheck ai/checks/gofmt_test.go", "RunCheck ai/checks/shfmt.sh"}
 	if !slices.Equal(port.calls, calls) {
 		t.Fatalf("called %v, want %v: without --changed the shell asks nothing about the branch", port.calls, calls)
 	}
@@ -144,6 +144,17 @@ func TestCheckRuleShellOnlyChanged(t *testing.T) {
 	}
 	if !slices.Equal(port.candidates, []string{"develop"}) {
 		t.Fatalf("asked git for %v, want the bases of polix.yaml", port.candidates)
+	}
+}
+
+// The rules are read from the folder rules.path of polix.yaml, after the workflow.
+func TestCheckRuleShellReadsTheRulesOfRulesPath(t *testing.T) {
+	port := &fakeCheckRulePort{wf: workflow.Workflow{Rules: workflow.Rules{Path: "governance/rules/"}}}
+	if _, err := checkRule(context.Background(), port, CheckRuleRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"LoadWorkflow", "LoadRules governance/rules"}; !slices.Equal(port.calls, want) {
+		t.Fatalf("called %v, want %v", port.calls, want)
 	}
 }
 

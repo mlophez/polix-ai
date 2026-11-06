@@ -117,13 +117,13 @@ func (a DiagnoseSetupAdapter) LoadWorkflow(_ context.Context, root, running stri
 	return ParseWorkflow(data, existed, running)
 }
 
-// LoadRules reads the yaml files of ai/rules/ of root and parses them (rule.ParseFilesAll).
-func (a DiagnoseSetupAdapter) LoadRules(_ context.Context, root string) ([]rule.Rule, []string, error) {
-	files, err := file.ReadDir(filepath.Join(root, rule.Dir), ".yaml")
+// LoadRules reads the yaml files of the folder dir of root and parses them (rule.ParseFilesAll).
+func (a DiagnoseSetupAdapter) LoadRules(_ context.Context, root, dir string) ([]rule.Rule, []string, error) {
+	files, err := file.ReadDir(filepath.Join(root, filepath.FromSlash(dir)), ".yaml")
 	if err != nil {
 		return nil, nil, err
 	}
-	return rule.ParseFilesAll(files)
+	return rule.ParseFilesAll(dir, files)
 }
 
 // Missing reports whether the check does not exist below root.

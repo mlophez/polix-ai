@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/mlophez/polix-ai/internal/hook"
-	"github.com/mlophez/polix-ai/internal/rule"
 	"github.com/mlophez/polix-ai/internal/workflow"
 	"github.com/mlophez/polix-ai/pkg/semver"
 )
@@ -115,7 +114,7 @@ func diagnoseSetupRules(i Inspection) []Finding {
 	}
 	problems := append(RuleProblems(i.Rules, i.Invalid, i.Missing), RunProblems(i.Rules, i.Workflow, i.Runnable)...)
 	if len(problems) == 0 {
-		return found(LevelOK, "rules", "%d rules of %s/", len(i.Rules), rule.Dir)
+		return found(LevelOK, "rules", "%d rules of %s/", len(i.Rules), i.Workflow.RulesPath())
 	}
 	var f []Finding
 	for _, p := range problems {

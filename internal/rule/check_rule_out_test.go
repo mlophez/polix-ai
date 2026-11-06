@@ -70,7 +70,7 @@ func TestCheckRuleAdapterLoadRulesFromGlobLikeRoot(t *testing.T) {
 		"ai/rules/sub/nested.yaml": "rules:\n  - id: N-1\n    description: n\n",
 	})
 	a := CheckRuleAdapter{Repo: &git.Repo{Root: root}}
-	all, err := a.LoadRules(context.Background())
+	all, err := a.LoadRules(context.Background(), "ai/rules")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,16 +81,17 @@ func TestCheckRuleAdapterLoadRulesFromGlobLikeRoot(t *testing.T) {
 
 func TestCheckRuleAdapterLoadRulesWithoutFolder(t *testing.T) {
 	a := CheckRuleAdapter{Repo: &git.Repo{Root: t.TempDir()}}
-	if all, err := a.LoadRules(context.Background()); err != nil || len(all) != 0 {
+	if all, err := a.LoadRules(context.Background(), "ai/rules"); err != nil || len(all) != 0 {
 		t.Fatalf("no folder, no rules: %v %v", all, err)
 	}
 }
 
 func TestCheckRuleAdapterLoadRulesInvalid(t *testing.T) {
 	root := t.TempDir()
-	checkRuleWrite(t, root, map[string]string{"ai/rules/bad.yaml": "rules:\n  - id: X-1\n"})
+	checkRuleWrite(t, root, map[string]string{"governance/rules/bad.yaml": "rules:\n  - id: X-1\n"})
 	a := CheckRuleAdapter{Repo: &git.Repo{Root: root}}
-	if _, err := a.LoadRules(context.Background()); err == nil || !strings.Contains(err.Error(), "ai/rules/bad.yaml") {
+	_, err := a.LoadRules(context.Background(), "governance/rules")
+	if err == nil || !strings.Contains(err.Error(), "governance/rules/bad.yaml") {
 		t.Fatalf("got %v, want the error of the file", err)
 	}
 }

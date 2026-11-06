@@ -25,13 +25,14 @@ func (a CheckSetupAdapter) LoadWorkflow(_ context.Context, running string) (work
 	return ParseWorkflow(data, existed, running)
 }
 
-// LoadRules reads the yaml files of ai/rules/ and parses them (rule.ParseFilesAll); without the folder there are none.
-func (a CheckSetupAdapter) LoadRules(_ context.Context) ([]rule.Rule, []string, error) {
-	files, err := file.ReadDir(filepath.Join(a.Repo.Root, rule.Dir), ".yaml")
+// LoadRules reads the yaml files of the folder dir and parses them (rule.ParseFilesAll); without the folder there
+// are none.
+func (a CheckSetupAdapter) LoadRules(_ context.Context, dir string) ([]rule.Rule, []string, error) {
+	files, err := file.ReadDir(filepath.Join(a.Repo.Root, filepath.FromSlash(dir)), ".yaml")
 	if err != nil {
 		return nil, nil, err
 	}
-	return rule.ParseFilesAll(files)
+	return rule.ParseFilesAll(dir, files)
 }
 
 // Missing reports whether the check does not exist below the root.

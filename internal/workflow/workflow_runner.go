@@ -11,8 +11,9 @@ import (
 	"github.com/mlophez/polix-ai/pkg/glob"
 )
 
-// Rules is the key `rules` of polix.yaml: how the checks of the rules of ai/rules/ run.
+// Rules is the key `rules` of polix.yaml: the folder of the rules (Workflow.RulesPath) and how their checks run.
 type Rules struct {
+	Path string // the folder of the rules relative to the root, empty for DefaultRulesPath
 	// Run holds the runners in file order; the first whose glob matches a check runs it.
 	Run  []Runner
 	Keys []string // the keys the file used, so Valid rejects unknown ones
@@ -196,7 +197,10 @@ func runnerName(id string) string {
 }
 
 func (v *validator) rules(r Rules) {
-	v.unknownKeys(0, "rules", r.Keys, []string{"run"})
+	v.unknownKeys(0, "rules", r.Keys, []string{"path", "run"})
+	if p := layoutProblem(r.Path); p != "" {
+		v.add(0, "rules.path %q %s", r.Path, p)
+	}
 	for _, run := range r.Run {
 		v.runner(run)
 	}

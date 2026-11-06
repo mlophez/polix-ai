@@ -3,7 +3,7 @@ name: workflow
 description: >
   Writes or changes polix.yaml, the workflow polix applies to the sessions of the agents on every event.
   Use it when the user asks to block, require, run, inject or record something in the workflow.
-  It never writes ai/rules/: that is the skill add-rule.
+  It never writes the rules (rules.path, ai/rules/ by default): that is the skill add-rule.
 effort: medium
 model: inherit
 user-invocable: true
@@ -38,7 +38,8 @@ In `actor`, an agent of a plugin goes with its prefix (`polix:reviewer`, never `
 - When the change uses a key, event, condition or action the file did not use yet, set `requires` to the output of
   `polix version`, unless it is `dev` or `requires` is already newer; never lower `requires`.
 - Never remove an option `polix check` calls unknown before `polix update` rules out an outdated polix.
-- Only write `polix.yaml`; rules of the code go to `ai/rules/` with the skill `add-rule` of polix.
+- Only write `polix.yaml`; rules of the code go to the folder of rules with the skill `add-rule` of polix.
+- When `rules.path`, `plans.path` or `reports.path` changes, tell the user to move the files of the old folder.
 - Talk to the user in the language of the session.
 
 ## References
@@ -53,7 +54,7 @@ Copy this checklist and track your progress:
 
 ```text
 Workflow progress:
-- [ ] Step 1: Read reference.yaml (see `Format`), polix.yaml, ai/rules/ and the Justfile, Makefile or package.json.
+- [ ] Step 1: Read reference.yaml (see `Format`), polix.yaml, the folder of rules and the Justfile, Makefile or package.json.
 - [ ] Step 2: Ask until each wish maps to an event, its conditions and one action.
 - [ ] Step 3: Show the entries to add and confirm once before writing.
 - [ ] Step 4: Write them and run `polix check` until it reports no problem.

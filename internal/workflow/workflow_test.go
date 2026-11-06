@@ -48,7 +48,7 @@ func TestValidRejects(t *testing.T) {
 		{"empty base name", "version: 1\nbase: [main, \"\"]\n", "base: a branch name cannot be empty"},
 		{"allow on post_edit", "version: 1\non:\n  post_edit:\n    - allow: true\n", "allow cannot let post_edit through"},
 		{"empty runner", "version: 1\nrules:\n  run:\n    \"*_test.go\": []\n", `polix.yaml:4: rules.run "*_test.go": the command is empty`},
-		{"unknown key in rules", "version: 1\nrules:\n  runs: {}\n", `unknown key "runs" in rules (run)`},
+		{"unknown key in rules", "version: 1\nrules:\n  runs: {}\n", `unknown key "runs" in rules (path, run)`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

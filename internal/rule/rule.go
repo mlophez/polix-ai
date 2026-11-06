@@ -1,4 +1,5 @@
-// Package rule holds the rules of ai/rules/: how the code of the project must be written.
+// Package rule holds the rules of the folder of rules (rules.path of polix.yaml, ai/rules/ by default): how the
+// code of the project must be written.
 //
 // Polix only reads the fields it needs (id, description, scope, deterministic, check); the rest of the rule
 // format belongs to the skills that write and use the rules.
@@ -20,9 +21,6 @@ type Rule struct {
 	Check         string // file that decides it (a script, a test), relative to the root, with slashes
 	File          string // file it was read from, relative to the root
 }
-
-// Dir is the folder of the rules, relative to the repository root.
-const Dir = "ai/rules"
 
 // Valid reports why the rule is not a rule: it needs an id and a description, only a deterministic rule may
 // name a check, and the check is relative to the root.

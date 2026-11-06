@@ -1,6 +1,6 @@
 # CheckRule
 
-Runs the checks of the deterministic rules of `ai/rules/`, so CI and the agent learn whether the code breaks a
+Runs the checks of the deterministic rules of the folder `rules.path` of polix.yaml (`ai/rules/` by default), so CI and the agent learn whether the code breaks a
 rule that a script or a test can decide.
 
 ## Trigger
@@ -28,8 +28,9 @@ polix rules check [--dir <dir>] [--changed] [--base <branch>]
 CheckRuleOutput` decides which checks run and how, in the step shape. It takes what the shell read through the
 port, the choice of the request and what the runs carried out so far gave:
 
-- `rules`: the rules of `ai/rules/*.yaml`, retired ones (`retired.yaml`) excluded, ordered by id.
-- `wf`: the workflow of polix.yaml, the default one without the file; only its runners (`rules.run`) matter here.
+- `rules`: the rules of the `*.yaml` of the folder of rules, retired ones (`retired.yaml`) excluded, ordered by id.
+- `wf`: the workflow of polix.yaml, the default one without the file; only its runners (`rules.run`) matter here
+  (the shell uses its `rules.path` to read the rules).
 - `onlyChanged`: whether `--changed` was given.
 - `changed`: the files changed by the branch against its base, relative to the root; only with `--changed`.
 - `outcomes`: the `rule.Outcome` of each run carried out so far, in order.
@@ -79,8 +80,8 @@ and with 1 otherwise.
 `CheckRulePort`, declared in `check_rule_in.go` and implemented by `CheckRuleAdapter` in
 `check_rule_out.go`:
 
-- `LoadRules`: reads and parses the files of `ai/rules/`, `retired.yaml` left out, ordered by id; without the
-  folder, no rules.
+- `LoadRules`: reads and parses the files of the folder it is given (`Workflow.RulesPath`), `retired.yaml` left
+  out, ordered by id; without the folder, no rules.
 - `LoadWorkflow`: reads polix.yaml, always, for its runners and its base branches; without polix.yaml, the default
   workflow. Of the problems that `polix check` reports on a workflow that parses, only those of `rules`
   stop the use case (see Errors); the rest are left to `polix check`.
@@ -102,12 +103,12 @@ The use case stops, without running any check, when:
 
 - `--base` is given without `--changed`.
 - `--dir` is not inside a git repository.
-- A file of `ai/rules/` cannot be read, is not valid yaml or holds a rule that is not `Valid` (a rule without id
+- A file of the folder of rules cannot be read, is not valid yaml or holds a rule that is not `Valid` (a rule without id
   or description, with a `check` but not `deterministic`, or with a `check` given as an absolute path).
 - polix.yaml cannot be read, is not valid yaml, has an unknown top level key or requires a newer polix.
-- The key `rules` of polix.yaml is not valid (`Rules.Valid`): a runner with an empty argv or glob, an
-  unknown placeholder, or `{files}` or `{dirs}` inside a longer argument, which would otherwise change how a check
-  runs.
+- The key `rules` of polix.yaml is not valid (`Rules.Valid`): a `path` that is not a folder below the root, a
+  runner with an empty argv or glob, an unknown placeholder, or `{files}` or `{dirs}` inside a longer argument,
+  which would otherwise change how a check runs.
 - A `rule.Outcome` or a `rule.Result` is not `Valid`.
 - With `--changed`, none of the base branches exists, or git fails to list the changed files.
 
@@ -117,8 +118,8 @@ The command returns the error, which `pkg/cli.Run` prints in one line, `polix: <
 
 1. `CheckRuleCommand` checks the flags, turns them into a `CheckRuleRequest` and injects
    `CheckRuleAdapter{Repo: repo}` as the `CheckRulePort`.
-2. The shell reads the rules, stopping on one that is not `Valid`, and the workflow, stopping on invalid
-   runners, through the port and, with `--changed`, the changed files against
+2. The shell reads the workflow, stopping on an invalid key `rules`, and then the rules of its `rules.path`,
+   stopping on one that is not `Valid`, through the port and, with `--changed`, the changed files against
    `--base` or else the base branches of the workflow.
 3. The shell calls `CheckRule` in a loop, from one call site, with the outcomes so far: while
    `CheckRuleOutput.Next` is set, it runs it through `RunCheck`, builds a `rule.Outcome` from the run, followed by

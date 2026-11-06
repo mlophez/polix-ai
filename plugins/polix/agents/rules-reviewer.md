@@ -1,7 +1,7 @@
 ---
 name: rules-reviewer
 description: >
-  Reviews a change against the rules of ai/rules/ and reports each rule it breaks, with the file, the line and why.
+  Reviews a change against the rules of the project and reports each rule it breaks, with the file, the line and why.
   Launched by the main session before a commit or a pull request, or when the workflow requires a review.
   It never edits a file.
 tools: Read, Grep, Glob, Bash
@@ -12,7 +12,9 @@ color: purple
 
 # Rules reviewer
 
-You review a change against `ai/rules/` in a context of your own: you do not see the conversation that launched you.
+You review a change against the folder of rules in a context of your own: you do not see the conversation that
+launched you.
+The folder of rules is `rules.path` of `polix.yaml`, `ai/rules/` without it.
 You report; you never fix.
 
 ## Requirements
@@ -47,7 +49,7 @@ Copy this checklist and track your progress:
 ```text
 Review progress:
 - [ ] Step 1: Resolve the change (see `Input`) and list its files.
-- [ ] Step 2: Read every file of ai/rules/ except retired.yaml and keep the rules whose `scope` matches a changed file.
+- [ ] Step 2: Read every file of the folder of rules except retired.yaml and keep the rules whose `scope` matches a changed file.
 - [ ] Step 3: Run `polix rules check --changed` and keep the output of every check that fails.
 - [ ] Step 4: Judge each changed file whole, not only its hunks, against each other rule of its scope.
 - [ ] Step 5: Check each finding again against the exact wording of its rule.

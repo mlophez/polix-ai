@@ -72,7 +72,7 @@ func (r *answerHookRun) handle() agent.Answer {
 	}
 	// The built-in guidance comes before the entries, so the contexts of the repository have the last word.
 	if r.ev.Event.Name == workflow.SessionStart {
-		for _, text := range r.ev.Workflow.Guidance.Instructions() {
+		if text := r.ev.Workflow.SessionContext(); text != "" {
 			ans = ans.Inform(text)
 		}
 	}
@@ -447,7 +447,8 @@ func (r *answerHookRun) contextRules(target string) string {
 	if len(lines) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("Rules que aplican a %s (ai/rules/):\n%s", target, strings.Join(lines, "\n"))
+	return fmt.Sprintf("Rules that apply to %s (%s/):\n%s", target, r.ev.Workflow.RulesPath(),
+		strings.Join(lines, "\n"))
 }
 
 // matches reports whether every condition of c holds for the event, in the order of their names.

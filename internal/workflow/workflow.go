@@ -39,7 +39,9 @@ type Workflow struct {
 	Protected []string
 	Vars      map[string]Var
 	On        map[string][]Entry
-	Rules     Rules    // how the checks of the rules run
+	Rules     Rules    // the folder of the rules and how their checks run
+	Plans     Folder   // the folder of the plans
+	Reports   Folder   // the folder of the reports
 	Guidance  Guidance // the built-in instructions injected at session start
 }
 
@@ -165,6 +167,8 @@ func (w Workflow) Problems() []string {
 		}
 	}
 	v.rules(w.Rules)
+	v.folder("plans", w.Plans)
+	v.folder("reports", w.Reports)
 	v.guidance(w.Guidance)
 	return v.problems
 }

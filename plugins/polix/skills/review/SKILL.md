@@ -1,7 +1,7 @@
 ---
 name: review
 description: >
-  Reviews the current change with the subagent polix:reviewer: its intent, bugs, the rules of ai/rules/, its tests
+  Reviews the current change with the subagent polix:reviewer: its intent, bugs, the rules of the project, its tests
   and its docs, and relays the verdict.
   Use it before a commit or a pull request, or when the user asks to review the change.
   It never fixes what it finds.
@@ -26,7 +26,7 @@ You write the intent, which only this session knows; the subagent judges the cod
 
 - **Change**: the range or files from the arguments.
   Without them, the current change: the branch against its base plus what is staged, not staged and untracked.
-- **Intent**: what the change must achieve, from the conversation: the request, the plan of `ai/plans/` or the ticket.
+- **Intent**: what the change must achieve, from the conversation: the request, the plan of the folder of plans (`plans.path`) or the ticket.
   Without any, leave it empty and the subagent infers it.
 
 ## Rules

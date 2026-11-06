@@ -1,7 +1,8 @@
 ---
 name: plan
 description: >
-  Writes a self-contained implementation plan in ai/plans/ for a feature, refactor or bugfix, before any code.
+  Writes a self-contained implementation plan in the folder of plans (ai/plans/ by default) for a feature, refactor
+  or bugfix, before any code.
   It interviews the user on what the request leaves open and replaces plan mode.
   Use it to plan a change or to adjust a plan; it never writes code, branches or commits.
 effort: high
@@ -15,6 +16,8 @@ argument-hint: "[what to plan, e.g. add retries to the webhook sender; empty to 
 
 Turn a request into a plan file that any executor runs without asking: what to change, where, why and how to verify it.
 The plan describes the change; it never holds code.
+The folder of plans is `plans.path` of `polix.yaml` and the folder of rules is `rules.path`.
+Without them, `ai/plans/` and `ai/rules/`; polix names both at session start.
 
 ## Requirements
 
@@ -25,7 +28,7 @@ The plan describes the change; it never holds code.
 
 - **Request**: what to plan, from the arguments or the conversation.
   Without either, ask the user.
-- **Plan**: the file of `ai/plans/` to adjust, when the request names or refers to one.
+- **Plan**: the file of the folder of plans to adjust, when the request names or refers to one.
 
 ## Rules
 
@@ -38,7 +41,7 @@ The plan describes the change; it never holds code.
 - When the scope is too big, propose splitting it into plans, each with its outcome and dependencies.
   Split by function, never by layer (data, API, UI) or into preparatory steps.
   Once the user confirms, plan only the part they pick and list the others in `Out of scope`.
-- Reference the rules of `ai/rules/` by id in the `Rules:` of each task, never restate them.
+- Reference the rules of the folder of rules by id in the `Rules:` of each task, never restate them.
 - Name no executor, agent or tool in the plan file.
 - Interview in the language of the session.
   Write the plan file in the language of the docs of the repository, English when there are none.
@@ -50,14 +53,14 @@ The plan describes the change; it never holds code.
 
 - Read `AGENTS.md` and `CLAUDE.md` when they are not in context: purpose, stack, commands, layout and testing.
   Run a command as they write it, never rebuild it.
-- Read every file of `ai/rules/` except `retired.yaml`, whose ids never apply.
+- Read every file of the folder of rules except `retired.yaml`, whose ids never apply.
 - A rule applies when the trigger of its `description` holds and the files touched match its `scope`.
   Without `scope`, it applies to the whole project.
 - A rule with `default: true` allows a departure, with its reason in `Decisions`; any other rule is mandatory.
   A task never breaks a mandatory rule: when the design needs it, stop and tell the user.
 - Two rules with the same `scope` that contradict each other: stop and report both ids, never choose one.
 - The `check` of the rules of the tasks and the commands of `AGENTS.md` feed `Verification`.
-- Without facts in `AGENTS.md` or without `ai/rules/`, follow the conventions of the surrounding code.
+- Without facts in `AGENTS.md` or without the folder of rules, follow the conventions of the surrounding code.
   Say what is missing in `Missing docs`.
 
 ### Design baseline
@@ -73,7 +76,8 @@ The rules of the project and the surrounding code win over it.
 
 ### Plan file
 
-Path: `ai/plans/<name>.md`, where `<name>` is short kebab-case English from the request, with no date.
+Path: `<plans>/<name>.md`, where `<plans>` is the folder of plans and `<name>` is short kebab-case English from the
+request, with no date.
 Example: `ai/plans/add-retry-to-webhook-sender.md`.
 When another plan already has the name, choose a different one.
 

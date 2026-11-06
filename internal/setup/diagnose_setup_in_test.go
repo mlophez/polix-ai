@@ -47,7 +47,7 @@ func (f *fakeDiagnoseSetupPort) LoadWorkflow(_ context.Context, _, _ string) (wo
 	f.note("LoadWorkflow")
 	return workflow.Workflow{}, true, nil
 }
-func (f *fakeDiagnoseSetupPort) LoadRules(_ context.Context, _ string) ([]rule.Rule, []string, error) {
+func (f *fakeDiagnoseSetupPort) LoadRules(_ context.Context, _, _ string) ([]rule.Rule, []string, error) {
 	return []rule.Rule{{ID: "A-1", Description: "d", Deterministic: true, Check: "a.sh", File: "f"}}, nil, nil
 }
 func (f *fakeDiagnoseSetupPort) Missing(_ context.Context, _, _ string) bool { return false }
