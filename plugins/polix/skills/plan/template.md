@@ -37,6 +37,8 @@ Cover the data model and the error handling.>
 ### Task 1: <What the task delivers>
 
 - Covers: <the acceptance criteria the task fulfils, e.g. `AC1, AC2`, or `none` for a supporting task>.
+- Depends on: <the tasks that must be done before this one, e.g. `Task 1`, or `none`.
+  Tasks that depend on none of each other and share no file may run at the same time>.
 - Files: `<path>` (create), `<path>` (`<function, type or method>`, modify).
 - Rules: <the ids of the rules of the folder of rules whose trigger holds for the task and whose `scope` matches its `Files:`.
   E.g. `ARCH-7, STYLE-3`, or `none`>.

@@ -122,7 +122,7 @@ Adopt the whole flow, a single phase or none of it.
 
 > The harness is in progress. Today the plugin holds the skills that set Polix up (`/polix:workflow`,
 > `/polix:add-rule`, `/polix:doctor`, `/polix:init`), the skills `/polix:plan`, `/polix:review` and
-> `/polix:audit`, and the agents `polix:workflow-author`, `polix:rules-author`, `polix:reviewer`,
+> `/polix:audit`, and the agents `polix:workflow-author`, `polix:rules-author`, `polix:builder`, `polix:reviewer`,
 > `polix:rules-reviewer` and `polix:auditor`.
 
 ## Quick start
@@ -161,7 +161,7 @@ polix install --agent claude      # only Claude Code (default: Claude Code, and 
 
 - **For you, the plugin `polix`.** It holds the skills `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`,
   `/polix:init`, `/polix:plan`, `/polix:review` and `/polix:audit` and the agents `polix:workflow-author`,
-  `polix:rules-author`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`.
+  `polix:rules-author`, `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`.
   The plugin ships inside the binary: Polix writes it to the local marketplace `~/.polix/marketplace/` and
   registers it with `claude plugin install polix@polix --scope user` (for Codex, it enables it in
   `~/.codex/config.toml`). The plugin only arrives this way: the repository serves no marketplace.

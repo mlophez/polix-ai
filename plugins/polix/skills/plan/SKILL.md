@@ -89,6 +89,8 @@ Tasks are `### Task 1: ...`, `### Task 2: ...`, ordered, each implementable and 
 - Reference code by path and symbol (function, type, method), never by line number.
 - The test and edge cases agreed in the interview go to the `Tests:` of their task.
 - `Rules:` lists every rule that applies to the task (see `Project context`).
+- `Depends on:` lists every earlier task whose changes the task needs.
+  Two tasks that edit the same file never run at the same time: the later one depends on the earlier one.
 
 Never write placeholders:
 
@@ -139,6 +141,7 @@ Plan progress:
    Every acceptance criterion is in a `Covers:`.
 2. **Placeholders**: none of the patterns of `Plan file` and no `<...>` left from template.md.
 3. **Consistency**: names, contracts and paths match across tasks and with the real code.
+   Every `Depends on:` names only earlier tasks, and two tasks that share a file are ordered by it.
 4. **Rules**: every id in a `Rules:` exists and is not retired.
    No rule whose `scope` matches the `Files:` of a task is missing from its `Rules:`.
 5. **One change**: nothing is deferred to another phase or plan, except the parts of a confirmed split.
@@ -149,5 +152,6 @@ Plan progress:
 - **Plan**: the path of the plan file.
 - **Overview**: the `Overview` section of the plan, verbatim.
 - **Decisions**: the assumptions taken for unanswered questions, or "none".
-- **Next steps**: adjust the plan, implement it, or review the result with `/polix:review`.
+- **Next steps**: adjust the plan, implement it (with `polix:builder` subagents, at once for the tasks whose
+  `Depends on:` allows it), or review the result with `/polix:review`.
 - **Pending**: open blockers and stale or missing docs, or "none".
