@@ -28,8 +28,8 @@
 # An invalid file (any problem `polix config check` reports) blocks pre_edit, pre_command and pre_commit with the
 # problems (fail closed), except the main session editing polix.yaml or running `polix config check`,
 # `polix config fmt --check`, `polix update`, `polix doctor` or `polix version`, and only warns on the other events,
-# so a broken file never traps a stop in a loop. A file that `requires` a newer polix blocks the same way, asking to run `polix update`, and not even the
-# main session may edit it.
+# so a broken file never traps a stop in a loop. A file that `requires` a newer polix blocks the same way, asking to
+# run `polix update`, and not even the main session may edit it.
 #
 # Cheat sheet (each one is explained where it is first used below):
 # - Shortcuts of guardrails, each in its one form: protected_files and protected_branches take a list of strings;
@@ -54,10 +54,102 @@ version: 1
 # Optional. The oldest polix that knows every option this file uses; set it when an option needs a newer polix
 # than the one the team may have. It is read before the rest of the file, so an older polix that does not know the
 # other options blocks edits and commands asking to run `polix update`, instead of reporting them as mistakes, and
-# the session start hook looks for the new release at once. A development build ignores it. `polix config check` rejects
-# a value that is not a version like 0.2.0. Known since polix 0.1.0: no earlier polix exists. This file needs 0.3.0:
-# `guardrails`, `base_branch` and `max_stop_retries` are unknown to an older polix.
+# the session start hook looks for the new release at once. A development build ignores it. `polix config check`
+# rejects a value that is not a version like 0.2.0. Known since polix 0.1.0: no earlier polix exists. This file needs
+# 0.3.0: `guardrails`, `base_branch` and `max_stop_retries` are unknown to an older polix.
 requires: 0.3.0
+
+# Optional, default main. The branch the change merges into, or a list of candidates, used only by
+# `polix rules check --changed` (CI): each candidate is tried locally and then as origin/<branch>, and the one whose
+# merge base is closest to HEAD wins. The command fails when none exists, and `polix config check` and
+# `polix doctor` warn about it. In the hooks, `changed` always compares with HEAD: the change is reviewed commit
+# by commit.
+# In GitHub Actions, pass `--base="${{ github.base_ref }}"` with a checkout of `fetch-depth: 0`; outside a pull
+# request it is empty, and an empty --base falls back to this list. On a push to a branch of this list, such as
+# main, --changed checks nothing (the branch is its own base): run `polix rules check` without it there.
+# Forms: a single branch, `base_branch: main`, or a list:
+base_branch: [main, dev]
+
+# Optional, default 3 (0 also means 3; negative is rejected). Loop guard of every block of stop and
+# subagent_stop (a block or a failing run): after this many blocks of the same entry, in the same session, by the
+# same actor and on the same content hash, the agent may stop, and the log records a `loop_guard` decision. A block
+# let through by the guard does not end the evaluation, and a subagent let through does not count as `finished`.
+max_stop_retries: 3
+
+# Optional. Variables extracted from the current branch name, usable as {name} in any string and by the condition
+# `var`.
+# - `branch` is a regular expression (Go RE2 syntax): the value is its first group, or the whole match without
+#   groups.
+# - When it does not match, the variable has no value: the `var` condition fails and {name} is left as is.
+# - A variable cannot be called path, command, branch, changed_lines, changed_files or risk_score, the built-in
+#   placeholders, and its only key is `branch`.
+vars:
+  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" } # first group: PLAT-123-add-retry -> PLAT-123
+  release: { branch: "^release/[0-9.]+$" }    # no group, the whole match: release/2.4 -> release/2.4
+
+# Optional. The rules on how to write the code, which polix injects and checks.
+# - `path`, default ai/rules: the folder of the rules, relative to the root (no absolute path, no `..` out of the
+#   root, no glob). polix reads its *.yaml but retired.yaml, not its subfolders.
+# - `run`: how a check of a rule runs. It maps a glob, matched against the `check` of a rule as the globs of a
+#   scope are (without `/` against its base name, with `/` against its path), to the argv that runs it from the
+#   root, without a shell; the first glob that matches wins, in this order, so a specific folder goes before a
+#   generic glob. There are no default runners.
+# Singular placeholders, one value per check: {file} (the check, relative to the root, with /), {dir} (its folder
+# as ./<folder>, ./ at the root), {id} (the id of the rule, GOARCH-4) and {name} (the id with only its letters and
+# digits, GOARCH4).
+# Plural placeholders, for the whole group: {names} (the names joined with |, a regex alternation), {files} and
+# {dirs} (one argument per distinct file or folder; each must be a whole argument).
+# The checks whose argv, with the singular placeholders expanded, is the same share one invocation: the runner of
+# tests/architecture/ below runs once for that folder, `go test ./tests/architecture -run ^Test(GOARCH1|GOARCH2)$`.
+# When a shared invocation fails, each rule of it runs again alone to tell which ones fail.
+# A check no glob matches runs as a program (its shebang; on Windows a .sh with the bash of Git for Windows and a
+# .py with py -3, python3 or python). Used by `polix rules check` and by `run: { rules }`; `polix config check`
+# reports an empty argv, an empty glob, an unknown placeholder or {files} or {dirs} inside a longer argument.
+rules:
+  path: ai/rules
+  run:
+    "tests/architecture/*_test.go": [go, test, "{dir}", -run, "^Test({names})$"] # one go test per folder
+    "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]                       # one go test per rule
+    "*.py": [uv, run, python, "{file}"]                                          # one run per check
+    "*.sh": [bash, "{files}"]                                                    # hypothetical: one bash for all
+
+# Optional. The folders of the plans (written by the skill plan) and of the reports (audits, reviews), relative to
+# the root, with the same limits as rules.path. polix does not read them: it tells the agent where they are
+# (guidance.layout), and the skills write there.
+plans:
+  path: ai/plans
+reports:
+  path: ai/reports
+
+# Optional, every switch true by default. Built-in instructions polix injects into the agent on every start
+# (startup, resume, clear, compaction), in English, as one context before those of the start entries. Its text is
+# the template templates/session_start.md.tmpl of the binary. They ask for cooperation and block nothing. Injected
+# only with a valid polix.yaml; a switch left out is on, false turns it off, and an unknown key is rejected.
+# - commit: run each commit as a git commit command of its own, not chained with &&, ; or | nor wrapped in sh -c,
+#   so pre_commit sees it.
+# - edit: create and change files with the edit tool of the agent, not from the shell (sed -i, redirections, tee,
+#   heredocs), so pre_edit, post_edit and the rules they inject see the change.
+# - layout: the folders of rules.path, plans.path and reports.path, so the agent and the skills use them.
+guidance:
+  commit: true
+  edit: true
+  layout: true
+
+# Optional. The options of the risk score of the condition risk_score.
+# - `weights`: an ordered map of path glob to a non-negative number, the weight of the matching files. The first
+#   glob that matches a file, in this order, gives its weight; a file no glob matches weighs 1. So list the tests
+#   of a critical folder before the folder, to make them weigh less. A weight of 0 leaves a path out of the score.
+# The risk score of a set of files is the sum of weight times log2(1 + added + deleted lines) of each, rounded.
+# `polix config check` reports an empty glob or a negative weight; a weight that is not a number, a `risk` or
+# `weights` that is not a map, and a key of `risk` other than `weights` stop the parse. Calibrate with `polix risk`,
+# on the current change or on a past commit: `polix risk --commit <rev> --changed 'src/**'`.
+risk:
+  weights:
+    "*_test.go": 0.5
+    "src/core/**": 3
+    "src/auth/**": 4
+    "docs/**": 0.2
+    "*.lock": 0
 
 # Optional. The guardrails every project wants from the first minute, each a short list in exactly one form. Two
 # of them are protections of the engine: protected_files and forbidden_commands apply before every entry of `on`, to
@@ -85,9 +177,9 @@ guardrails:
   # .gitignore (`/AGENTS.md` is only the one of the root); `**` protects a whole folder. To keep only the subagents
   # away from a path, use `writes` and `path` with `actor` in `on` instead (see pre_command and pre_edit).
   protected_files:
-    - .env                # every .env, in any folder
-    - "*.pem"             # every certificate or key in PEM, in any folder
-    - /AGENTS.md          # only the one of the root
+    - .env       # every .env, in any folder
+    - "*.pem"    # every certificate or key in PEM, in any folder
+    - /AGENTS.md # only the one of the root
     - /CLAUDE.md
     # - /polix.yaml       # the workflow itself: then only a person changes it
     # - ai/rules/**       # the rules: then the skill add-rule cannot write them
@@ -149,98 +241,6 @@ guardrails:
     - run: just test
       changed: "src/**"
       message: "Los tests no pasan: arréglalos antes de terminar."
-
-# Optional, default main. The branch the change merges into, or a list of candidates, used only by
-# `polix rules check --changed` (CI): each candidate is tried locally and then as origin/<branch>, and the one whose
-# merge base is closest to HEAD wins. The command fails when none exists, and `polix config check` and
-# `polix doctor` warn about it. In the hooks, `changed` always compares with HEAD: the change is reviewed commit
-# by commit.
-# In GitHub Actions, pass `--base="${{ github.base_ref }}"` with a checkout of `fetch-depth: 0`; outside a pull
-# request it is empty, and an empty --base falls back to this list. On a push to a branch of this list, such as
-# main, --changed checks nothing (the branch is its own base): run `polix rules check` without it there.
-# Forms: a single branch, `base_branch: main`, or a list:
-base_branch: [main, dev]
-
-# Optional, default 3 (0 also means 3; negative is rejected). Loop guard of every block of stop and
-# subagent_stop (a block or a failing run): after this many blocks of the same entry, in the same session, by the
-# same actor and on the same content hash, the agent may stop, and the log records a `loop_guard` decision. A block
-# let through by the guard does not end the evaluation, and a subagent let through does not count as `finished`.
-max_stop_retries: 3
-
-# Optional. The rules on how to write the code, which polix injects and checks.
-# - `path`, default ai/rules: the folder of the rules, relative to the root (no absolute path, no `..` out of the
-#   root, no glob). polix reads its *.yaml but retired.yaml, not its subfolders.
-# - `run`: how a check of a rule runs. It maps a glob, matched against the `check` of a rule as the globs of a
-#   scope are (without `/` against its base name, with `/` against its path), to the argv that runs it from the
-#   root, without a shell; the first glob that matches wins, in this order, so a specific folder goes before a
-#   generic glob. There are no default runners.
-# Singular placeholders, one value per check: {file} (the check, relative to the root, with /), {dir} (its folder
-# as ./<folder>, ./ at the root), {id} (the id of the rule, GOARCH-4) and {name} (the id with only its letters and
-# digits, GOARCH4).
-# Plural placeholders, for the whole group: {names} (the names joined with |, a regex alternation), {files} and
-# {dirs} (one argument per distinct file or folder; each must be a whole argument).
-# The checks whose argv, with the singular placeholders expanded, is the same share one invocation: the runner of
-# tests/architecture/ below runs once for that folder, `go test ./tests/architecture -run ^Test(GOARCH1|GOARCH2)$`.
-# When a shared invocation fails, each rule of it runs again alone to tell which ones fail.
-# A check no glob matches runs as a program (its shebang; on Windows a .sh with the bash of Git for Windows and a
-# .py with py -3, python3 or python). Used by `polix rules check` and by `run: { rules }`; `polix config check`
-# reports an empty argv, an empty glob, an unknown placeholder or {files} or {dirs} inside a longer argument.
-rules:
-  path: ai/rules
-  run:
-    "tests/architecture/*_test.go": [go, test, "{dir}", -run, "^Test({names})$"]   # one go test per folder
-    "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]                          # one go test per rule
-    "*.py": [uv, run, python, "{file}"]                                              # one run per check
-    "*.sh": [bash, "{files}"]                                                        # hypothetical: one bash for all
-
-# Optional. The folders of the plans (written by the skill plan) and of the reports (audits, reviews), relative to
-# the root, with the same limits as rules.path. polix does not read them: it tells the agent where they are
-# (guidance.layout), and the skills write there.
-plans:
-  path: ai/plans
-reports:
-  path: ai/reports
-
-# Optional. The options of the risk score of the condition risk_score.
-# - `weights`: an ordered map of path glob to a non-negative number, the weight of the matching files. The first
-#   glob that matches a file, in this order, gives its weight; a file no glob matches weighs 1. So list the tests
-#   of a critical folder before the folder, to make them weigh less. A weight of 0 leaves a path out of the score.
-# The risk score of a set of files is the sum of weight times log2(1 + added + deleted lines) of each, rounded.
-# `polix config check` reports an empty glob or a negative weight; a weight that is not a number, a `risk` or `weights`
-# that is not a map, and a key of `risk` other than `weights` stop the parse. Calibrate with `polix risk`, on the
-# current change or on a past commit: `polix risk --commit <rev> --changed 'src/**'`.
-risk:
-  weights:
-    "*_test.go": 0.5
-    "src/core/**": 3
-    "src/auth/**": 4
-    "docs/**": 0.2
-    "*.lock": 0
-
-# Optional, every switch true by default. Built-in instructions polix injects into the agent on every start
-# (startup, resume, clear, compaction), in English, as one context before those of the start entries. Its text is
-# the template templates/session_start.md.tmpl of the binary. They ask for cooperation and block nothing. Injected
-# only with a valid polix.yaml; a switch left out is on, false turns it off, and an unknown key is rejected.
-# - commit: run each commit as a git commit command of its own, not chained with &&, ; or | nor wrapped in sh -c,
-#   so pre_commit sees it.
-# - edit: create and change files with the edit tool of the agent, not from the shell (sed -i, redirections, tee,
-#   heredocs), so pre_edit, post_edit and the rules they inject see the change.
-# - layout: the folders of rules.path, plans.path and reports.path, so the agent and the skills use them.
-guidance:
-  commit: true
-  edit: true
-  layout: true
-
-# Optional. Variables extracted from the current branch name, usable as {name} in any string and by the condition
-# `var`.
-# - `branch` is a regular expression (Go RE2 syntax): the value is its first group, or the whole match without
-#   groups.
-# - When it does not match, the variable has no value: the `var` condition fails and {name} is left as is.
-# - A variable cannot be called path, command, branch, changed_lines, changed_files or risk_score, the built-in
-#   placeholders, and its only key is `branch`.
-vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }     # first group: PLAT-123-add-retry -> PLAT-123
-  release: { branch: "^release/[0-9.]+$" }        # no group, the whole match: release/2.4 -> release/2.4
 
 # Placeholders, replaced in the strings of conditions (except `branch`), verbs and `contains`; an unknown one
 # is rejected by `polix config check`:
@@ -321,10 +321,10 @@ on:
   # background). A check that must hold is a `run` of polix.
   #
   # Unknown events, keys (also inside action, run, inject, block and vars), conditions and verbs are rejected by
-  # `polix config check`, and so are conditions on events where they never hold (path, command, writes, exit). A name of
-  # the old vocabulary (session_start, turn_stop, if, why, mode, deny, require, allow, run or context as keys of an
-  # entry, record, done, at_least, and the top-level protected, base and max_stop_blocks) is reported with its new
-  # spelling.
+  # `polix config check`, and so are conditions on events where they never hold (path, command, writes, exit). A
+  # name of the old vocabulary (session_start, turn_stop, if, why, mode, deny, require, allow, run or context as keys
+  # of an entry, record, done, at_least, and the top-level protected, base and max_stop_blocks) is reported with its
+  # new spelling.
 
   # start: a session starts, resumes, is cleared or is compacted. It cannot be blocked: block is rejected, and a
   # failing run reaches the AI as context, its message first. On start every inject acts every time, so the context
@@ -414,7 +414,7 @@ on:
     # except the main session adding a new one. A list in path holds when any glob matches.
     - when:
         path: ["db/migrations/**", "src/**/migrations/**"]
-        not: { actor: session, file: "db/migrations/.allow-{key}" }
+        not: { file: "db/migrations/.allow-{key}", actor: session }
       action:
         block: "Las migraciones publicadas no se editan: crea una nueva con el ticket {key}."
     # A reminder on pre_edit: the first edit of a generated file by each actor is blocked once, the next goes
@@ -584,7 +584,7 @@ on:
   # when the main session ends its turn. inject is rejected here.
   subagent_stop:
     # The builder does not finish until the tests pass: polix runs them, it never trusts that the builder ran them.
-    - when: { actor: acme:builder, changed: "src/**" }
+    - when: { changed: "src/**", actor: acme:builder }
       action:
         run:
           command: just test
