@@ -2,8 +2,9 @@
 
 Recipes for `polix.yaml`, from a single guardrail to a whole development flow. Each one is a fragment: put its
 entries under the `on:` of your workflow (with `version: 1` at the top), validate it with `polix check` and draw
-it with `polix graph`. The full reference of every option is [`examples/polix.yaml`](../examples/polix.yaml);
-the design and its limits are in [polix.md](polix.md).
+it with `polix graph`. Every key, condition and verb is described in [reference.md](reference.md), and a whole
+annotated workflow is [`examples/polix.yaml`](../examples/polix.yaml); the design and its limits are in
+[polix.md](polix.md).
 
 Every recipe follows the same idea: polix **measures and never judges**. It knows which files changed, which
 command ran and with which exit code, which of its own checks passed on which content and which subagent ended on

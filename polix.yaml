@@ -62,7 +62,8 @@ on:
     # The formatters of .golangci.yml (gofmt, goimports) rewrite the edited Go file, so the agent never formats by
     # hand. The {path} makes one command per path, run again whenever that path changes.
     - when: { path: "*.go" }
-      action: { run: "golangci-lint fmt {path}" }
+      action:
+        run: "golangci-lint fmt {path}"
 
   # pre_commit: before a git commit runs.
   pre_commit:
@@ -98,9 +99,11 @@ on:
     # linters, govet (go vet) among them, and those of idiomatic Go. Only when a Go file or the lint configuration
     # changed.
     - when: { changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"] }
-      action: { run: golangci-lint run ./... }
+      action:
+        run: golangci-lint run ./...
 
     # Every test of the module, without the agent asking for it. The install scripts and scripts/ are tested from
     # Go, so a change in them runs the tests too. Go caches the results, so a run on code already tested is fast.
     - when: { changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"] }
-      action: { run: go test ./... }
+      action:
+        run: go test ./...

@@ -185,7 +185,8 @@ of the repository (`--user` for only the plugin).
 
 **3. Write your workflow**
 
-Start from [`examples/polix.yaml`](examples/polix.yaml), an annotated reference of every option, and validate it:
+Start from [`examples/polix.yaml`](examples/polix.yaml), an annotated reference of every option (each one is
+described in [docs/reference.md](docs/reference.md)), and validate it:
 
 ```bash
 polix check     # validate polix.yaml and ai/rules/
@@ -287,7 +288,8 @@ Commands are split and matched the way a shell runs them. In `cd x && just test 
 commands. It also knows that `tail` decides the exit code of the line, so `exit` looks at the right command. A
 command the agent runs is never counted as a check that passed: a check that must hold is a `run` of Polix.
 
-The full reference, with comments on every option, is in [`examples/polix.yaml`](examples/polix.yaml).
+The reference of every key, event, condition and verb is in [docs/reference.md](docs/reference.md), and a whole
+workflow with comments on every option is in [`examples/polix.yaml`](examples/polix.yaml).
 
 ## Use cases
 

@@ -262,7 +262,7 @@ heuristic, aimed at accidents rather than at an agent determined to get around i
 ## polix.yaml
 
 `examples/polix.yaml` is the current Logalty flow written as a workflow, annotated as a reference of every option;
-a test validates it.
+a test validates it. [reference.md](reference.md) describes every key, event, condition and verb one by one.
 
 ```yaml
 version: 1
