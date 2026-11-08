@@ -792,7 +792,7 @@ it. Running it again rewrites what changed and removes what the release dropped.
 - The plugin `polix`, for the user, since it helps in any repository. It is the folder `plugins/polix/` of this
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
   the folder of rules, `doctor` fixes the setup, `plan` writes a plan in the folder of plans, `review` reviews the
-  current change with the agent `reviewer`, `audit` audits the repository with several `auditor` agents in
+  current change with the agent `reviewer` and saves the report in the folder of reports, `audit` audits the repository with several `auditor` agents in
   parallel and saves the report in the folder of reports) and, for Claude Code, agents (`workflow-author`,
   `rules-author`, `builder`, which implements one task of a plan without committing, so several run at once on tasks
   that do not depend on each other, and the read-only `reviewer`, `rules-reviewer` and `auditor`). Install writes it,
@@ -807,6 +807,12 @@ it. Running it again rewrites what changed and removes what the release dropped.
     `/polix:review` and `/polix:audit`, its agents `polix:workflow-author`, `polix:rules-author`, `polix:builder`,
     `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`. The skills `review` and `audit` launch the
     agents, and the main session launches `builder`; Codex, which has no agents of plugins, follows the file of the agent in the session instead.
+  - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
+    or the workflow of polix asks for it, as its description says: the model does not reach for them by itself, and
+    a message of polix such as "Run /polix:review" still runs the skill. The read-only agents (`reviewer`,
+    `rules-reviewer`, `auditor`) fill the report template inside their own file. The skills `audit` and `review`
+    save their report in the folder of reports from the `template.md` next to them, as `plan` saves its plan; a
+    `polix:reviewer` launched without the skill answers in the chat and saves no file.
   - Codex, when it is installed (or with `--agent codex`): `codex plugin marketplace add ~/.polix/marketplace` and
     `[plugins."polix@polix"] enabled = true` in `~/.codex/config.toml`, the rest of the file kept. Codex documents
     no command to install a plugin without its interface, so this part is experimental until it is checked against

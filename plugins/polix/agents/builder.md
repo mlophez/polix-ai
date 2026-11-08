@@ -3,8 +3,8 @@ name: builder
 description: >
   Implements one task of a plan of the folder of plans: the changes, tests and verification it describes, touching
   only its files, and reports what it did.
-  Launched by the main session with the plan and the task, often several at once on tasks that do not depend on each
-  other, in the same working tree.
+  Launch it only when the user or the workflow of polix asks for it, with the plan and the task, several at once on
+  tasks that do not depend on each other.
   It never commits nor touches the index, and never edits a file outside its task.
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: inherit

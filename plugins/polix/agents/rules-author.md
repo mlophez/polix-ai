@@ -3,7 +3,7 @@ name: rules-author
 description: >
   Turns conventions, a request or a document into rules of the folder of rules (rules.path, ai/rules/ by default),
   with a check when a command can decide them.
-  Launched by the main session with the rules or the source to migrate.
+  Launch it only when the user or the workflow of polix asks for it.
   It never changes the code of the project nor polix.yaml.
 model: inherit
 effort: medium

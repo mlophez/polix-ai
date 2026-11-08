@@ -2,8 +2,7 @@
 name: workflow
 description: >
   Writes or changes polix.yaml, the workflow polix applies to the sessions of the agents on every event.
-  Use it when the user asks to protect files or branches, forbid commands, format edited files, run checks before
-  the agent ends its turn, block, run or inject something in the workflow, or require a check or a review.
+  It runs only when the user or the workflow of polix asks for it.
   It never writes the rules (rules.path, ai/rules/ by default): that is the skill add-rule.
 effort: medium
 model: inherit

@@ -22,6 +22,7 @@ Los dos instalan el binario y ejecutan `polix install --user`, que instala para 
 en Claude Code, las skills `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:init`,
 `/polix:plan`, `/polix:review` y `/polix:audit` y los agents `polix:workflow-author`, `polix:rules-author`,
 `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` y `polix:auditor`.
+Ejecuta esas skills y agents solo cuando el usuario o el workflow de polix lo pidan, nunca por iniciativa propia.
 Los hooks ya vienen en el repositorio.
 Después, pide al usuario que reinicie Claude Code para que cargue el plugin y los hooks encuentren polix en el
 `PATH`, y comprueba el equipo con `polix doctor`.

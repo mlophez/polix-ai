@@ -39,32 +39,117 @@ func TestManifests(t *testing.T) {
 	}
 }
 
-// The name in the frontmatter of every skill and agent is the name of its folder or file, which is how the agents
-// invoke it.
-func TestFrontmatterNames(t *testing.T) {
-	check := func(p, want string) {
-		data, err := FS.ReadFile(p)
+// component is a skill or an agent of the plugin: its path, the name it must carry, its frontmatter and its body.
+type component struct {
+	path, name, front, body string
+}
+
+// field returns the value of a key of the frontmatter, joining the lines of a folded value and collapsing their
+// whitespace, so a sentence wrapped across lines matches as one.
+func (c component) field(key string) (string, bool) {
+	lines := strings.Split(c.front, "\n")
+	for i, l := range lines {
+		value, ok := strings.CutPrefix(l, key+":")
+		if !ok {
+			continue
+		}
+		parts := []string{strings.TrimSpace(value)}
+		if parts[0] == ">" || parts[0] == "|" {
+			parts = nil
+			for _, next := range lines[i+1:] {
+				if !strings.HasPrefix(next, " ") {
+					break
+				}
+				parts = append(parts, next)
+			}
+		}
+		return strings.Join(strings.Fields(strings.Join(parts, " ")), " "), true
+	}
+	return "", false
+}
+
+// components reads every skill or every agent of the plugin and fails when one has no frontmatter.
+func components(t *testing.T, kind string) []component {
+	t.Helper()
+	entries, err := fs.ReadDir(FS, "polix/"+kind)
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("the plugin has %s: %v", kind, err)
+	}
+	var out []component
+	for _, e := range entries {
+		c := component{path: path.Join("polix", kind, e.Name()), name: strings.TrimSuffix(e.Name(), ".md")}
+		if kind == "skills" {
+			c.path = path.Join(c.path, "SKILL.md")
+		}
+		data, err := FS.ReadFile(c.path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		front, _, ok := strings.Cut(strings.TrimPrefix(string(data), "---\n"), "\n---\n")
+		front, body, ok := strings.Cut(strings.TrimPrefix(string(data), "---\n"), "\n---\n")
 		if !strings.HasPrefix(string(data), "---\n") || !ok {
-			t.Fatalf("%s: no frontmatter", p)
+			t.Fatalf("%s: no frontmatter", c.path)
 		}
-		if !strings.Contains("\n"+front+"\n", "\nname: "+want+"\n") || !strings.Contains(front, "description:") {
-			t.Fatalf("%s: the frontmatter needs name: %s and a description", p, want)
+		c.front, c.body = front, body
+		out = append(out, c)
+	}
+	return out
+}
+
+// The name in the frontmatter of every skill and agent is the name of its folder or file, which is how the agents
+// invoke it.
+func TestFrontmatterNames(t *testing.T) {
+	for _, c := range append(components(t, "skills"), components(t, "agents")...) {
+		name, _ := c.field("name")
+		if _, ok := c.field("description"); name != c.name || !ok {
+			t.Errorf("%s: the frontmatter needs name: %s and a description", c.path, c.name)
 		}
 	}
-	skills, _ := fs.ReadDir(FS, "polix/skills")
-	for _, s := range skills {
-		check(path.Join("polix/skills", s.Name(), "SKILL.md"), s.Name())
+}
+
+// Every skill and every agent runs only when the user or the workflow of polix asks for it: its description says so
+// with a fixed sentence and invites the model to run it by itself with no other.
+func TestInvocation(t *testing.T) {
+	check := func(c component, want, banned string) {
+		d, _ := c.field("description")
+		if !strings.Contains(d, want) {
+			t.Errorf("%s: the description needs the sentence %q", c.path, want)
+		}
+		if strings.Contains(d, banned) {
+			t.Errorf("%s: the description must not say %q: only the user or the workflow of polix runs it", c.path, banned)
+		}
 	}
-	agents, _ := fs.ReadDir(FS, "polix/agents")
-	for _, a := range agents {
-		check(path.Join("polix/agents", a.Name()), strings.TrimSuffix(a.Name(), ".md"))
+	for _, c := range components(t, "skills") {
+		check(c, "It runs only when the user or the workflow of polix asks for it.", "Use it")
 	}
-	if len(skills) == 0 || len(agents) == 0 {
-		t.Fatal("the plugin has skills and agents")
+	for _, c := range components(t, "agents") {
+		check(c, "Launch it only when the user or the workflow of polix asks for it", "Launched by")
+	}
+}
+
+// Every agent that cannot write a file reports, and its report follows a template inside its own file, since an
+// agent launched by polix cannot read files next to it.
+func TestAgentReportTemplates(t *testing.T) {
+	for _, c := range components(t, "agents") {
+		tools, ok := c.field("tools")
+		if !ok || strings.Contains(tools, "Edit") || strings.Contains(tools, "Write") {
+			continue
+		}
+		if !strings.Contains("\n"+c.body, "\n### Report template\n") {
+			t.Errorf("%s: an agent without Edit nor Write reports, and needs a ### Report template section", c.path)
+		}
+	}
+}
+
+// Every skill that saves a report or a plan writes it from a template.md next to its SKILL.md.
+func TestSkillFileTemplates(t *testing.T) {
+	for _, c := range components(t, "skills") {
+		body := "\n" + c.body
+		if !strings.Contains(body, "\n### Report file\n") && !strings.Contains(body, "\n### Plan file\n") {
+			continue
+		}
+		if _, err := fs.Stat(FS, path.Join(path.Dir(c.path), "template.md")); err != nil {
+			t.Errorf("%s: a skill that saves a file needs a template.md next to it: %v", c.path, err)
+		}
 	}
 }
 

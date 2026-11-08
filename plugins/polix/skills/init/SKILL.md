@@ -3,7 +3,7 @@ name: init
 description: >
   Writes the general context of the project in AGENTS.md, imported by CLAUDE.md, and the README.md from its templates.
   It explores the project, interviews the user on what the code does not answer and writes the three files.
-  Use it when the user says "/polix:init" or asks to write or redo AGENTS.md or README.md.
+  It runs only when the user or the workflow of polix asks for it.
 effort: high
 model: inherit
 user-invocable: true

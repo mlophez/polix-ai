@@ -126,8 +126,8 @@ Polix comes in two parts, and the second one is optional.
   - **review**: reviews the diff against the plan and `ai/rules/`, and reports findings without fixing them.
   - **document**: updates the documentation and the comments that the change made stale.
 
-The harness is not enforced by itself. A skill only helps the agent; Polix enforces a phase when your
-`polix.yaml` says so, for example by requiring that the reviewer finished on the diff before a commit, and by
+The harness is not enforced by itself. A skill or agent of the plugin runs only when you or your `polix.yaml` ask
+for it, never on the initiative of the model; Polix enforces a phase when your `polix.yaml` says so, for example by requiring that the reviewer finished on the diff before a commit, and by
 running the tests itself:
 
 ```yaml
@@ -143,7 +143,8 @@ Adopt the whole flow, a single phase or none of it.
 > The harness is in progress. Today the plugin holds the skills that set Polix up (`/polix:workflow`,
 > `/polix:add-rule`, `/polix:doctor`, `/polix:init`), the skills `/polix:plan`, `/polix:review` and
 > `/polix:audit`, and the agents `polix:workflow-author`, `polix:rules-author`, `polix:builder`, `polix:reviewer`,
-> `polix:rules-reviewer` and `polix:auditor`.
+> `polix:rules-reviewer` and `polix:auditor`. Every report follows a fixed template, and `/polix:review` and
+> `/polix:audit` save theirs in the folder of reports.
 
 ## Quick start
 

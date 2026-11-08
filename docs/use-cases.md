@@ -341,6 +341,9 @@ How it works:
   `pre_commit` has no `changed`, so any edit asks for a new review there.
 - The reviewer reports and never fixes, so its run does not change the content it just approved.
 - Both are plain blocks, gates that hold on every attempt until the review ran.
+- `/polix:review` saves its report in the folder of reports (`ai/reports/` by default), so each review leaves
+  evidence next to the plan. The skill and the reviewer run only when you or the workflow ask for them, so this
+  entry decides when a review happens.
 
 When the reviewer runs in the background, the stop above blocks again on every turn until it ends. To ask once
 per content instead, make the block of the stop a reminder with `once: true`:

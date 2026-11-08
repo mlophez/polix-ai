@@ -2,9 +2,9 @@
 name: plan
 description: >
   Writes a self-contained implementation plan in the folder of plans (ai/plans/ by default) for a feature, refactor
-  or bugfix, before any code.
-  It interviews the user on what the request leaves open and replaces plan mode.
-  Use it to plan a change or to adjust a plan; it never writes code, branches or commits.
+  or bugfix, before any code, interviewing the user on what the request leaves open; it replaces plan mode.
+  It runs only when the user or the workflow of polix asks for it.
+  It never writes code, branches or commits.
 effort: high
 model: inherit
 user-invocable: true

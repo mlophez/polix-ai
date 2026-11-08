@@ -2,7 +2,7 @@
 name: doctor
 description: >
   Diagnoses and fixes the setup of polix on this machine and repository: binary, PATH, hooks, plugin, workflow, rules.
-  Use it when polix doctor reports problems, a polix hook fails or the user asks why polix does not apply.
+  It runs only when the user or the workflow of polix asks for it.
 effort: medium
 model: inherit
 user-invocable: true

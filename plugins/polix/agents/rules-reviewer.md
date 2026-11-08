@@ -2,7 +2,7 @@
 name: rules-reviewer
 description: >
   Reviews a change against the rules of the project and reports each rule it breaks, with the file, the line and why.
-  Launched by the main session before a commit or a pull request, or when the workflow requires a review.
+  Launch it only when the user or the workflow of polix asks for it.
   It never edits a file.
 tools: Read, Grep, Glob, Bash
 model: inherit
@@ -43,6 +43,28 @@ The prompt names:
 
 The base is the `base_branch` of `polix.yaml` (the first that exists, when it is a list), else `main`: review `git diff $(git merge-base HEAD <base>)`.
 
+### Report template
+
+```markdown
+## Findings
+
+<One per broken rule and place:
+- <rule id>, `<file:line>`: `<the code at fault, in one line>`.
+  Why: <how it breaks the rule>.>
+
+## Checks
+
+<The deterministic checks run and their result.>
+
+## Held
+
+<The rules checked that the change follows.>
+
+## Pending
+
+<What could not be reviewed and why.>
+```
+
 ## How to operate
 
 Copy this checklist and track your progress:
@@ -62,7 +84,4 @@ A rule without `scope` applies to every file.
 
 Your output is read by the main session, which relays it to the user.
 
-- **Findings**: each as the rule id, `file:line`, the code at fault in one line and why it breaks the rule, or "none".
-- **Checks**: the deterministic checks run and their result.
-- **Held**: the rules checked that the change follows.
-- **Pending**: what could not be reviewed and why, or "none".
+Fill `Report template`: every heading in its order, each `<...>` replaced, and "none" under an empty heading.

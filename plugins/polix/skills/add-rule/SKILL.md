@@ -3,7 +3,7 @@ name: add-rule
 description: >
   Adds rules on how the code of the project must be written to the folder of rules (ai/rules/ by default), the
   rules polix injects and checks.
-  Use it when the user asks to add a rule or a coding convention, or to migrate rules from a document into them.
+  It runs only when the user or the workflow of polix asks for it.
   It never changes the code nor polix.yaml.
 effort: medium
 model: inherit

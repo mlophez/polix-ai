@@ -3,7 +3,7 @@ name: audit
 description: >
   Audits the repository, or part of it, for bugs, flaws and inconsistencies with several polix:auditor subagents in
   parallel, one per area, and merges their reports into one ranked by severity, saved in the folder of reports.
-  Use it when the user asks to audit the project, a part of it or one kind of problem.
+  It runs only when the user or the workflow of polix asks for it.
   It never fixes what it finds.
 effort: high
 model: inherit
@@ -21,6 +21,8 @@ Save the merged report in the folder of reports: `reports.path` of `polix.yaml`,
 
 - The subagent `polix:auditor`.
   Without it, as in Codex, read `../../agents/auditor.md` next to this skill and follow it yourself for each area.
+- The template of the report, `template.md` next to this skill.
+  Without it, stop and tell the user.
 
 ## Input
 
@@ -73,9 +75,7 @@ Path: `<reports>/<date>-audit-<name>.md`, where `<reports>` is the folder of rep
 Example: `ai/reports/2026-11-05-audit-use-cases.md`.
 When the file exists, add a numeric suffix (`-2`) instead of overwriting it.
 
-- Title `# Audit of <scope>`, then a paragraph with the date, the base (`git rev-parse --short HEAD` and the branch,
-  plus whether the working tree had uncommitted changes), the areas and their auditors, and what was out of scope.
-- Then the sections of `Output format`, from `Summary` to `Pending`, as `##` headings.
+- Fill `template.md`: its sections in its order, every `<...>` replaced.
 - Write it in the language of the docs of the repository, English when there are none.
 - One sentence per line, each line at most 120 characters, with no tables.
 
@@ -90,7 +90,7 @@ Audit progress:
 - [ ] Step 3: Launch one `polix:auditor` per area in a single message (see `Prompt`) and wait for every report.
 - [ ] Step 4: Relaunch once each auditor that failed or returned no report; report it in `Pending` if it fails again.
 - [ ] Step 5: Merge the reports (see `Merge`).
-- [ ] Step 6: Write the merged report to its file (see `Report file`).
+- [ ] Step 6: Write the merged report to its file from `template.md` (see `Report file`).
 - [ ] Step 7: Relay the merged report and the path of its file (see `Output format`).
 - [ ] Step 8: Stop and return control to the user.
 ```

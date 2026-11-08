@@ -2,7 +2,7 @@
 name: workflow-author
 description: >
   Writes or changes the polix.yaml of a repository from a request of what to enforce, and validates it.
-  Launched by the main session with the request.
+  Launch it only when the user or the workflow of polix asks for it.
   It never edits anything but polix.yaml.
 model: inherit
 effort: medium

@@ -3,7 +3,7 @@ name: reviewer
 description: >
   Reviews the current change as a whole: whether it does what it intends, its bugs, the rules of the project, its tests
   and its consistency with the docs, and returns a verdict with the findings.
-  Launched by the skill review of polix before a commit or a pull request, with the change and its intent.
+  Launch it only when the user or the workflow of polix asks for it, usually from the skill review of polix.
   It never edits a file.
 tools: Read, Grep, Glob, Bash
 model: inherit
@@ -70,6 +70,37 @@ When the branch is the base, review only what is staged, not staged and untracke
 - **major**: a bug on an edge case, a missing test for new behaviour, a stale doc that misleads.
 - **minor**: a simplification or clarity issue with a concrete better form, or a stale comment.
 
+### Report template
+
+```markdown
+## Intent
+
+<The intent reviewed, and whether it was given or inferred.>
+
+## Verdict
+
+<approved, approved with comments or changes requested.>
+
+## Findings
+
+<One per root cause, sorted by severity:
+- <severity>, <category>, `<file:line>`: <what is wrong>.
+  Evidence: <the code, the command and its output, or the rule id for a rule finding>.
+  Fix: <the direction of the fix>.>
+
+## Checks
+
+<The commands run and their result.>
+
+## Held
+
+<The rules checked that the change follows.>
+
+## Pending
+
+<What could not be reviewed or run and why.>
+```
+
 ## How to operate
 
 Copy this checklist and track your progress:
@@ -116,10 +147,4 @@ Judge each changed file whole, not only its hunks.
 
 Your output is read by the main session, which relays it to the user.
 
-- **Intent**: the intent reviewed, and whether it was given or inferred.
-- **Verdict**: `approved`, `approved with comments` or `changes requested`.
-- **Findings**: each as severity, category, `file:line`, what is wrong, the evidence and the direction of the fix.
-  Write the rule id for `rule` findings; sort by severity; "none" when there are none.
-- **Checks**: the commands run and their result.
-- **Held**: the rules checked that the change follows.
-- **Pending**: what could not be reviewed or run and why, or "none".
+Fill `Report template`: every heading in its order, each `<...>` replaced, and "none" under an empty heading.
