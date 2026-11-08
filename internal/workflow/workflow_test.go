@@ -329,7 +329,7 @@ on:
 	}
 }
 
-// The problems of an inject on stop come in the order polix check reports them: its keys, then the event.
+// The problems of an inject on stop come in the order polix config check reports them: its keys, then the event.
 func TestInjectProblemsOrder(t *testing.T) {
 	got := validate(t, "version: 1\non:\n  stop:\n    - action: { inject: { text: x, fiel: y } }\n")
 	want := "polix.yaml:4: unknown key \"fiel\" in inject (file, text, rules, always)\n" +

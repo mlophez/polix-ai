@@ -74,7 +74,7 @@ Rules progress:
 - [ ] Step 4: Show the rules to write, the duplicates and the contradictions, and confirm once before writing.
 - [ ] Step 5: Write the rules, creating the missing files with a `rules:` list ordered by id.
 - [ ] Step 6: Remove each migrated rule from its source.
-- [ ] Step 7: Run `polix check` until it reports no problem, and `polix rules check` when a rule has a `check`.
+- [ ] Step 7: Run `polix config check` until it reports no problem, and `polix rules check` when a rule has a `check`.
 ```
 
 ## Output format

@@ -5,8 +5,11 @@ where it applies. For a whole workflow with every option in place see [`examples
 for recipes by use case, [use-cases.md](use-cases.md); for the design behind it (protections, state, loop guard,
 limits), [polix.md](polix.md).
 
-Validate the file with `polix check` and draw it with `polix graph`. `polix check` rejects every unknown key,
-event, condition or verb, so a typo never turns into an entry that silently stops applying.
+Validate the file with `polix config check` and draw it with `polix graph`. `polix config check` rejects every
+unknown key, event, condition or verb, so a typo never turns into an entry that silently stops applying.
+`polix config fmt` formats it in place, keeping its comments: the keys of each section in the order of this
+reference, with `guardrails` and `on` at the end; the items of a list and the keys you name (variables, globs of
+`risk.weights` and `rules.run`) keep their order.
 
 The file has two layers. [`guardrails`](#guardrails) holds the basics every project wants from the first minute,
 each a short list: files no agent writes, commands no agent runs, branches nobody commits on, the formatter of each
@@ -81,7 +84,7 @@ this one: [Guardrails](#guardrails).
 
 Earlier builds named three of them otherwise: `protected` is now [`guardrails.protected_files`](#protected_files),
 `base` is now [`base_branch`](#base_branch), and the loop guard is now [`max_stop_retries`](#max_stop_retries).
-Only the new names are accepted: `polix check` reports an old one with its line and its new spelling.
+Only the new names are accepted: `polix config check` reports an old one with its line and its new spelling.
 
 ### version
 
@@ -94,7 +97,7 @@ Only the new names are accepted: `polix check` reports an old one with its line 
 - The oldest polix that knows every option the file uses. It is read before the rest of the file: an older polix
   blocks edits and commands asking to run `polix update`, instead of reporting the new options as mistakes, and
   not even the main session may edit `polix.yaml` meanwhile. A development build ignores it.
-- `polix check` rejects a value that is not a version.
+- `polix config check` rejects a value that is not a version.
 - A file that uses `guardrails` needs a polix that knows it: set `requires` to the release you install, so an
   older polix asks to update instead of reporting it as an unknown key.
 
@@ -104,7 +107,7 @@ Only the new names are accepted: `polix check` reports an old one with its line 
 - The branch the change merges into. Only `polix rules check --changed` (CI) uses it: each candidate is tried
   locally and as `origin/<branch>`, and the one whose merge base is closest to HEAD wins. The hooks never use it:
   `changed` always compares with HEAD.
-- `polix check` rejects an empty name, and warns when no candidate exists.
+- `polix config check` rejects an empty name, and warns when no candidate exists.
 
 ```yaml
 base_branch: main
@@ -117,7 +120,7 @@ base_branch: [main, dev]
 - The loop guard: after this many blocks of the same entry of `stop` or `subagent_stop`, in the same session, by the
   same actor and on the same content, the agent may stop and the log records a `loop_guard` decision. A block let
   through does not end the evaluation, and a subagent let through does not count as `finished`.
-- `polix check` rejects a negative value.
+- `polix config check` rejects a negative value.
 
 ### rules
 
@@ -151,8 +154,8 @@ rules:
     "*.py": [uv, run, python, "{file}"]
 ```
 
-`polix check` reports an empty argv, an empty glob, an unknown placeholder and `{files}` or `{dirs}` inside a longer
-argument.
+`polix config check` reports an empty argv, an empty glob, an unknown placeholder and `{files}` or `{dirs}` inside
+a longer argument.
 
 ### plans and reports
 
@@ -168,7 +171,7 @@ argument.
   less.
 - The score of a set of files is the sum of `weight × log2(1 + added + deleted lines)` of each, rounded.
 - Calibrate it with `polix risk`, also on a past commit: `polix risk --commit <rev> --changed 'src/**'`.
-- `polix check` reports an empty glob or a negative weight; a weight that is not a number, or a key of `risk`
+- `polix config check` reports an empty glob or a negative weight; a weight that is not a number, or a key of `risk`
   other than `weights`, stops the parse.
 
 ```yaml
@@ -248,7 +251,7 @@ guard see only entries. Each expanded entry takes the line of the item it comes 
 as its origin (`guardrails.format_on_edit`), which `polix graph` labels `from guardrails.<shortcut>`. When a
 shortcut falls short, write the entries it expands into in `on` and tune them.
 
-`polix check` reports, each at the line of its item:
+`polix config check` reports, each at the line of its item:
 
 - a value in another form than the one of its shortcut, with that form: a single string for `protected_files` or
   `protected_branches`, or a string item in `forbidden_commands`, `format_on_edit` or `run_before_done`;
@@ -480,7 +483,7 @@ when: { branch: "^(main|dev)$" }
 
 - Value: a variable name of [`vars`](#vars), or a list of them.
 - Holds when every variable of the list has a value, that is, its regex matched the branch.
-- Events: all. `polix check` rejects a variable not defined in `vars`.
+- Events: all. `polix config check` rejects a variable not defined in `vars`.
 
 ```yaml
 unless: { var: key }
@@ -797,7 +800,8 @@ the [order of the expanded entries](#order-of-the-expanded-entries).
    failure per answer.
 
 An invalid file blocks `pre_edit`, `pre_command` and `pre_commit` with its problems (fail closed), except the main
-session editing `polix.yaml` or running `polix check`, `polix update`, `polix doctor` or `polix version`; on the
+session editing `polix.yaml` or running `polix config check`, `polix config fmt --check`, `polix update`,
+`polix doctor` or `polix version`; on the
 other events it only warns, so a broken file never traps a stop in a loop. Its protected files and forbidden
 commands do not apply then: only the built-in protection does, and an edit outside the repository or of a file git
 ignores goes through. The details are in

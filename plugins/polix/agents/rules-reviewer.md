@@ -31,7 +31,8 @@ The prompt names:
 
 ## Rules
 
-- Run only `git` to read the history and the diff, `polix rules check`, `polix check` and the checks of the rules.
+- Run only `git` to read the history and the diff, `polix rules check`, `polix config check` and the checks of the
+  rules.
 - Report only what the change introduces or touches, not what was already there.
 - Drop a finding when the wording of its rule does not clearly cover it.
 - Write the report in the language of the prompt.

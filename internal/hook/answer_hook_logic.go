@@ -238,7 +238,7 @@ func (r *answerHookRun) deny(from string, line int, reason string) (agent.Answer
 func (r *answerHookRun) invalid() agent.Answer {
 	ev := r.ev.Event
 	problems := r.ev.Invalid.Error()
-	reason := "polix: el workflow no es válido; corrígelo y ejecuta polix check.\n" + problems
+	reason := "polix: el workflow no es válido; corrígelo y ejecuta polix config check.\n" + problems
 	var old workflow.TooOld
 	tooOld := errors.As(r.ev.Invalid, &old)
 	if tooOld {

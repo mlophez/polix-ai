@@ -32,7 +32,9 @@ and judging the code stays with the `reviewer` subagent.
 ```bash
 polix hook claude          # entry point of the Claude Code hooks (event on stdin)
 polix hook codex           # entry point of the Codex hooks (experimental)
-polix check                # validate polix.yaml and the rules (ai/rules/ or rules.path)
+polix config check         # validate polix.yaml and the rules (ai/rules/ or rules.path)
+polix config fmt           # format polix.yaml in place: keys in the order of the reference, comments kept
+                           # (--check only tells whether it is formatted, exiting with 1 when not)
 polix rules check          # run the checks of every deterministic rule (for CI)
 polix rules check --changed  # only the rules whose scope matches the files changed by the branch
                              # (--base BRANCH, default the closest of base_branch in polix.yaml, else main;
@@ -52,7 +54,7 @@ polix version
 `polix rules check --changed` compares the branch with the branch it merges into, `--base`, else the candidates
 of `base_branch` in `polix.yaml`, else `main`. Each candidate is tried as a local branch and then as `origin/<branch>`, and among
 those that exist the one whose merge base is closest to HEAD wins, so a feature forked from `dev` compares with
-`dev` when `base_branch: [main, dev]`. When none exists the command fails naming them, and `polix check` and
+`dev` when `base_branch: [main, dev]`. When none exists the command fails naming them, and `polix config check` and
 `polix doctor` warn about it when a deterministic rule has a check. In GitHub Actions, run it with
 `--base="${{ github.base_ref }}"` after a checkout with `fetch-depth: 0`: outside a pull request `base_ref` is
 empty, and an empty `--base` falls back to `base_branch`. On a push to a branch of `base_branch` itself, such as
@@ -64,7 +66,7 @@ without running a check when a file of the folder of rules cannot be read or par
 a rule that is not `deterministic`, or a `check` given as an absolute path), when `polix.yaml` cannot be read or
 parsed or requires a newer polix (without the file it uses the defaults), when a runner of `rules.run` is not
 valid, and when `--base` is given without `--changed`. The other problems of a `polix.yaml` that parses are left
-to `polix check`. The hint to set `base_branch` or pass
+to `polix config check`. The hint to set `base_branch` or pass
 `--base` only comes when no base branch exists. Each check runs from the root, with 5 minutes to finish, through
 the first runner of `rules.run` whose glob matches its file, or else as a program (see `rules.run` below); it
 prints each failure with the last 15 lines of its output, then `<n> checks, <m> failed`, and exits with 1 when a
@@ -277,7 +279,8 @@ heuristic, aimed at accidents rather than at an agent determined to get around i
 - Outside a git repository, or without `polix.yaml`, only the built-in protection applies.
 - An invalid workflow blocks edits and commands (fail closed) with the problems found, so a broken file is
   noticed at once, except what fixing it needs: the main session may edit `polix.yaml`, any actor may run
-  `polix check`, `polix update`, `polix doctor` and `polix version` (optionally after a `cd`), and edits outside
+  `polix config check`, `polix config fmt --check`, `polix update`, `polix doctor` and `polix version` (optionally
+  after a `cd`), and edits outside
   the repository or of ignored files go through as always. The built-in protection still applies, but
   `protected_files` and `forbidden_commands` do not: an ignored `.env` of `protected_files` may be edited until the
   file is fixed. It never blocks a stop, which
@@ -288,8 +291,8 @@ heuristic, aimed at accidents rather than at an agent determined to get around i
   one warning per call that names the cause.
 - A workflow that `requires` a newer polix than the one running is not broken but ahead: it blocks the same way,
   asking to run `polix update`, and not even the main session may edit `polix.yaml`, so the agent does not take
-  options out of it to please an old binary. A development build ignores `requires`, and `polix check` rejects one
-  that is not a version like `0.2.0`.
+  options out of it to please an old binary. A development build ignores `requires`, and `polix config check`
+  rejects one that is not a version like `0.2.0`.
 
 ## polix.yaml
 
@@ -371,19 +374,20 @@ The other three are only sugar: `workflow.Parse` expands each one into entries o
 
 In each event the entries of `protected_branches`, `format_on_edit` and `run_before_done` come first, then the
 entries written in `on`, each group in the order of the file. Each expanded entry takes the line of its item, so
-the messages of `polix check`, the keys of the repeat rules and the loop guard tell them apart, and the path of its
-shortcut (`workflow.Entry.From`), which `polix graph` names; `polix graph` draws `protected_files` and
-`forbidden_commands` in a subgraph `guardrails` before the events. `polix check` reports a value in another form than its own (a single string where a list goes, a string
-where a map goes) with the expected form, an unknown key inside `guardrails` or inside an item, an empty glob,
-pattern or branch, an item without `pattern` or `run`, and the problems of the entries they expand into, each at
-the line of its item. A polix older than the shortcuts rejects `guardrails` as an unknown key, so a file that uses
-them sets `requires`. [reference.md](reference.md#guardrails) describes each one with its expansion.
+the messages of `polix config check`, the keys of the repeat rules and the loop guard tell them apart, and the
+path of its shortcut (`workflow.Entry.From`), which `polix graph` names; `polix graph` draws `protected_files` and
+`forbidden_commands` in a subgraph `guardrails` before the events. `polix config check` reports a value in another
+form than its own (a single string where a list goes, a string where a map goes) with the expected form, an
+unknown key inside `guardrails` or inside an item, an empty glob, pattern or branch, an item without `pattern` or
+`run`, and the problems of the entries they expand into, each at the line of its item. A polix older than the
+shortcuts rejects `guardrails` as an unknown key, so a file that uses them sets `requires`.
+[reference.md](reference.md#guardrails) describes each one with its expansion.
 
 `rules.path`, `plans.path` and `reports.path` place the folders of the AI, relative to the root: the rules polix
 reads, injects and checks, the plans the skill `plan` writes and the reports of audits and reviews. Each defaults
-to its folder below `ai/`, and is cleaned (slashes, no `./` nor trailing slash). `polix check` reports an absolute
-path, the root itself, a path out of the root (`..`), a glob or an unknown key. polix reads only the folder of the
-rules, its `*.yaml` but `retired.yaml` and not its subfolders; the other two reach the agent through
+to its folder below `ai/`, and is cleaned (slashes, no `./` nor trailing slash). `polix config check` reports an
+absolute path, the root itself, a path out of the root (`..`), a glob or an unknown key. polix reads only the folder
+of the rules, its `*.yaml` but `retired.yaml` and not its subfolders; the other two reach the agent through
 `guidance.layout`, so the skills write where the repository says.
 
 `rules.run` maps a glob, matched against the `check` of a rule as the globs of `scope` are (without `/` against its
@@ -407,8 +411,8 @@ glob matches runs as a program, as before: through its shebang, or on Windows th
 the program of that name the PATH finds (an active virtualenv wins), unless it is an alias of the Store or, for
 `bash` and `sh`, the bash of WSL in the Windows folder; then the interpreter that lookup finds (the bash of Git for
 Windows, the py launcher, python3 or python), with the arguments of the runner kept. There are no default runners.
-`polix check` reports a runner with an empty argv, an empty glob, `{files}` or `{dirs}` inside a longer argument,
-or an unknown placeholder. So a rule may be decided by any file, a Go test among them: with the runner above, the
+`polix config check` reports a runner with an empty argv, an empty glob, `{files}` or `{dirs}` inside a longer
+argument, or an unknown placeholder. So a rule may be decided by any file, a Go test among them: with the runner above, the
 rules of `tests/architecture/` run together as `go test ./tests/architecture -run ^Test(GOARCH1|GOARCH2|...)$`, and
 when it fails, `GOARCH-4` (`check: tests/architecture/goarch04_test.go`) runs alone as
 `go test ./tests/architecture -run ^Test(GOARCH4)$`.
@@ -423,8 +427,8 @@ of assuming `ai/`. Every switch is on when the key, or the switch, is left out, 
 is the template `templates/session_start.md.tmpl`, embedded in the binary (`text/template`, one block per switch),
 rendered as one context. It is injected only with a valid `polix.yaml`, on every source of the event (startup,
 resume, clear and compaction), before the contexts of the `start` entries, and in English. It asks the
-agent to cooperate and blocks nothing. `polix check` reports an unknown key, and a value that is not a boolean, or a
-`guidance` that is not a map, stops the parse.
+agent to cooperate and blocks nothing. `polix config check` reports an unknown key, and a value that is not a
+boolean, or a `guidance` that is not a map, stops the parse.
 
 Events: `start`, `prompt`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
 `subagent_stop` and `stop`.
@@ -522,7 +526,7 @@ three conditions hold and the call warns once with the cause, as `finished` does
 hash: a broken git never skips a review. The placeholders then show `?`. The measures are those of the start of
 the call: a `run` that rewrites files on the same event does not change them, as for `changed`.
 
-`polix check` reports a measure that is not a non-negative integer (a map with `at_least`, the old spelling, with
+`polix config check` reports a measure that is not a non-negative integer (a map with `at_least`, the old spelling, with
 the hint to write the number alone), an empty `any`, and a weight with an empty glob or a negative number. A
 `risk` or `risk.weights` that is not a map, a key of `risk` other than `weights`, and a weight that is not a number
 stop the parse. Calibrate the thresholds and the weights with `polix risk`.
@@ -535,7 +539,7 @@ form, a map:
 - `block: <message>` blocks the event with a message for the AI (placeholders allowed). The long form is
   `block: { message: <message>, once: true }`, and `message` is required. Valid on `prompt`, `pre_edit`,
   `pre_command`, `pre_commit`, `stop` and `subagent_stop`; `start`, `post_edit` and `post_command`
-  already happened, so `polix check` rejects it there.
+  already happened, so `polix config check` rejects it there.
 - `run: <command>` runs a command from the root, without a shell (no pipes, redirections or globs). The command is
   a string, split on spaces into arguments and never given to a shell, or a list of arguments when one holds a
   space; placeholders are allowed in each argument, and `{path}` stays one argument. The long form is a map with
@@ -643,9 +647,9 @@ checked. A check that must hold is a `run` of polix; the repeat of `run` already
 content polix saw green, and the order of the entries, with the single stop rule, keeps a later gate from running
 before a failing check.
 
-### What polix check reports
+### What polix config check reports
 
-`polix check` rejects unknown events, conditions, verbs and keys (inside `action`, `run`, `inject`, `block` and
+`polix config check` rejects unknown events, conditions, verbs and keys (inside `action`, `run`, `inject`, `block` and
 `vars` too), an entry without `action`, an `action` without a verb or with two, a verb on an event where it is not
 valid, a `run` without exactly one of `command` and `rules`, an `inject` without exactly one of `file`, `text` and
 `rules`, a `block` without `message`, a `once` or `always` that is not a boolean or sits in the wrong verb,
@@ -657,7 +661,7 @@ It also rejects the problems of the shortcuts of [Guardrails](#guardrails).
 
 ### Names of the old vocabulary
 
-Earlier builds of polix used other names, and only the new ones are accepted. `polix check` reports each old name
+Earlier builds of polix used other names, and only the new ones are accepted. `polix config check` reports each old name
 with its line and its new spelling: the events `session_start` (`start`) and `turn_stop` (`stop`), the keys of an
 entry `if` (`when`), `why` (a comment of YAML), `mode` (`warn` is an `inject`, a failing `run` on `post_edit` or
 `post_command` already informs, `audit` has no replacement), `deny` and `require` (`block`), `allow` (a `not` in
@@ -708,7 +712,7 @@ What a block does depends on the event:
 - `stop`, `subagent_stop`: the main session, or the subagent, may not end its turn and receives the reasons to
   act on them, up to the loop guard.
 - `start`, `post_edit`, `post_command`: they already happened, so nothing blocks there: `block` is rejected
-  by `polix check`, and a failing `run` reaches the agent as context, logged as an `inform` decision.
+  by `polix config check`, and a failing `run` reaches the agent as context, logged as an `inform` decision.
 
 The `stop` of this repository shows it. Its `guardrails.run_before_done` has two items, golangci-lint over the
 module and `go test ./...`, which expand into two plain `run` entries of `stop`, each with a `when` on the files it

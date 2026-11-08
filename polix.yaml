@@ -1,66 +1,15 @@
-# Workflow of this repository, enforced by polix itself (dogfooding). Reference of every option:
-# examples/polix.yaml; design and limits: docs/polix.md. Validate with `polix check`, and draw with `polix graph`,
-# which names the shortcut of `guardrails:` each entry comes from.
-#
-# Two layers. `guardrails:` holds the basics: the instructions of the repository no agent writes, the Go file the
-# agent edits is formatted at once, and lint and tests pass before the turn ends. `on:` holds the flow of this
-# repository: no large or risky change of Go code is committed without a review of polix:reviewer, and every change
-# is reminded once to update README.md and docs/. polix observes the end of polix:reviewer by itself, because a
-# `finished` names it: no entry on subagent_stop is needed. Besides, nobody writes the state of polix, built in.
-#
-# The review before a commit is asked only past a threshold of the uncommitted Go change: 150 changed lines, 5
-# changed files or a risk score of 25, weighted by `risk.weights` below. Small changes commit without a review; lint
-# and tests still run when the turn ends. Tune the thresholds and the weights with `polix risk --changed '*.go'`, and
-# on the history with `polix risk --commit <rev> --changed '*.go'`.
+---
 version: 1
 base_branch: main
-# A stop gate that keeps failing on the same content lets the agent stop after 3 blocks, so it never loops.
+# A stop gate that keeps failing on the same content lets the agent stop after 3 blocks.
 max_stop_retries: 3
 
-guidance:
-  commit: true
-  edit: true
-  layout: true
-
-guardrails:
-  # No agent writes the instructions of the repository, the main session included: only a person changes them.
-  protected_files:
-    - AGENTS.md
-    - CLAUDE.md
-
-  # The formatters of .golangci.yml (gofmt, goimports) rewrite the edited Go file, so the agent never formats by
-  # hand. The {path} makes one command per path, run again whenever that path changes. A failure (a syntax error)
-  # only reaches the agent as context; the lint below checks the format of every file anyway.
-  format_on_edit:
-    - run: golangci-lint fmt {path}
-      path: "*.go"
-
-  # Before the main session ends its turn, in this order. The lint runs first and the tests only once it passes;
-  # each one is not run again on a content it passed on, so a turn with nothing new runs nothing.
-  run_before_done:
-    # golangci-lint with .golangci.yml over the whole module: the gofmt and goimports formatters, the standard
-    # linters, govet (go vet) among them, and those of idiomatic Go. Only when a Go file or the lint configuration
-    # changed.
-    - run: golangci-lint run ./...
-      changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"]
-    # Every test of the module, without the agent asking for it. The install scripts and scripts/ are tested from
-    # Go, so a change in them runs the tests too. Go caches the results, so a run on code already tested is fast.
-    - run: go test ./...
-      changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"]
-
-# The checks of ai/rules/ that are Go tests (the AST tests of tests/architecture/) run as one `go test` of their
-# package, only the test named after the rule: GOARCH-4 runs TestGOARCH4.
+# The Go checks of ai/rules/ run as one `go test` of their package, only the test of the rule.
 rules:
   path: ai/rules
   run: { "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"] }
-plans:
-  path: ai/plans
-reports:
-  path: ai/reports
 
-# The weight of each path in the risk score of a change: the first glob that matches a file wins, and any other file
-# weighs 1. Tests weigh least, even those of the core, so their globs come first; the hook engine and the state of
-# polix are the core, and pkg/git feeds every fact of the hook.
+# Weight of each path in the risk score: the first matching glob wins, any other file weighs 1.
 risk:
   weights:
     "*_test.go": 0.5
@@ -69,19 +18,32 @@ risk:
     "internal/state/**": 3
     "pkg/git/**": 2
 
-# The entries of an event run in file order, after the entries of `guardrails:`, and the first one that actually
-# blocks ends the evaluation: the order is the priority, and the agent gets one failure per answer. A block blocks
-# every time, unless it says `once: true`, which makes it a reminder. polix remembers only what this file asks about:
-# the end of polix:reviewer, the runs that passed and the blocks of a reminder or of a stop. A command the agent runs
-# never counts as passed.
+guardrails:
+  # Only a person changes the instructions of the repository.
+  protected_files:
+    - AGENTS.md
+    - CLAUDE.md
+
+  # Format each edited Go file and this polix.yaml right after the edit.
+  format_on_edit:
+    - run: golangci-lint fmt {path}
+      path: "*.go"
+    - run: polix config fmt
+      path: polix.yaml
+
+  # Before the turn ends, in order; each check runs again only on new content.
+  run_before_done:
+    # Lint the whole module when Go code or the lint configuration changes.
+    - run: golangci-lint run ./...
+      changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"]
+    # Run every test when Go code, the install scripts or scripts/ change.
+    - run: go test ./...
+      changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"]
+
+# Entries run in file order after guardrails, and the first block ends the evaluation.
 on:
-  # pre_commit: before a git commit runs.
   pre_commit:
-    # No large or risky change of the Go code is committed without a review of its final diff. The `changed` of the
-    # `when` scopes the measures and the review to the Go files: an edit of README.md or docs/ after the review keeps
-    # it, an edit of a Go file asks for a new one. A change git cannot measure asks for the review too. It blocks
-    # every commit until polix:reviewer ends on this content, and it comes first, so the reminder below only asks
-    # once the diff is reviewed.
+    # A large or risky Go change needs a review of polix:reviewer before it is committed.
     - when:
         changed: ["*.go", "go.mod", "go.sum"]
         any:
@@ -92,10 +54,7 @@ on:
       action:
         block: "This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score}): run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again."
 
-    # Every change of behaviour is documented in the same commit: before a commit that changes the behaviour, the
-    # agent is asked once per content to check whether README.md or docs/ must change, and a second commit on the
-    # same content goes through. Its `changed` does not name README.md nor docs/, so the docs edit it asks for does
-    # not remind it again.
+    # Remind once per content to update README.md and docs/ when the behaviour changes.
     - when: { changed: ["*.go", "go.mod", "plugins/**", "examples/**", "polix.yaml", "install.sh", "install.ps1", "scripts/**"] }
       action:
         block:

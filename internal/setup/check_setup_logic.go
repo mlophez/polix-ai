@@ -13,7 +13,7 @@ type CheckSetupOutput struct {
 	RulesPath string   // the folder of the rules, relative to the root
 }
 
-// CheckSetup decides what polix check reports for the polix of version running: the problems of polix.yaml
+// CheckSetup decides what polix config check reports for the polix of version running: the problems of polix.yaml
 // (found tells whether it exists, wfErr why it cannot be loaded or is not valid) and of the rules of the folder
 // rulesPath (invalid, the problems of the invalid ones, rulesErr why they cannot be read, missing the checks that
 // do not exist), with the hint of a newer polix; or, when there are none, the warning when no base branch exists

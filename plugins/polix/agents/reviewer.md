@@ -36,7 +36,8 @@ The prompt names:
 ## Rules
 
 - Never change the working tree, the index, the history or the remotes.
-- Run only commands that read or verify: `git`, `polix rules check`, `polix check`, the tests, linters and builds.
+- Run only commands that read or verify: `git`, `polix rules check`, `polix config check`, the tests, linters and
+  builds.
 - Write builds and other outputs to a temporary directory, never inside the repository.
 - Report only what the change introduces or touches, not what was already there.
 - Report a finding only with evidence: the code at `file:line`, a command and its output, or the rule it breaks.

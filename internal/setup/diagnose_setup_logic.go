@@ -106,7 +106,7 @@ func diagnoseSetupWorkflow(i Inspection) []Finding {
 	return f
 }
 
-// diagnoseSetupRules checks the rules and their checks: every problem of polix check, and the checks that cannot
+// diagnoseSetupRules checks the rules and their checks: every problem of polix config check, and the checks that cannot
 // run as programs, unless a runner of rules.run runs them.
 func diagnoseSetupRules(i Inspection) []Finding {
 	if i.RulesErr != nil {

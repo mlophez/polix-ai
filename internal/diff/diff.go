@@ -119,7 +119,7 @@ func (c Change) Lines() int {
 
 // Contributions returns the share of each change in the risk score, the highest first, then by path. The factor
 // of a change is that of the first weight whose glob matches it, else DefaultFactor. An invalid weight, which
-// polix check reports, is skipped, and so is an invalid change, which Diff.Valid rejects.
+// polix config check reports, is skipped, and so is an invalid change, which Diff.Valid rejects.
 func (d Diff) Contributions(weights []workflow.Weight) []Contribution {
 	out := make([]Contribution, 0, len(d.Changes))
 	for _, c := range d.Changes {

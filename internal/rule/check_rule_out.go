@@ -41,7 +41,7 @@ func (a CheckRuleAdapter) LoadRules(_ context.Context, dir string) ([]Rule, erro
 // LoadWorkflow reads polix.yaml with the domain of workflow, as a use case of workflow would break the vertical
 // slices. Without polix.yaml it is the default workflow; a polix.yaml that cannot be read, cannot be parsed or
 // requires a newer polix is an error, never a silent default. The problems of a workflow that parses (Invalid)
-// are not errors here: the shell stops on those of its runners, and polix check reports the rest.
+// are not errors here: the shell stops on those of its runners, and polix config check reports the rest.
 func (a CheckRuleAdapter) LoadWorkflow(_ context.Context, running string) (workflow.Workflow, error) {
 	data, _, err := file.Read(filepath.Join(a.Repo.Root, workflow.File))
 	if err != nil {

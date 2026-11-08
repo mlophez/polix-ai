@@ -6,7 +6,7 @@ person or CI learns what polix would reject before a hook does.
 ## Trigger
 
 ```
-polix check [--dir <dir>]
+polix config check [--dir <dir>]
 ```
 
 - `--dir`: any folder of the repository; defaults to the current one.

@@ -91,7 +91,7 @@ an entry that says on which event it applies, when, and what it does
 - **Gates and reminders.** A `block` holds every time until its `unless` does; `once: true` turns it into a
   reminder that asks once per content. A warning is an `inject`, and the first entry that blocks ends the
   evaluation.
-- **Declarative and validated.** `polix check` rejects unknown events, keys, conditions, placeholders and
+- **Declarative and validated.** `polix config check` rejects unknown events, keys, conditions, placeholders and
   conditions that can never hold on their event, so a typo cannot quietly switch a guardrail off.
 - **Guardrails in a few lines.** `guardrails:` lists the files no agent writes, the commands no agent runs, the
   branches nobody commits on, the formatter of each edited file and the checks before the end of a turn. The files
@@ -212,7 +212,8 @@ annotated reference of every option (each one is described in [docs/reference.md
 validate it:
 
 ```bash
-polix check            # validate polix.yaml and ai/rules/
+polix config check     # validate polix.yaml and ai/rules/
+polix config fmt       # format polix.yaml: keys in the order of the reference, comments kept
 polix graph            # draw the workflow as a Mermaid diagram, each entry with the shortcut it comes from
 polix doctor           # check that this machine and repository are ready
 ```
@@ -335,7 +336,7 @@ workflow with comments on every option is in [`examples/polix.yaml`](examples/po
 
 ## Use cases
 
-[docs/use-cases.md](docs/use-cases.md) collects ready-to-paste recipes, each one checked with `polix check`,
+[docs/use-cases.md](docs/use-cases.md) collects ready-to-paste recipes, each one checked with `polix config check`,
 grouped by layer.
 
 The basics, with `guardrails:`, each followed by what it does, or the entries it expands into:
@@ -390,7 +391,8 @@ Shell hooks are fine for one trivial check. Polix is for when guardrails are par
 ```text
 polix hook claude [-C dir]     entry point of the Claude Code hooks (event on stdin)
 polix hook codex [-C dir]      entry point of the Codex hooks (experimental)
-polix check                    validate polix.yaml and ai/rules/
+polix config check             validate polix.yaml and ai/rules/
+polix config fmt [--check]     format polix.yaml in place, or only tell whether it is formatted
 polix rules check [--changed]  run the checks of the deterministic rules (for CI)
 polix graph                    print the workflow as a Mermaid diagram
 polix log --tail 20 [--json]   print the last entries of the state log

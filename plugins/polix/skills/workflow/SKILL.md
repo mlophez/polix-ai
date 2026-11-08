@@ -68,11 +68,11 @@ of `.claude/agents/` goes by its bare name.
 - Put the reason of an entry in a YAML comment above it.
 - Write the messages of `block`, `run` and `inject` in the language of the team, as an instruction the agent can
   follow.
-- When `polix check` names an old name with its new spelling (`protected`, `base`, `max_stop_blocks`, `if`, `deny`,
-  `record`, `done`, `turn_stop`...), rewrite it as told.
+- When `polix config check` names an old name with its new spelling (`protected`, `base`, `max_stop_blocks`, `if`,
+  `deny`, `record`, `done`, `turn_stop`...), rewrite it as told.
 - When the change uses a key, event, condition or verb the file did not use yet, set `requires` to the output of
   `polix version`, unless it is `dev` or `requires` is already newer; never lower `requires`.
-- Never remove an option `polix check` calls unknown before `polix update` rules out an outdated polix.
+- Never remove an option `polix config check` calls unknown before `polix update` rules out an outdated polix.
 - Only write `polix.yaml`; rules of the code go to the folder of rules with the skill `add-rule` of polix.
 - When `rules.path`, `plans.path` or `reports.path` changes, tell the user to move the files of the old folder.
 - Talk to the user in the language of the session.
@@ -92,7 +92,7 @@ Workflow progress:
 - [ ] Step 1: Read reference.yaml (see `Format`), polix.yaml, the folder of rules and the Justfile, Makefile or package.json.
 - [ ] Step 2: Ask until each wish maps to a shortcut of `guardrails`, or else to an event, its conditions and one verb.
 - [ ] Step 3: Show the items and the entries to add and confirm once before writing.
-- [ ] Step 4: Write them and run `polix check` until it reports no problem.
+- [ ] Step 4: Write them and run `polix config check` until it reports no problem.
 - [ ] Step 5: Run `polix graph` and show the diagram of the events changed.
 ```
 

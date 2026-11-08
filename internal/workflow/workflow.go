@@ -186,7 +186,7 @@ func (w Workflow) Valid() error {
 	return nil
 }
 
-// Problems returns every problem of the workflow, one per line as `polix check` prints them, in the order of the
+// Problems returns every problem of the workflow, one per line as `polix config check` prints them, in the order of the
 // file (see byLine); an empty list means it is valid.
 func (w Workflow) Problems() []string {
 	v := &validator{w: &w}

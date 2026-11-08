@@ -111,7 +111,7 @@ func TestCheckRuleAdapterLoadWorkflow(t *testing.T) {
 	}
 	checkRuleWrite(t, root, map[string]string{"polix.yaml": "version: 1\nbase_branch: develop\non:\n  nope: []\n"})
 	if wf, err = a.LoadWorkflow(context.Background(), "dev"); err != nil || wf.BaseBranches()[0] != "develop" {
-		t.Fatalf("the problems of a workflow that parses are left to polix check: %+v %v", wf, err)
+		t.Fatalf("the problems of a workflow that parses are left to polix config check: %+v %v", wf, err)
 	}
 	checkRuleWrite(t, root, map[string]string{"polix.yaml": "version: [\n"})
 	if _, err := a.LoadWorkflow(context.Background(), "dev"); err == nil || !strings.Contains(err.Error(), "polix.yaml") {

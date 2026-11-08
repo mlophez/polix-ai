@@ -120,8 +120,10 @@ func Indent(s string) string {
 	return "  " + strings.ReplaceAll(strings.TrimRight(s, "\n"), "\n", "\n  ")
 }
 
-// OnlyPolix reports whether a command line only checks the workflow or updates polix (`polix check`, `polix
-// update`, `polix doctor`, `polix version`, maybe after a cd): what an invalid or too new workflow needs.
+// OnlyPolix reports whether a command line only checks the workflow or updates polix (`polix config check`, `polix
+// config fmt --check`, `polix update`, `polix doctor`, `polix version`, maybe after a cd): what an invalid or too new
+// workflow needs. `polix config fmt` writes polix.yaml, so only its exact form with --check is one of them: any
+// other flag after it (--check=false) could turn the write back on.
 func OnlyPolix(command string) bool {
 	segs := shell.Split(command)
 	for _, seg := range segs {
@@ -132,4 +134,5 @@ func OnlyPolix(command string) bool {
 	return len(segs) > 0
 }
 
-var onlyPolixCommands = []string{"cd *", "polix check*", "polix update*", "polix doctor*", "polix version*"}
+var onlyPolixCommands = []string{"cd *", "polix config check*", "polix config fmt --check", "polix update*",
+	"polix doctor*", "polix version*"}

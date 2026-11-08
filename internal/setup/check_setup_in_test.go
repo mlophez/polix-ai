@@ -55,8 +55,8 @@ func TestCheckSetupShell(t *testing.T) {
 	}
 }
 
-// runCheckSetup runs polix check on dir through a root composed as cmd/polix composes it, so the exit codes are
-// those of pkg/cli.Run.
+// runCheckSetup runs the command of polix config check on dir through a root of pkg/cli, so the exit codes are those
+// of pkg/cli.Run; the command sits at the root here, not below config as in cmd/polix.
 func runCheckSetup(dir string) (int, string, string) {
 	root := cli.Root("polix", "short", "long", "")
 	root.AddCommand(CheckSetupCommand())
@@ -65,7 +65,7 @@ func runCheckSetup(dir string) (int, string, string) {
 	return code, out.String(), errb.String()
 }
 
-// The cases of polix check, through the command and its exit codes.
+// The cases of polix config check, through the command and its exit codes.
 func TestCheckSetupCommand(t *testing.T) {
 	r := gitRepo(t)
 	code, stdout, _ := runCheckSetup(r)

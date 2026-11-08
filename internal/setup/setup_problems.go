@@ -67,7 +67,7 @@ func BaseWarning(rules []rule.Rule, baseErr error) string {
 	return ""
 }
 
-// NewerHint is the line polix check and polix doctor add to problems that may come from a newer polix than the
+// NewerHint is the line polix config check and polix doctor add to problems that may come from a newer polix than the
 // one of version running.
 func NewerHint(running string) string {
 	return fmt.Sprintf("these problems may be options of a newer polix than this one (%s): run polix update before "+

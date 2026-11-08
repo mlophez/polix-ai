@@ -294,8 +294,8 @@ func (v *validator) run(line int, r Run) {
 	v.placeholders(line, r.Message)
 }
 
-// inject reports the problems of c on event ev, in the order polix check reports them (its keys, then the event);
-// an empty ev skips the event.
+// inject reports the problems of c on event ev, in the order polix config check reports them (its keys, then the
+// event); an empty ev skips the event.
 func (v *validator) inject(ev string, line int, c Inject) {
 	v.unknownKeys(line, "inject", c.Keys, injectKeys)
 	if ev == Stop || ev == SubagentStop {

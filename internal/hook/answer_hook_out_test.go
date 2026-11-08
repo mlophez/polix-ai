@@ -795,7 +795,8 @@ func TestAnswerHookInvalidWorkflowCanBeFixed(t *testing.T) {
 	if !strings.Contains(stderr, "estado de polix") {
 		t.Fatalf("the protection should answer, not the invalid workflow: %q", stderr)
 	}
-	for c, want := range map[string]int{"polix check": 0, "cd . && polix check --dir .": 0, "ls": 2, "polix check && ls": 2} {
+	for c, want := range map[string]int{"polix config check": 0, "cd . && polix config check --dir .": 0, "ls": 2,
+		"polix config check && ls": 2} {
 		code, _, stderr = r.bash(c, false)
 		answerHookExpect(t, c, code, want, stderr)
 	}

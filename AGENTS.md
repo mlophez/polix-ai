@@ -29,7 +29,7 @@ Only the init skill or a human changes this file: any other skill or agent repor
 - **Install**: `just install` (go install, the binary the hooks run; rerun it after changing the engine).
 - **Lint**: `golangci-lint run ./...`.
 - **Format**: `gofmt -w .`.
-- **Check**: `just check` (install, then `polix check`, `polix rules check` and `polix doctor --offline`).
+- **Check**: `just check` (install, then `polix config check`, `polix rules check` and `polix doctor --offline`).
 - **Validate plugin**: `claude plugin validate plugins/polix`.
 - **Release assets**: `just dist <version>` (into `dist/`).
 - **Release**: `just release <version>` (tags a clean, pushed main and pushes the tag; CI publishes it).

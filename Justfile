@@ -28,7 +28,8 @@ check: install
     fi
     polix=$bin/polix
     [ -x "$polix" ] || polix=$polix.exe
-    "$polix" check
+    "$polix" config check
+    "$polix" config fmt --check
     "$polix" rules check
     "$polix" doctor --offline
 

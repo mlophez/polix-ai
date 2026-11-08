@@ -27,12 +27,14 @@ func main() {
 			"  # Check the machine and the repository\n"+
 			"  polix doctor\n\n"+
 			"  # Validate the workflow and the rules\n"+
-			"  polix check")
+			"  polix config check\n\n"+
+			"  # Format polix.yaml\n"+
+			"  polix config fmt")
 	root.AddGroup(&cobra.Group{ID: "repo", Title: "Repository"}, &cobra.Group{ID: "machine", Title: "Machine"},
 		&cobra.Group{ID: "agent", Title: "Agents"})
-	check := setup.CheckSetupCommand()
-	check.GroupID = "repo"
-	root.AddCommand(check)
+	config := &cobra.Command{Use: "config", Short: "Validate and format polix.yaml", Args: cobra.NoArgs, GroupID: "repo"}
+	config.AddCommand(setup.CheckSetupCommand(), workflow.FormatWorkflowCommand())
+	root.AddCommand(config)
 	for _, c := range []*cobra.Command{setup.InstallSetupCommand(), setup.UninstallSetupCommand(),
 		setup.DiagnoseSetupCommand()} {
 		c.GroupID = "machine"

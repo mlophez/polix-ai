@@ -37,7 +37,7 @@ func TestParseRejectsBrokenYAML(t *testing.T) {
 	}
 }
 
-// ParseAll keeps every rule and lists the problem of each invalid one, in the words of polix check.
+// ParseAll keeps every rule and lists the problem of each invalid one, in the words of polix config check.
 func TestParseAll(t *testing.T) {
 	got, problems, err := ParseAll("ai/rules/a.yaml", []byte(`rules:
   - id: A-1

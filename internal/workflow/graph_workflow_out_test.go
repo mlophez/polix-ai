@@ -45,7 +45,7 @@ func workflowTestRepo(t *testing.T, files map[string]string) *git.Repo {
 func workflowTestRun(t *testing.T, repo *git.Repo, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	root := cli.Root("polix", "", "", "")
-	root.AddCommand(GraphWorkflowCommand(), LogWorkflowCommand())
+	root.AddCommand(GraphWorkflowCommand(), LogWorkflowCommand(), FormatWorkflowCommand())
 	var out, errb bytes.Buffer
 	code = cli.Run(root, append(args, "--dir", repo.Root), strings.NewReader(""), &out, &errb)
 	return code, out.String(), errb.String()

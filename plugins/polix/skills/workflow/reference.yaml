@@ -1,6 +1,6 @@
 # Example polix.yaml: the current Logalty flow (ticket, plan, builder, tests, reviewer, commit) plus the
 # rules of rules.path (ai/rules/) injected and checked, annotated as a reference of every option of the schema and
-# of every form each option takes. Validate it with `polix check`; draw it with `polix graph`, which names the
+# of every form each option takes. Validate it with `polix config check`; draw it with `polix graph`, which names the
 # shortcut of each entry. Design and limits: docs/polix.md; every key, condition and verb one by one:
 # docs/reference.md; recipes, one per use case: docs/use-cases.md.
 #
@@ -25,10 +25,10 @@
 #    written in `on`; each one whose `when` holds and whose `unless` does not hold carries out its action. The first
 #    one that actually blocks ends the evaluation (see `on` below).
 #
-# An invalid file (any problem `polix check` reports) blocks pre_edit, pre_command and pre_commit with the
-# problems (fail closed), except the main session editing polix.yaml or running `polix check`, `polix update`,
-# `polix doctor` or `polix version`, and only warns on the other events, so a broken file never traps a stop in a
-# loop. A file that `requires` a newer polix blocks the same way, asking to run `polix update`, and not even the
+# An invalid file (any problem `polix config check` reports) blocks pre_edit, pre_command and pre_commit with the
+# problems (fail closed), except the main session editing polix.yaml or running `polix config check`,
+# `polix config fmt --check`, `polix update`, `polix doctor` or `polix version`, and only warns on the other events,
+# so a broken file never traps a stop in a loop. A file that `requires` a newer polix blocks the same way, asking to run `polix update`, and not even the
 # main session may edit it.
 #
 # Cheat sheet (each one is explained where it is first used below):
@@ -41,7 +41,7 @@
 #     and post_command, which already happened);
 #   - inject: on every event but subagent_stop and stop (an agent that stops cannot receive context);
 #   - run: on every event; it blocks where block is valid, and elsewhere a failure reaches the AI as context.
-# - Conditions that hold only on some events (`polix check` rejects them elsewhere):
+# - Conditions that hold only on some events (`polix config check` rejects them elsewhere):
 #   - path: pre_edit, post_edit;
 #   - command, writes: pre_command, post_command, pre_commit;
 #   - exit: post_command.
@@ -54,7 +54,7 @@ version: 1
 # Optional. The oldest polix that knows every option this file uses; set it when an option needs a newer polix
 # than the one the team may have. It is read before the rest of the file, so an older polix that does not know the
 # other options blocks edits and commands asking to run `polix update`, instead of reporting them as mistakes, and
-# the session start hook looks for the new release at once. A development build ignores it. `polix check` rejects
+# the session start hook looks for the new release at once. A development build ignores it. `polix config check` rejects
 # a value that is not a version like 0.2.0. Known since polix 0.1.0: no earlier polix exists. This file needs 0.3.0:
 # `guardrails`, `base_branch` and `max_stop_retries` are unknown to an older polix.
 requires: 0.3.0
@@ -67,9 +67,9 @@ requires: 0.3.0
 # and tune them. The flow of the team (tickets, plans, builders, reviewer subagents) and any other condition or verb
 # go to `on`.
 # In each event, the entries of protected_branches, format_on_edit and run_before_done come before those written in
-# `on`, each group in file order. Each expanded entry takes the line of its item, so `polix check`, the log and the
-# repeat rules tell them apart.
-# `polix check` rejects a key of guardrails other than these five, an unknown key of an item, an empty glob,
+# `on`, each group in file order. Each expanded entry takes the line of its item, so `polix config check`, the
+# log and the repeat rules tell them apart.
+# `polix config check` rejects a key of guardrails other than these five, an unknown key of an item, an empty glob,
 # pattern, branch or command, and a shortcut written in another form than its own (a single string where a list
 # goes, a string where a map goes), showing the expected form.
 guardrails:
@@ -152,8 +152,9 @@ guardrails:
 
 # Optional, default main. The branch the change merges into, or a list of candidates, used only by
 # `polix rules check --changed` (CI): each candidate is tried locally and then as origin/<branch>, and the one whose
-# merge base is closest to HEAD wins. The command fails when none exists, and `polix check` and `polix doctor` warn
-# about it. In the hooks, `changed` always compares with HEAD: the change is reviewed commit by commit.
+# merge base is closest to HEAD wins. The command fails when none exists, and `polix config check` and
+# `polix doctor` warn about it. In the hooks, `changed` always compares with HEAD: the change is reviewed commit
+# by commit.
 # In GitHub Actions, pass `--base="${{ github.base_ref }}"` with a checkout of `fetch-depth: 0`; outside a pull
 # request it is empty, and an empty --base falls back to this list. On a push to a branch of this list, such as
 # main, --changed checks nothing (the branch is its own base): run `polix rules check` without it there.
@@ -182,8 +183,8 @@ max_stop_retries: 3
 # tests/architecture/ below runs once for that folder, `go test ./tests/architecture -run ^Test(GOARCH1|GOARCH2)$`.
 # When a shared invocation fails, each rule of it runs again alone to tell which ones fail.
 # A check no glob matches runs as a program (its shebang; on Windows a .sh with the bash of Git for Windows and a
-# .py with py -3, python3 or python). Used by `polix rules check` and by `run: { rules }`; `polix check` reports an
-# empty argv, an empty glob, an unknown placeholder or {files} or {dirs} inside a longer argument.
+# .py with py -3, python3 or python). Used by `polix rules check` and by `run: { rules }`; `polix config check`
+# reports an empty argv, an empty glob, an unknown placeholder or {files} or {dirs} inside a longer argument.
 rules:
   path: ai/rules
   run:
@@ -205,7 +206,7 @@ reports:
 #   glob that matches a file, in this order, gives its weight; a file no glob matches weighs 1. So list the tests
 #   of a critical folder before the folder, to make them weigh less. A weight of 0 leaves a path out of the score.
 # The risk score of a set of files is the sum of weight times log2(1 + added + deleted lines) of each, rounded.
-# `polix check` reports an empty glob or a negative weight; a weight that is not a number, a `risk` or `weights`
+# `polix config check` reports an empty glob or a negative weight; a weight that is not a number, a `risk` or `weights`
 # that is not a map, and a key of `risk` other than `weights` stop the parse. Calibrate with `polix risk`, on the
 # current change or on a past commit: `polix risk --commit <rev> --changed 'src/**'`.
 risk:
@@ -242,7 +243,7 @@ vars:
   release: { branch: "^release/[0-9.]+$" }        # no group, the whole match: release/2.4 -> release/2.4
 
 # Placeholders, replaced in the strings of conditions (except `branch`), verbs and `contains`; an unknown one
-# is rejected by `polix check`:
+# is rejected by `polix config check`:
 # - {path}: the edited path, relative to the root (pre_edit and post_edit; empty elsewhere);
 # - {command}: the whole command line (pre_command, post_command and pre_commit; empty elsewhere);
 # - {branch}: the current branch;
@@ -320,7 +321,7 @@ on:
   # background). A check that must hold is a `run` of polix.
   #
   # Unknown events, keys (also inside action, run, inject, block and vars), conditions and verbs are rejected by
-  # `polix check`, and so are conditions on events where they never hold (path, command, writes, exit). A name of
+  # `polix config check`, and so are conditions on events where they never hold (path, command, writes, exit). A name of
   # the old vocabulary (session_start, turn_stop, if, why, mode, deny, require, allow, run or context as keys of an
   # entry, record, done, at_least, and the top-level protected, base and max_stop_blocks) is reported with its new
   # spelling.

@@ -83,8 +83,8 @@ and with 1 otherwise.
 - `LoadRules`: reads and parses the files of the folder it is given (`Workflow.RulesPath`), `retired.yaml` left
   out, ordered by id; without the folder, no rules.
 - `LoadWorkflow`: reads polix.yaml, always, for its runners and its base branches; without polix.yaml, the default
-  workflow. Of the problems that `polix check` reports on a workflow that parses, only those of `rules`
-  stop the use case (see Errors); the rest are left to `polix check`.
+  workflow. Of the problems that `polix config check` reports on a workflow that parses, only those of `rules`
+  stop the use case (see Errors); the rest are left to `polix config check`.
 - `Changed`: asks git for the files changed against the first base that exists, locally or on origin; when none
   exists, its error asks to set `base_branch` in polix.yaml or to pass `--base`.
 - `RunCheck`: runs one invocation from the root, which may decide several rules, with 5 minutes to finish: the argv

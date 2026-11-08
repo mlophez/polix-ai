@@ -17,7 +17,7 @@ type GraphWorkflowAdapter struct {
 
 // LoadWorkflow reads polix.yaml: without the file, the default workflow and false; a file that cannot be read,
 // cannot be parsed or requires a newer polix is an error. The problems of a workflow that parses (Invalid) are
-// left to polix check: it is drawn as it is.
+// left to polix config check: it is drawn as it is.
 func (a GraphWorkflowAdapter) LoadWorkflow(_ context.Context, running string) (Workflow, bool, error) {
 	data, existed, err := file.Read(filepath.Join(a.Repo.Root, File))
 	if err != nil {

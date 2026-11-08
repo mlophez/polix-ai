@@ -2,7 +2,7 @@
 
 Recipes for `polix.yaml`, from a single guardrail to a whole development flow. Each one is a fragment: put it
 under the `guardrails:` or the `on:` of your workflow (with `version: 1` at the top), validate it with
-`polix check` and draw it with `polix graph`. Every key, condition and verb is described in
+`polix config check` and draw it with `polix graph`. Every key, condition and verb is described in
 [reference.md](reference.md), and a whole annotated workflow is [`examples/polix.yaml`](../examples/polix.yaml);
 the design and its limits are in [polix.md](polix.md).
 

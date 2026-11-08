@@ -48,9 +48,9 @@ type CheckSetupPort interface {
 	ResolveBase(ctx context.Context, candidates []string) error
 }
 
-// CheckSetupCommand is the command `polix check`, the entry of the use case CheckSetup: it turns the flags into a
-// CheckSetupRequest, injects the adapter as the port, runs the shell and serializes the CheckSetupResponse to the
-// console.
+// CheckSetupCommand is the command `polix config check`, a subcommand of `polix config` and the entry of the use
+// case CheckSetup: it turns the flags into a CheckSetupRequest, injects the adapter as the port, runs the shell and
+// serializes the CheckSetupResponse to the console.
 func CheckSetupCommand() *cobra.Command {
 	req := CheckSetupRequest{Version: build.Current()}
 	c := &cobra.Command{

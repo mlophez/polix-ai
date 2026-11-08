@@ -38,9 +38,9 @@ func Parse(file string, data []byte) ([]Rule, error) {
 	return rules, nil
 }
 
-// ParseAll reads the rules of one file like Parse, but goes on past an invalid rule, so polix check and polix
+// ParseAll reads the rules of one file like Parse, but goes on past an invalid rule, so polix config check and polix
 // doctor list every problem: it returns every rule of the file, invalid ones included, and one problem for each
-// invalid rule in the words of polix check ("<file> <id>: no description"). Only broken YAML is an error.
+// invalid rule in the words of polix config check ("<file> <id>: no description"). Only broken YAML is an error.
 func ParseAll(file string, data []byte) ([]Rule, []string, error) {
 	rules, invalid, err := decode(file, data)
 	if err != nil {
@@ -123,7 +123,7 @@ func decode(file string, data []byte) ([]Rule, []error, error) {
 	return out, invalid, nil
 }
 
-// problem is why an invalid rule is not valid, in the words of polix check: the file, the id and what is wrong.
+// problem is why an invalid rule is not valid, in the words of polix config check: the file, the id and what is wrong.
 func (r Rule) problem() string {
 	switch {
 	case r.ID == "":

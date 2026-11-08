@@ -23,7 +23,7 @@ polix graph [--dir <dir>]
 `GraphWorkflow(wf Workflow, found bool) GraphWorkflowOutput` draws the workflow. It takes what the shell read
 through the port:
 
-- `wf`: the workflow of polix.yaml, drawn as it is even when `polix check` would report problems, with its
+- `wf`: the workflow of polix.yaml, drawn as it is even when `polix config check` would report problems, with its
   protected files and forbidden commands (`ProtectedFiles`, `ForbiddenCommands`) and the other shortcuts of
   `guardrails` already expanded into entries of `on`.
 - `found`: whether polix.yaml exists.

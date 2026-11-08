@@ -81,9 +81,10 @@ func TestIndent(t *testing.T) {
 
 // Only the commands that check the workflow or update polix pass an invalid workflow.
 func TestOnlyPolix(t *testing.T) {
-	for command, want := range map[string]bool{"polix check": true, "cd . && polix check --dir .": true,
+	for command, want := range map[string]bool{"polix config check": true, "cd . && polix config check --dir .": true,
 		"polix update --version 0.2.0": true, "polix version": true, "polix doctor": true, "ls": false,
-		"polix check && ls": false, "": false} {
+		"polix config check && ls": false, "polix check": false, "polix config fmt --check": true, "polix config fmt": false, "polix config fmt --check=false": false,
+		"polix config fmt --check --check=false": false, "": false} {
 		if got := OnlyPolix(command); got != want {
 			t.Errorf("OnlyPolix(%q) = %v", command, got)
 		}
