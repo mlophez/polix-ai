@@ -28,16 +28,6 @@ One static binary that works with Claude Code through its hooks; Codex support i
 ---
 
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="A terminal shows a polix.yaml of a few guardrails, polix config check, and three Claude Code hook calls: a force push blocked with its reason, a write of .env blocked, and go test let through" width="100%">
-</p>
-
-<p align="center"><sub>
-  Recorded Claude Code hook inputs piped to <code>polix hook claude</code> with the guardrails of
-  <a href="docs/assets/demo/polix.yaml"><code>docs/assets/demo/polix.yaml</code></a>; <code>just demo</code>
-  records it again.
-</sub></p>
-
-<p align="center">
   <img src="docs/assets/overview.svg" alt="Claude Code calls Polix through its hooks (Codex is not implemented); Polix reads polix.yaml and ai/rules/, keeps what it observed and decided in log.jsonl, and answers by blocking, injecting context or allowing the action" width="100%">
 </p>
 
@@ -56,24 +46,55 @@ the copy in the next repository.
 session: what is blocked, what runs and what is injected into the context.
 The same binary answers every hook in milliseconds and keeps an append-only log of what it observed and decided.
 
-The basics fit in ten lines. Save this as `polix.yaml` at the root of the repository:
+Save this as `polix.yaml` at the root of the repository:
 
 ```yaml
 version: 1
+
 guardrails:
-  protected_files: [".env", ".env.*", "*.pem"]         # no agent writes them, the main session included
-  forbidden_commands:                                  # each command of the line, as written
+  # No agent writes these files, the main session included.
+  protected_files: [".env", "*.pem"]
+
+  # No agent runs these commands; the reason goes back to the agent.
+  forbidden_commands:
     - pattern: "git push*--force*"
       reason: "Force pushes rewrite shared history: ask a person to run it."
-  protected_branches: [main]                           # nobody commits there
-  run_before_done:                                     # the agent cannot end its turn while one fails
-    - { run: "go test ./...", changed: ["*.go", go.mod, go.sum] }
+
+  # Nobody commits on these branches.
+  protected_branches: [main]
+
+  # The agent cannot end its turn while a check fails.
+  run_before_done:
+    - { run: "go test ./...", changed: "*.go" }
+
+on:
+  pre_commit:
+    # A commit needs the reviewer subagent to have seen the diff as it is now.
+    - unless: { finished: polix:reviewer }
+      action: { block: "Review the diff with the polix:reviewer subagent, then commit again." }
 ```
 
-The files and the commands are protections of the engine, applied before everything else, to every agent and also
-to the files git ignores. `protected_branches` and `run_before_done` are shortcuts that expand into ordinary entries
-of `on:`, and `polix graph` draws them with the name of their shortcut. A fuller set of guardrails, with a formatter
-after each edit and a linter before the end of a turn, opens [the workflow section](#the-workflow-in-one-file).
+`guardrails:` are the basics: the files and the commands are protections of the engine, applied before everything
+else, to every agent and also to the files git ignores; `protected_branches` and `run_before_done` are shortcuts
+that expand into ordinary entries of `on:`. `on:` is where your own flow goes, here a review before every commit:
+Polix sees the reviewer subagent end and remembers which content it saw, so editing a line afterwards asks for a new
+review.
+
+This is that file at work, in a real Claude Code session asked to *add a Reverse function with a test and commit
+it*. Polix blocks the commit on `main` and then the commit without a review, and Claude recovers by itself: a
+branch, the reviewer, the tests Polix runs, the commit.
+
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="A Claude Code session adds a Reverse function and its test; Polix blocks the commit on main, Claude creates a branch, Polix blocks the commit without a review, Claude runs the polix:reviewer subagent and then commits" width="100%">
+</p>
+
+<p align="center"><sub>
+  Recorded with <code>just demo</code> from <a href="docs/assets/demo/demo.tape"><code>docs/assets/demo/demo.tape</code></a>,
+  sped up.
+</sub></p>
+
+A fuller set of guardrails, with a formatter after each edit and a linter before the end of a turn, opens
+[the workflow section](#the-workflow-in-one-file).
 
 When the tests fail, the agent gets their output and has to go on. When they pass, Polix remembers it for this
 exact content, so the next stop does not run them again; if the agent then edits a single line, they run again.
@@ -231,7 +252,7 @@ polix doctor           # check that this machine and repository are ready
 ```
 
 With the quick start in place, ask the agent in a new session to force push: Polix blocks the command and the agent
-reads the reason. The same block without an agent, as in the demo, feeds a Claude Code hook input to Polix:
+reads the reason. The same block without an agent feeds a Claude Code hook input to Polix:
 
 ```bash
 echo '{"hook_event_name":"PreToolUse","session_id":"try","tool_name":"Bash","tool_input":{"command":"git push --force origin main"}}' | polix hook claude
