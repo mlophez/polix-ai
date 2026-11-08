@@ -568,13 +568,13 @@ To deny them to every actor whatever git ignores, list them in
 
 ### The agent cannot switch off its own guardrails
 
-The hooks that call polix live in `.claude/settings.json` and `.codex/hooks.json`. An agent that edits them can
-turn polix off for the rest of the session.
+The hooks that call polix live in `.claude/settings.json`. An agent that edits it can turn polix off for the rest
+of the session.
 
 ```yaml
 on:
   pre_edit:
-    - when: { path: [".claude/settings.json", ".codex/hooks.json"] }
+    - when: { path: ".claude/settings.json" }
       action: { block: "{path} registers the hooks of polix: change it yourself, the agent does not" }
 ```
 
@@ -582,7 +582,8 @@ polix only protects its own state without any entry: `AGENTS.md`, `CLAUDE.md`, `
 open unless the workflow closes them, as in [Paths no agent writes](#paths-no-agent-writes). This entry keeps the
 hooks away from edits, for the main session too. `polix install` still writes them, since it runs as a command and
 not as an edit; adding the files to `guardrails.protected_files` instead would also deny the commands of the agent
-that write them.
+that write them. A repository where Codex was set up by hand, with `polix install --agent codex` (Codex support is
+not implemented), names its hooks file too: `path: [".claude/settings.json", ".codex/hooks.json"]`.
 
 ## Context
 

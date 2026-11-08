@@ -5,8 +5,8 @@ a pure logic and an adapter (pure core, imperative shell). The rules are GOARCH-
 `ai/rules/architecture.yaml`; the deterministic ones are decided by the AST tests of `tests/architecture/`
 (`go test ./tests/architecture`, one `TestGOARCH<N>` per rule), which read `internal/`, `pkg/` and `cmd/`.
 
-The domain packages are `agent` (the events of Claude Code and Codex), `hook` (`polix hook`), `rule`
-(`polix rules check`), `setup` (`check`, `install`, `uninstall`, `doctor`, the hidden
+The domain packages are `agent` (the events of Claude Code, with a Codex adapter that is not implemented), `hook`
+(`polix hook`), `rule` (`polix rules check`), `setup` (`check`, `install`, `uninstall`, `doctor`, the hidden
 `__refresh` of `RefreshSetup`), `state` (the log of a repository),
 `version` (`version`, `update`) and `workflow` (`polix.yaml`, `graph`, `log`). How polix behaves is in
 `docs/polix.md`.

@@ -4,9 +4,9 @@
 #   curl -fsSL https://github.com/mlophez/polix-ai/releases/latest/download/install.sh | sh
 #
 # On macOS and Linux it installs the binary itself and runs `polix install --user`, which installs the plugin of polix
-# (skills and agents) for the user in Claude Code and, when it is used, Codex. On Windows (Git Bash, MSYS or Cygwin)
-# it runs install.ps1 of the same release, checked the same way, so a Windows machine gets one install wherever it
-# starts from: in %LOCALAPPDATA%\Programs\polix and on the user PATH that every shell and Claude Code see.
+# (skills and agents) for the user in Claude Code. On Windows (Git Bash, MSYS or Cygwin) it runs install.ps1 of the
+# same release, checked the same way, so a Windows machine gets one install wherever it starts from: in
+# %LOCALAPPDATA%\Programs\polix and on the user PATH that every shell and Claude Code see.
 #
 # Environment:
 #   POLIX_VERSION       version to install (default: the latest release)

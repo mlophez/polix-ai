@@ -1,12 +1,15 @@
-# polix (proof of concept)
+# polix
 
-This repository holds a proof of concept of `polix`, the engine that connects Claude Code and Codex to the
-workflow and the rules of a repository through their hooks.
-It is a Go module of its own (`github.com/mlophez/polix-ai`), separate from the Python engine of Logalty Control, so it can be
-shipped as one static binary per operating system and run on every hook call in milliseconds.
+Declarative guardrails for Claude Code: one `polix.yaml` decides what the agent may not touch, what must pass and
+what runs at every step.
 
-The design, its alternatives and the open decisions live outside this repository, in the artifact "Dispatcher de
-workflows" (proposal 2).
+`polix` is the engine that connects Claude Code to the workflow and the rules of a repository through its hooks.
+It is a Go module of its own (`github.com/mlophez/polix-ai`), shipped as one static binary per operating system, so
+it runs on every hook call in milliseconds. Claude Code is the supported agent; Codex support is not implemented
+(see [Known limits](#known-limits)).
+
+0.1.0 is the first public release. `polix.yaml` is `version: 1`, and a 0.x release may still change its format:
+`requires:` lets a repository pin the oldest polix that knows every option it uses.
 
 ## Layers
 
@@ -31,7 +34,7 @@ and judging the code stays with the `reviewer` subagent.
 
 ```bash
 polix hook claude          # entry point of the Claude Code hooks (event on stdin)
-polix hook codex           # entry point of the Codex hooks (experimental)
+polix hook codex           # entry point of the Codex hooks (not implemented)
 polix config check         # validate polix.yaml and the rules (ai/rules/ or rules.path)
 polix config fmt           # format polix.yaml in place: keys in the order of the reference, comments kept
                            # (--check only tells whether it is formatted, exiting with 1 when not)
@@ -44,7 +47,7 @@ polix log --tail 20        # print the last entries of the state log (--json for
 polix risk                 # print the lines, files and risk score of the uncommitted change, file by file
                            # (--changed GLOB, repeatable; --commit REV for the changes of one commit)
 polix doctor               # check that this machine and repository are ready (--hook, --offline)
-polix install              # plugin for the user, hooks for the repository (--user, --agent)
+polix install              # plugin for the user, hooks for the repository (--user, --agent; default claude)
 polix uninstall            # remove what install wrote (--user, --agent)
 polix update               # replace the binary with the latest release and refresh the plugin
                            # (--check, --version V, --hook)
@@ -133,8 +136,8 @@ version.
 repository: it tells the agent to propose the install command of the system of the user, and to run it only
 with their approval, when polix is missing.
 
-Both scripts then run `polix install --user --yes`, which installs the plugin of the user (see below) and no hooks:
-they belong to each repository. `POLIX_NO_SETUP=1` skips it.
+Both scripts then run `polix install --user --yes`, which installs the plugin of the user for Claude Code (see
+below) and no hooks: they belong to each repository. `POLIX_NO_SETUP=1` skips it.
 
 `polix update` downloads the latest release (or `--version V`, older ones included), checks it against
 `checksums.txt` and replaces the running binary atomically: on macOS and Linux a hook that starts meanwhile runs
@@ -172,7 +175,10 @@ the repository.
 a check that a runner of `rules.run` runs skips both, since its runner runs it), the hooks of Claude Code (project,
 local and user settings: every event, every governed tool in the matchers, a timeout above the run budget, and never
 twice), the plugin of the user (its version against the binary and, except in `--hook`, that Claude Code has it
-installed and enabled), the hooks and the plugin of Codex when it is used and that the state can be written. It also
+installed and enabled), the hooks and the plugin of Codex only when polix is registered for it (a Codex hooks file
+of the project or the user that runs polix, or the plugin enabled in `~/.codex/config.toml`, as
+`polix install --agent codex` leaves them; its OK line says Codex support is not implemented and untested, and a
+Codex never set up for polix gets no line), and that the state can be written. It also
 warns when `SessionStart` does not run `polix update --hook`, or runs the command of an earlier build, which `polix
 install` replaces, and when `PostToolUseFailure` does not run polix, as in the settings of an earlier build: only
 the feedback of failed commands is lost. It exits 1 on any failure. `--hook` prints nothing when everything is fine
@@ -192,7 +198,8 @@ The Justfile recipes use `sh`: on Windows, run them from Git Bash.
 
 The use case `AnswerHook` of `internal/hook` (layout in `docs/architecture.md`) answers it:
 
-1. The agent (`internal/agent`, Claude Code or Codex) turns the JSON of stdin into neutral events.
+1. The agent (`internal/agent`, Claude Code; its Codex adapter is not implemented, see
+   [Known limits](#known-limits)) turns the JSON of stdin into neutral events.
    An edit becomes one `pre_edit` or `post_edit` per path; a `git commit` in a command also produces
    `pre_commit`.
 2. The logic of the hook (`internal/hook`) applies the [protections](#protections): the built-in protection of the
@@ -296,7 +303,8 @@ heuristic, aimed at accidents rather than at an agent determined to get around i
 
 ## polix.yaml
 
-`examples/polix.yaml` is the current Logalty flow written as a workflow, annotated as a reference of every option;
+`examples/polix.yaml` is a complete team workflow (ticket, plan, builder, tests, reviewer, commit), annotated as a
+reference of every option;
 a test validates it. [reference.md](reference.md) describes every key, event, condition and verb one by one.
 
 ```yaml
@@ -689,7 +697,7 @@ event run one after the other, in the order of the file, never in parallel. The 
 carries out the verb of its action, unless the repeat rules of [How often each verb acts](#how-often-each-verb-acts)
 skip it. A `run` waits for its command to finish before the next entry starts, so a `stop` takes the sum of
 its runs, all of them bounded by the budget of 10 minutes of the hook call (see
-[Limits of the proof of concept](#limits-of-the-proof-of-concept)).
+[Known limits](#known-limits)).
 
 One rule ends the evaluation, whatever the verb: the first entry that actually blocks, a `block`
 or a failing `run` on an event where it blocks, and not let through by the [loop guard](#loop-guard). The entries
@@ -786,8 +794,10 @@ guard still counts the blocks of a stop made without a hash, as one content, so 
 
 ## The plugin and the hooks: polix install
 
-`polix install` installs what each agent needs, from the binary, so every release brings its plugin and hooks with
-it. Running it again rewrites what changed and removes what the release dropped. It has two parts:
+`polix install` installs what the agent needs, from the binary, so every release brings its plugin and hooks with
+it. Running it again rewrites what changed and removes what the release dropped. Without `--agent` it sets up
+Claude Code alone, even when Codex is on the `PATH` or configured: Codex is set up only with `--agent codex`, which
+also prints that Codex support is not implemented in this release and the setup is untested. It has two parts:
 
 - The plugin `polix`, for the user, since it helps in any repository. It is the folder `plugins/polix/` of this
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
@@ -806,24 +816,25 @@ it. Running it again rewrites what changed and removes what the release dropped.
     skills are `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:init`, `/polix:plan`,
     `/polix:review` and `/polix:audit`, its agents `polix:workflow-author`, `polix:rules-author`, `polix:builder`,
     `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`. The skills `review` and `audit` launch the
-    agents, and the main session launches `builder`; Codex, which has no agents of plugins, follows the file of the agent in the session instead.
+    agents, and the main session launches `builder`; Codex, which has no agents of plugins and whose support is not
+    implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
     or the workflow of polix asks for it, as its description says: the model does not reach for them by itself, and
     a message of polix such as "Run /polix:review" still runs the skill. The read-only agents (`reviewer`,
     `rules-reviewer`, `auditor`) fill the report template inside their own file. The skills `audit` and `review`
     save their report in the folder of reports from the `template.md` next to them, as `plan` saves its plan; a
     `polix:reviewer` launched without the skill answers in the chat and saves no file.
-  - Codex, when it is installed (or with `--agent codex`): `codex plugin marketplace add ~/.polix/marketplace` and
+  - Codex, only with `--agent codex` (not implemented): `codex plugin marketplace add ~/.polix/marketplace` and
     `[plugins."polix@polix"] enabled = true` in `~/.codex/config.toml`, the rest of the file kept. Codex documents
-    no command to install a plugin without its interface, so this part is experimental until it is checked against
-    a running Codex. Codex plugins carry no agents.
+    no command to install a plugin without its interface, and this part was never checked against a running
+    Codex. Codex plugins carry no agents.
 
   When the CLI of an agent is not on the `PATH`, install writes the plugin and prints the commands to run by hand.
 - The hooks, for the repository of the working directory (or `--dir`), since they belong to the project like its
-  `polix.yaml` and are committed with it: merged into `.claude/settings.json` and `.codex/hooks.json`. For Claude Code
-  they cover `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure` (a failed
-  command reaches `post_command` with a non-zero `exit`; a failed edit runs no `post_edit`), `SubagentStop` and
-  `Stop`; Codex gets the same events except `PostToolUseFailure`. Every
+  `polix.yaml` and are committed with it: merged into `.claude/settings.json`, and into `.codex/hooks.json` only with
+  `--agent codex`. For Claude Code they cover `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
+  `PostToolUseFailure` (a failed command reaches `post_command` with a non-zero `exit`; a failed edit runs no
+  `post_edit`), `SubagentStop` and `Stop`; Codex gets the same events except `PostToolUseFailure`. Every
   other setting, event and hook of those files is kept in its order, and the hooks of polix take the place of the
   ones they replace, so the file only changes where polix changed. A group that mixes a hook of polix with other
   commands keeps the other commands, and the hook of polix goes to a group of its own. Each group of hooks of an
@@ -831,9 +842,11 @@ it. Running it again rewrites what changed and removes what the release dropped.
   symlinked file is written through the link, to its target, and an existing file keeps its permissions. Codex skips new or changed hooks until the
   user trusts them with `/hooks`. The plugin brings no hooks.
 
-`--user` installs only the plugin; outside a git repository that is all install does. `polix uninstall` removes
-the same parts: it unregisters the plugin from each agent and, for both, removes `~/.polix/marketplace/`; unless
-`--user`, it removes the hooks of polix of the repository, and a hooks file when nothing else is left in it.
+`--user` installs only the plugin; outside a git repository that is all install does. `polix doctor` checks Codex
+only when polix is registered for it, so a Codex user who never passed `--agent codex` gets no Codex finding.
+`polix uninstall` removes the same parts, and without `--agent` those of both agents, so it also removes a Codex
+setup: it unregisters the plugin from each agent and, for both, removes `~/.polix/marketplace/`; unless `--user`,
+it removes the hooks of polix of the repository, and a hooks file when nothing else is left in it.
 
 The plugin only arrives with `polix install`: the repository serves no marketplace of its own. The
 reference of the skill `workflow` (`plugins/polix/skills/workflow/reference.yaml`) is a copy of
@@ -842,8 +855,8 @@ reference of the skill `workflow` (`plugins/polix/skills/workflow/reference.yaml
 Claude Code merges the hooks of the project, local and user settings, so polix registered in two of them runs
 twice, which doubles every block and every observed line: `polix install` warns about it and `polix doctor` fails until
 one of them goes. `examples/claude-settings.json` and `examples/codex-hooks.json` are, byte for byte, what install
-writes in an empty repository for each agent (a test keeps them equal); they remain for a rollout that renders the
-settings itself (Logalty Control).
+writes in an empty repository for each agent (a test keeps them equal; the Codex one only with `--agent codex`);
+they remain for a rollout that renders the settings itself.
 
 On `SessionStart` with matcher `startup` (a new session, not a resume, a clear or a compaction) the hooks
 also run `polix update --hook`: it keeps polix up to date and then runs `polix doctor --hook`, which reports any
@@ -869,12 +882,12 @@ through; `polix doctor` warns about it.
 When the budget runs out, polix kills the command or the check and waits at most 5 seconds more for its output: a
 grandchild that keeps the output open (a server started in the background) no longer holds the hook, although it
 may outlive the budget, since polix does not kill the whole process tree.
-In the real rollout Logalty Control would render them and pin the version of the binary.
 
-## Limits of the proof of concept
+## Known limits
 
-- Codex is experimental: its tool names (`shell`, `apply_patch`...), whether it has a subagent stop event and how
-  its hooks set a timeout are still to be checked against a running Codex.
+- Codex is not implemented: an adapter (`polix hook codex`) and an opt-in install (`polix install --agent codex`)
+  exist, but they were never tested against a running Codex. Its tool names (`shell`, `apply_patch`...), whether
+  it has a subagent stop event and how its hooks set a timeout are still unknown.
 - A `git commit` is recognised by a heuristic (global options and quoted commands included); the text of a
   commit inside quotes, as in `echo "git commit"`, also triggers `pre_commit`. The `commit` switch of `guidance`
   asks the agent to run each commit on its own, so it stays recognisable.

@@ -75,8 +75,6 @@ type DiagnoseSetupPort interface {
 	Plugin(ctx context.Context) (map[string][]byte, error)
 	// ClaudePlugins returns what `claude plugin list --json` printed; ErrNoCLI without the CLI.
 	ClaudePlugins(ctx context.Context) ([]byte, error)
-	// CodexUsed reports whether Codex is used here: on the PATH, or configured below home or root.
-	CodexUsed(ctx context.Context, home, root string) bool
 }
 
 // DiagnoseSetupCommand is the command `polix doctor`, the entry of the use case DiagnoseSetup: it turns the flags
@@ -88,7 +86,8 @@ func DiagnoseSetupCommand() *cobra.Command {
 		Use:   "doctor",
 		Short: "Check that this machine and repository are ready for polix",
 		Long: "Check the binary and its version, the PATH the hooks use, git, the workflow, the rules and their checks, " +
-			"the hooks of Claude Code and Codex, the plugin of the user and the state. Exits 1 on any failure.",
+			"the hooks of Claude Code, the plugin of the user, Codex only when polix is registered for it (not implemented), " +
+			"and the state. Exits 1 on any failure.",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			req.Version, req.Now = build.Current(), time.Now()
@@ -174,7 +173,7 @@ func diagnoseSetup(ctx context.Context, port DiagnoseSetupPort, req DiagnoseSetu
 		Found: found, WorkflowErr: wfErr, Rules: rules, Invalid: invalid, RulesErr: rulesErr, Missing: missing,
 		Runnable: runnable, BaseErr: baseErr, Files: files, FileErrs: fileErrs, Embedded: embedded, Claude: claude,
 		ClaudeErr: claudeErr, SameFolder: port.SameFile(ctx, ClaudeFolder(claude), s.PluginDir()),
-		CodexUsed: port.CodexUsed(ctx, home, root), StateDir: stateDir, StateErr: stateErr}
+		StateDir: stateDir, StateErr: stateErr}
 	if err := i.Valid(); err != nil {
 		return DiagnoseSetupResponse{}, err
 	}

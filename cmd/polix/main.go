@@ -1,6 +1,6 @@
-// Command polix connects Claude Code and Codex to the workflow and the rules of a repository through
-// their hooks. It only wires the root command and the commands of each use case; see docs/architecture.md for
-// the layout and docs/polix.md for the design.
+// Command polix connects Claude Code to the workflow and the rules of a repository through its hooks; Codex
+// support is not implemented. It only wires the root command and the commands of each use case; see
+// docs/architecture.md for the layout and docs/polix.md for the design.
 package main
 
 import (
@@ -19,9 +19,11 @@ import (
 
 func main() {
 	root := cli.Root("polix",
-		"Applies the polix.yaml and ai/rules/ of a repository to Claude Code and Codex",
-		"polix applies the workflow (polix.yaml) and the rules (ai/rules/, or rules.path) of a repository to Claude Code and "+
-			"Codex through their hooks: it runs, injects and blocks what the workflow says.",
+		"Declarative guardrails for Claude Code: one polix.yaml decides what the agent may not touch, what must "+
+			"pass and what runs at every step.",
+		"polix applies the workflow (polix.yaml) and the rules (ai/rules/, or rules.path) of a repository to Claude Code "+
+			"through its hooks: it runs, injects and blocks what the workflow says. Claude Code is the supported agent; "+
+			"Codex support is not implemented.",
 		"  # Set up this machine: the polix plugin with its skills and hooks\n"+
 			"  polix install\n\n"+
 			"  # Check the machine and the repository\n"+

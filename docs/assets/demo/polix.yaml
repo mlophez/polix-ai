@@ -1,0 +1,10 @@
+version: 1
+
+guardrails:
+  protected_files:
+    - .env
+  forbidden_commands:
+    - pattern: "git push --force*"
+      reason: "Force pushes rewrite shared history: ask a person to run it."
+  protected_branches:
+    - main

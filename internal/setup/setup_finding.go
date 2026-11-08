@@ -46,7 +46,6 @@ type Inspection struct {
 	Claude      []byte            // what `claude plugin list --json` printed; nil when not asked
 	ClaudeErr   error             // why Claude Code could not be asked (ErrNoCLI without its CLI)
 	SameFolder  bool              // whether Claude Code reads the plugin from the local marketplace
-	CodexUsed   bool              // whether Codex is used here: on the PATH, or configured for the user or the project
 	StateDir    string            // the folder of the state
 	StateErr    error             // why the state cannot be written
 }

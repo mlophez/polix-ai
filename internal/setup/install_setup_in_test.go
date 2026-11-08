@@ -1,8 +1,10 @@
 package setup
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -22,9 +24,8 @@ func (f *fakeInstallSetupPort) Confirm(_ context.Context, _ string) error {
 	return nil
 }
 
-func (f *fakeInstallSetupPort) Home(_ context.Context) (string, error)        { return "/h", nil }
-func (f *fakeInstallSetupPort) Root(_ context.Context, _ string) string       { return "/r" }
-func (f *fakeInstallSetupPort) CodexUsed(_ context.Context, _, _ string) bool { return false }
+func (f *fakeInstallSetupPort) Home(_ context.Context) (string, error)  { return "/h", nil }
+func (f *fakeInstallSetupPort) Root(_ context.Context, _ string) string { return "/r" }
 func (f *fakeInstallSetupPort) Plugin(_ context.Context) (map[string][]byte, error) {
 	return map[string][]byte{"polix/.claude-plugin/plugin.json": []byte(`{"name": "polix", "version": "0"}`)}, nil
 }
@@ -63,5 +64,25 @@ func TestInstallSetupShell(t *testing.T) {
 	_, err = installSetup(context.Background(), port, InstallSetupRequest{Version: "1.2.3", User: true})
 	if !errors.Is(err, ErrCancelled) || len(port.calls) != 0 {
 		t.Fatalf("%v %v", err, port.calls)
+	}
+}
+
+// Codex is set up only when asked, and then the output says its support is not implemented.
+func TestInstallSetupShellCodex(t *testing.T) {
+	const notImplemented = "Codex support is not implemented in this release and the setup is untested"
+	port := &fakeInstallSetupPort{}
+	res, err := installSetup(context.Background(), port, InstallSetupRequest{Version: "1.2.3"})
+	var stdout, stderr bytes.Buffer
+	res.print(&stdout, &stderr)
+	if err != nil || slices.Contains(res.Agents, Codex) || strings.Contains(stdout.String(), notImplemented) {
+		t.Fatalf("a default install leaves Codex out: %+v %v\n%s", res, err, stdout.String())
+	}
+	port = &fakeInstallSetupPort{}
+	res, err = installSetup(context.Background(), port, InstallSetupRequest{Version: "1.2.3", Agents: []string{Codex}})
+	stdout.Reset()
+	res.print(&stdout, &stderr)
+	if err != nil || !slices.Equal(res.Agents, []string{Codex}) || !slices.Contains(port.calls, "RegisterPlugin "+Codex) ||
+		!strings.Contains(stdout.String(), notImplemented) {
+		t.Fatalf("--agent codex sets up Codex and says it is not implemented: %+v %v %v\n%s", res, err, port.calls, stdout.String())
 	}
 }

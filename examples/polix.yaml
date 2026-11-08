@@ -1,4 +1,4 @@
-# Example polix.yaml: the current Logalty flow (ticket, plan, builder, tests, reviewer, commit) plus the
+# Example polix.yaml: a complete team workflow (ticket, plan, builder, tests, reviewer, commit) plus the
 # rules of rules.path (ai/rules/) injected and checked, annotated as a reference of every option of the schema and
 # of every form each option takes. Validate it with `polix config check`; draw it with `polix graph`, which names the
 # shortcut of each entry. Design and limits: docs/polix.md; every key, condition and verb one by one:

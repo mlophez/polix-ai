@@ -90,9 +90,9 @@ func AnswerHookCommand() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "hook <claude|codex>",
 		Short: "Answer one hook call of an agent (event on stdin)",
-		Long: "Entry point of the hooks of Claude Code and Codex: it reads the event on stdin and answers with the " +
-			"exit code (2 blocks) and the output the agent expects. The polix plugin registers it; people do not " +
-			"run it.",
+		Long: "Entry point of the hooks of Claude Code: it reads the event on stdin and answers with the exit code " +
+			"(2 blocks) and the output the agent expects. The polix plugin registers it; people do not run it. " +
+			"The agent codex is accepted, but Codex support is not implemented and untested.",
 		Args:      cobra.ExactArgs(1),
 		ValidArgs: []string{agent.Claude, agent.Codex},
 		RunE: func(c *cobra.Command, args []string) error {

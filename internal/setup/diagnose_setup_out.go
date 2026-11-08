@@ -200,11 +200,3 @@ func (a DiagnoseSetupAdapter) ClaudePlugins(ctx context.Context) ([]byte, error)
 	out, err := proc.Stdout(ctx, "", []string{"claude", "plugin", "list", "--json"}, diagnoseSetupCLITimeout)
 	return []byte(out), err
 }
-
-// CodexUsed reports whether codex is on the PATH, or ~/.codex or <root>/.codex is a folder.
-func (a DiagnoseSetupAdapter) CodexUsed(_ context.Context, home, root string) bool {
-	if _, err := a.Look("codex"); err == nil {
-		return true
-	}
-	return file.IsDir(filepath.Join(home, ".codex")) || root != "" && file.IsDir(filepath.Join(root, ".codex"))
-}

@@ -144,13 +144,60 @@ func TestDiagnoseSetupMachine(t *testing.T) {
 	if got := text(DiagnoseSetup(i, true)); strings.Contains(got, "does not have") {
 		t.Fatal("the hook does not ask Claude Code")
 	}
-	i.CodexUsed = true
-	if got := text(DiagnoseSetup(i, false)); !strings.Contains(got, "not enabled in Codex") || !strings.Contains(got, "Codex is used here") {
-		t.Fatal(got)
-	}
 	i.StateErr = errors.New("read-only")
 	if got := text(DiagnoseSetup(i, false)); !strings.Contains(got, "cannot write the state in /r/state: read-only") {
 		t.Fatal(got)
+	}
+}
+
+// codexLines are the lines of the report about Codex.
+func codexLines(out DiagnoseSetupOutput) string {
+	var b strings.Builder
+	for _, f := range out.Findings {
+		if f.Area == "codex" {
+			b.WriteString(f.Level + " " + f.Message + "\n")
+		}
+	}
+	return b.String()
+}
+
+// Codex is checked only when polix is registered for it: its hooks run polix or its plugin is enabled.
+func TestDiagnoseSetupCodex(t *testing.T) {
+	i := healthy(t)
+	hooksFile, config := i.Setup.HooksFile(Codex), i.Setup.CodexConfigFile()
+	if got := codexLines(DiagnoseSetup(i, false)); got != "" {
+		t.Fatalf("no Codex files, no Codex finding:\n%s", got)
+	}
+	// A Codex that was never set up for polix, even with a broken hooks file of its own, is not checked.
+	i.Files[hooksFile] = []byte(`{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}}`)
+	i.Files[config] = []byte("model = \"x\"\n")
+	if got := codexLines(DiagnoseSetup(i, false)); got != "" {
+		t.Fatalf("Codex without polix, no Codex finding:\n%s", got)
+	}
+	i.Files[hooksFile] = []byte("{")
+	if got := codexLines(DiagnoseSetup(i, false)); got != "" {
+		t.Fatalf("a broken hooks file of a Codex without polix:\n%s", got)
+	}
+	delete(i.Files, hooksFile)
+	i.Files[config] = []byte("[plugins.\"" + PluginID + "\"]\nenabled = true\n")
+	if got := codexLines(DiagnoseSetup(i, false)); !strings.Contains(got, "warn Codex does not run polix in this repository: run polix install --agent codex") ||
+		strings.Contains(got, "ok ") {
+		t.Fatalf("the plugin enabled without hooks:\n%s", got)
+	}
+	i.Files[hooksFile] = []byte(`{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "polix hook codex"}]}]}}`)
+	out := DiagnoseSetup(i, false)
+	if got := codexLines(out); got != "ok hooks registered (Codex runs them once trusted with /hooks); "+
+		"Codex support is not implemented and untested\n" || out.Failed {
+		t.Fatalf("registered and enabled:\n%s", got)
+	}
+	delete(i.Files, config)
+	if got := codexLines(DiagnoseSetup(i, false)); !strings.Contains(got, "warn the plugin polix@polix is not enabled in Codex") {
+		t.Fatalf("registered without the plugin:\n%s", got)
+	}
+	i.Files[config] = []byte("[plugins.\"" + PluginID + "\"]\nenabled = true\n")
+	i.Files[hooksFile] = []byte("{")
+	if out := DiagnoseSetup(i, false); !out.Failed || !strings.Contains(codexLines(out), "fail "+hooksFile+": ") {
+		t.Fatalf("a hooks file that cannot be parsed fails:\n%s", codexLines(out))
 	}
 }
 

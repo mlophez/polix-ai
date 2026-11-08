@@ -28,10 +28,13 @@ Find why polix does not apply as expected and fix it with the user.
   The Windows installer adds `%LOCALAPPDATA%\Programs\polix` to the user `PATH`; then restart the agent.
 - **plugin**: `polix install --user` writes this plugin to `~/.polix/marketplace/` and registers it with each agent.
   A new or changed plugin applies in the next session, or after `/reload-plugins` in Claude Code.
-- **hooks**: `polix install` registers the hooks in `.claude/settings.json` and `.codex/hooks.json` of the repository.
+- **hooks**: `polix install` registers the hooks of Claude Code in `.claude/settings.json` of the repository.
   When they are registered twice, remove the `polix ...` hooks of one of the files: each hook would run twice.
   When `SessionStart` does not run `polix update --hook`, or runs the command of an earlier polix, run `polix install`.
-- **codex**: Codex skips new or changed hooks until the user trusts them with `/hooks`.
+- **codex**: Codex support is not implemented and untested.
+  The check appears only when polix was set up for Codex with `polix install --agent codex`: a Codex hooks file runs
+  polix, or the plugin is enabled in `~/.codex/config.toml`.
+  Codex skips new or changed hooks until the user trusts them with `/hooks`.
 - **workflow** and **rules**: fix the problems `polix config check` prints.
   The skills `workflow` and `add-rule` of polix know their formats.
   When `polix.yaml` requires a newer polix, run `polix update` and leave `polix.yaml` alone.

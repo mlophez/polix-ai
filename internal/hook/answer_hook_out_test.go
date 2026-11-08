@@ -203,7 +203,7 @@ func TestAnswerHookStopLoopGuard(t *testing.T) {
 	}
 }
 
-const answerHookLogaltyFlow = `version: 1
+const answerHookTeamFlow = `version: 1
 vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
 on:
@@ -232,9 +232,9 @@ const answerHookArchRules = `rules:
 
 // Example 2 of the design: ticket, plan, builder, rules as context, tests and review before committing. The tests
 // are a run of polix, which passes once the ref tested exists.
-func TestAnswerHookLogaltyFlow(t *testing.T) {
+func TestAnswerHookTeamFlow(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", answerHookLogaltyFlow)
+	r.write("polix.yaml", answerHookTeamFlow)
 	r.write("ai/rules/architecture.yaml", answerHookArchRules)
 	r.git("add", "--all")
 	r.git("commit", "--quiet", "-m", "workflow")

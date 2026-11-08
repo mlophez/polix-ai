@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
 	"charm.land/huh/v2"
@@ -36,14 +35,6 @@ func (a InstallSetupAdapter) Root(ctx context.Context, dir string) string {
 		return ""
 	}
 	return repo.Root
-}
-
-// CodexUsed reports whether codex is on the PATH, or ~/.codex or <root>/.codex is a folder.
-func (a InstallSetupAdapter) CodexUsed(_ context.Context, home, root string) bool {
-	if _, err := exec.LookPath("codex"); err == nil {
-		return true
-	}
-	return file.IsDir(filepath.Join(home, ".codex")) || root != "" && file.IsDir(filepath.Join(root, ".codex"))
 }
 
 // Plugin reads the plugin embedded in the binary.

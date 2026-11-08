@@ -38,3 +38,6 @@ go.work.sum
 # Release assets
 /dist/
 /polix
+
+# Worktrees of Claude Code sessions
+/.claude/worktrees/

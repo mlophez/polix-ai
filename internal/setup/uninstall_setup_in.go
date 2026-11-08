@@ -58,9 +58,10 @@ func UninstallSetupCommand() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "uninstall",
 		Short: "Remove the plugin of polix and the hooks of polix of the repository",
-		Long: "Unregister the plugin polix from Claude Code and Codex and remove ~/.polix/marketplace/ and, unless --user, " +
-			"the hooks of polix from the .claude/settings.json and .codex/hooks.json of the repository of --dir, " +
-			"keeping every other setting and hook. The binary stays: delete it by hand.",
+		Long: "Unregister the plugin polix from Claude Code, and from Codex when it was set up with --agent codex " +
+			"(Codex support is not implemented), and remove ~/.polix/marketplace/ and, unless --user, the hooks of " +
+			"polix from the .claude/settings.json and .codex/hooks.json of the repository of --dir, keeping every " +
+			"other setting and hook. The binary stays: delete it by hand.",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			var err error
@@ -80,7 +81,7 @@ func UninstallSetupCommand() *cobra.Command {
 	}
 	c.Flags().BoolVarP(&req.User, "user", "u", false, "only the plugin of the user, not the hooks of the repository")
 	c.Flags().StringVarP(&req.Dir, "dir", "C", ".", "repository whose hooks to remove")
-	c.Flags().StringSliceVarP(&agents, "agent", "a", nil, "agents: claude, codex (default: claude, and codex when it is installed)")
+	c.Flags().StringSliceVarP(&agents, "agent", "a", nil, "agents: claude, codex (default: both; codex is not implemented)")
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	c.Flags().BoolVarP(&req.Quiet, "quiet", "q", false, "only print what changed")
 	_ = c.RegisterFlagCompletionFunc("agent", cobra.FixedCompletions([]string{Claude, Codex}, cobra.ShellCompDirectiveNoFileComp))

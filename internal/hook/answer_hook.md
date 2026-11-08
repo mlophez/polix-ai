@@ -13,7 +13,8 @@ polix hook <claude|codex> [--dir <dir>]   < input of the hook on stdin
 - `<claude|codex>`: the agent behind the call; any other name exits with 1.
 - `--dir`: the repository; without it, the `cwd` of the input, else the working directory.
 
-The polix plugin registers it in the hooks of the agents; people do not run it.
+It is the entry point of the hooks of Claude Code; the polix plugin registers it, and people do not run it.
+`codex` is accepted, but Codex support is not implemented and untested.
 
 ## Request
 

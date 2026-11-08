@@ -12,16 +12,12 @@ type InstallSetupOutput struct {
 }
 
 // InstallSetup decides what polix install writes for the polix of version running: the plugin of the user below
-// home, for the agents asked or else Claude Code and, when it is used here (codexUsed), Codex; and the hooks of each
+// home, for the agents asked or else Claude Code alone, since Codex is set up only when asked; and the hooks of each
 // agent in the repository of root, when there is one. embedded is the plugin of the binary.
-func InstallSetup(home, root string, asked []string, codexUsed bool, running string,
-	embedded map[string][]byte) InstallSetupOutput {
+func InstallSetup(home, root string, asked []string, running string, embedded map[string][]byte) InstallSetupOutput {
 	agents := asked
 	if len(agents) == 0 {
 		agents = []string{Claude}
-		if codexUsed {
-			agents = append(agents, Codex)
-		}
 	}
 	s := Setup{Home: home, Root: root, Agents: agents, Version: running}
 	if err := s.Valid(); err != nil {

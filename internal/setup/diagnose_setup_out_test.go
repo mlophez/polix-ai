@@ -52,9 +52,6 @@ func TestDiagnoseSetupAdapter(t *testing.T) {
 	if _, err := a.ClaudePlugins(ctx); !errors.Is(err, ErrNoCLI) {
 		t.Fatal(err)
 	}
-	if a.CodexUsed(ctx, os.Getenv("HOME"), r) {
-		t.Fatal("codex is not used")
-	}
 }
 
 // The command end to end: in a repository after install, doctor finds the hooks; with the hooks of the user too,

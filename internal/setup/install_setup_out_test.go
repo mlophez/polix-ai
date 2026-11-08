@@ -77,8 +77,8 @@ func TestInstallSetupAdapterWithoutCLIs(t *testing.T) {
 	if err != nil || len(ch) != 2 || !ch[0].Todo() || ch[1].Path != s.CodexConfigFile() || !CodexEnabled([]byte(read(t, s.CodexConfigFile()))) {
 		t.Fatal(ch, err)
 	}
-	if a.CodexUsed(ctx, s.Home, "") != true || a.OnPath(ctx, "polix") == nil {
-		t.Fatal("~/.codex exists now, and polix is not on the PATH")
+	if a.OnPath(ctx, "polix") == nil {
+		t.Fatal("polix is not on the PATH")
 	}
 }
 

@@ -33,6 +33,10 @@ check: install
     "$polix" rules check
     "$polix" doctor --offline
 
+# Record docs/assets/demo.gif from docs/assets/demo/demo.tape (vhs must be installed, with ttyd and ffmpeg)
+demo:
+    vhs docs/assets/demo/demo.tape
+
 # Build the assets of a release into dist/ (what the release workflow publishes)
 dist version:
     scripts/dist.sh "$1"

@@ -48,9 +48,6 @@ type InstallSetupPort interface {
 	Home(ctx context.Context) (string, error)
 	// Root returns the root of the repository that holds dir; empty outside one.
 	Root(ctx context.Context, dir string) string
-	// CodexUsed reports whether Codex is used here: on the PATH, or configured for the user (below home) or the
-	// repository of root.
-	CodexUsed(ctx context.Context, home, root string) bool
 	// Confirm asks for confirmation of the summary of what is about to be written; ErrCancelled when refused.
 	Confirm(ctx context.Context, summary string) error
 	// Plugin returns the files of the plugin embedded in the binary, by path below polix/.
@@ -79,20 +76,23 @@ func InstallSetupCommand() *cobra.Command {
 		Use:   "install",
 		Short: "Install the plugin of polix for the user and register its hooks in the repository",
 		Long: "Install what the agents need to run polix, from this binary.\n\n" +
+			"Claude Code is the supported agent and the default. Codex is opt-in, set up only with --agent codex: its\n" +
+			"support is not implemented in this release and the setup is untested.\n\n" +
 			"For the user, the plugin polix, with skills (/polix:workflow, /polix:add-rule, /polix:doctor, /polix:init,\n" +
 			"/polix:plan, /polix:review, /polix:audit) and agents (polix:workflow-author, polix:rules-author, polix:builder,\n" +
 			"polix:reviewer, polix:rules-reviewer, polix:auditor) that help in any repository. It is written to the local\n" +
 			"marketplace ~/.polix/marketplace/ and registered with each agent:\n" +
 			"  Claude Code  claude plugin marketplace add, claude plugin install polix@polix --scope user\n" +
-			"  Codex        codex plugin marketplace add, and enabled in ~/.codex/config.toml\n\n" +
+			"  Codex        codex plugin marketplace add, and enabled in ~/.codex/config.toml (not implemented)\n\n" +
 			"For the repository of --dir, unless --user, the hooks that call polix hook, to commit with its polix.yaml:\n" +
 			"  Claude Code  .claude/settings.json\n" +
-			"  Codex        .codex/hooks.json\n\n" +
+			"  Codex        .codex/hooks.json (not implemented)\n\n" +
 			"Every other setting and hook of those files is kept. Running it again updates what changed; polix update " +
 			"refreshes the plugin after every update.",
 		Example: "  # The plugin for this machine and the hooks for this repository\n  polix install\n\n" +
 			"  # Only the plugin, from anywhere\n  polix install --user\n\n" +
-			"  # Only Claude Code, for another repository\n  polix install --agent claude --dir ~/Code/service",
+			"  # The hooks of another repository\n  polix install --dir ~/Code/service\n\n" +
+			"  # Codex too (not implemented: untested)\n  polix install --agent claude,codex",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			var err error
@@ -116,7 +116,7 @@ func InstallSetupCommand() *cobra.Command {
 	}
 	c.Flags().BoolVarP(&req.User, "user", "u", false, "only the plugin of the user, not the hooks of the repository")
 	c.Flags().StringVarP(&req.Dir, "dir", "C", ".", "repository whose hooks to register")
-	c.Flags().StringSliceVarP(&agents, "agent", "a", nil, "agents: claude, codex (default: claude, and codex when it is installed)")
+	c.Flags().StringSliceVarP(&agents, "agent", "a", nil, "agents: claude, codex (default: claude; codex is not implemented)")
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	c.Flags().BoolVarP(&req.Quiet, "quiet", "q", false, "only print what changed")
 	_ = c.RegisterFlagCompletionFunc("agent", cobra.FixedCompletions([]string{Claude, Codex}, cobra.ShellCompDirectiveNoFileComp))
@@ -125,9 +125,9 @@ func InstallSetupCommand() *cobra.Command {
 }
 
 // installSetup is the shell, from request to response: it reads through the port the home, the repository unless
-// --user, whether Codex is used and the plugin of the binary, calls the logic once, asks for confirmation, and
-// carries out its output: the plugin, then for each agent its registration and the hooks of the repository; then
-// it asks whether polix is on the PATH and which other settings register the hooks too.
+// --user and the plugin of the binary, calls the logic once, asks for confirmation, and carries out its output: the
+// plugin, then for each agent its registration and the hooks of the repository; then it asks whether polix is on
+// the PATH and which other settings register the hooks too.
 func installSetup(ctx context.Context, port InstallSetupPort, req InstallSetupRequest) (InstallSetupResponse, error) {
 	res := InstallSetupResponse{Version: req.Version, User: req.User, Quiet: req.Quiet}
 	home, err := port.Home(ctx)
@@ -142,8 +142,7 @@ func installSetup(ctx context.Context, port InstallSetupPort, req InstallSetupRe
 	if err != nil {
 		return res, err
 	}
-	codexUsed := port.CodexUsed(ctx, home, root)
-	out := InstallSetup(home, root, req.Agents, codexUsed, req.Version, embedded)
+	out := InstallSetup(home, root, req.Agents, req.Version, embedded)
 	if out.Failure != "" {
 		return res, errors.New(out.Failure)
 	}
@@ -216,6 +215,9 @@ func (res InstallSetupResponse) print(stdout, stderr io.Writer) {
 			}
 		case !res.User:
 			u.Warn("not inside a git repository: run polix install in a repository to register its hooks")
+		}
+		if slices.Contains(res.Agents, Codex) {
+			u.Line("  Codex support is not implemented in this release and the setup is untested.")
 		}
 		if res.NotOnPath {
 			u.Warn("polix is not on the PATH: the hooks run `polix`, add its folder to the PATH")

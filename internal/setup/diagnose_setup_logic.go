@@ -20,8 +20,8 @@ type DiagnoseSetupOutput struct {
 
 // DiagnoseSetup turns what polix doctor observed (i) into the findings of its report: the binary and its version,
 // the PATH the hooks use, git, and inside a repository the workflow, the rules and their checks, the hooks of
-// Claude Code, the plugin, Codex and the state; outside one, or without git, only the binary and the plugin. With
-// hook (the session start hook) Claude Code is not asked for its plugins.
+// Claude Code, the plugin, Codex when polix is registered for it, and the state; outside one, or without git, only
+// the binary and the plugin. With hook (the session start hook) Claude Code is not asked for its plugins.
 func DiagnoseSetup(i Inspection, hook bool) DiagnoseSetupOutput {
 	f := diagnoseSetupBinary(i)
 	switch {
@@ -311,12 +311,11 @@ func diagnoseSetupPlugin(i Inspection, hook bool) []Finding {
 		strings.Join(diagnoseSetupPrefixed("polix:", PluginAgents(i.Embedded)), " "))
 }
 
-// diagnoseSetupCodex checks Codex when it is used on this machine: polix must be registered for the project or the
-// user, and the plugin enabled.
+// diagnoseSetupCodex checks Codex only when polix is registered for it, as polix install --agent codex leaves it: a
+// hooks file of Codex, of the project or the user, runs polix, or the plugin is enabled in the configuration of
+// Codex. Then polix must be registered and the plugin enabled; a Codex never set up for polix gets no finding.
 func diagnoseSetupCodex(i Inspection) []Finding {
-	if !i.CodexUsed {
-		return nil
-	}
+	enabled := CodexEnabled(i.Files[i.Setup.CodexConfigFile()])
 	var f []Finding
 	registered := false
 	for _, file := range i.Setup.CodexHooksFiles() {
@@ -331,13 +330,17 @@ func diagnoseSetupCodex(i Inspection) []Finding {
 			f = append(f, found(LevelFail, "codex", "%v", err)...)
 		}
 	}
-	if !CodexEnabled(i.Files[i.Setup.CodexConfigFile()]) {
+	if !registered && !enabled {
+		return nil
+	}
+	if !enabled {
 		f = append(f, found(LevelWarn, "codex", "the plugin %s is not enabled in Codex: run polix install --user --agent codex", PluginID)...)
 	}
 	if !registered {
-		return append(f, found(LevelWarn, "codex", "Codex is used here but does not run polix in this repository: run polix install --agent codex")...)
+		return append(f, found(LevelWarn, "codex", "Codex does not run polix in this repository: run polix install --agent codex")...)
 	}
-	return append(f, found(LevelOK, "codex", "hooks registered (Codex runs them once trusted with /hooks)")...)
+	return append(f, found(LevelOK, "codex", "hooks registered (Codex runs them once trusted with /hooks); "+
+		"Codex support is not implemented and untested")...)
 }
 
 // diagnoseSetupPrefixed returns names with prefix before each one.

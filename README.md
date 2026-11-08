@@ -2,10 +2,10 @@
 
 # Polix
 
-**Guardrails for coding agents, written as policy instead of scripts.**
+**Declarative guardrails for Claude Code: one `polix.yaml` decides what the agent may not touch, what must pass and
+what runs at every step.**
 
-Turn your team's engineering workflow into a file the agent cannot ignore.
-One static binary connects Claude Code and Codex to the workflow and rules of your repository through their hooks.
+One static binary that works with Claude Code through its hooks; Codex support is not implemented.
 
 [![CI](https://github.com/mlophez/polix-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/mlophez/polix-ai/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/mlophez/polix-ai?sort=semver)](https://github.com/mlophez/polix-ai/releases/latest)
@@ -19,14 +19,26 @@ One static binary connects Claude Code and Codex to the workflow and rules of yo
 [polix.yaml](#the-workflow-in-one-file) ·
 [Use cases](docs/use-cases.md) ·
 [Why not shell scripts?](#why-not-a-few-shell-scripts) ·
-[Docs](docs/polix.md)
+[Status](#status) ·
+[Docs](docs/polix.md) ·
+[Changelog](CHANGELOG.md)
 
 </div>
 
 ---
 
 <p align="center">
-  <img src="docs/assets/overview.svg" alt="Claude Code and Codex call Polix through their hooks; Polix reads polix.yaml and ai/rules/, keeps what it observed and decided in log.jsonl, and answers by blocking, injecting context or allowing the action" width="100%">
+  <img src="docs/assets/demo.gif" alt="A terminal shows a polix.yaml of a few guardrails, polix config check, and three Claude Code hook calls: a force push blocked with its reason, a write of .env blocked, and go test let through" width="100%">
+</p>
+
+<p align="center"><sub>
+  Recorded Claude Code hook inputs piped to <code>polix hook claude</code> with the guardrails of
+  <a href="docs/assets/demo/polix.yaml"><code>docs/assets/demo/polix.yaml</code></a>; <code>just demo</code>
+  records it again.
+</sub></p>
+
+<p align="center">
+  <img src="docs/assets/overview.svg" alt="Claude Code calls Polix through its hooks (Codex is not implemented); Polix reads polix.yaml and ai/rules/, keeps what it observed and decided in log.jsonl, and answers by blocking, injecting context or allowing the action" width="100%">
 </p>
 
 ## The problem
@@ -44,30 +56,24 @@ the copy in the next repository.
 session: what is blocked, what runs and what is injected into the context.
 The same binary answers every hook in milliseconds and keeps an append-only log of what it observed and decided.
 
-The basics fit in a few lines:
+The basics fit in ten lines. Save this as `polix.yaml` at the root of the repository:
 
 ```yaml
-# polix.yaml
 version: 1
 guardrails:
-  protected_files: [".env", ".env.*", "*.pem", AGENTS.md]     # no agent writes them, the main session included
-  forbidden_commands:                                         # each command of the line, as written
-    - pattern: "*rm -rf /*"
+  protected_files: [".env", ".env.*", "*.pem"]         # no agent writes them, the main session included
+  forbidden_commands:                                  # each command of the line, as written
     - pattern: "git push*--force*"
-      reason: "No force pushes: open a pull request"
-    - pattern: "git push* -f*"
-      reason: "No force pushes: open a pull request"
-  protected_branches: [main, "release/*"]                     # nobody commits there
-  format_on_edit:                                             # right after each edit
-    - { run: "gofmt -w {path}", path: "*.go" }
-  run_before_done:                                            # the agent cannot end its turn while one fails
-    - { run: "golangci-lint run ./...", changed: "*.go" }
+      reason: "Force pushes rewrite shared history: ask a person to run it."
+  protected_branches: [main]                           # nobody commits there
+  run_before_done:                                     # the agent cannot end its turn while one fails
     - { run: "go test ./...", changed: ["*.go", go.mod, go.sum] }
 ```
 
 The files and the commands are protections of the engine, applied before everything else, to every agent and also
-to the files git ignores. The other three shortcuts expand into ordinary entries of `on:`, and `polix graph` draws
-them with the name of their shortcut.
+to the files git ignores. `protected_branches` and `run_before_done` are shortcuts that expand into ordinary entries
+of `on:`, and `polix graph` draws them with the name of their shortcut. A fuller set of guardrails, with a formatter
+after each edit and a linter before the end of a turn, opens [the workflow section](#the-workflow-in-one-file).
 
 When the tests fail, the agent gets their output and has to go on. When they pass, Polix remembers it for this
 exact content, so the next stop does not run them again; if the agent then edits a single line, they run again.
@@ -119,16 +125,18 @@ Polix comes in two parts, and the second one is optional.
 - **The engine** is the binary, `polix.yaml` and `ai/rules/`. It enforces whatever process you write down and
   assumes none: use it with your own skills, agents and conventions.
 - **The harness** is a small set of best practices that ships in the plugin `polix`, for teams that want a
-  development flow ready to use. Each phase is a skill run by its own subagent, with a clean context and a
-  structured output that the next phase reads:
-  - **plan**: turns a request into a plan with its scope, steps and how each step is verified, before any edit.
-  - **build**: implements the plan step by step and runs the tests of each step.
-  - **review**: reviews the diff against the plan and `ai/rules/`, and reports findings without fixing them.
-  - **document**: updates the documentation and the comments that the change made stale.
+  development flow ready to use. Each phase runs in its own subagent, with a clean context and a structured output
+  that the next phase reads:
+  - **plan** (`/polix:plan`): turns a request into a plan with its scope, tasks and how each task is verified,
+    before any edit.
+  - **build** (`polix:builder`): implements one task of the plan, with its tests and its verification, launched by
+    the main session.
+  - **review** (`/polix:review`, run by `polix:reviewer`): reviews the change against its intent and `ai/rules/`,
+    and reports findings without fixing them.
 
 The harness is not enforced by itself. A skill or agent of the plugin runs only when you or your `polix.yaml` ask
-for it, never on the initiative of the model; Polix enforces a phase when your `polix.yaml` says so, for example by requiring that the reviewer finished on the diff before a commit, and by
-running the tests itself:
+for it, never on the initiative of the model; Polix enforces a phase when your `polix.yaml` says so, for example by
+requiring that the reviewer finished on the diff before a commit, and by running the tests itself:
 
 ```yaml
 on:
@@ -140,11 +148,11 @@ on:
 
 Adopt the whole flow, a single phase or none of it.
 
-> The harness is in progress. Today the plugin holds the skills that set Polix up (`/polix:workflow`,
-> `/polix:add-rule`, `/polix:doctor`, `/polix:init`), the skills `/polix:plan`, `/polix:review` and
-> `/polix:audit`, and the agents `polix:workflow-author`, `polix:rules-author`, `polix:builder`, `polix:reviewer`,
-> `polix:rules-reviewer` and `polix:auditor`. Every report follows a fixed template, and `/polix:review` and
-> `/polix:audit` save theirs in the folder of reports.
+> The harness is in progress: plan, build and review exist, and a document phase is not written yet. Today the
+> plugin holds the skills that set Polix up (`/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:init`),
+> the skills `/polix:plan`, `/polix:review` and `/polix:audit`, and the agents `polix:workflow-author`,
+> `polix:rules-author`, `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`. Every report
+> follows a fixed template, and `/polix:review` and `/polix:audit` save theirs in the folder of reports.
 
 ## Quick start
 
@@ -173,22 +181,25 @@ version and `POLIX_INSTALL_DIR` to change the install folder.
 From the root of the repository:
 
 ```bash
-polix install                     # the plugin for you and the hooks for this repository
-polix install --user              # only the plugin, from anywhere (the installers already ran it)
-polix install --agent claude      # only Claude Code (default: Claude Code, and Codex when it is used)
+polix install                       # the plugin for you and the hooks for this repository, for Claude Code
+polix install --user                # only the plugin, from anywhere (the installers already ran it)
+polix install --agent claude,codex  # Codex too: not implemented in this release, and untested
 ```
 
-`polix install` sets up two things, and running it again only updates what changed:
+`polix install` sets up Claude Code alone, even when Codex is on the machine: Codex is set up only with
+`--agent codex`, and its support is not implemented. It sets up two things, and running it again only updates what
+changed:
 
 - **For you, the plugin `polix`.** It holds the skills `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`,
   `/polix:init`, `/polix:plan`, `/polix:review` and `/polix:audit` and the agents `polix:workflow-author`,
   `polix:rules-author`, `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`.
   The plugin ships inside the binary: Polix writes it to the local marketplace `~/.polix/marketplace/` and
-  registers it with `claude plugin install polix@polix --scope user` (for Codex, it enables it in
+  registers it with `claude plugin install polix@polix --scope user` (with `--agent codex`, it also enables it in
   `~/.codex/config.toml`). The plugin only arrives this way: the repository serves no marketplace.
   Start a new session to load it.
-- **For the repository, the hooks.** They go in `.claude/settings.json` (and `.codex/hooks.json` for Codex),
-  keeping every other setting and hook of those files. Commit them with your workflow so the team gets them.
+- **For the repository, the hooks.** They go in `.claude/settings.json` (and in `.codex/hooks.json` only with
+  `--agent codex`), keeping every other setting and hook of those files. Commit them with your workflow so the team
+  gets them.
 
 Every hook calls the same command, as in [`examples/claude-settings.json`](examples/claude-settings.json):
 
@@ -219,6 +230,14 @@ polix graph            # draw the workflow as a Mermaid diagram, each entry with
 polix doctor           # check that this machine and repository are ready
 ```
 
+With the quick start in place, ask the agent in a new session to force push: Polix blocks the command and the agent
+reads the reason. The same block without an agent, as in the demo, feeds a Claude Code hook input to Polix:
+
+```bash
+echo '{"hook_event_name":"PreToolUse","session_id":"try","tool_name":"Bash","tool_input":{"command":"git push --force origin main"}}' | polix hook claude
+echo "exit $?"   # 2: blocked, with the reason on stderr
+```
+
 **4. Tell the agent**
 
 Paste [`examples/AGENTS-polix.md`](examples/AGENTS-polix.md) into your `AGENTS.md` or `CLAUDE.md`. If a teammate
@@ -228,7 +247,7 @@ does not have Polix yet, the agent offers to install it, and only runs the insta
 
 ```mermaid
 flowchart LR
-  A["Claude Code / Codex<br/>hook event (JSON)"] --> B["Adapter<br/>neutral events"]
+  A["Claude Code<br/>hook event (JSON)"] --> B["Adapter<br/>neutral events"]
   B --> C["Protection of the state<br/>protected files, forbidden commands"]
   C --> D["polix.yaml<br/>entries in order"]
   R["ai/rules/"] --> D
@@ -280,11 +299,21 @@ vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }    # PLAT-123-add-retry -> PLAT-123
 
 guardrails:
-  protected_files: [".env", AGENTS.md]
-  forbidden_commands:
+  protected_files: [".env", ".env.*", "*.pem", AGENTS.md]     # no agent writes them, the main session included
+  forbidden_commands:                                         # each command of the line, as written
+    - pattern: "*rm -rf /*"
+    - pattern: "git push*--force*"
+      reason: "No force pushes: open a pull request"
+    - pattern: "git push* -f*"
+      reason: "No force pushes: open a pull request"
     - pattern: "git push*origin main*"
       reason: "No direct pushes to main: open a pull request"
-  protected_branches: [main]
+  protected_branches: [main, "release/*"]                     # nobody commits there
+  format_on_edit:                                             # right after each edit
+    - { run: "gofmt -w {path}", path: "*.go" }
+  run_before_done:                                            # the agent cannot end its turn while one fails
+    - { run: "golangci-lint run ./...", changed: "*.go" }
+    - { run: "go test ./...", changed: ["*.go", go.mod, go.sum] }
 
 on:
   pre_edit:
@@ -391,19 +420,22 @@ Shell hooks are fine for one trivial check. Polix is for when guardrails are par
 
 ```text
 polix hook claude [-C dir]     entry point of the Claude Code hooks (event on stdin)
-polix hook codex [-C dir]      entry point of the Codex hooks (experimental)
+polix hook codex [-C dir]      entry point of the Codex hooks (not implemented: untested)
 polix config check             validate polix.yaml and ai/rules/
 polix config fmt [--check]     format polix.yaml in place, or only tell whether it is formatted
 polix rules check [--changed]  run the checks of the deterministic rules (for CI)
 polix graph                    print the workflow as a Mermaid diagram
 polix log --tail 20 [--json]   print the last entries of the state log
+polix risk [--commit C]        print the size and the risk score of the change, file by file
 polix doctor [--hook]          check that this machine and repository are ready
 polix update [--version V]     replace the binary with a release, verified and atomic
 polix update --check           only report whether a newer release exists
 polix update --hook            session start hook: at most once an hour, quiet, never fails
 polix install [--user]         install the plugin for the user and register the hooks in the repository
 polix uninstall [--user]       remove the plugin and the hooks of the repository
-polix version
+polix version                  print the version of polix
+polix completion <shell>       print the autocompletion script of a shell
+polix help [command]           help about any command
 ```
 
 Most commands accept `--dir <repo>` (`-C`); `hook` defaults to the `cwd` of the hook input, and `version` and
@@ -423,24 +455,37 @@ just test       # go vet + go test
 just build      # build/polix
 just install    # go install, the binary the hooks run
 just check      # install, then check this repository's config, rules and machine
+just demo       # record docs/assets/demo.gif again (needs vhs)
 just release 0.2.0
 ```
 
-Code lives in `cmd/polix`, `internal/` (`agent`, `hook`, `rule`, `setup`, `state`, `version`, `workflow`) and
-`pkg/`, with the layout of `docs/architecture.md`; `tests/` holds the architecture and installer tests. The plugin lives in `plugins/polix/`, embedded in the binary; check it with
+Code lives in `cmd/polix`, `internal/` (`agent`, `diff`, `hook`, `rule`, `setup`, `state`, `version`, `workflow`)
+and `pkg/`, with the layout of [docs/architecture.md](docs/architecture.md); `tests/` holds the architecture and
+installer tests. The plugin lives in `plugins/polix/`, embedded in the binary; check it with
 `claude plugin validate plugins/polix`. CI runs on Linux, macOS and Windows, including the PowerShell installer
-under Windows PowerShell 5.1 and PowerShell 7.
+under Windows PowerShell 5.1 and PowerShell 7. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build, test and
+check a change, and how this repository's own Polix governs it.
 
 ## Status
 
-Polix is a **proof of concept**. It works and governs its own repository, but some things are still open:
+0.1.0 is the first public release. `polix.yaml` is `version: 1`, and a 0.x release may still change its format:
+`requires:` lets a repository pin the oldest Polix that knows every option it uses.
 
-- Codex support is experimental.
-- The harness has its plan and review phases; build and document are not written yet.
+What 0.1.0 does: the engine and its hooks for Claude Code, `guardrails:` and `on:` with their conditions and verbs,
+rules injected by scope and checked in CI with `polix rules check`, `polix config check` and `polix config fmt`,
+`polix graph`, `polix log`, `polix risk`, `polix doctor`, self update, the installers for Linux, macOS and Windows,
+and the plugin with seven skills and six agents. It governs its own repository.
+
+What it does not do yet:
+
+- Codex is not implemented: an adapter (`polix hook codex`) and an opt-in install (`polix install --agent codex`)
+  exist, but they were never tested against a running Codex.
+- The harness has its plan, build and review phases; a document phase is not written yet.
 - The log grows without bound and is appended without a lock.
 - Releases are verified with checksums but are not signed yet.
 
-The full list is in [docs/polix.md](docs/polix.md#limits-of-the-proof-of-concept).
+The full list is in [docs/polix.md](docs/polix.md#known-limits), and what each release changes is in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

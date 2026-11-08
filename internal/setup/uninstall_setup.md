@@ -9,7 +9,8 @@ from the repository, keeping every other setting and hook.
 polix uninstall [--user] [--dir <dir>] [--agent claude,codex] [--yes] [--quiet]
 ```
 
-The flags are those of `polix install`; without `--agent` both agents.
+The flags are those of `polix install`; without `--agent` both agents, so a Codex set up with `--agent codex`
+(Codex support is not implemented) is cleaned up too.
 
 ## Request
 

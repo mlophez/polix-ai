@@ -69,7 +69,6 @@ func (f *fakeDiagnoseSetupPort) ClaudePlugins(_ context.Context) ([]byte, error)
 	f.note("ClaudePlugins")
 	return nil, ErrNoCLI
 }
-func (f *fakeDiagnoseSetupPort) CodexUsed(_ context.Context, _, _ string) bool { return false }
 
 func TestDiagnoseSetupShell(t *testing.T) {
 	port := &fakeDiagnoseSetupPort{}
