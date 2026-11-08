@@ -39,5 +39,8 @@ go.work.sum
 /dist/
 /polix
 
+# The raw recording of just demo
+/docs/assets/demo.mp4
+
 # Worktrees of Claude Code sessions
 /.claude/worktrees/

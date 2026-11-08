@@ -75,11 +75,17 @@ Add a line for each notable change under `Unreleased` in [CHANGELOG.md](CHANGELO
 
 ## The demo
 
-`docs/assets/demo.gif`, the demo of the README, is recorded with vhs from `docs/assets/demo/demo.tape`: real
-`polix hook claude` calls fed with the recorded hook inputs of `docs/assets/demo/`.
-Regenerate it with `just demo` from the root of the repository, which needs vhs, ttyd and ffmpeg.
-Regenerate it only when the output of the demo changes, and keep it under 2 MB, since every version stays in the
-history of the repository.
+`docs/assets/demo.gif`, the demo of the README, is a real Claude Code session recorded with vhs from
+`docs/assets/demo/demo.tape`, in a scratch Go module governed by `docs/assets/demo/polix.yaml`.
+Its reviewer is `docs/assets/demo/reviewer.md`, a read-only agent of the demo that never stops the recording on a
+permission prompt.
+Regenerate it with `just demo` from the root of the repository, which needs vhs, ttyd, ffmpeg, golangci-lint and
+Claude Code logged in.
+The recipe records `docs/assets/demo.mp4` in real time (ignored by git) and turns it into the GIF, sped up and
+without its idle frames; `just demo 3` speeds it up more.
+The session is real, so every recording differs and spends tokens: watch the GIF before committing it.
+Regenerate it only when the demo needs to change, and keep it under 2 MB, since every version stays in the history
+of the repository.
 
 ## Releases
 

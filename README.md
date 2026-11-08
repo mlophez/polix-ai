@@ -83,12 +83,12 @@ that expand into ordinary entries of `on:`. `on:` is where your own flow goes, h
 Polix sees the reviewer subagent end and remembers which content it saw, so editing a line afterwards asks for a new
 review.
 
-This is that file at work, in a real Claude Code session asked to *add a Reverse function with a test and commit
-it*. Polix blocks the commit on `main` and then the commit without a review, and Claude recovers by itself: a
-branch, the reviewer, the tests Polix runs, the commit.
+This is a file like it at work ([`docs/assets/demo/polix.yaml`](docs/assets/demo/polix.yaml)), in a real Claude
+Code session asked to *add a Reverse function with a test and commit it*. Polix blocks the commit on `main` and then
+the commit without a review, and Claude recovers by itself: a branch, the reviewer, the tests Polix runs, the commit.
 
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="A Claude Code session adds a Reverse function and its test; Polix blocks the commit on main, Claude creates a branch, Polix blocks the commit without a review, Claude runs the polix:reviewer subagent and then commits" width="100%">
+  <img src="docs/assets/demo.gif" alt="A Claude Code session adds a Reverse function and its test; Polix blocks the commit on main, Claude creates a branch, Polix blocks the commit without a review, Claude runs the reviewer subagent and then commits" width="100%">
 </p>
 
 <p align="center"><sub>

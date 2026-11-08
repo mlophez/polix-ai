@@ -1,10 +1,31 @@
 version: 1
 
 guardrails:
-  protected_files:
-    - .env
+  # No agent writes these files, the main session included.
+  protected_files: [".env", "*.pem"]
+
+  # No agent runs these commands; the reason goes back to the agent.
   forbidden_commands:
-    - pattern: "git push --force*"
+    - pattern: "git push*--force*"
       reason: "Force pushes rewrite shared history: ask a person to run it."
-  protected_branches:
-    - main
+
+  # Nobody commits on these branches.
+  protected_branches: [main]
+
+  # Format on edit
+  format_on_edit:
+    - run: golangci-lint fmt {path}
+      path: "*.go"
+
+  # The agent cannot end its turn while a check fails.
+  run_before_done:
+    - run: go test ./...
+      changed: "*.go"
+
+on:
+  pre_commit:
+    # A commit needs the reviewer subagent to have seen the diff as it is now.
+    - unless:
+        finished: reviewer
+      action:
+        block: "Review the diff with the reviewer subagent, then commit again."

@@ -1,6 +1,0 @@
-{
-  "hook_event_name": "PreToolUse",
-  "session_id": "demo",
-  "tool_name": "Bash",
-  "tool_input": { "command": "git push --force origin main" }
-}
