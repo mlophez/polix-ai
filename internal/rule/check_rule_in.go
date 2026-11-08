@@ -88,7 +88,7 @@ func CheckRuleCommand() *cobra.Command {
 	cli.DirFlag(c, &req.Dir, ".")
 	c.Flags().BoolVar(&req.OnlyChanged, "changed", false, "only the rules whose scope matches the changed files")
 	c.Flags().StringVar(&req.Base, "base", "", "branch the change merges into, for --changed, locally or on origin "+
-		"(default: the closest of base in "+workflow.File+", else "+workflow.DefaultBase+")")
+		"(default: the closest of base_branch in "+workflow.File+", else "+workflow.DefaultBase+")")
 	return c
 }
 

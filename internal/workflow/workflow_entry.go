@@ -12,8 +12,11 @@ type Entry struct {
 	When   Cond
 	Unless Cond
 	Action Action
-	Line   int      // line in the file, for messages
-	Keys   []string // the keys the file used, so Valid rejects unknown ones
+	// From is the path of the shortcut the entry was expanded from (guardrails.format_on_edit), empty for an entry
+	// written in on.
+	From string
+	Line int      // line in the file, for messages
+	Keys []string // the keys the file used, so Valid rejects unknown ones
 	// OldIf holds the conditions under the key if of the old vocabulary. It is never evaluated: Valid reports the key
 	// with its new spelling and the problems of these conditions with it, so every hint comes in one pass.
 	OldIf Cond

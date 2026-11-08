@@ -103,13 +103,13 @@ func TestCheckRuleAdapterLoadWorkflow(t *testing.T) {
 	if err != nil || !slices.Equal(wf.BaseBranches(), []string{"main"}) {
 		t.Fatalf("without polix.yaml, the default workflow: %+v %v", wf, err)
 	}
-	checkRuleWrite(t, root, map[string]string{"polix.yaml": "version: 1\nbase: develop\nrules:\n  run:\n" +
+	checkRuleWrite(t, root, map[string]string{"polix.yaml": "version: 1\nbase_branch: develop\nrules:\n  run:\n" +
 		"    \"*_test.go\": [go, test, \"{dir}\"]\n"})
 	wf, err = a.LoadWorkflow(context.Background(), "dev")
 	if err != nil || !slices.Equal(wf.BaseBranches(), []string{"develop"}) || len(wf.Rules.Run) != 1 {
 		t.Fatalf("got %+v %v", wf, err)
 	}
-	checkRuleWrite(t, root, map[string]string{"polix.yaml": "version: 1\nbase: develop\non:\n  nope: []\n"})
+	checkRuleWrite(t, root, map[string]string{"polix.yaml": "version: 1\nbase_branch: develop\non:\n  nope: []\n"})
 	if wf, err = a.LoadWorkflow(context.Background(), "dev"); err != nil || wf.BaseBranches()[0] != "develop" {
 		t.Fatalf("the problems of a workflow that parses are left to polix check: %+v %v", wf, err)
 	}
@@ -129,8 +129,8 @@ func TestCheckRuleAdapterChanged(t *testing.T) {
 	checkRuleGit(t, a.Repo.Root, "add", "--all")
 	checkRuleGit(t, a.Repo.Root, "commit", "--quiet", "-m", "a")
 	_, err := a.Changed(context.Background(), []string{"trunk"})
-	if err == nil || !strings.Contains(err.Error(), "trunk") || !strings.Contains(err.Error(), "set base in polix.yaml") {
-		t.Fatalf("got %v, want the hint to set base", err)
+	if err == nil || !strings.Contains(err.Error(), "trunk") || !strings.Contains(err.Error(), "set base_branch in polix.yaml") {
+		t.Fatalf("got %v, want the hint to set base_branch", err)
 	}
 	checkRuleGit(t, a.Repo.Root, "checkout", "--quiet", "-b", "feature")
 	checkRuleWrite(t, a.Repo.Root, map[string]string{"b.txt": "b\n"})

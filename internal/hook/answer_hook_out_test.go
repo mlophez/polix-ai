@@ -192,10 +192,10 @@ func TestAnswerHookReviewOnStop(t *testing.T) {
 	answerHookExpect(t, "stop after a new edit", code, 2, stderr)
 }
 
-// The loop guard lets the agent stop after max_stop_blocks blocked stops on the same content.
+// The loop guard lets the agent stop after max_stop_retries blocked stops on the same content.
 func TestAnswerHookStopLoopGuard(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\nmax_stop_blocks: 2\n"+strings.TrimPrefix(answerHookReviewOnStop, "version: 1\n"))
+	r.write("polix.yaml", "version: 1\nmax_stop_retries: 2\n"+strings.TrimPrefix(answerHookReviewOnStop, "version: 1\n"))
 	r.write("src/app.go", "package app\n")
 	for i, want := range []int{2, 2, 0} {
 		code, _, stderr := r.stop()
@@ -602,11 +602,12 @@ func TestAnswerHookStateProtectionFoldsCase(t *testing.T) {
 	answerHookExpect(t, "a command on the state in another case", code, 2, stderr)
 }
 
-// protected keeps every actor, the main session included, from writing a path, also an ignored one; reads pass.
+// protected_files keeps every actor, the main session included, from writing a path, also an ignored one; reads
+// pass.
 func TestAnswerHookProtectedPaths(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
 	r.write(".gitignore", ".env\n")
-	r.write("polix.yaml", "version: 1\nprotected: [\".env\", \"AGENTS.md\", \"ai/rules/**\"]\n")
+	r.write("polix.yaml", "version: 1\nguardrails:\n  protected_files: [\".env\", \"AGENTS.md\", \"ai/rules/**\"]\n")
 	for _, actor := range []string{"", "builder"} {
 		code, _, stderr := r.edit(".env", actor)
 		answerHookExpect(t, actor+" edits .env", code, 2, stderr)
@@ -639,7 +640,7 @@ func TestAnswerHookProtectedPaths(t *testing.T) {
 		code, _, stderr = r.edit("README.md", actor)
 		answerHookExpect(t, actor+" edits README.md", code, 0, stderr)
 	}
-	// Where file names ignore case, so does protected: .ENV is .env there.
+	// Where file names ignore case, so does protected_files: .ENV is .env there.
 	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
 		code, _, stderr := r.edit(".ENV", "")
 		answerHookExpect(t, "edits .ENV", code, 2, stderr)
@@ -648,11 +649,31 @@ func TestAnswerHookProtectedPaths(t *testing.T) {
 	}
 }
 
+// forbidden_commands denies a line wherever the command comes in it, and protected_branches a commit on the branch,
+// through the adapter; another line and a commit on another branch pass.
+func TestAnswerHookShortcuts(t *testing.T) {
+	r := answerHookNewRepo(t, "main")
+	r.write("polix.yaml", "version: 1\nguardrails:\n  forbidden_commands:\n    - pattern: \"rm -rf /*\"\n"+
+		"  protected_branches: [main]\n")
+	code, _, stderr := r.bash("cd tmp && rm -rf /", false)
+	answerHookExpect(t, "a forbidden command after cd", code, 2, stderr)
+	if !strings.Contains(stderr, "This command is forbidden by polix.yaml: a person must run it.\ncd tmp && rm -rf /") {
+		t.Fatalf("the reason: %q", stderr)
+	}
+	code, _, stderr = r.bash("rm -rf tmp", false)
+	answerHookExpect(t, "another rm", code, 0, stderr)
+	code, _, stderr = r.bash("git commit -m x", false)
+	answerHookExpect(t, "a commit on main", code, 2, stderr)
+	r.git("checkout", "--quiet", "-b", "feature")
+	code, _, stderr = r.bash("git commit -m x", false)
+	answerHookExpect(t, "a commit on feature", code, 0, stderr)
+}
+
 // A protected glob with a leading slash is anchored to the root: /polix.yaml keeps polix.yaml, not
 // examples/polix.yaml, which a glob without slash would keep too.
 func TestAnswerHookProtectedRootedPath(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\nprotected: [\"/polix.yaml\", \"AGENTS.md\"]\n")
+	r.write("polix.yaml", "version: 1\nguardrails:\n  protected_files: [\"/polix.yaml\", \"AGENTS.md\"]\n")
 	r.write("examples/polix.yaml", "version: 1\n")
 	r.write("docs/AGENTS.md", "x\n")
 	code, _, stderr := r.edit("polix.yaml", "")
@@ -833,7 +854,7 @@ func TestAnswerHookUnknownOptionsHintAnUpdate(t *testing.T) {
 	if _, _, stderr = r.edit("src/a.go", ""); !strings.Contains(stderr, "polix update") {
 		t.Fatalf("a later version of the schema hints an update: %q", stderr)
 	}
-	r.write("polix.yaml", "version: 1\nmax_stop_blocks: -1\n")
+	r.write("polix.yaml", "version: 1\nmax_stop_retries: -1\n")
 	if _, _, stderr = r.edit("src/a.go", ""); strings.Contains(stderr, "polix update") {
 		t.Fatalf("no hint for a plain mistake: %q", stderr)
 	}
@@ -878,10 +899,10 @@ func TestAnswerHookAdapterDiff(t *testing.T) {
 	}
 }
 
-// In the hooks, changed is what is not committed yet, whatever base says.
+// In the hooks, changed is what is not committed yet, whatever base_branch says.
 func TestAnswerHookChangedSinceHead(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\nbase: main\non:\n  stop:\n    - when: { changed: \"src/**\" }\n      action: { block: \"src cambiado\" }\n")
+	r.write("polix.yaml", "version: 1\nbase_branch: main\non:\n  stop:\n    - when: { changed: \"src/**\" }\n      action: { block: \"src cambiado\" }\n")
 	r.git("add", "--all")
 	r.git("commit", "--quiet", "-m", "workflow")
 	r.git("checkout", "--quiet", "-b", "feature")
@@ -938,7 +959,7 @@ func TestAnswerHookDecisionsSkipTheHash(t *testing.T) {
 // and polix log prints the other entries and says how many lines it skipped.
 func TestAnswerHookStopLoopGuardHugeLogLine(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\nmax_stop_blocks: 2\n"+strings.TrimPrefix(answerHookReviewOnStop, "version: 1\n"))
+	r.write("polix.yaml", "version: 1\nmax_stop_retries: 2\n"+strings.TrimPrefix(answerHookReviewOnStop, "version: 1\n"))
 	r.write("src/app.go", "package app\n")
 	r.write(".git/polix/log.jsonl", `{"kind":"decision","reason":"`+strings.Repeat("x", 5*1024*1024)+"\"}\n")
 	r.stops("", 2, 2, 0)

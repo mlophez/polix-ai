@@ -53,11 +53,11 @@ type answerHookInjected struct {
 // answerHookOutputLines is how many lines of the output of a failing command its reason keeps, the last ones.
 const answerHookOutputLines = 15
 
-// AnswerHook decides the next step of the evaluation of an event: the protections that come before the workflow
-// (nobody edits the state of polix, no actor writes a protected path), then, with a valid workflow, its entries
-// in order, each with its conditions and its action. It walks the event from its start every time it is asked,
-// so the step it returns is the first one whose result the evaluation does not know yet; with none, the event is
-// answered.
+// AnswerHook decides the next step of the evaluation of an event: the protections that come before the entries of
+// the workflow (nobody edits the state of polix; with a valid workflow, no actor writes a protected file nor runs a
+// forbidden command), then, with a valid workflow, its entries in order, each with its conditions and its action. It
+// walks the event from its start every time it is asked, so the step it returns is the first one whose result the
+// evaluation does not know yet; with none, the event is answered.
 func AnswerHook(ev Evaluation) AnswerHookOutput {
 	r := &answerHookRun{ev: ev, epoch: ev.Facts.Epoch, state: ev.Facts.State}
 	ans := r.handle()
@@ -75,12 +75,8 @@ func AnswerHook(ev Evaluation) AnswerHookOutput {
 // the session started when the workflow injects once, so its once-only injects are due again. It stops early
 // when a step is missing; the answer is then meaningless.
 func (r *answerHookRun) handle() agent.Answer {
-	ans, blocked := r.protect()
-	if r.waiting() {
-		return ans
-	}
-	if blocked {
-		r.log("builtin", 0, "deny", strings.Join(ans.Reasons, "; "))
+	ans, denied := r.protect()
+	if r.waiting() || denied {
 		return ans
 	}
 	if r.ev.Invalid != nil {
@@ -164,14 +160,16 @@ func (r *answerHookRun) act(s Step, valid error) Outcome {
 	return Outcome{}
 }
 
-// protect applies the protections that come before the workflow: nobody edits the state of polix, whatever the
-// workflow says, and no actor, the main session included, writes a path of the protected list of the workflow,
-// also when git ignores it. Reading is always allowed.
+// protect applies the protections that come before the entries of the workflow and before the skip of the edits
+// outside the change, and reports whether one denied the event, logged with where it comes from: nobody edits the
+// state of polix, whatever the workflow says, also without one or with an invalid one; and, with a valid workflow,
+// no actor, the main session included, writes a path of guardrails.protected_files, also when git ignores it, nor
+// runs a command of guardrails.forbidden_commands, wherever it comes in the line. Reading is always allowed.
 func (r *answerHookRun) protect() (agent.Answer, bool) {
 	ev, fold := r.ev.Event, r.ev.Fold()
-	var protected []string
+	var wf workflow.Workflow
 	if r.ev.Invalid == nil && r.ev.Present {
-		protected = r.ev.Workflow.Protected
+		wf = r.ev.Workflow
 	}
 	switch ev.Name {
 	case workflow.PreEdit:
@@ -182,12 +180,12 @@ func (r *answerHookRun) protect() (agent.Answer, bool) {
 				return agent.Answer{}, false
 			}
 			if Within(reals[r.ev.StateDir()], reals[abs], fold) {
-				return agent.Answer{}.Refuse(ReasonStateEdit), true
+				return r.deny(BuiltinProtection, 0, ReasonStateEdit)
 			}
 		}
-		if !ev.Outside && ev.Path != "" && AnyPathFold(protected, ev.Path, fold) {
-			return agent.Answer{}.Refuse(fmt.Sprintf("%s is protected in %s: only a person changes it.", ev.Path,
-				workflow.File)), true
+		if !ev.Outside && ev.Path != "" && AnyPathFold(wf.ProtectedFiles, ev.Path, fold) {
+			return r.deny(ProtectedFilesShortcut, 0, fmt.Sprintf("%s is protected in %s: only a person changes it.",
+				ev.Path, workflow.File))
 		}
 	case workflow.PreCommand, workflow.PreCommit:
 		// Reading is fine (the log is the evidence of the process); only commands that could write are denied.
@@ -197,19 +195,36 @@ func (r *answerHookRun) protect() (agent.Answer, bool) {
 				return agent.Answer{}, false
 			}
 			if NamesState(ev.Command, r.ev.StateDir(), reals[r.ev.StateDir()], fold) {
-				return agent.Answer{}.Refuse(ReasonStateCommand), true
+				return r.deny(BuiltinProtection, 0, ReasonStateCommand)
 			}
 		}
-		if p, held, ok := r.writes(protected); ok {
-			if held != "" {
-				return agent.Answer{}.Refuse(fmt.Sprintf("%s holds %s, protected in %s: only a person changes it.",
-					p, held, workflow.File)), true
+		p, held, ok := r.writes(wf.ProtectedFiles)
+		switch {
+		case r.waiting():
+			return agent.Answer{}, false
+		case ok && held != "":
+			return r.deny(ProtectedFilesShortcut, 0, fmt.Sprintf("%s holds %s, protected in %s: only a person changes it.",
+				p, held, workflow.File))
+		case ok:
+			return r.deny(ProtectedFilesShortcut, 0, fmt.Sprintf("%s is protected in %s: only a person changes it.", p,
+				workflow.File))
+		}
+		if f, ok := Forbidden(wf.ForbiddenCommands, ev.Command); ok {
+			reason := f.Reason
+			if reason == "" {
+				reason = ReasonForbidden
 			}
-			return agent.Answer{}.Refuse(fmt.Sprintf("%s is protected in %s: only a person changes it.", p,
-				workflow.File)), true
+			return r.deny(ForbiddenCommandsShortcut, f.Line, reason+"\n"+ev.Command)
 		}
 	}
 	return agent.Answer{}, false
+}
+
+// deny refuses the event for a protection with reason, logged as a denial of from (BuiltinProtection or the shortcut
+// of guardrails) at line, the line of its item or 0.
+func (r *answerHookRun) deny(from string, line int, reason string) (agent.Answer, bool) {
+	r.log(from, line, "deny", reason)
+	return agent.Answer{}.Refuse(reason), true
 }
 
 // invalid answers the event when the workflow is not valid. Edits and commands fail closed, so a broken file is
@@ -296,7 +311,7 @@ func (r *answerHookRun) apply(e workflow.Entry, ans agent.Answer) (agent.Answer,
 
 // block blocks the event for the entry e and reports whether it is actually blocked; key is what a failing run ran,
 // "" for a block. A block with once writes an observed `blocked` line, which reminded reads. On stop and
-// subagent_stop every block (a block or a failing run) writes it too, for the loop guard: after max_stop_blocks
+// subagent_stop every block (a block or a failing run) writes it too, for the loop guard: after max_stop_retries
 // blocks of this entry of the actor in the session on this same content (the whole hash), the agent may stop and a
 // trace is left. An unknown hash counts as one content (state.UnknownHash). When the log cannot be read or written
 // the guard cannot count, so it fails open. A block with once outside the stops blocks without writing when the
@@ -329,7 +344,7 @@ func (r *answerHookRun) block(e workflow.Entry, ans agent.Answer, reason, key st
 			return r.release(e, ans, fmt.Sprintf("polix deja parar porque no puede usar su log (%v): %s", err, reason),
 				reason), false
 		}
-		if n := len(st.Observed(q)); n >= r.ev.Workflow.MaxStopBlocks {
+		if n := len(st.Observed(q)); n >= r.ev.Workflow.MaxStopRetries {
 			return r.release(e, ans, fmt.Sprintf("polix deja parar tras %d bloqueos: %s", n, reason), reason), false
 		}
 	}
@@ -885,7 +900,8 @@ func (r *answerHookRun) condition(k string, v any, all workflow.Cond, scope []st
 		}
 		return true
 	case "path":
-		return ev.Path != "" && glob.AnyPath(r.list(v), ev.Path)
+		// Without case where file names ignore it, as writes: `.ENV` is `.env` there.
+		return ev.Path != "" && AnyPathFold(r.list(v), ev.Path, r.ev.Fold())
 	case "changed":
 		patterns := r.list(v)
 		for _, f := range r.changed() {

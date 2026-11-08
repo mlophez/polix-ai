@@ -290,7 +290,7 @@ func TestCheckRuleCommandBase(t *testing.T) {
 	if code != 1 || !strings.Contains(stdout, "1 checks, 1 failed") {
 		t.Fatalf("without a workflow the base is main: %d %q", code, stdout)
 	}
-	writePolix("version: 1\nbase: develop\n")
+	writePolix("version: 1\nbase_branch: develop\n")
 	code, stdout, _ = checkRuleRun(t, "--dir", dir, "--changed")
 	if code != 0 || !strings.Contains(stdout, "0 checks") {
 		t.Fatalf("the base of polix.yaml is develop: %d %q", code, stdout)
@@ -298,14 +298,14 @@ func TestCheckRuleCommandBase(t *testing.T) {
 	if code, stdout, _ = checkRuleRun(t, "--dir", dir, "--changed", "--base", "main"); code != 1 {
 		t.Fatalf("--base overrides polix.yaml: %d %q", code, stdout)
 	}
-	writePolix("version: 1\nbase: [main, develop]\n")
+	writePolix("version: 1\nbase_branch: [main, develop]\n")
 	code, stdout, _ = checkRuleRun(t, "--dir", dir, "--changed")
 	if code != 0 || !strings.Contains(stdout, "0 checks") {
 		t.Fatalf("the closest base of the list is develop: %d %q", code, stdout)
 	}
-	writePolix("version: 1\nbase: trunk\n")
+	writePolix("version: 1\nbase_branch: trunk\n")
 	code, stdout, stderr := checkRuleRun(t, "--dir", dir, "--changed")
-	if code != 1 || !strings.Contains(stderr, "trunk") || !strings.Contains(stderr, "set base in polix.yaml") {
+	if code != 1 || !strings.Contains(stderr, "trunk") || !strings.Contains(stderr, "set base_branch in polix.yaml") {
 		t.Fatalf("a base that does not exist fails naming it: %d %q %q", code, stdout, stderr)
 	}
 	writePolix("version: [\n")

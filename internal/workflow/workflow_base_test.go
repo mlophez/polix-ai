@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-// base takes one branch or a list, and main is the default.
+// base_branch takes one branch or a list, and main is the default.
 func TestBaseBranches(t *testing.T) {
 	for src, want := range map[string]string{
-		"version: 1\n":                    "main",
-		"version: 1\nbase: dev\n":         "dev",
-		"version: 1\nbase: [dev, main]\n": "dev,main",
+		"version: 1\n":                           "main",
+		"version: 1\nbase_branch: dev\n":         "dev",
+		"version: 1\nbase_branch: [dev, main]\n": "dev,main",
 	} {
 		w, err := Parse([]byte(src), "dev")
 		if err != nil {
@@ -20,9 +20,9 @@ func TestBaseBranches(t *testing.T) {
 			t.Errorf("%q: BaseBranches = %q, want %q", src, got, want)
 		}
 	}
-	w, err := Parse([]byte("version: 1\nprotected: [.env, \"ai/rules/**\"]\n"), "dev")
-	if err != nil || len(w.Protected) != 2 {
-		t.Fatalf("protected: %v %+v", err, w)
+	w, err := Parse([]byte("version: 1\nguardrails:\n  protected_files: [.env, \"ai/rules/**\"]\n"), "dev")
+	if err != nil || len(w.ProtectedFiles) != 2 || len(w.On) != 0 {
+		t.Fatalf("protected_files: %v %+v", err, w)
 	}
 }
 

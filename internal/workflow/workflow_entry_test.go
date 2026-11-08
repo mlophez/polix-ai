@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -34,6 +35,21 @@ func TestEntryValid(t *testing.T) {
 	// An entry of the old vocabulary is told how to rewrite its action, not that it has none.
 	if err := (Entry{Keys: []string{"require"}}).Valid(); err == nil || strings.Contains(err.Error(), "needs an action") {
 		t.Fatalf("old action: %v", err)
+	}
+}
+
+// AC16: an entry has no key guard: on any event and with any value, it is an unknown key at the line of its entry,
+// listed with the keys an entry takes.
+func TestEntryNoGuard(t *testing.T) {
+	entry := "version: 1\non:\n  %s:\n    - guard: %s\n      action: { block: \"no\" }\n"
+	for _, ev := range []string{PreEdit, PreCommand, PreCommit, Stop} {
+		for _, value := range []string{"true", "yes please"} {
+			_, err := Parse([]byte(fmt.Sprintf(entry, ev, value)), "dev")
+			want := `polix.yaml:4: unknown key "guard" (when, unless, action)`
+			if err == nil || err.Error() != want {
+				t.Errorf("%s with guard: %s: got %v", ev, value, err)
+			}
+		}
 	}
 }
 

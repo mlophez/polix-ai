@@ -3,6 +3,8 @@ package hook
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/mlophez/polix-ai/internal/workflow"
 )
 
 // holdsAny sees a folder that holds what a pattern with a slash matches, and nothing for a pattern without one.
@@ -99,5 +101,24 @@ func TestWithin(t *testing.T) {
 func TestFoldsCase(t *testing.T) {
 	if !FoldsCase("darwin") || !FoldsCase("windows") || FoldsCase("linux") {
 		t.Fatal("FoldsCase")
+	}
+}
+
+// Forbidden finds the first forbidden command, in file order, that matches any command of the line.
+func TestForbidden(t *testing.T) {
+	list := []workflow.ForbiddenCommand{{Pattern: "rm -rf /*", Line: 4},
+		{Pattern: "git push --force*", Reason: "no", Line: 5}, {Pattern: "git push*", Line: 7}}
+	for line, want := range map[string]int{
+		"rm -rf /":                       4,
+		"cd tmp && rm -rf / ; ls":        4,
+		"git fetch && git push --force":  5,
+		"git push origin main":           7,
+		"rm -rf build":                   0,
+		"echo 'git push --force' > note": 0,
+	} {
+		f, ok := Forbidden(list, line)
+		if got := map[bool]int{true: f.Line}[ok]; got != want {
+			t.Errorf("%q: line %d, want %d", line, got, want)
+		}
 	}
 }

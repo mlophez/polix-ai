@@ -59,7 +59,7 @@ func (a CheckRuleAdapter) LoadWorkflow(_ context.Context, running string) (workf
 func (a CheckRuleAdapter) Changed(ctx context.Context, candidates []string) ([]string, error) {
 	ref, err := a.Repo.ResolveBase(ctx, candidates)
 	if err != nil {
-		return nil, fmt.Errorf("%w: set base in %s or pass --base", err, workflow.File)
+		return nil, fmt.Errorf("%w: set base_branch in %s or pass --base", err, workflow.File)
 	}
 	return a.Repo.Changed(ctx, ref)
 }

@@ -1,10 +1,29 @@
 # Use cases
 
-Recipes for `polix.yaml`, from a single guardrail to a whole development flow. Each one is a fragment: put its
-entries under the `on:` of your workflow (with `version: 1` at the top), validate it with `polix check` and draw
-it with `polix graph`. Every key, condition and verb is described in [reference.md](reference.md), and a whole
-annotated workflow is [`examples/polix.yaml`](../examples/polix.yaml); the design and its limits are in
-[polix.md](polix.md).
+Recipes for `polix.yaml`, from a single guardrail to a whole development flow. Each one is a fragment: put it
+under the `guardrails:` or the `on:` of your workflow (with `version: 1` at the top), validate it with
+`polix check` and draw it with `polix graph`. Every key, condition and verb is described in
+[reference.md](reference.md), and a whole annotated workflow is [`examples/polix.yaml`](../examples/polix.yaml);
+the design and its limits are in [polix.md](polix.md).
+
+The recipes come in the two layers of `polix.yaml`:
+
+- **`guardrails:`**, the basics every project wants from the first minute: files no agent writes, commands no
+  agent runs, branches nobody commits on, a formatter or a linter after each edit and the checks that must pass
+  before the agent ends its turn. Each is a short list, a shortcut.
+- **`on:`**, where the team orchestrates its flow: the review subagents, the builder, the plan, the ticket. Each
+  entry says on which event it applies, when, and what it does.
+
+`protected_files` and `forbidden_commands` are protections of the engine: they deny before every entry of `on:`,
+for every actor, without exceptions, also on the files git ignores. The other three shortcuts are only sugar: polix
+expands each into ordinary entries of `on:` when it reads the file, and `polix graph` draws them with the name of
+their shortcut. Each of their recipes shows its expansion too: write it in `on:` and tune it when the shortcut
+falls short. A polix older than the shortcuts rejects `guardrails:` as an unknown key, so set `requires` to the
+release you install.
+
+The entries of `on:` skip the edits of files git ignores: they govern the change, what a commit may hold, so a
+build output, a local `.env` or a scratch file never fires a ticket, plan, format or docs entry. Only the
+protection of the state of polix, `protected_files` and `forbidden_commands` reach an ignored file.
 
 Every recipe follows the same idea: polix **measures and never judges**. It knows which files changed, which
 command ran and with which exit code, which of its own checks passed on which content and which subagent ended on
@@ -16,35 +35,281 @@ Each entry says when it applies (`when`, `unless`) and what it does (`action`: `
 run again on the same content; an `inject` reaches the AI once per session and agent (every time on `start`). The first entry that blocks ends the evaluation of the event. The details are in
 [polix.md](polix.md#verbs).
 
-- Quality gates
-  - [Review every change with a reviewer subagent](#review-every-change-with-a-reviewer-subagent)
-  - [Document at the end of every task](#document-at-the-end-of-every-task)
-  - [Tests that run themselves](#tests-that-run-themselves)
-  - [Lint feedback right after each edit](#lint-feedback-right-after-each-edit)
-  - [Format every file the agent edits](#format-every-file-the-agent-edits)
-  - [Sensitive code gets a security review](#sensitive-code-gets-a-security-review)
-- Process
-  - [No ticket, no code](#no-ticket-no-code)
-  - [A plan before the first edit](#a-plan-before-the-first-edit)
-  - [Unfinished plan steps keep the agent working](#unfinished-plan-steps-keep-the-agent-working)
-  - [The main session orchestrates, the builder builds](#the-main-session-orchestrates-the-builder-builds)
-  - [The changelog travels with the change](#the-changelog-travels-with-the-change)
-- Safety
-  - [Destructive commands are left to a person](#destructive-commands-are-left-to-a-person)
-  - [Keep production out of reach](#keep-production-out-of-reach)
-  - [Hands off generated files and lockfiles](#hands-off-generated-files-and-lockfiles)
-  - [Secrets never land in a commit](#secrets-never-land-in-a-commit)
+- The basics, with `guardrails:`
   - [Paths no agent writes](#paths-no-agent-writes)
-  - [The agent cannot switch off its own guardrails](#the-agent-cannot-switch-off-its-own-guardrails)
+  - [Secrets never land in a commit](#secrets-never-land-in-a-commit)
+  - [Destructive commands are left to a person](#destructive-commands-are-left-to-a-person)
   - [No commits on main](#no-commits-on-main)
-- Context
-  - [The right rules at the right time](#the-right-rules-at-the-right-time)
-  - [Context that survives compaction](#context-that-survives-compaction)
-  - [The same checks for the agent and for CI](#the-same-checks-for-the-agent-and-for-ci)
-- Rollout and evidence
-  - [Evidence of the process each change followed](#evidence-of-the-process-each-change-followed)
-- [Putting it together: build, document, test, review, commit](#putting-it-together-build-document-test-review-commit)
+  - [Format every file the agent edits](#format-every-file-the-agent-edits)
+  - [Lint feedback right after each edit](#lint-feedback-right-after-each-edit)
+  - [Tests that run themselves](#tests-that-run-themselves)
+- The flow of the team, with `on:`
+  - Quality gates
+    - [Review every change with a reviewer subagent](#review-every-change-with-a-reviewer-subagent)
+    - [Document at the end of every task](#document-at-the-end-of-every-task)
+    - [Sensitive code gets a security review](#sensitive-code-gets-a-security-review)
+  - Process
+    - [No ticket, no code](#no-ticket-no-code)
+    - [A plan before the first edit](#a-plan-before-the-first-edit)
+    - [Unfinished plan steps keep the agent working](#unfinished-plan-steps-keep-the-agent-working)
+    - [The main session orchestrates, the builder builds](#the-main-session-orchestrates-the-builder-builds)
+    - [The changelog travels with the change](#the-changelog-travels-with-the-change)
+  - Safety
+    - [Keep production out of reach](#keep-production-out-of-reach)
+    - [Hands off generated files and lockfiles](#hands-off-generated-files-and-lockfiles)
+    - [The agent cannot switch off its own guardrails](#the-agent-cannot-switch-off-its-own-guardrails)
+  - Context
+    - [The right rules at the right time](#the-right-rules-at-the-right-time)
+    - [Context that survives compaction](#context-that-survives-compaction)
+    - [The same checks for the agent and for CI](#the-same-checks-for-the-agent-and-for-ci)
+  - Rollout and evidence
+    - [Evidence of the process each change followed](#evidence-of-the-process-each-change-followed)
+  - [Putting it together: build, document, test, review, commit](#putting-it-together-build-document-test-review-commit)
 - [Coming from Claude Code hooks](#coming-from-claude-code-hooks)
+
+## Guardrails
+
+The recipes of this layer lead with the shortcut, which is all most projects need, and follow with what it does or
+the entries of `on:` it expands into, for those who need more. A file can hold every shortcut at once:
+
+```yaml
+version: 1
+guardrails:
+  protected_files: [".env", ".env.*", "AGENTS.md", "CLAUDE.md"]
+  forbidden_commands:
+    - pattern: "rm -rf*"
+    - pattern: "git push --force*"
+      reason: "No force pushes: open a pull request or ask a person"
+  protected_branches: [main, "release/*"]
+  format_on_edit:
+    - { run: "gofmt -w {path}", path: "*.go" }
+  run_before_done:
+    - { run: "golangci-lint run ./...", changed: "*.go" }
+    - { run: "go test ./...", changed: ["*.go", "go.mod", "go.sum"] }
+```
+
+The files and the commands are protections: they deny before every entry of `on:`, also on the files git ignores,
+and bind the main session too. The branches, the formatters and the checks become entries, which run before the
+entries written in `on:` of the same event.
+
+### Paths no agent writes
+
+polix protects only its own state on its own. Everything else a person wants to keep for themselves goes in
+`protected_files`: no actor, the main session included, edits those paths or writes them with a command.
+
+```yaml
+guardrails:
+  protected_files: [".env", ".env.*", "AGENTS.md", "CLAUDE.md"]
+```
+
+An edit of a protected path is denied with `.env is protected in polix.yaml: only a person changes it.`, and a
+command that writes one with the path it writes, or the protected glob a folder or a wildcard holds:
+`ai holds ai/rules/**, protected in polix.yaml: only a person changes it.` for `rm -rf ai`. The log records the
+denial as `guardrails.protected_files`. Unlike an entry of `on:`, it also covers files git ignores, so an ignored
+`.env` stays out of reach too, but never an edit outside the repository. On macOS and Windows the globs ignore
+case, so `.ENV` is `.env` there.
+
+To keep only the subagents away and let the main session change a path, use regular entries of `on:`: `path` for
+the edits and `writes` for the commands. The authors of the plugin of polix keep their way in:
+
+```yaml
+on:
+  pre_edit:
+    - when: { path: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
+      unless: { actor: ["polix:workflow-author", "polix:rules-author"] }
+      action: { block: "{path} is the workflow of the repository: only the main session changes it" }
+  pre_command:
+    - when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
+      unless: { actor: ["polix:workflow-author", "polix:rules-author"] }
+      action: { block: "Only the main session writes the workflow: {command}" }
+```
+
+Do not put `polix.yaml` or `ai/rules/` in `protected_files`: it binds the main session too, so the skills
+`workflow` and `add-rule` could no longer change them. `writes` is a heuristic: it sees `rm`, `mv`, `cp`, `tee`,
+`sed -i` and redirections into the repository, but not an interpreter that opens a file (`python -c ...`). A
+program that writes by itself (`rm`, `mv`, `cp`...) is denied on every protected file it names, also one it only
+reads (`cp AGENTS.md notes.md`), on a folder holding protected paths and on a wildcard that may reach them
+(`rm -rf ai` or `rm -rf ai/*` for `ai/rules/**`, but also `cp a.md docs/` for `docs/secret.md`), and `rm` on the
+root. The message names the protected path the folder holds. Reading is fine, even
+with the output redirected (`ls ai 2>/dev/null`, `cat AGENTS.md > notes.md`). See
+[the details](polix.md#protections).
+
+### Secrets never land in a commit
+
+The simplest way to keep secrets out of a commit is to keep the agent away from the files that hold them:
+
+```yaml
+guardrails:
+  protected_files: [".env", ".env.*", "*.pem", "*.key", "*.p12"]
+```
+
+It works as in [Paths no agent writes](#paths-no-agent-writes), and has no exception, so `.env.example` is denied
+too. To let the agent write it, take the globs out of `protected_files` and write an entry of `on:` with an
+`unless`. polix skips the entries of `on:` for files git ignores, since they govern what a commit may hold: the
+entry never bothers an `.env` that is in `.gitignore`, and fires exactly when the file is **not** ignored, the case
+in which the secret would be committed.
+
+```yaml
+on:
+  pre_edit:
+    - when: { path: [".env", ".env.*", "*.pem", "*.key", "*.p12"] }
+      unless: { path: ".env.example" }
+      action: { block: "{path} would end up in a commit: keep secrets in an ignored file or a secret store" }
+```
+
+### Destructive commands are left to a person
+
+Commands that throw away work nobody saved are blocked, in any position of the line.
+
+```yaml
+guardrails:
+  forbidden_commands:
+    - pattern: "*rm -rf*"
+    - pattern: "*rm -fr*"
+    - pattern: "git reset --hard*"
+      reason: "git reset --hard throws away uncommitted work: use git stash, or ask the user to run it."
+    - pattern: "git clean -*f*"
+    - pattern: "git checkout -- .*"
+    - pattern: "git restore .*"
+```
+
+The first item whose pattern matches a command of the line denies it, on `pre_command` and `pre_commit`, before
+every entry of `on:` and for every actor. An item without a `reason` denies with a default message, `This command
+is forbidden by polix.yaml: a person must run it.`; an item with a `reason` with that reason. Both end with the line
+of the command, and the log records the denial as `guardrails.forbidden_commands` with the line of the item.
+
+A script that checks whether the command *starts* with `rm` misses `cd build && rm -rf dist`. polix splits the
+line the way a shell runs it and matches every command on its own, so it catches it, while `git reset --soft`
+still goes through. Narrow the patterns, `*rm -rf /*` or `*rm -rf ~*`, if the agent should keep cleaning its own
+build folders.
+
+Each command is matched as written, so this is a guardrail against accidents, not a sandbox: a pattern misses
+another spelling of the same command (`rm -fr`, `rm -r -f`, the flags in another order), and a command run through
+an interpreter or a substitution (`bash -c 'rm -rf dist'`, `$(...)`). That is why the list carries `rm -rf` and
+`rm -fr`, and why the patterns start with `*`, which also covers a wrapper such as `sudo rm -rf /`. A command that is forbidden only on some branches or for some actors is an entry of `on:` with
+`command` and those conditions, as in [Keep production out of reach](#keep-production-out-of-reach).
+
+### No commits on main
+
+```yaml
+guardrails:
+  protected_branches: [main, master]
+```
+
+It expands into one regular entry of `pre_commit`, whose `branch` is an anchored regular expression of the names
+(`*` in a name matches any text, so `release/*` covers every release branch):
+
+```yaml
+on:
+  pre_commit:
+    # from guardrails.protected_branches
+    - when: { branch: "^(?:main|master)$" }
+      action: { block: "{branch} is protected in polix.yaml: create a branch for this change and commit there." }
+```
+
+`pre_commit` runs for any command line that holds a `git commit`, also inside `git add . && git commit -m ...`.
+Copy the entry into `on:` to change its message, or to add an `unless` for a release bot.
+
+### Format every file the agent edits
+
+The formatter rewrites the file right after each edit, so the diff never carries style noise.
+
+```yaml
+guardrails:
+  format_on_edit:
+    - { run: "npx prettier --write {path}", path: ["**/*.ts", "**/*.tsx", "**/*.css", "**/*.json"] }
+    - { run: "gofmt -w {path}", path: "*.go" }
+```
+
+Each item expands into one regular entry of `post_edit` that runs its command on the edits of its `path`, or on
+every edit without one:
+
+```yaml
+on:
+  post_edit:
+    # from guardrails.format_on_edit
+    - when: { path: ["**/*.ts", "**/*.tsx", "**/*.css", "**/*.json"] }
+      action: { run: "npx prettier --write {path}" }
+    # from guardrails.format_on_edit
+    - when: { path: "*.go" }
+      action: { run: "gofmt -w {path}" }
+```
+
+The filter is `path`, the edited file, not `changed`, which holds for any file not committed yet and would run a
+formatter on a file of another kind. `run` executes without a shell and splits the command on spaces before it
+replaces `{path}`, so the path stays one argument even when it holds a space: there is no `jq`, no `xargs` and no
+quoting to get wrong, and the same item works under PowerShell. When the formatter fails, usually on a syntax
+error, the agent gets its output as context, without a block. A formatter that rewrote the file writes no `passed`
+line, since the content changed while it ran, so it runs again on the next edit of the path.
+
+### Lint feedback right after each edit
+
+The linter runs on the file the agent just edited, and its output reaches the agent as context, without blocking.
+It is the same shortcut as the formatter, with an optional `message` before the output of a failure:
+
+```yaml
+guardrails:
+  format_on_edit:
+    - { run: "uv run ruff check {path}", path: "**/*.py" }
+    - { run: "npx eslint {path}", path: ["**/*.ts", "**/*.tsx"], message: "eslint found problems in {path}:" }
+```
+
+```yaml
+on:
+  post_edit:
+    # from guardrails.format_on_edit
+    - when: { path: "**/*.py" }
+      action: { run: "uv run ruff check {path}" }
+    # from guardrails.format_on_edit
+    - when: { path: ["**/*.ts", "**/*.tsx"] }
+      action: { run: { command: "npx eslint {path}", message: "eslint found problems in {path}:" } }
+```
+
+On `post_edit` a failing `run` never blocks, since the edit already happened: the output of the linter reaches the
+agent as context. It reads the warnings in the next step and fixes them while the file is still in its head,
+instead of finding a wall of lint errors at the end of the task. A lint that passed on a file is not run again
+until that file, or any other, changes.
+
+### Tests that run themselves
+
+Instead of asking the agent to run the tests, polix runs them when the agent tries to stop, once per content.
+
+```yaml
+guardrails:
+  run_before_done:
+    - { run: just test, changed: ["*.go", "go.mod", "go.sum"] }
+```
+
+Each item expands into one regular entry of `stop` that runs its command when its `changed` holds, or always
+without one:
+
+```yaml
+on:
+  stop:
+    # from guardrails.run_before_done
+    - when: { changed: ["*.go", "go.mod", "go.sum"] }
+      action: { run: just test }
+```
+
+How it works:
+
+- When the run fails, the stop is blocked and the agent gets the last 15 lines of the output, so it goes back to
+  fix them. When it passes, polix writes a `passed` line for `just test` on that branch and content, and the next
+  stop does not run it again; any edit makes it run again.
+- The items run in their order and the first that fails ends the evaluation, so list the lint before the tests:
+  the agent gets one failure per answer, and the tests do not run on code that does not pass the lint.
+- A `just test` the agent runs by itself does not count, green or not: polix cannot know what it really ran (an
+  alias, another folder, a run still going in the background). Only the runs of polix spare a later one.
+- When the result depends on more than the files, as for integration tests against a service, write the entry in
+  `on:` with `always: true` in the long form of `run`, which the shortcut does not take, so it runs on every stop:
+  `- action: { run: { command: just test-integration, always: true } }` under `stop`.
+- `run` executes without a shell and shares a budget of 10 minutes per hook call. The hook timeout that
+  `polix install` writes (900 seconds) is above it.
+- A check that should also gate the end of a subagent, or wait for a reviewer, is an entry of `on:`: see
+  [The main session orchestrates, the builder builds](#the-main-session-orchestrates-the-builder-builds) and
+  [Putting it together](#putting-it-together-build-document-test-review-commit).
+
+The rest of this page is the layer `on:`, where the team orchestrates its flow.
 
 ## Quality gates
 
@@ -134,65 +399,6 @@ on:
 Keep in mind that the documenter edits files, so it changes the content: a `run` that passed before it runs again,
 and a `finished` of a reviewer whose scope holds the files it edits stops holding. Document first, then test and
 review. See [Putting it together](#putting-it-together-build-document-test-review-commit).
-
-### Tests that run themselves
-
-Instead of asking the agent to run the tests, polix runs them when the agent tries to stop, once per content.
-
-```yaml
-on:
-  stop:
-    - when: { changed: ["*.go", "go.mod", "go.sum"] }
-      action: { run: just test }
-```
-
-How it works:
-
-- When the run fails, the stop is blocked and the agent gets the last 15 lines of the output, so it goes back to
-  fix them. When it passes, polix writes a `passed` line for `just test` on that branch and content, and the next
-  stop does not run it again; any edit makes it run again.
-- A `just test` the agent runs by itself does not count, green or not: polix cannot know what it really ran (an
-  alias, another folder, a run still going in the background). Only the runs of polix spare a later one.
-- When the result depends on more than the files, as for integration tests against a service, `always: true` in
-  the long form runs it on every stop: `run: { command: just test-integration, always: true }`.
-- `run` executes without a shell and shares a budget of 10 minutes per hook call. The hook timeout that
-  `polix install` writes (900 seconds) is above it.
-
-### Lint feedback right after each edit
-
-The linter runs on the file the agent just edited, and its output reaches the agent as context, without blocking.
-
-```yaml
-on:
-  post_edit:
-    - when: { path: "**/*.py" }
-      action: { run: "uv run ruff check {path}" }
-    - when: { path: ["**/*.ts", "**/*.tsx"] }
-      action: { run: "npx eslint {path}" }
-```
-
-On `post_edit` a failing `run` never blocks, since the edit already happened: the output of the linter reaches the
-agent as context. It reads the warnings in the next step and fixes them while the file is still in its head,
-instead of finding a wall of lint errors at the end of the task. A lint that passed on a file is not run again
-until that file, or any other, changes.
-
-### Format every file the agent edits
-
-The formatter rewrites the file right after each edit, so the diff never carries style noise.
-
-```yaml
-on:
-  post_edit:
-    - when: { path: ["**/*.ts", "**/*.tsx", "**/*.css", "**/*.json"] }
-      action: { run: "npx prettier --write {path}" }
-    - when: { path: "*.go" }
-      action: { run: "gofmt -w {path}" }
-```
-
-`run` executes without a shell and splits the command on spaces before it replaces `{path}`, so the path stays
-one argument even when it holds a space: there is no `jq`, no `xargs` and no quoting to get wrong, and the same entry works under PowerShell. When the formatter fails, usually on a syntax error, the
-agent gets its output as context, without a block. A formatter that rewrote the file writes no `passed` line, since
-the content changed while it ran, so it runs again on the next edit of the path.
 
 ### Sensitive code gets a security review
 
@@ -319,22 +525,6 @@ The release notes are written by the agent that knows the change best, at the mo
 
 ## Safety
 
-### Destructive commands are left to a person
-
-Commands that throw away work nobody saved are blocked, wherever they appear in the line.
-
-```yaml
-on:
-  pre_command:
-    - when: { command: ["rm -rf*", "git reset --hard*", "git clean -*f*", "git checkout -- .*", "git restore .*"] }
-      action: { block: "This line destroys work that may not be saved: ask the user to run it. Line: {command}" }
-```
-
-A script that checks whether the command *starts* with `rm` misses `cd build && rm -rf dist`. polix splits the
-line the way a shell runs it and matches every command on its own, so it catches it, while `git reset --soft`
-still goes through. Narrow the patterns, `rm -rf /*` or `rm -rf ~*`, if the agent should keep cleaning its own
-build folders.
-
 ### Keep production out of reach
 
 Commands are split the way a shell runs them, so `cd infra && terraform apply -auto-approve` is caught too.
@@ -369,55 +559,9 @@ on:
 ```
 
 A pattern without `/` matches the base name anywhere, like `.gitignore`, so `go.sum` also covers `tools/go.sum`.
-
-### Secrets never land in a commit
-
-```yaml
-on:
-  pre_edit:
-    - when: { path: [".env", ".env.*", "*.pem", "*.key", "*.p12"] }
-      unless: { path: ".env.example" }
-      action: { block: "{path} would end up in a commit: keep secrets in an ignored file or a secret store" }
-```
-
-polix skips the workflow for files git ignores, so this entry never bothers an `.env` that is in `.gitignore`.
-It fires exactly when the file is **not** ignored: the case in which the secret would be committed.
-
-### Paths no agent writes
-
-polix protects only its own state on its own. Everything else a person wants to keep for themselves goes in
-`protected`: no actor, the main session included, edits those paths or writes them with a command.
-
-```yaml
-version: 1
-protected: [".env", ".env.*", "AGENTS.md", "CLAUDE.md"]
-```
-
-Unlike the workflow, `protected` also covers files git ignores, so an ignored `.env` stays out of reach too.
-
-To keep only the subagents away and let the main session change a path, use entries: `path` for the edits and
-`writes` for the commands. The authors of the plugin of polix keep their way in:
-
-```yaml
-on:
-  pre_edit:
-    - when: { path: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
-      unless: { actor: ["polix:workflow-author", "polix:rules-author"] }
-      action: { block: "{path} is the workflow of the repository: only the main session changes it" }
-  pre_command:
-    - when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
-      unless: { actor: ["polix:workflow-author", "polix:rules-author"] }
-      action: { block: "Only the main session writes the workflow: {command}" }
-```
-
-Do not put `polix.yaml` or `ai/rules/` in `protected`: it binds the main session too, so the skills `workflow`
-and `add-rule` could no longer change them. `writes` is a heuristic: it sees `rm`, `mv`, `cp`, `tee`, `sed -i` and
-redirections into the repository, but not an interpreter that opens a file (`python -c ...`). A program that writes
-by itself (`rm`, `mv`, `cp`...) is denied on every protected file it names, also one it only reads
-(`cp AGENTS.md notes.md`), on a folder holding protected paths and on a wildcard that may reach them (`rm -rf ai` or
-`rm -rf ai/*` for `ai/rules/**`, but also `cp a.md docs/` for `docs/secret.md`), and `rm` on the root. Reading is
-fine, even with the output redirected (`ls ai 2>/dev/null`, `cat AGENTS.md > notes.md`). See
-[the details](polix.md#protections).
+These are regular entries, with a message of their own for each kind of file: the files git ignores are skipped.
+To deny them to every actor whatever git ignores, list them in
+[`protected_files`](#paths-no-agent-writes) instead.
 
 ### The agent cannot switch off its own guardrails
 
@@ -434,19 +578,8 @@ on:
 polix only protects its own state without any entry: `AGENTS.md`, `CLAUDE.md`, `ai/rules/` and `polix.yaml` are
 open unless the workflow closes them, as in [Paths no agent writes](#paths-no-agent-writes). This entry keeps the
 hooks away from edits, for the main session too. `polix install` still writes them, since it runs as a command and
-not as an edit; adding the files to `protected` instead would also deny the commands of the agent that write
-them.
-
-### No commits on main
-
-```yaml
-on:
-  pre_commit:
-    - when: { branch: "^(main|master)$" }
-      action: { block: "Do not commit on {branch}: create a branch for this change" }
-```
-
-`pre_commit` runs for any command line that holds a `git commit`, also inside `git add . && git commit -m ...`.
+not as an edit; adding the files to `guardrails.protected_files` instead would also deny the commands of the agent
+that write them.
 
 ## Context
 
@@ -522,8 +655,8 @@ on:
 
 The checkout needs `fetch-depth: 0` so that the base branch and the merge base are in the clone. On a pull
 request, `--base` is the branch it merges into, and polix fails when it does not exist. Outside a pull request
-`base_ref` is empty, and an empty `--base` leaves the choice to `polix.yaml`: the closest branch of `base`, or a
-failure when none can be found. On a push to a branch of `base` itself, such as `main`, that branch is its own
+`base_ref` is empty, and an empty `--base` leaves the choice to `polix.yaml`: the closest branch of `base_branch`,
+or a failure when none can be found. On a push to a branch of `base_branch` itself, such as `main`, that branch is its own
 base and `--changed` finds nothing to check, so the recipe runs every check on a push. In the hooks `changed` is what is not committed yet; in CI it is
 what the branch changed since it forked.
 
@@ -570,12 +703,21 @@ The `finished: documenter` in the `when` of the later stop entries, and the sing
 the tests do not run on code the documenter is about to change, and a failing run ends the evaluation, so the
 reviewer is not asked for before the tests are green.
 
+The basics stay in `guardrails:`; the order of the phases is the flow of the team, so it goes in `on:`. The tests
+are an entry of `on:` and not of `run_before_done`, since they wait for the documenter.
+
 ```yaml
 version: 1
-base: main
-max_stop_blocks: 3
+base_branch: main
+max_stop_retries: 3
 vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+
+guardrails:
+  protected_files: [".env", ".env.*"]
+  protected_branches: [main]
+  format_on_edit:
+    - { run: "npx prettier --write {path}", path: ["src/**/*.ts", "src/**/*.tsx"] }
 
 on:
   pre_edit:
@@ -640,7 +782,7 @@ What polix does, without a script:
 - **Keep a subagent working** (`SubagentStop`): see
   [The main session orchestrates, the builder builds](#the-main-session-orchestrates-the-builder-builds).
 - **Avoid a stop hook that never lets go** (`stop_hook_active`, the cap of eight blocks): built in. After
-  `max_stop_blocks` blocks of the same entry on the same content, polix lets the agent stop and logs a
+  `max_stop_retries` blocks of the same entry on the same content, polix lets the agent stop and logs a
   `loop_guard` decision.
 - **Fail closed when the policy is broken** (`onFailure: "block"`): built in for an invalid `polix.yaml`, which
   blocks edits and commands but never a stop. A machine without polix is not covered: Claude Code treats the
@@ -648,7 +790,7 @@ What polix does, without a script:
   makes the agent offer to install it.
 - **Guard configuration against changes** (`ConfigChange`): see
   [The agent cannot switch off its own guardrails](#the-agent-cannot-switch-off-its-own-guardrails) and
-  [Paths no agent writes](#paths-no-agent-writes): `AGENTS.md` and `CLAUDE.md` in `protected`, and `polix.yaml`
+  [Paths no agent writes](#paths-no-agent-writes): `AGENTS.md` and `CLAUDE.md` in `protected_files`, and `polix.yaml`
   and `ai/rules/` kept from subagents with `path` and `writes`, so the skills can still change them. polix only
   protects its own state on its own.
 - **Log what the agent does** (a `PreToolUse` hook that appends to a file): see

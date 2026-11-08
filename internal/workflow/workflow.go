@@ -1,6 +1,7 @@
 // Package workflow is the domain of polix.yaml: for each neutral event, an ordered list of entries, each with
 // optional `when` and `unless` conditions and an action with one verb (run, inject or block), plus the variables,
-// the base branches, the protected paths, the loop guard and the runners of the checks of the rules.
+// the base branches, the protected files, the forbidden commands, the loop guard and the runners of the checks of
+// the rules. The other shortcuts of the section guardrails are expanded into entries when the file is parsed.
 //
 //	version: 1
 //	vars:
@@ -33,18 +34,24 @@ type Workflow struct {
 	// Requires is the oldest polix that knows every option the file uses (`requires: 0.2.0`). An older polix
 	// reads it before anything else and asks to be updated instead of reporting the options it does not know.
 	Requires string
-	// Base names the branches a change may merge into, for `polix rules check --changed`; the hooks always
-	// compare `changed` with HEAD.
-	Base          []string
-	MaxStopBlocks int // loop guard of every block on stop and subagent_stop
-	// Protected are the path globs no agent writes, the main session included: only a person changes them.
-	Protected []string
-	Vars      map[string]Var
-	On        map[string][]Entry
-	Rules     Rules    // the folder of the rules and how their checks run
-	Plans     Folder   // the folder of the plans
-	Reports   Folder   // the folder of the reports
-	Guidance  Guidance // the built-in instructions injected at session start
+	// Base names the branches a change may merge into (base_branch), for `polix rules check --changed`; the hooks
+	// always compare `changed` with HEAD.
+	Base           []string
+	MaxStopRetries int // loop guard of every block on stop and subagent_stop (max_stop_retries)
+	// ProtectedFiles are the path globs no agent writes, the main session included (guardrails.protected_files):
+	// a protection the hook applies before the entries of on, also to the files git ignores.
+	ProtectedFiles []string
+	// ForbiddenCommands are the commands no agent runs, wherever they come in a line
+	// (guardrails.forbidden_commands): a protection the hook applies before the entries of on, in file order.
+	ForbiddenCommands []ForbiddenCommand
+	Vars              map[string]Var
+	// On holds the entries of each event: those written in `on` and those the shortcuts of guardrails
+	// protected_branches, format_on_edit and run_before_done expand into.
+	On       map[string][]Entry
+	Rules    Rules    // the folder of the rules and how their checks run
+	Plans    Folder   // the folder of the plans
+	Reports  Folder   // the folder of the reports
+	Guidance Guidance // the built-in instructions injected at session start
 	// Weights are the factors of the risk score per path glob (risk.weights), in file order: the first glob that
 	// matches a file gives its weight, and a file no glob matches weighs 1.
 	Weights []Weight
@@ -56,6 +63,13 @@ type Workflow struct {
 type Var struct {
 	Branch string
 	Keys   []string // the keys the file used, so Valid rejects unknown ones
+}
+
+// ForbiddenCommand is an item of guardrails.forbidden_commands: a command no agent runs.
+type ForbiddenCommand struct {
+	Pattern string // the glob of a command, matched against each command of a line
+	Reason  string // the message of the denial; empty for the default one
+	Line    int    // the line of the item in the file, for messages and the log
 }
 
 // Invalid is the error of a value with problems, one per line; the list is the error itself, so a caller gets
@@ -73,8 +87,8 @@ type validator struct {
 // File is the workflow, relative to the repository root.
 const File = "polix.yaml"
 
-// DefaultMaxStopBlocks is the loop guard of stop and subagent_stop when the workflow does not say.
-const DefaultMaxStopBlocks = 3
+// DefaultMaxStopRetries is the loop guard of stop and subagent_stop when the workflow does not say.
+const DefaultMaxStopRetries = 3
 
 // Neutral events, the same for every agent.
 const (
@@ -128,8 +142,13 @@ var Informed = []string{Start, PostEdit, PostCommand}
 var renamedEvents = map[string]string{"session_start": Start, "turn_stop": Stop}
 
 // renamed holds, per place of the file, the names of the old vocabulary and the hint of their new spelling, which
-// the validator appends to the problem of the unknown name.
+// the validator, or Parse for a top-level key (place "top"), appends to the problem of the unknown name.
 var renamed = map[string]map[string]string{
+	"top": {
+		"protected":       "use guardrails.protected_files",
+		"base":            "use base_branch",
+		"max_stop_blocks": "use max_stop_retries",
+	},
 	"key": {
 		"if":      "use when",
 		"why":     "remove it, or keep the text as a YAML comment",
@@ -149,8 +168,9 @@ var renamed = map[string]map[string]string{
 // how to rewrite it, not that it has no action.
 var oldActions = []string{"deny", "require", "allow", "run", "context", "record"}
 
-// renamedProblem finds, in a problem of the validator, the unknown name it reports with its new spelling: the place
-// (key, event or condition), the name and, for a key of the action, " in action".
+// renamedProblem finds, in a problem of the validator or of Parse, the unknown name it reports with its new
+// spelling: the place (key, event or condition), the name and, for a key of the action, " in action". A top-level
+// key is reported as a key.
 var renamedProblem = regexp.MustCompile(`unknown (key|event|condition) "([^"]*)"( in action)?: `)
 
 // placeholder finds the {name} placeholders of a string.
@@ -170,23 +190,34 @@ func (w Workflow) Valid() error {
 // file (see byLine); an empty list means it is valid.
 func (w Workflow) Problems() []string {
 	v := &validator{w: &w}
+	v.workflow(w)
+	return v.byLine()
+}
+
+// workflow reports the problems of the workflow w.
+func (v *validator) workflow(w Workflow) {
 	if w.Version != 1 {
 		v.add(0, "version must be 1, got %d", w.Version)
 	}
 	if w.Requires != "" && !semver.Valid(w.Requires) {
 		v.add(0, "requires must be a version of polix like 0.2.0, got %q", w.Requires)
 	}
-	if w.MaxStopBlocks < 0 {
-		v.add(0, "max_stop_blocks must be positive, got %d", w.MaxStopBlocks)
+	if w.MaxStopRetries < 0 {
+		v.add(0, "max_stop_retries must be positive, got %d", w.MaxStopRetries)
 	}
 	for _, b := range w.Base {
 		if strings.TrimSpace(b) == "" {
-			v.add(0, "base: a branch name cannot be empty")
+			v.add(0, "base_branch: a branch name cannot be empty")
 		}
 	}
-	for _, g := range w.Protected {
+	for _, g := range w.ProtectedFiles {
 		if strings.TrimSpace(g) == "" {
-			v.add(0, "protected: a path glob cannot be empty")
+			v.add(0, "guardrails.%s: a path glob cannot be empty", shortcutProtectedFiles)
+		}
+	}
+	for _, f := range w.ForbiddenCommands {
+		if err := f.Valid(); err != nil {
+			v.add(f.Line, "%v", err)
 		}
 	}
 	names := make([]string, 0, len(w.Vars))
@@ -227,7 +258,6 @@ func (w Workflow) Problems() []string {
 			v.add(0, "risk.weights: %v", err)
 		}
 	}
-	return v.byLine()
 }
 
 // ObservedSubagents returns the subagent types the `finished` conditions of the workflow name, as written, sorted
@@ -267,6 +297,14 @@ func (d Var) Valid() error {
 	v.variable("", d)
 	if len(v.problems) > 0 {
 		return Invalid(v.problems)
+	}
+	return nil
+}
+
+// Valid tells why the forbidden command is not valid: it has no pattern.
+func (f ForbiddenCommand) Valid() error {
+	if strings.TrimSpace(f.Pattern) == "" {
+		return fmt.Errorf("guardrails.%s: an item needs a pattern", shortcutForbiddenCommands)
 	}
 	return nil
 }
@@ -353,6 +391,10 @@ func Renamed(problem string) bool {
 	case place == "key" && inAction:
 		_, ok := renamed["action"][name]
 		return ok
+	case place == "key":
+		_, entry := renamed["key"][name]
+		_, top := renamed["top"][name]
+		return entry || top
 	default:
 		_, ok := renamed[place][name]
 		return ok

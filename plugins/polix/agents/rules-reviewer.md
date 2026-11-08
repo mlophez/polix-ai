@@ -40,7 +40,7 @@ The prompt names:
 
 ### Change
 
-The base is the `base` of `polix.yaml`, else `main`: review `git diff $(git merge-base HEAD <base>)`.
+The base is the `base_branch` of `polix.yaml` (the first that exists, when it is a list), else `main`: review `git diff $(git merge-base HEAD <base>)`.
 
 ## How to operate
 

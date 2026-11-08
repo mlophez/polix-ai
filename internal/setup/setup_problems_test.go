@@ -58,7 +58,7 @@ func TestRunProblems(t *testing.T) {
 
 func TestBaseWarning(t *testing.T) {
 	err := errors.New("no base branch")
-	if got := BaseWarning(problemRules, err); got != "polix rules check --changed would fail: no base branch; set base in polix.yaml or pass --base" {
+	if got := BaseWarning(problemRules, err); got != "polix rules check --changed would fail: no base branch; set base_branch in polix.yaml or pass --base" {
 		t.Fatal(got)
 	}
 	if BaseWarning(problemRules, nil) != "" || BaseWarning(problemRules[1:2], err) != "" {

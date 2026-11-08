@@ -54,24 +54,38 @@ read after it are those of a new epoch, read again.
 
 The rules it follows, as before this use case:
 
-1. Protections, whatever the workflow says and also without one: nobody edits the state of polix
-   (`<git-dir>/polix`, by its real path, without case where file names ignore it) nor runs a command that may write
-   and names it; no actor, the main session included, writes a path of `protected`, by an edit, a redirection or a
-   program that writes the files it names (`rm`, `mv`, `cp`, `sed -i`...), its folders and wildcards included. A
-   protection blocks and is logged as `builtin`.
+1. Protections, before the entries of the workflow and before the skip of the edits outside the change (rule 3);
+   the first one that denies ends the evaluation. Whatever the workflow says and also without one or with an invalid
+   one, nobody edits the state of polix (`<git-dir>/polix`, by its real path, without case where file names ignore
+   it) nor runs a command that may write and names it, logged as `builtin`. With a valid polix.yaml, no actor, the
+   main session included, writes a path of `guardrails.protected_files` (`workflow.Workflow.ProtectedFiles`, matched
+   with `AnyPathFold`), also when git ignores it but never on an edit outside the repository, by an edit, a
+   redirection or a program that writes the files it names (`rm`, `mv`, `cp`, `sed -i`...), its folders and
+   wildcards included (`Writes`): the reason names the path (`<path> is protected in polix.yaml: only a person
+   changes it.`) or the protected glob a folder or a wildcard holds (`<folder> holds <glob>, protected in
+   polix.yaml: ...`), and it is logged as `guardrails.protected_files`. Reading a protected path passes. Nor does any
+   actor run a command of `guardrails.forbidden_commands` (`workflow.Workflow.ForbiddenCommands`, the first in file
+   order whose pattern matches any command of the line, `Forbidden`) on `pre_command` or `pre_commit`: the reason
+   is its `reason`, or `ReasonForbidden`, followed by the line, and it is logged as `guardrails.forbidden_commands`
+   with the line of its item.
 2. A workflow that cannot be used (it cannot be read or parsed, has problems or requires a newer polix) blocks
    edits and commands with its problems, logged as `invalid`, except an edit outside the change, an edit of
    polix.yaml by the main session (not when it requires a newer polix) and the commands that only check the
    workflow or update polix; any other event only warns, so a stop is never blocked. Problems that may come from a
    newer polix hint to run `polix update` (`Unusable`); a name of the old vocabulary, reported with its new
    spelling, does not.
-3. Without polix.yaml, and for an edit outside the repository or of a file git ignores, only the protections apply.
+3. Without polix.yaml, and for an edit outside the repository or of a file git ignores, only the protections apply:
+   the entries govern the change, what a commit may hold, so a build output or a local `.env` never fires them. The
+   other shortcuts of `guardrails` (`protected_branches`, `format_on_edit`, `run_before_done`) reach the hook
+   already expanded into entries (`workflow.Entry.From` names the shortcut), before those written in `on`.
 4. On `start`, the session context (`workflow.Workflow.SessionContext`) is injected as one context first,
    so the contexts of the entries come after it: the template `templates/session_start.md.tmpl` rendered with the
    switches of `guidance` turned on in polix.yaml (commit, edit, layout) and the folders of `rules.path`,
    `plans.path` and `reports.path`; nothing when every switch is off.
-5. The entries of the event run in order: one runs when every condition of `when` holds and, with `unless`, not
-   every condition of `unless` holds, and carries out the verb of its action (`workflow.Action.Verb`). `block`
+5. The entries of the event run in order: one runs when every condition of `when` holds
+   and, with `unless`, not every condition of `unless` holds, and carries out the verb of its action
+   (`workflow.Action.Verb`). The condition `path` ignores case where file names ignore it (`AnyPathFold`), as the
+   protection of the state and `writes` do. `block`
    blocks with its message; `run` runs a command or the checks of the rules (`changed`, or a path), and a failure,
    its `message`, a blank line and the output, blocks the event or, on `start`, `post_edit` and
    `post_command` (`workflow.Informed`), reaches the AI as context and is logged as `inform`; `inject` injects a
@@ -130,7 +144,7 @@ The rules it follows, as before this use case:
 10. Loop guard: every block of `stop` or `subagent_stop`, a `block` or a failing `run`, writes an observed
     `blocked` line with the content hash, and the guard counts those lines per session, event, actor, entry and
     whole hash; an unknown hash is written as `state.UnknownHash`, so those blocks count together. After
-    `max_stop_blocks` the agent may stop with a warning and the next entries run, and when the log cannot be read or
+    `max_stop_retries` the agent may stop with a warning and the next entries run, and when the log cannot be read or
     written the guard fails open.
 11. The content hash is computed only when something needs it: the repeat of a `run` and its `passed` line (before
     and after the run), a `block` with `once`, the loop guard, `finished` and its observed line. An `inject`, the
@@ -150,7 +164,8 @@ The rules it follows, as before this use case:
     (`Measures`).
 
 The domain decides the rest: `agent.Agent.Parse` and `Render` (the formats of the agents), `agent.Answer.Merge`,
-`Writes`, `NamesState`, `Within`, `Expand`, `Measures`, `Measure`, `diff.Diff`, `Vars`, `MatchingCommands`,
+`Writes`, `NamesState`, `Within`, `AnyPathFold`, `Forbidden`, `Expand`, `Measures`, `Measure`, `diff.Diff`, `Vars`,
+`MatchingCommands`,
 `state.State` (`Observed`, `Latest`, `Index`) with `state.Query`, `workflow.Workflow.ObservedSubagents` and
 `InjectsOnce`, `rule.Matching`, `rule.Result.Tail`, `rule.Plan` and `rule.Run.Settle`.
 
@@ -218,7 +233,8 @@ The failure policy of the hook, so a broken polix never traps the agent:
 4. For each event, it locates the path of an edit through the port and builds its `Evaluation` with the facts the
    previous event left; then it loops from one call site: it asks `AnswerHook` for the next step, carries it out
    through the port and feeds the result back to the evaluation (`Know*` for a fact, `Note` for an outcome), until
-   the step is none.
+   the step is none. Each pass walks the protections, whether git ignores an edited path, and the entries, in that
+   order (Logic, rules 1 to 5).
 5. It merges the answers of the events (`agent.Answer.Merge`) and renders them for the agent
    (`agent.Agent.Render`) into the `AnswerHookResponse`.
 6. `AnswerHookCommand` writes stdout and stderr and exits with the code.

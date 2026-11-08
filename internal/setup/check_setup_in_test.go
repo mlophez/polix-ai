@@ -85,7 +85,7 @@ func TestCheckSetupCommand(t *testing.T) {
 		strings.Contains(stderr, "polix:") {
 		t.Fatalf("unknown options hint an update, exit 1 without the error handler: %d %q", code, stderr)
 	}
-	write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase: trunk\n")
+	write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase_branch: trunk\n")
 	write(t, filepath.Join(r, "ai", "rules", "s.yaml"), "rules:\n  - id: S-1\n    description: d\n    deterministic: true\n    check: checks/s.sh\n  - id: S-2\n")
 	code, _, stderr := runCheckSetup(r)
 	if code != 1 || !strings.Contains(stderr, "S-1: check checks/s.sh does not exist") || !strings.Contains(stderr, "S-2: no description") {
@@ -96,7 +96,7 @@ func TestCheckSetupCommand(t *testing.T) {
 	if code, _, stderr := runCheckSetup(r); code != 0 || !strings.Contains(stderr, "rules check --changed would fail") {
 		t.Fatalf("a missing base is a warning: %d %q", code, stderr)
 	}
-	write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase: trunk\nrules: { path: docs/rules/ }\n")
+	write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase_branch: trunk\nrules: { path: docs/rules/ }\n")
 	write(t, filepath.Join(r, "docs", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n")
 	if code, stdout, _ := runCheckSetup(r); code != 0 || !strings.HasSuffix(stdout, "1 rules of docs/rules/\n") {
 		t.Fatalf("the rules of rules.path, not of ai/rules/: %d %q", code, stdout)

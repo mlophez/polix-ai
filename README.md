@@ -44,20 +44,40 @@ the copy in the next repository.
 session: what is blocked, what runs and what is injected into the context.
 The same binary answers every hook in milliseconds and keeps an append-only log of what it observed and decided.
 
+The basics fit in a few lines:
+
 ```yaml
 # polix.yaml
 version: 1
-on:
-  stop:
-    # The agent cannot end its turn while the tests fail on its Go changes: Polix runs them itself.
-    - when: { changed: "*.go" }
-      action: { run: just test }
+guardrails:
+  protected_files: [".env", ".env.*", "*.pem", AGENTS.md]     # no agent writes them, the main session included
+  forbidden_commands:                                         # each command of the line, as written
+    - pattern: "*rm -rf /*"
+    - pattern: "git push*--force*"
+      reason: "No force pushes: open a pull request"
+    - pattern: "git push* -f*"
+      reason: "No force pushes: open a pull request"
+  protected_branches: [main, "release/*"]                     # nobody commits there
+  format_on_edit:                                             # right after each edit
+    - { run: "gofmt -w {path}", path: "*.go" }
+  run_before_done:                                            # the agent cannot end its turn while one fails
+    - { run: "golangci-lint run ./...", changed: "*.go" }
+    - { run: "go test ./...", changed: ["*.go", go.mod, go.sum] }
 ```
+
+The files and the commands are protections of the engine, applied before everything else, to every agent and also
+to the files git ignores. The other three shortcuts expand into ordinary entries of `on:`, and `polix graph` draws
+them with the name of their shortcut.
 
 When the tests fail, the agent gets their output and has to go on. When they pass, Polix remembers it for this
 exact content, so the next stop does not run them again; if the agent then edits a single line, they run again.
-You don't have to invalidate anything by hand, and a `just test` the agent ran by itself never counts: Polix only
+You don't have to invalidate anything by hand, and a `go test` the agent ran by itself never counts: Polix only
 trusts what it ran.
+
+`polix.yaml` has two layers. `guardrails:` holds the basics every project wants from the first minute.
+`on:` is where your team orchestrates its flow: the review subagents, the builder, the plan, the ticket, each
+an entry that says on which event it applies, when, and what it does
+([below](#the-workflow-in-one-file)).
 
 > The human writes the rules. Polix only enforces them.
 > It **measures and never judges**: conditions are facts about the repository, the event and the state.
@@ -73,15 +93,17 @@ trusts what it ran.
   evaluation.
 - **Declarative and validated.** `polix check` rejects unknown events, keys, conditions, placeholders and
   conditions that can never hold on their event, so a typo cannot quietly switch a guardrail off.
-- **Protections.** Nobody can tamper with the state of Polix, even when the repository has no workflow; that is
-  all Polix protects on its own. The key `protected` of `polix.yaml` lists paths no agent may write (`.env`, the
-  context files), and the condition `writes` keeps some actors away from some paths, as in
-  [the recipe](docs/use-cases.md#safety).
+- **Guardrails in a few lines.** `guardrails:` lists the files no agent writes, the commands no agent runs, the
+  branches nobody commits on, the formatter of each edited file and the checks before the end of a turn. The files
+  and the commands are protections applied before everything else, which bind the main session too and cover the
+  files git ignores, such as `.env`. On its own Polix only keeps anyone from tampering with its state, even when
+  the repository has no workflow; the condition `writes` keeps some actors away from some paths, as in
+  [the recipe](docs/use-cases.md#paths-no-agent-writes).
 - **Rules that reach the agent and CI.** Rules in `ai/rules/` have a scope. Polix injects only the ones that
   match the file being edited, once per session and agent. The same checks run in CI with
   `polix rules check --changed --base="${{ github.base_ref }}"` on a pull request, after a checkout with
   `fetch-depth: 0` ([the recipe](docs/use-cases.md#the-same-checks-for-the-agent-and-for-ci)).
-- **No infinite loops.** A loop guard lets the agent stop after `max_stop_blocks` identical blocks. A broken
+- **No infinite loops.** A loop guard lets the agent stop after `max_stop_retries` identical blocks. A broken
   `polix.yaml` fails closed for edits and commands but never traps a stop.
 - **An audit trail.** Every decision is logged with the entry that caused it, next to the checks that passed and
   the subagents that finished on each content, giving evidence of the process each change followed.
@@ -92,7 +114,7 @@ trusts what it ran.
 
 ## The engine and the harness
 
-Polix comes in two layers, and the second one is optional.
+Polix comes in two parts, and the second one is optional.
 
 - **The engine** is the binary, `polix.yaml` and `ai/rules/`. It enforces whatever process you write down and
   assumes none: use it with your own skills, agents and conventions.
@@ -185,13 +207,14 @@ of the repository (`--user` for only the plugin).
 
 **3. Write your workflow**
 
-Start from [`examples/polix.yaml`](examples/polix.yaml), an annotated reference of every option (each one is
-described in [docs/reference.md](docs/reference.md)), and validate it:
+Start from the `guardrails:` [above](#the-idea), or from [`examples/polix.yaml`](examples/polix.yaml), an
+annotated reference of every option (each one is described in [docs/reference.md](docs/reference.md)), and
+validate it:
 
 ```bash
-polix check     # validate polix.yaml and ai/rules/
-polix graph     # draw the workflow as a Mermaid diagram
-polix doctor    # check that this machine and repository are ready
+polix check            # validate polix.yaml and ai/rules/
+polix graph            # draw the workflow as a Mermaid diagram, each entry with the shortcut it comes from
+polix doctor           # check that this machine and repository are ready
 ```
 
 **4. Tell the agent**
@@ -204,7 +227,7 @@ does not have Polix yet, the agent offers to install it, and only runs the insta
 ```mermaid
 flowchart LR
   A["Claude Code / Codex<br/>hook event (JSON)"] --> B["Adapter<br/>neutral events"]
-  B --> C["Protections<br/>state and protected"]
+  B --> C["Protection of the state<br/>protected files, forbidden commands"]
   C --> D["polix.yaml<br/>entries in order"]
   R["ai/rules/"] --> D
   S[("&lt;git-dir&gt;/polix/log.jsonl<br/>observations and decisions")] <--> D
@@ -215,8 +238,10 @@ flowchart LR
 
 1. The **adapter** turns the agent's hook input into neutral events. An edit of three files becomes three
    `pre_edit` events, and a `git commit` inside a shell command also raises `pre_commit`.
-2. The **engine** applies the protections (the state of Polix and the `protected` paths of `polix.yaml`), then the
-   entries of the event in file order.
+2. The **engine** applies the protection of the state of Polix, then `protected_files` and `forbidden_commands`,
+   then the entries of the event in file order, those of the other shortcuts first. The entries skip the edits of
+   files git ignores: they govern the change, what a commit may hold, so a build output or a local `.env` never
+   fires them, while the protections still cover those files.
 3. The adapter **answers** the agent. It exits with code 2 and the reasons on stderr to block, or with code 0 and
    `additionalContext` to inject guidance.
 
@@ -233,14 +258,31 @@ $ polix log --tail 3
 
 ## The workflow in one file
 
-`polix.yaml` is a list of entries per event. Each entry says when it applies (`when`, `unless`) and what it does
-(`action`, with exactly one verb: `block`, `run` or `inject`).
+`polix.yaml` has two layers:
+
+- **`guardrails:`**, the basics every project wants from the first minute, each a short list:
+  `protected_files`, `forbidden_commands`, `protected_branches`, `format_on_edit` and `run_before_done`.
+- **`on:`**, where the team orchestrates its flow: the review subagents, the builder, the plan, the ticket. It is
+  a list of entries per event. Each entry says when it applies (`when`, `unless`) and what it does (`action`, with
+  exactly one verb: `block`, `run` or `inject`).
+
+`protected_files` and `forbidden_commands` are protections of the engine: they apply before every entry of `on:`,
+to every agent, without exceptions. The other shortcuts are only sugar: Polix expands each one into entries of `on:`
+when it reads the file, so there is one engine behind both layers, and `polix graph` names the shortcut of each
+entry. When a shortcut falls short, write its entries in `on:` and tune them.
 
 ```yaml
 version: 1
-base: main
+base_branch: main
 vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }    # PLAT-123-add-retry -> PLAT-123
+
+guardrails:
+  protected_files: [".env", AGENTS.md]
+  forbidden_commands:
+    - pattern: "git push*origin main*"
+      reason: "No direct pushes to main: open a pull request"
+  protected_branches: [main]
 
 on:
   pre_edit:
@@ -251,10 +293,6 @@ on:
       unless: { file: "ai/plans/{key}-*.md" }
       action: { block: "There is no plan for {key}: write it with /polix:plan" }
     - action: { inject: { rules: "{path}" } }     # the rules that apply to this file, once per session and agent
-
-  pre_command:
-    - when: { command: ["git push*origin main*", "git push*origin HEAD:main*"] }
-      action: { block: "No direct pushes to main: open a pull request" }
 
   pre_commit:
     - action: { run: just test }                  # run by Polix, not again on a content it passed on
@@ -274,9 +312,13 @@ on:
 measures `changed_lines`, `changed_files` and `risk_score` (a number: at least that much). In the hooks, `changed`
 is what is not committed yet (changed since HEAD, or untracked).
 
-**Top-level keys:** `version`, `requires`, `base` (the branch, or candidates, `rules check --changed` compares
-with), `protected` (paths no agent writes), `max_stop_blocks`, `vars`, `on`, `rules` (`run`: the command that runs
-each kind of `check`, by the glob of its file name).
+**Top-level keys:** `version`, `requires`, `base_branch` (the branch, or candidates, `rules check --changed`
+compares with), `max_stop_retries` (the loop guard), `guardrails`, `vars`, `on`, `rules` (`run`: the command that
+runs each kind of `check`, by the glob of its file name).
+
+**Ignored files:** the entries of `on:` skip the edits of files git ignores, since they govern what a commit may
+hold; `protected_files` and `forbidden_commands` still cover them. To keep an agent away from a path with an
+exception, write a `block` in `on:` with `unless` instead of an item of `protected_files`.
 
 **Verbs:** `block` (a message for the AI; a gate on every attempt, or a reminder once per content with
 `once: true`), `run` (a command, or the checks of the matching rules; a failure blocks, or only informs the AI after
@@ -293,26 +335,39 @@ workflow with comments on every option is in [`examples/polix.yaml`](examples/po
 
 ## Use cases
 
-[docs/use-cases.md](docs/use-cases.md) collects ready-to-paste recipes, each one checked with `polix check`:
+[docs/use-cases.md](docs/use-cases.md) collects ready-to-paste recipes, each one checked with `polix check`,
+grouped by layer.
+
+The basics, with `guardrails:`, each followed by what it does, or the entries it expands into:
+
+- [Paths no agent writes](docs/use-cases.md#paths-no-agent-writes) and
+  [secrets never land in a commit](docs/use-cases.md#secrets-never-land-in-a-commit), ignored files included.
+- [Destructive commands are left to a person](docs/use-cases.md#destructive-commands-are-left-to-a-person) and
+  [no commits on main](docs/use-cases.md#no-commits-on-main).
+- [Format every file the agent edits](docs/use-cases.md#format-every-file-the-agent-edits) and
+  [lint feedback right after each edit](docs/use-cases.md#lint-feedback-right-after-each-edit).
+- [Tests that run themselves](docs/use-cases.md#tests-that-run-themselves) when the agent tries to stop, once per
+  content.
+
+The flow of the team, with `on:`:
 
 - [Review every change with a reviewer subagent](docs/use-cases.md#review-every-change-with-a-reviewer-subagent),
   and never commit a diff it did not see.
 - [Document at the end of every task](docs/use-cases.md#document-at-the-end-of-every-task) with a documenter
   subagent.
-- [Tests that run themselves](docs/use-cases.md#tests-that-run-themselves) when the agent tries to stop, once per
-  content.
 - [Sensitive code gets a security review](docs/use-cases.md#sensitive-code-gets-a-security-review) only when auth,
   crypto or the schema change.
 - [No ticket, no code](docs/use-cases.md#no-ticket-no-code) and
   [a plan before the first edit](docs/use-cases.md#a-plan-before-the-first-edit).
+- [The main session orchestrates, the builder builds](docs/use-cases.md#the-main-session-orchestrates-the-builder-builds).
 - [Keep production out of reach](docs/use-cases.md#keep-production-out-of-reach): no force pushes, no `terraform
   apply` outside main, no `kubectl` on prod contexts.
-- [Secrets never land in a commit](docs/use-cases.md#secrets-never-land-in-a-commit) and
-  [hands off generated files and lockfiles](docs/use-cases.md#hands-off-generated-files-and-lockfiles).
+- [Hands off generated files and lockfiles](docs/use-cases.md#hands-off-generated-files-and-lockfiles).
 - [The whole flow](docs/use-cases.md#putting-it-together-build-document-test-review-commit): build, document,
   test, review and commit, in the order the content hash demands.
-- [Coming from Claude Code hooks](docs/use-cases.md#coming-from-claude-code-hooks): where each example of the
-  official hooks guide lands in Polix, and what stays outside of it.
+
+And [coming from Claude Code hooks](docs/use-cases.md#coming-from-claude-code-hooks): where each example of the
+official hooks guide lands in Polix, and what stays outside of it.
 
 ## Why not a few shell scripts?
 

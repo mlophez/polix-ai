@@ -8,8 +8,17 @@ limits), [polix.md](polix.md).
 Validate the file with `polix check` and draw it with `polix graph`. `polix check` rejects every unknown key,
 event, condition or verb, so a typo never turns into an entry that silently stops applying.
 
+The file has two layers. [`guardrails`](#guardrails) holds the basics every project wants from the first minute,
+each a short list: files no agent writes, commands no agent runs, branches nobody commits on, the formatter of each
+edited file and the checks that must pass before the agent ends its turn. [`on`](#on) is where the team
+orchestrates its flow (the review subagents, the builder, the plan, the ticket), as entries per event. Files no
+agent writes and commands no agent runs are protections of the engine, applied before every entry; the other three
+shortcuts of `guardrails` are only sugar: polix expands them into entries of `on` when it reads the file, and
+`polix graph` draws them with the name of their shortcut.
+
 - [The file at a glance](#the-file-at-a-glance)
 - [Top-level keys](#top-level-keys)
+- [Guardrails](#guardrails)
 - [Entries](#entries)
 - [Events](#events)
 - [Conditions](#conditions)
@@ -22,10 +31,18 @@ event, condition or verb, so a typo never turns into an entry that silently stop
 
 ```yaml
 version: 1                       # required
-requires: 0.1.0                  # oldest polix that knows this file
-base: [main, dev]                # branch the change merges into (polix rules check --changed)
-protected: [.env, /AGENTS.md]    # path globs no agent writes
-max_stop_blocks: 3               # loop guard of stop and subagent_stop
+requires: 0.3.0                  # oldest polix that knows this file (guardrails needs it)
+base_branch: [main, dev]         # branch the change merges into (polix rules check --changed)
+max_stop_retries: 3              # loop guard of stop and subagent_stop
+guardrails:                      # the basics every project wants
+  protected_files: [.env, /AGENTS.md]           # path globs no agent writes, before every entry
+  forbidden_commands:                           # commands no agent runs, before every entry
+    - { pattern: "git push --force*", reason: "No force pushes" }
+  protected_branches: [main, "release/*"]       # branches nobody commits on
+  format_on_edit:                               # runs after each edit of its path
+    - { run: "gofmt -w {path}", path: "*.go" }
+  run_before_done:                              # must pass before the agent ends its turn
+    - { run: "go test ./...", changed: "*.go" }
 rules:
   path: ai/rules                 # folder of the rules
   run:                           # runner of each check, by glob
@@ -45,6 +62,11 @@ guidance:                        # instructions injected on start
 vars:                            # variables from the branch name
   key: { branch: "^([A-Z]+-[0-9]+)" }
 on:                              # the entries of each event
+  pre_command:
+    - when: { command: "terraform apply*" }
+      unless: { branch: "^main$" }
+      action:
+        block: "terraform apply only runs from main"
   pre_commit:
     - when: { changed: "src/**" }
       unless: { finished: polix:reviewer }
@@ -54,7 +76,12 @@ on:                              # the entries of each event
 
 ## Top-level keys
 
-Every key but `version` is optional.
+Every key but `version` is optional. The key `guardrails`, a map of shortcuts, has a section of its own after
+this one: [Guardrails](#guardrails).
+
+Earlier builds named three of them otherwise: `protected` is now [`guardrails.protected_files`](#protected_files),
+`base` is now [`base_branch`](#base_branch), and the loop guard is now [`max_stop_retries`](#max_stop_retries).
+Only the new names are accepted: `polix check` reports an old one with its line and its new spelling.
 
 ### version
 
@@ -68,8 +95,10 @@ Every key but `version` is optional.
   blocks edits and commands asking to run `polix update`, instead of reporting the new options as mistakes, and
   not even the main session may edit `polix.yaml` meanwhile. A development build ignores it.
 - `polix check` rejects a value that is not a version.
+- A file that uses `guardrails` needs a polix that knows it: set `requires` to the release you install, so an
+  older polix asks to update instead of reporting it as an unknown key.
 
-### base
+### base_branch
 
 - Type: a branch name, or a list of them. Default: `main`.
 - The branch the change merges into. Only `polix rules check --changed` (CI) uses it: each candidate is tried
@@ -78,22 +107,11 @@ Every key but `version` is optional.
 - `polix check` rejects an empty name, and warns when no candidate exists.
 
 ```yaml
-base: main
-base: [main, dev]
+base_branch: main
+base_branch: [main, dev]
 ```
 
-### protected
-
-- Type: a list of path globs. Default: none.
-- Paths no actor writes, the main session included. An edit of a matching path is denied, and so is a command that
-  writes files and names one (the heuristic of [`writes`](#writes)). Reading is allowed. It applies before the
-  workflow, so files git ignores, such as `.env`, are covered too.
-- A glob without `/` matches the name in any folder (`.env`); a leading `/` anchors it to the root
-  (`/AGENTS.md`); `**` covers a folder (`ai/rules/**`). On macOS and Windows it ignores case.
-- Built in, even without this key: nobody writes the state of polix (`<git-dir>/polix/`).
-- `polix check` rejects an empty glob.
-
-### max_stop_blocks
+### max_stop_retries
 
 - Type: non-negative integer. Default: `3` (`0` also means 3).
 - The loop guard: after this many blocks of the same entry of `stop` or `subagent_stop`, in the same session, by the
@@ -193,6 +211,176 @@ vars:
 
 A map of [event](#events) to a list of [entries](#entries).
 
+## Guardrails
+
+`guardrails` holds five shortcuts, each with exactly one form, so every file reads the same:
+
+- [`protected_files`](#protected_files): a list of path globs;
+- [`forbidden_commands`](#forbidden_commands): a list of maps with `pattern` and `reason`;
+- [`protected_branches`](#protected_branches): a list of branch names;
+- [`format_on_edit`](#format_on_edit): a list of maps with `run`, `path` and `message`;
+- [`run_before_done`](#run_before_done): a list of maps with `run`, `changed` and `message`.
+
+```yaml
+guardrails:
+  protected_files: [".env", ".env.*", "AGENTS.md"]
+  forbidden_commands:
+    - pattern: "rm -rf /*"
+    - pattern: "git push --force*"
+      reason: "No force pushes: open a pull request"
+  protected_branches: [main, "release/*"]
+  format_on_edit:
+    - { run: "gofmt -w {path}", path: "*.go" }
+  run_before_done:
+    - { run: "golangci-lint run ./...", changed: "*.go" }
+    - { run: "go test ./...", changed: ["*.go", go.mod, go.sum] }
+```
+
+`protected_files` and `forbidden_commands` are protections of the engine: with a valid file, the hook applies them
+right after the protection of the state of polix, before every entry of `on` and before the skip of the edits of
+files git ignores, to every actor, the main session included, without exceptions. A denial is logged as
+`guardrails.protected_files` or `guardrails.forbidden_commands`, and `polix graph` draws both lists in a subgraph
+`guardrails` before the events.
+
+`protected_branches`, `format_on_edit` and `run_before_done` are only sugar: when polix reads the file it expands
+each one into ordinary entries of `on`, and from then on the hook, `polix graph`, the repeat rules and the loop
+guard see only entries. Each expanded entry takes the line of the item it comes from and the path of its shortcut
+as its origin (`guardrails.format_on_edit`), which `polix graph` labels `from guardrails.<shortcut>`. When a
+shortcut falls short, write the entries it expands into in `on` and tune them.
+
+`polix check` reports, each at the line of its item:
+
+- a value in another form than the one of its shortcut, with that form: a single string for `protected_files` or
+  `protected_branches`, or a string item in `forbidden_commands`, `format_on_edit` or `run_before_done`;
+- an unknown key inside `guardrails`, with the list of the five, and an unknown key of an item, with its keys;
+- an empty glob, pattern or branch name, an item without `pattern` or `run`, a `pattern`, `reason` or `message`
+  that is not a text, a `run` that is not a command, and the problems of the entry an item expands into (an
+  unknown placeholder in `run`, say).
+
+### protected_files
+
+- Type: a list of path globs.
+- Paths no actor writes, the main session included. An edit of a matching path is denied, and so is a command that
+  writes files and names one (the heuristic of [`writes`](#writes)), on `pre_command` and `pre_commit`. Reading is
+  allowed. It also covers the files git ignores, such as `.env`, but never an edit outside the repository.
+- A glob without `/` matches the name in any folder (`.env`); a leading `/` anchors it to the root
+  (`/AGENTS.md`); `**` covers a folder (`ai/rules/**`). On macOS and Windows it ignores case.
+- Built in, even without this key: nobody writes the state of polix (`<git-dir>/polix/`).
+- Messages: `<path> is protected in polix.yaml: only a person changes it.`, and, for a command on a folder or a
+  wildcard that holds a protected path, `<folder> holds <glob>, protected in polix.yaml: only a person changes it.`
+  (`ai holds ai/rules/**, ...` for `rm -rf ai`).
+- No exceptions: to let an actor or a branch through, take the glob out and write a `block` in `on` with `path`,
+  `writes` and an `unless`, which then skips the files git ignores.
+
+```yaml
+guardrails:
+  protected_files: [".env", "AGENTS.md"]
+```
+
+### forbidden_commands
+
+- Type: a list of maps, each with:
+  - `pattern`: required, a [command pattern](#command-patterns);
+  - `reason`: optional, the message for the AI.
+- Commands no actor runs, the main session included, in any position of the line: the line is split into its
+  commands, and each is matched whole and as written, as for the condition [`command`](#command).
+- A heuristic aimed at accidents, not at an agent set on getting around it. A pattern misses another spelling of the
+  same command (`rm -fr /`, `git push -f`, the flags in another order or with two spaces), a wrapper
+  (`sudo rm -rf /`, `env X=1 ...`) and a command run through an interpreter or a substitution (`bash -c '...'`,
+  `$(...)`). List the usual spellings, and start a pattern with `*` to cover a wrapper: `*rm -rf /*`,
+  `git push*--force*`, `git push* -f*`.
+- On `pre_command` and `pre_commit`, the first item in the order of the file whose pattern matches a command of the
+  line denies it, with its `reason` or, without one, `This command is forbidden by polix.yaml: a person must run
+  it.`, followed by the line of the command. The log records the line of the item.
+- No exceptions: a command forbidden only for some actors or on some branches is a `block` in `on` with
+  [`command`](#command) and those conditions.
+
+```yaml
+guardrails:
+  forbidden_commands:
+    - pattern: "rm -rf /*"
+    - pattern: "git push --force*"
+      reason: "No force pushes: open a pull request"
+```
+
+### protected_branches
+
+- Type: a list of branch names. A `*` in a name matches any text, slashes included (`release/*`).
+- Branches nobody commits on.
+- Expansion: one regular entry on `pre_commit` with [`branch`](#branch), an anchored regular expression of the
+  names, whose message asks to create a branch for the change.
+
+```yaml
+guardrails:
+  protected_branches: [main, "release/*"]
+# expands into
+on:
+  pre_commit:
+    - when: { branch: "^(?:main|release/.*)$" }
+      action: { block: "{branch} is protected in polix.yaml: create a branch for this change and commit there." }
+```
+
+### format_on_edit
+
+- Type: a list of maps, each with:
+  - `run`: required, a command as the verb [`run`](#run) takes it, a string split on spaces or a list of
+    arguments, placeholders allowed (`{path}` is the edited file);
+  - `path`: optional, a path glob or a list of them, matched against the edited file;
+  - `message`: optional, the text before the output of a failure.
+- The command that formats or lints each edited file. Without `path` it runs on every edited file. A failure never
+  blocks, since the edit already happened: its output reaches the AI as context.
+- The filter is `path`, the edited file, not `changed`, which holds for any file not committed yet and would format
+  a file of another kind.
+- Expansion: one regular entry on `post_edit` per item, with `run`, and with the condition `path` when it has one.
+
+```yaml
+guardrails:
+  format_on_edit:
+    - { run: "gofmt -w {path}", path: "*.go" }
+    - { run: "npx eslint {path}", path: ["*.ts", "*.tsx"], message: "eslint:" }
+# expands into
+on:
+  post_edit:
+    - when: { path: "*.go" }
+      action: { run: "gofmt -w {path}" }
+    - when: { path: ["*.ts", "*.tsx"] }
+      action: { run: { command: "npx eslint {path}", message: "eslint:" } }
+```
+
+### run_before_done
+
+- Type: a list of maps, each with:
+  - `run`: required, a command, as in `format_on_edit`;
+  - `changed`: optional, a path glob or a list of them: the check runs only when a file not committed yet matches
+    (the condition [`changed`](#changed), which also sets the [scope](#scope-of-an-entry) of the entry);
+  - `message`: optional, the text before the output of a failure.
+- The checks that must pass before the agent ends its turn. A failure blocks the `stop` with its output, up to the
+  loop guard, and the first one that fails ends the evaluation, so list the cheaper or more basic check first. A
+  check that passed is not run again on the same content.
+- Expansion: one regular entry on `stop` per item, with `run`, and with the condition `changed` when it has one.
+  For `always`, the end of a subagent or a condition such as `finished`, write the entry in `on`.
+
+```yaml
+guardrails:
+  run_before_done:
+    - { run: "go test ./...", changed: ["*.go", go.mod, go.sum], message: "The tests fail:" }
+# expands into
+on:
+  stop:
+    - when: { changed: ["*.go", go.mod, go.sum] }
+      action: { run: { command: "go test ./...", message: "The tests fail:" } }
+```
+
+### Order of the expanded entries
+
+In each event the entries come in this order, each group in the order of the file:
+
+1. the entries of `protected_branches`, `format_on_edit` and `run_before_done`;
+2. the entries written in `on`.
+
+So the basics run before the flow of the team, and `protected_files` and `forbidden_commands`, which are no
+entries, before both.
+
 ## Entries
 
 ```yaml
@@ -208,6 +396,11 @@ A map of [event](#events) to a list of [entries](#entries).
 
 An exception to an entry is a `not` in its `when`, or a condition in its `unless`. A YAML comment above the entry
 is the place for its reason, for people; the message of a `block` or a `run` is the reason the AI reads.
+
+The entries skip the edits outside the repository and of the files git ignores: they govern the change, what a
+commit may hold, so a build output, a local `.env` or a scratch file never fires a ticket, plan, format or docs
+entry. Only the protection of the state of polix, [`protected_files`](#protected_files) and
+[`forbidden_commands`](#forbidden_commands) reach an ignored file.
 
 ## Events
 
@@ -297,7 +490,8 @@ when: { var: [key, release] }
 ### path
 
 - Value: a path glob, or a list of them.
-- Holds when the edited path matches any of them.
+- Holds when the edited path matches any of them. On macOS and Windows, whose file names ignore case, it ignores
+  case too, so `.ENV` matches `.env` there.
 - Events: `pre_edit`, `post_edit` only.
 
 ```yaml
@@ -569,7 +763,8 @@ there.
 
 ### Path globs
 
-Used by `path`, `changed`, `file`, `writes`, `protected`, `risk.weights` and the scopes of the rules.
+Used by `path`, `changed`, `file`, `writes`, `guardrails.protected_files`, the `path` of `format_on_edit`, the
+`changed` of `run_before_done`, `risk.weights` and the scopes of the rules.
 
 - Relative to the root, with `/`; the whole path must match.
 - `*` and `?` stay inside a segment; `**` crosses segments.
@@ -578,22 +773,32 @@ Used by `path`, `changed`, `file`, `writes`, `protected`, `risk.weights` and the
 
 ### Command patterns
 
-Used by `command`. Each command of the line is matched whole, with its surrounding spaces trimmed:
+Used by `command` and the `pattern` of `forbidden_commands`. Each command of the line is matched whole, with its
+surrounding spaces trimmed:
 
 - `*` matches any text, spaces and slashes included; `?` matches one character.
 - `just test` only matches the bare command; `just test*` also matches `just test -k x` or `just test 2>&1`.
 
 ## How an event is evaluated
 
-1. The protections come first: the state of polix and the paths of `protected`.
-2. Edits outside the repository, or of files git ignores, skip the workflow.
-3. The entries of the event run in the order of the file. An entry applies when its `when` holds and its `unless`
-   does not, and then carries out its verb, unless the repeat rules of that verb skip it.
-4. The first entry that actually blocks (a `block`, or a failing `run` where a run blocks, not let through by the
+The shortcuts `protected_branches`, `format_on_edit` and `run_before_done` are already entries of `on` by then, in
+the [order of the expanded entries](#order-of-the-expanded-entries).
+
+1. The built-in protection comes first: nobody writes the state of polix, even without a workflow.
+2. With a valid file, [`protected_files`](#protected_files) and [`forbidden_commands`](#forbidden_commands) come
+   next, also on the edits of files git ignores, never on an edit outside the repository. The first protection that
+   denies ends the evaluation.
+3. Edits outside the repository, or of files git ignores, skip the entries: they govern the change, what a commit
+   may hold.
+4. The entries of the event run in order. An entry applies when its `when` holds and its `unless` does not, and
+   then carries out its verb, unless the repeat rules of that verb skip it.
+5. The first entry that actually blocks (a `block`, or a failing `run` where a run blocks, not let through by the
    loop guard) ends the evaluation: the entries after it do not run. The order is the priority, and the AI gets one
    failure per answer.
 
 An invalid file blocks `pre_edit`, `pre_command` and `pre_commit` with its problems (fail closed), except the main
 session editing `polix.yaml` or running `polix check`, `polix update`, `polix doctor` or `polix version`; on the
-other events it only warns, so a broken file never traps a stop in a loop. The details are in
+other events it only warns, so a broken file never traps a stop in a loop. Its protected files and forbidden
+commands do not apply then: only the built-in protection does, and an edit outside the repository or of a file git
+ignores goes through. The details are in
 [polix.md](polix.md#how-the-entries-of-an-event-are-evaluated).

@@ -18,18 +18,18 @@ type TooOld struct {
 
 // workflowYAML is the shape of polix.yaml.
 type workflowYAML struct {
-	Version       int                    `yaml:"version"`
-	Requires      string                 `yaml:"requires"`
-	Base          stringsYAML            `yaml:"base"`
-	MaxStopBlocks int                    `yaml:"max_stop_blocks"`
-	Protected     []string               `yaml:"protected"`
-	Vars          map[string]varYAML     `yaml:"vars"`
-	On            map[string][]entryYAML `yaml:"on"`
-	Rules         rulesYAML              `yaml:"rules"`
-	Plans         folderYAML             `yaml:"plans"`
-	Reports       folderYAML             `yaml:"reports"`
-	Guidance      guidanceYAML           `yaml:"guidance"`
-	Risk          riskYAML               `yaml:"risk"`
+	Version        int                    `yaml:"version"`
+	Requires       string                 `yaml:"requires"`
+	BaseBranch     stringsYAML            `yaml:"base_branch"`
+	MaxStopRetries int                    `yaml:"max_stop_retries"`
+	Guardrails     guardrailsYAML         `yaml:"guardrails"`
+	Vars           map[string]varYAML     `yaml:"vars"`
+	On             map[string][]entryYAML `yaml:"on"`
+	Rules          rulesYAML              `yaml:"rules"`
+	Plans          folderYAML             `yaml:"plans"`
+	Reports        folderYAML             `yaml:"reports"`
+	Guidance       guidanceYAML           `yaml:"guidance"`
+	Risk           riskYAML               `yaml:"risk"`
 }
 
 // riskYAML is the key risk: the options of the risk score.
@@ -158,8 +158,8 @@ var decodeNames = []string{
 }
 
 // topKeys are the keys of polix.yaml.
-var topKeys = []string{"version", "requires", "base", "max_stop_blocks", "protected", "vars", "on", "rules", "plans",
-	"reports", "guidance", "risk"}
+var topKeys = []string{"version", "requires", "base_branch", "max_stop_retries", "guardrails", "vars", "on", "rules",
+	"plans", "reports", "guidance", "risk"}
 
 // riskKeys are the keys of the section risk.
 var riskKeys = []string{"weights"}
@@ -179,12 +179,12 @@ func (e TooOld) Error() string {
 // Parse decodes polix.yaml for the polix of version running. No data (nil) is a repository without polix.yaml:
 // the default workflow. It returns a TooOld when the workflow requires a newer polix than running, read before
 // the rest, which an older polix may not know (a development build is never too old); an error for broken YAML
-// or an unknown top level key; and else the workflow with the Invalid error of Valid when it has problems, so
-// the caller can still use it.
+// or an unknown top level key, with the new spelling of a renamed one; and else the workflow with the Invalid
+// error of Valid when it has problems, so the caller can still use it.
 func Parse(data []byte, running string) (Workflow, error) {
 	if data == nil {
 		guidance, _ := guidanceYAML{}.guidance()
-		w := Workflow{Version: 1, MaxStopBlocks: DefaultMaxStopBlocks, Guidance: guidance}
+		w := Workflow{Version: 1, MaxStopRetries: DefaultMaxStopRetries, Guidance: guidance}
 		return w, w.Valid()
 	}
 	if req := requires(data); semver.IsRelease(running) && semver.Valid(req) && semver.Compare(running, req) < 0 {
@@ -203,6 +203,9 @@ func Parse(data []byte, running string) (Workflow, error) {
 		top := root.Content[0]
 		for i := 0; i < len(top.Content); i += 2 {
 			if k := top.Content[i].Value; !contains(topKeys, k) {
+				if hint, ok := renamed["top"][k]; ok {
+					return Workflow{}, fmt.Errorf("%s:%d: unknown key %q: %s", File, top.Content[i].Line, k, hint)
+				}
 				return Workflow{}, fmt.Errorf("%s:%d: unknown key %q", File, top.Content[i].Line, k)
 			}
 			if top.Content[i].Value == "on" && i+1 < len(top.Content) {
@@ -214,15 +217,17 @@ func Parse(data []byte, running string) (Workflow, error) {
 	if err := root.Decode(&y); err != nil {
 		return Workflow{}, fmt.Errorf("%s: %s", File, strings.NewReplacer(decodeNames...).Replace(err.Error()))
 	}
-	if y.MaxStopBlocks == 0 {
-		y.MaxStopBlocks = DefaultMaxStopBlocks
+	if y.MaxStopRetries == 0 {
+		y.MaxStopRetries = DefaultMaxStopRetries
 	}
 	return y.workflow(lines)
 }
 
-// workflow builds the domain value of the file, with the line of each event of `on`. The problems of each value
-// are reported by Workflow.Valid, which walks them all together with those that depend on the event and the vars,
-// so the errors of the parts are not returned on their own.
+// workflow builds the domain value of the file, with the line of each event of `on`, the protected files and the
+// forbidden commands of guardrails, and its other shortcuts expanded into entries. The problems of each value are
+// reported by Workflow.Valid, which walks them all together with those that depend on the event and the vars, so the
+// errors of the parts are not returned on their own; the problems of the values of the shortcuts, which the workflow
+// does not hold, come with them in the order of the file.
 func (y workflowYAML) workflow(eventLines map[string]int) (Workflow, error) {
 	var vars map[string]Var
 	if y.Vars != nil {
@@ -249,21 +254,26 @@ func (y workflowYAML) workflow(eventLines map[string]int) (Workflow, error) {
 	guidance, _ := y.Guidance.guidance()
 	weights := y.Risk.Weights.weights()
 	w := Workflow{
-		Weights:       weights,
-		Version:       y.Version,
-		Requires:      y.Requires,
-		Base:          []string(y.Base),
-		MaxStopBlocks: y.MaxStopBlocks,
-		Protected:     y.Protected,
-		Vars:          vars,
-		On:            on,
-		Rules:         rules,
-		Plans:         plans,
-		Reports:       reports,
-		Guidance:      guidance,
-		EventLines:    eventLines,
+		Weights:           weights,
+		Version:           y.Version,
+		Requires:          y.Requires,
+		Base:              []string(y.BaseBranch),
+		MaxStopRetries:    y.MaxStopRetries,
+		ProtectedFiles:    y.Guardrails.protected(),
+		ForbiddenCommands: y.Guardrails.forbidden(),
+		Vars:              vars,
+		On:                y.Guardrails.expand(on),
+		Rules:             rules,
+		Plans:             plans,
+		Reports:           reports,
+		Guidance:          guidance,
+		EventLines:        eventLines,
 	}
-	return w, w.Valid()
+	err := w.Valid()
+	if p := y.Guardrails.problems(w); len(p) > 0 {
+		err = Invalid(p)
+	}
+	return w, err
 }
 
 func (y varYAML) variable() (Var, error) {

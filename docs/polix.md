@@ -14,7 +14,13 @@ workflows" (proposal 2).
 - `ai/rules/*.yaml` (the folder `rules.path` of polix.yaml): how the code must be. Polix only reads `id`,
   `description`, `scope`, `deterministic` and `check` of each rule; the rest of the format belongs to the skills
   that write and use the rules. `retired.yaml` holds retired rules, which never apply.
-- `polix.yaml`: what happens on each event of a session: what is blocked, what runs and what is injected.
+- `polix.yaml`: what happens on each event of a session: what is blocked, what runs and what is injected. It has
+  two layers of its own: `guardrails:`, the basics every project wants from the first minute (files no agent
+  writes, commands no agent runs, branches nobody commits on, a formatter after each edit, the checks before the
+  agent ends its turn), each a short list; and `on:`, where the team orchestrates its flow (the review subagents,
+  the builder, the plan, the ticket) as entries per event. The files and the commands of `guardrails:` are
+  protections of the engine, applied before the entries; its other shortcuts expand into entries of `on:` (see
+  [Guardrails](#guardrails)).
 - `polix`: the same binary in every repository; it reads the three and answers the hooks.
 
 The human writes the three files; polix only enforces them.
@@ -29,7 +35,7 @@ polix hook codex           # entry point of the Codex hooks (experimental)
 polix check                # validate polix.yaml and the rules (ai/rules/ or rules.path)
 polix rules check          # run the checks of every deterministic rule (for CI)
 polix rules check --changed  # only the rules whose scope matches the files changed by the branch
-                             # (--base BRANCH, default the closest of base in polix.yaml, else main;
+                             # (--base BRANCH, default the closest of base_branch in polix.yaml, else main;
                              # it fails when no base exists, locally or on origin)
 polix graph                # print the workflow as a Mermaid diagram
 polix log --tail 20        # print the last entries of the state log (--json for the raw lines)
@@ -43,22 +49,22 @@ polix update               # replace the binary with the latest release and refr
 polix version
 ```
 
-`polix rules check --changed` compares the branch with its base: `--base`, else the candidates of `base` in
-`polix.yaml`, else `main`. Each candidate is tried as a local branch and then as `origin/<branch>`, and among those
-that exist the one whose merge base is closest to HEAD wins, so a feature forked from `dev` compares with `dev`
-when `base: [main, dev]`. When none exists the command fails naming them, and `polix check` and `polix doctor`
-warn about it when a deterministic rule has a check. In GitHub Actions, run it with
+`polix rules check --changed` compares the branch with the branch it merges into, `--base`, else the candidates
+of `base_branch` in `polix.yaml`, else `main`. Each candidate is tried as a local branch and then as `origin/<branch>`, and among
+those that exist the one whose merge base is closest to HEAD wins, so a feature forked from `dev` compares with
+`dev` when `base_branch: [main, dev]`. When none exists the command fails naming them, and `polix check` and
+`polix doctor` warn about it when a deterministic rule has a check. In GitHub Actions, run it with
 `--base="${{ github.base_ref }}"` after a checkout with `fetch-depth: 0`: outside a pull request `base_ref` is
-empty, and an empty `--base` falls back to `base`. On a push to a branch of `base` itself, such as `main`, the
-branch is its own base and `--changed` checks nothing: run `polix rules check` without it there. The hooks never
-use `base`.
+empty, and an empty `--base` falls back to `base_branch`. On a push to a branch of `base_branch` itself, such as
+`main`, the branch is its own base and `--changed` checks nothing: run `polix rules check` without it there. The
+hooks never use `base_branch`.
 
 `polix rules check` reads `polix.yaml` and then the rules of its `rules.path` before running anything, and stops
 without running a check when a file of the folder of rules cannot be read or parsed, when a rule is not valid (no id, no description, a `check` on
 a rule that is not `deterministic`, or a `check` given as an absolute path), when `polix.yaml` cannot be read or
 parsed or requires a newer polix (without the file it uses the defaults), when a runner of `rules.run` is not
 valid, and when `--base` is given without `--changed`. The other problems of a `polix.yaml` that parses are left
-to `polix check`. The hint to set `base` or pass
+to `polix check`. The hint to set `base_branch` or pass
 `--base` only comes when no base branch exists. Each check runs from the root, with 5 minutes to finish, through
 the first runner of `rules.run` whose glob matches its file, or else as a program (see `rules.run` below); it
 prints each failure with the last 15 lines of its output, then `<n> checks, <m> failed`, and exits with 1 when a
@@ -187,12 +193,16 @@ The use case `AnswerHook` of `internal/hook` (layout in `docs/architecture.md`) 
 1. The agent (`internal/agent`, Claude Code or Codex) turns the JSON of stdin into neutral events.
    An edit becomes one `pre_edit` or `post_edit` per path; a `git commit` in a command also produces
    `pre_commit`.
-2. The logic of the hook (`internal/hook`) applies the protections, then the entries of the event in order.
+2. The logic of the hook (`internal/hook`) applies the [protections](#protections): the built-in protection of the
+   state, then `guardrails.protected_files` and `guardrails.forbidden_commands`; then the entries of the event in
+   order.
 3. The agent answers: exit 2 with the reasons on stderr to block, or exit 0 with
    `hookSpecificOutput.additionalContext` on stdout to inject context.
 
 Edits outside the repository (scratchpad, memory, another repository) and of files git ignores are not part of
-the change: the workflow does not apply to them, only the protections.
+the change: the entries do not apply to them. They govern the change, what a commit may hold, so a build output, a
+local `.env` or a scratch file never fires a ticket, plan, format or docs entry. The built-in protection applies to
+both, and `protected_files` to the edits of files git ignores.
 
 ### Protections
 
@@ -205,13 +215,31 @@ line: the bare word `polix` is the binary, not the state. On macOS and Windows, 
 the state is found in any case.
 
 polix protects nothing else on its own: `AGENTS.md`, `CLAUDE.md`, `ai/rules/` and `polix.yaml` may be edited by
-any agent unless the workflow protects them. The key `protected` of `polix.yaml` lists path globs that no actor
-writes, the main session included: an edit of a matching path is denied, and so is a command that writes files
-and names one. Reading is allowed. A glob without `/` matches the name in any folder, so `polix.yaml` also keeps
-`examples/polix.yaml`; write `/polix.yaml` to protect only the file of the root. It applies before the workflow, so files git ignores, such as `.env`, are
-covered too, and it binds the skills as well: protecting `polix.yaml` or `ai/rules/` keeps the skills `workflow`
-and `add-rule` from writing them. For finer control, such as keeping only subagents away, use the condition
-`writes` with `actor` in a `pre_command` entry and `path` in a `pre_edit` entry.
+any agent unless the workflow protects them. With a valid `polix.yaml`, two protections of `guardrails` come right
+after the protection of the state, before the skip of the edits of files git ignores and before every entry of
+`on`, for every actor, the main session included, without exceptions; the first one that denies ends the
+evaluation of the event:
+
+- `guardrails.protected_files` lists path globs that no actor writes: it denies an edit of a matching path (never
+  one outside the repository) and, on `pre_command` and `pre_commit`, a command that writes files and names one.
+  Reading is allowed. The reason names the path, `<path> is protected in polix.yaml: only a person changes it.`, or
+  the protected glob a folder or a wildcard holds, `ai holds ai/rules/**, protected in polix.yaml: only a person
+  changes it.` for `rm -rf ai`, and the log records a `deny` decision of the action `guardrails.protected_files`.
+  A glob without `/` matches the name in any folder, so `polix.yaml` also keeps `examples/polix.yaml`; write
+  `/polix.yaml` to protect only the file of the root. It covers the files git ignores, so `.env` is covered too,
+  and it binds the skills as well: protecting `polix.yaml` or `ai/rules/` keeps the skills `workflow` and
+  `add-rule` from writing them. For finer control, such as keeping only subagents away, use the condition
+  `writes` with `actor` in a `pre_command` entry and `path` in a `pre_edit` entry.
+- `guardrails.forbidden_commands` lists command patterns no actor runs: on `pre_command` and `pre_commit`, the
+  first item in file order whose pattern matches any command of the line denies it, wherever it comes (`cd tmp &&
+  rm -rf /`), with its `reason` or the default `This command is forbidden by polix.yaml: a person must run it.`,
+  followed by the line; the log records a `deny` decision of the action `guardrails.forbidden_commands` at the
+  line of the item. Each command is matched as written: like `writes`, a heuristic aimed at accidents. A pattern
+  misses another spelling (`rm -fr /`, `git push -f`), a wrapper (`sudo rm -rf /`, unless the pattern starts
+  with `*`) and a command run through an interpreter or a substitution (`bash -c '...'`, `$(...)`).
+
+Unlike the protection of the state, they need a valid `polix.yaml` (see [Failure policy](#failure-policy)).
+`polix graph` draws both lists in a subgraph `guardrails` before the events.
 
 Each command of the line is parsed with its quotes into the program it runs (past variable assignments, `sudo`,
 `env`, `xargs`..., and `git rm` and `git mv` as `rm` and `mv`), its arguments and its redirections. It writes:
@@ -224,10 +252,12 @@ Each command of the line is parsed with its quotes into the program it runs (pas
   holds what a glob matches counts too: the literal folder a glob with a slash starts with, or a parent of it
   (`ai/rules` and `ai` for `ai/rules/**`, `docs` for `docs/secret.md`), and a word with wildcards that may reach
   it (`rm -rf ai/*`, and `rm *.md` for `AGENTS.md`, but not for `docs/secret.md`). `rm`, and `mv` for its sources,
-  also count on the root and its parents (`rm -rf .`). The reason then names the glob the folder holds.
+  also count on the root and its parents (`rm -rf .`). The reason of `protected_files` names the protected glob a
+  folder or a wildcard holds.
 
 Reading is allowed: `cat CLAUDE.md > notes.txt`, `ls ai 2>/dev/null` or `rg install ai` write nothing protected.
-On macOS and Windows the globs of `protected` and `writes` ignore case, so `.ENV` is `.env` there. It is a
+On macOS and Windows the globs of `path` and `writes`, and those of `protected_files`, ignore case, so `.ENV` is
+`.env` there. It is a
 heuristic, aimed at accidents rather than at an agent determined to get around it. It does not see:
 
 - a program that writes through an interpreter or another command: `python -c "open(...)"`, `bash -c '...'`,
@@ -244,11 +274,13 @@ heuristic, aimed at accidents rather than at an agent determined to get around i
 
 ### Failure policy
 
-- Outside a git repository, or without `polix.yaml`, only the protections apply.
+- Outside a git repository, or without `polix.yaml`, only the built-in protection applies.
 - An invalid workflow blocks edits and commands (fail closed) with the problems found, so a broken file is
   noticed at once, except what fixing it needs: the main session may edit `polix.yaml`, any actor may run
   `polix check`, `polix update`, `polix doctor` and `polix version` (optionally after a `cd`), and edits outside
-  the repository or of ignored files go through as always. The built-in protections still apply. It never blocks a stop, which
+  the repository or of ignored files go through as always. The built-in protection still applies, but
+  `protected_files` and `forbidden_commands` do not: an ignored `.env` of `protected_files` may be edited until the
+  file is fixed. It never blocks a stop, which
   would trap the agent in a loop. When a problem names something unknown, the reason adds that it may be an
   option of a newer polix, to update instead of removing it; a name of the old vocabulary is reported with its
   new spelling instead (see [Names of the old vocabulary](#names-of-the-old-vocabulary)).
@@ -267,9 +299,17 @@ a test validates it. [reference.md](reference.md) describes every key, event, co
 ```yaml
 version: 1
 requires: 0.1.0       # oldest polix that knows every option of the file (optional, since 0.1.0)
-base: [main, dev]     # branch, or candidates, a change merges into, for rules check --changed (default main)
-protected: [".env"]   # path globs no agent writes, the main session included (optional)
-max_stop_blocks: 3    # loop guard of every block on stop and subagent_stop, per entry (default 3)
+base_branch: [main, dev]  # branch, or candidates, a change merges into, for rules check --changed (default main)
+max_stop_retries: 3   # loop guard of every block on stop and subagent_stop, per entry (default 3)
+guardrails:           # the basics every project wants (optional)
+  protected_files: [".env"]                       # path globs no agent writes, the main session included
+  forbidden_commands:                             # commands no agent runs, each command of the line as written
+    - { pattern: "git push*--force*", reason: "No force pushes" }
+  protected_branches: [main]                      # branches nobody commits on
+  format_on_edit:                                 # runs on each edited file of its path; a failure informs
+    - { run: "gofmt -w {path}", path: "*.go" }
+  run_before_done:                                # must pass before the agent ends its turn
+    - { run: "go test ./...", changed: "*.go" }
 guidance:             # built-in instructions injected at session start (optional, all true by default)
   commit: true        # run each commit as a git commit of its own
   edit: true          # change files with the edit tool of the agent, not the shell
@@ -302,6 +342,42 @@ on:
 
 An entry has two parts: when it applies (`when` and `unless`) and what it does (`action`). A comment of YAML is
 the place for its reason, for people; the message of a `block` or a `run` is the reason the AI reads.
+
+### Guardrails
+
+`guardrails` holds the basics as five shortcuts, each with exactly one form: `protected_files` and
+`protected_branches` take a list of strings, and `forbidden_commands`, `format_on_edit` and `run_before_done` a
+list of maps.
+
+Two of them are protections of the engine, which the workflow holds as lists (`workflow.Workflow.ProtectedFiles`
+and `ForbiddenCommands`) and the hook applies before every entry, also on the files git ignores, to every actor and
+without exceptions (see [Protections](#protections)):
+
+- `protected_files: [<glob>, ...]`: no actor edits a matching path nor runs a command that writes one.
+- `forbidden_commands: [{ pattern, reason }, ...]`: no actor runs a line in which a command matches a pattern;
+  the reason is the `reason` of the first matching item, or `This command is forbidden by polix.yaml: a person
+  must run it.`, followed by the line.
+
+The other three are only sugar: `workflow.Parse` expands each one into entries of `on`, so the hook,
+`polix graph`, the repeat rules and the loop guard see them as any entry.
+
+- `protected_branches: [<name>, ...]`: a regular entry on `pre_commit` with `branch`, the anchored regular
+  expression of the names (`*` matches any text), and the message
+  `{branch} is protected in polix.yaml: create a branch for this change and commit there.`
+- `format_on_edit: [{ run, path, message }, ...]`: a regular entry on `post_edit` per item that runs its command,
+  with the condition `path` when it has one (the edited file, not `changed`).
+- `run_before_done: [{ run, changed, message }, ...]`: a regular entry on `stop` per item that runs its command,
+  with the condition `changed` when it has one.
+
+In each event the entries of `protected_branches`, `format_on_edit` and `run_before_done` come first, then the
+entries written in `on`, each group in the order of the file. Each expanded entry takes the line of its item, so
+the messages of `polix check`, the keys of the repeat rules and the loop guard tell them apart, and the path of its
+shortcut (`workflow.Entry.From`), which `polix graph` names; `polix graph` draws `protected_files` and
+`forbidden_commands` in a subgraph `guardrails` before the events. `polix check` reports a value in another form than its own (a single string where a list goes, a string
+where a map goes) with the expected form, an unknown key inside `guardrails` or inside an item, an empty glob,
+pattern or branch, an item without `pattern` or `run`, and the problems of the entries they expand into, each at
+the line of its item. A polix older than the shortcuts rejects `guardrails` as an unknown key, so a file that uses
+them sets `requires`. [reference.md](reference.md#guardrails) describes each one with its expansion.
 
 `rules.path`, `plans.path` and `reports.path` place the folders of the AI, relative to the root: the rules polix
 reads, injects and checks, the plans the skill `plan` writes and the reports of audits and reviews. Each defaults
@@ -359,9 +435,10 @@ Conditions:
 
 - `branch`: the current branch matches a regular expression.
 - `var`: a variable of `vars` has a value.
-- `path`: the edited path matches a glob (or a list); only on `pre_edit` and `post_edit`.
+- `path`: the edited path matches a glob (or a list); only on `pre_edit` and `post_edit`. On macOS and Windows,
+  whose file names ignore case, it ignores case too, as `writes` and the protection of the state do.
 - `changed`: a file not committed yet (changed since HEAD, or untracked and not ignored) matches a glob (or a
-  list). The flow is reviewed commit by commit: once committed, a change no longer counts, whatever `base` says,
+  list). The flow is reviewed commit by commit: once committed, a change no longer counts, whatever `base_branch` says,
   so gates that must hold before a commit belong on `pre_commit`.
 - `file`: a file of the repository matches a glob; with `contains`, it also holds that text. `contains` is only
   valid next to `file`, and never inside `any`, where it would hold on its own and make the `any` always true.
@@ -374,7 +451,7 @@ Conditions:
   `inject` this way, but it never counts as a check that passed (see
   [What polix observes](#what-polix-observes-and-finished)).
 - `writes`: a command of the line writes files and names a path that matches a glob (or a list), with the same
-  heuristic as `protected`; reading does not count. Only on `pre_command`, `post_command` and `pre_commit`.
+  heuristic as `protected_files` (see [Protections](#protections)); reading does not count. Only on `pre_command`, `post_command` and `pre_commit`.
 - `actor`: who acts, `session` or the subagent type. An agent of a plugin is named with its prefix, as
   `polix:rules-reviewer`; an agent of `.claude/agents/` by its bare name.
 - `finished`: a subagent type, or a list of them (all must hold), ended on this branch and the files of the scope
@@ -576,6 +653,7 @@ valid, a `run` without exactly one of `command` and `rules`, an `inject` without
 hold, so a typo never turns into an entry that silently stops applying. Of `ai/rules/` it reports every problem,
 not only the first: a rule without id or description, an id repeated, a check that does not exist, a `check` on a
 rule that is not `deterministic: true`, and a `check` named by an absolute path instead of one relative to the root.
+It also rejects the problems of the shortcuts of [Guardrails](#guardrails).
 
 ### Names of the old vocabulary
 
@@ -586,7 +664,9 @@ entry `if` (`when`), `why` (a comment of YAML), `mode` (`warn` is an `inject`, a
 `when`, or `unless`), `run` and `context` at the level of the entry (`action: { run }` and `action: { inject }`) and
 `record` (`finished`), the condition `done` (`finished: <subagent>`) and a measure written as `{ at_least: N }` (the
 number alone), also inside an old `if`, all in the same pass. The entries of an old event are checked as those of
-its new name. Lines of the kinds `fact`, `injected` and `stop_block` written by those
+its new name. Three top-level keys were renamed too: `protected` is now `guardrails.protected_files`, `base` is now
+`base_branch`, and the key of the loop guard is now `max_stop_retries`; each old one is reported as an unknown key
+with its new spelling, without the hint of a newer polix. Lines of the kinds `fact`, `injected` and `stop_block` written by those
 builds stay in the log, are ignored by every condition and are shown by `polix log` with their kind (and the name
 of a `fact`): after the upgrade, the reminders, the injects and the loop guard start from zero.
 
@@ -596,16 +676,20 @@ One hook call may produce several events: an edit of several paths gives one `pr
 with a `git commit` gives `pre_command` and `pre_commit`. Each event is answered on its own and the answers are
 merged: the call blocks when any of them blocks, with the reasons of all of them.
 
-For every event the [protections](#protections) come first: the state of polix and the `protected` paths are
-denied before any entry is read. Then the entries of the event run one after the other, in the order of the file,
-never in parallel. An entry whose `when` does not hold, or whose `unless` holds, is skipped; one that applies
+For every event the [protections](#protections) come first, before any entry is read: the protection of the
+state, then, with a valid `polix.yaml`, `protected_files` and `forbidden_commands`, also on the edits of files git
+ignores; the first that denies ends the evaluation. Then, unless the edit is outside the change, the entries of the
+event run one after the other, in the order of the file, never in parallel. The shortcuts `protected_branches`,
+`format_on_edit` and `run_before_done` are already entries by then, before the entries written in `on` (see
+[Guardrails](#guardrails)). An entry whose `when` does not hold, or whose `unless` holds, is skipped; one that applies
 carries out the verb of its action, unless the repeat rules of [How often each verb acts](#how-often-each-verb-acts)
 skip it. A `run` waits for its command to finish before the next entry starts, so a `stop` takes the sum of
 its runs, all of them bounded by the budget of 10 minutes of the hook call (see
 [Limits of the proof of concept](#limits-of-the-proof-of-concept)).
 
-One rule ends the evaluation, whatever the verb: the first entry that actually blocks, a `block` or a failing `run`
-on an event where it blocks, and not let through by the [loop guard](#loop-guard). The entries after it never run;
+One rule ends the evaluation, whatever the verb: the first entry that actually blocks, a `block`
+or a failing `run` on an event where it blocks, and not let through by the [loop guard](#loop-guard). The entries
+after it never run;
 those before it already acted, so the texts of an `inject` before the block reach the agent with it and count as
 given. On `prompt` the rejected prompt never reaches the AI, so an `inject` before the block is not counted as given
 and acts again on the next prompt.
@@ -626,9 +710,9 @@ What a block does depends on the event:
 - `start`, `post_edit`, `post_command`: they already happened, so nothing blocks there: `block` is rejected
   by `polix check`, and a failing `run` reaches the agent as context, logged as an `inform` decision.
 
-The `stop` of this repository shows it. It has two entries, golangci-lint over the module and
-`go test ./...`, each a plain `run` with a `when` on the files it depends on. When the agent ends a turn after
-changing a Go file:
+The `stop` of this repository shows it. Its `guardrails.run_before_done` has two items, golangci-lint over the
+module and `go test ./...`, which expand into two plain `run` entries of `stop`, each with a `when` on the files it
+depends on. When the agent ends a turn after changing a Go file:
 
 1. golangci-lint runs. When it fails, the turn is blocked with its output and the evaluation ends: the tests do not
    run on code that does not pass the lint.
@@ -644,7 +728,7 @@ changing a Go file:
 ### Loop guard
 
 Every block of `stop` or `subagent_stop` (a `block`, with or without `once`, or a failing `run`) writes an
-observed `blocked` line and counts for the loop guard: after `max_stop_blocks` blocks of the same entry, on the
+observed `blocked` line and counts for the loop guard: after `max_stop_retries` blocks of the same entry, on the
 same event, in the same session, by the same actor and on the same content hash, the agent may stop and the log
 records a `loop_guard` decision. A block let through by the guard does not end the evaluation, so the next entries
 run, and a subagent let through does not count as `finished`: when the workflow has an `inject` that acts once it
@@ -659,7 +743,9 @@ count: it fails open, lets the agent stop with a warning and records a `loop_gua
 `<git-dir>/polix/log.jsonl`, one JSON object per line, only written by polix:
 
 - `decision`: what it answered (`block`, `deny` for a protection, `inform`, `warn`, `skip` or `loop_guard`), the
-  action (the verb of the entry, or `builtin` for a protection, `invalid` for an invalid workflow and `finished` for
+  action (the verb of the entry, `builtin` for the protection of the state, `guardrails.protected_files` or
+  `guardrails.forbidden_commands` for those protections,
+  `invalid` for an invalid workflow and `finished` for
   the end of a subagent it could not observe or a tree it could not compare), the `line` of the entry and the
   reason, the evidence of the process each change followed. It carries the content hash only when the call already
   computed it, since computing it costs a pass over the whole tree.

@@ -60,7 +60,7 @@ func RunProblems(rules []rule.Rule, wf workflow.Workflow, runnable map[string]er
 func BaseWarning(rules []rule.Rule, baseErr error) string {
 	for _, r := range rules {
 		if r.HasCheck() && baseErr != nil {
-			return fmt.Sprintf("polix rules check --changed would fail: %v; set base in %s or pass --base", baseErr,
+			return fmt.Sprintf("polix rules check --changed would fail: %v; set base_branch in %s or pass --base", baseErr,
 				workflow.File)
 		}
 	}

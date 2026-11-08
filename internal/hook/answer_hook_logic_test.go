@@ -31,9 +31,11 @@ type answerHookFacts struct {
 	diff      diff.Diff
 	diffErr   error
 	rules     []rule.Rule
-	found     bool     // whether a file holds the text of a search
-	trees     []string // the paths that differ between two trees
-	treeErr   error    // why two trees cannot be compared
+	found     bool            // whether a file holds the text of a search
+	trees     []string        // the paths that differ between two trees
+	treeErr   error           // why two trees cannot be compared
+	ignored   map[string]bool // the paths git ignores
+
 	// checkFails, when set, decides each check instead of runErr: it fails when it covers one of these rules
 	checkFails map[string]bool
 }
@@ -75,7 +77,7 @@ func answerHookWalk(t *testing.T, ev Evaluation, f answerHookFacts) (AnswerHookO
 		case s.State:
 			ev = ev.KnowState(f.state, f.stateErr)
 		case s.Ignored != "":
-			ev = ev.KnowIgnored(s.Ignored, false)
+			ev = ev.KnowIgnored(s.Ignored, f.ignored[s.Ignored])
 		case s.Real != nil:
 			ev = ev.KnowReal(s.Real, s.Real)
 		case s.Contains != nil:
@@ -259,7 +261,7 @@ on:
 // blocks on its own, with the warning of the guard.
 func TestAnswerHookLoopGuardGoesOn(t *testing.T) {
 	yaml := `version: 1
-max_stop_blocks: 1
+max_stop_retries: 1
 on:
   stop:
     - action: { %s }
@@ -353,9 +355,9 @@ on:
 	}
 }
 
-// The loop guard lets the agent stop after max_stop_blocks blocks of the entry on the same content.
+// The loop guard lets the agent stop after max_stop_retries blocks of the entry on the same content.
 func TestAnswerHookLoopGuard(t *testing.T) {
-	ev := answerHookEval(t, "version: 1\nmax_stop_blocks: 2\non:\n  stop:\n    - action: { block: \"revisa\" }\n",
+	ev := answerHookEval(t, "version: 1\nmax_stop_retries: 2\non:\n  stop:\n    - action: { block: \"revisa\" }\n",
 		workflow.Stop)
 	block := state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeBlocked, Session: "s1",
 		Event: workflow.Stop, Actor: agent.ActorSession, Line: 5, Hash: "h"}
@@ -372,7 +374,7 @@ func TestAnswerHookLoopGuard(t *testing.T) {
 	two := state.State{Entries: []state.Entry{block, block}}
 	out, steps = answerHookWalk(t, ev, answerHookFacts{branch: "main", hashes: []string{"h"}, state: two})
 	if out.Answer.Block || len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "tras 2 bloqueos") {
-		t.Fatalf("answer after max_stop_blocks: %+v", out.Answer)
+		t.Fatalf("answer after max_stop_retries: %+v", out.Answer)
 	}
 	if logged := answerHookAppended(steps); len(logged) != 1 || logged[0].Outcome != "loop_guard" {
 		t.Fatalf("logged: %+v", logged)
@@ -500,7 +502,7 @@ on:
 // workflow does not observe, a refused stop and a stop let through by the loop guard write nothing.
 func TestAnswerHookObservesFinished(t *testing.T) {
 	yaml := `version: 1
-max_stop_blocks: 1
+max_stop_retries: 1
 on:
   pre_commit:
     - unless: { finished: polix:reviewer }
@@ -778,36 +780,266 @@ func TestAnswerHookGuidance(t *testing.T) {
 	}
 }
 
-// A block by protected tells, in English, the path, the glob a folder holds, and who changes it.
+// AC1, AC16: protected_files denies, for every actor, an edit of a protected path, also when git ignores it, and a
+// command that writes one, naming the protected path a folder or a wildcard holds, before an earlier entry of on
+// that would block; reading passes. The denial is logged as one of the shortcut.
 func TestAnswerHookProtectedReasons(t *testing.T) {
-	yaml := "version: 1\nprotected: [\".env\", \"AGENTS.md\", \"ai/rules/**\"]\n"
+	yaml := "version: 1\nguardrails:\n  protected_files: [\".env\", \"AGENTS.md\", \"ai/rules/**\"]\n" +
+		"on:\n  pre_edit:\n    - action: { block: \"regular\" }\n  pre_command:\n    - action: { block: \"regular\" }\n"
 	base := answerHookEval(t, yaml, workflow.PreEdit)
-	edit := agent.Event{Name: workflow.PreEdit, Agent: agent.Claude, Actor: agent.ActorSession, Path: ".env",
+	edit := agent.Event{Name: workflow.PreEdit, Agent: agent.Claude, Path: ".env",
 		AbsPath: filepath.Join(base.Root, ".env"), Cwd: base.Root}
-	write := agent.Event{Name: workflow.PreCommand, Agent: agent.Claude, Actor: agent.ActorSession,
-		Command: "echo x > AGENTS.md", Cwd: base.Root}
-	remove := agent.Event{Name: workflow.PreCommand, Agent: agent.Claude, Actor: agent.ActorSession,
-		Command: "rm -rf ai", Cwd: base.Root}
+	command := func(line string) agent.Event {
+		return agent.Event{Name: workflow.PreCommand, Agent: agent.Claude, Command: line, Cwd: base.Root}
+	}
 	cases := map[string]struct {
 		event agent.Event
-		want  string
+		want  string // the reason
 	}{
-		"edit":    {edit, ".env is protected in polix.yaml: only a person changes it."},
-		"command": {write, "AGENTS.md is protected in polix.yaml: only a person changes it."},
-		"folder":  {remove, "ai holds ai/rules/**, protected in polix.yaml: only a person changes it."},
+		"edit":     {edit, ".env is protected in polix.yaml: only a person changes it."},
+		"command":  {command("echo x > AGENTS.md"), "AGENTS.md is protected in polix.yaml: only a person changes it."},
+		"folder":   {command("rm -rf ai"), "ai holds ai/rules/**, protected in polix.yaml: only a person changes it."},
+		"wildcard": {command("rm -f ai/*"), "ai/* holds ai/rules/**, protected in polix.yaml: only a person changes it."},
+		"chained":  {command("ls && rm -f AGENTS.md"), "AGENTS.md is protected in polix.yaml: only a person changes it."},
+		"read":     {command("cat AGENTS.md ai/rules/a.yaml"), "regular"},
+		"other":    {command("rm -rf ai/plans"), "regular"},
 	}
 	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			ev := Evaluation{Workflow: base.Workflow, Present: true, Root: base.Root, GitDir: base.GitDir,
-				System: "linux", Event: c.event}
-			if err := ev.Valid(); err != nil {
-				t.Fatal(err)
-			}
-			out, _ := answerHookWalk(t, ev, answerHookFacts{branch: "main"})
+		for _, actor := range []string{agent.ActorSession, "builder"} {
+			t.Run(name+" "+actor, func(t *testing.T) {
+				e := c.event
+				e.Actor = actor
+				ev := Evaluation{Workflow: base.Workflow, Present: true, Root: base.Root, GitDir: base.GitDir,
+					System: "linux", Event: e}
+				if err := ev.Valid(); err != nil {
+					t.Fatal(err)
+				}
+				out, steps := answerHookWalk(t, ev, answerHookFacts{branch: "main",
+					ignored: map[string]bool{".env": true}})
+				if !out.Answer.Block || !slices.Equal(out.Answer.Reasons, []string{c.want}) {
+					t.Fatalf("reasons %q, want %q", out.Answer.Reasons, c.want)
+				}
+				from, line := ProtectedFilesShortcut, 0
+				if c.want == "regular" {
+					from, line = workflow.VerbBlock, 8
+				}
+				if logged := answerHookAppended(steps); len(logged) != 1 || logged[0].Action != from ||
+					logged[0].Line != line {
+					t.Fatalf("logged: %+v", logged)
+				}
+			})
+		}
+	}
+}
+
+// AC16: protected_files never applies to an edit outside the repository, and an invalid workflow applies none of its
+// protections: it fails closed on its own.
+func TestAnswerHookProtectedOutside(t *testing.T) {
+	ev := answerHookEval(t, "version: 1\nguardrails:\n  protected_files: [\"**\"]\n", workflow.PreEdit)
+	outside := answerHookWith(t, ev, func(e *agent.Event) {
+		e.Path, e.Outside, e.AbsPath = "notes.md", true, filepath.FromSlash("/tmp/scratch/notes.md")
+	})
+	out, steps := answerHookWalk(t, outside, answerHookFacts{branch: "main"})
+	if out.Answer.Block || len(answerHookAppended(steps)) != 0 {
+		t.Fatalf("outside: %+v %+v", out.Answer, steps)
+	}
+	inside := answerHookEdit(t, ev, workflow.PreEdit, "src/a.go", agent.ActorSession)
+	if out, _ := answerHookWalk(t, inside, answerHookFacts{branch: "main"}); !out.Answer.Block {
+		t.Fatalf("inside: %+v", out.Answer)
+	}
+	invalid := Evaluation{Workflow: inside.Workflow, Present: true, Invalid: errors.New("polix.yaml: broken"),
+		Root: inside.Root, GitDir: inside.GitDir, System: "linux", Event: inside.Event}
+	if err := invalid.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := answerHookWalk(t, invalid, answerHookFacts{branch: "main"}); !out.Answer.Block ||
+		!strings.Contains(out.Answer.Reasons[0], "el workflow no es válido") {
+		t.Fatalf("invalid: %+v", out.Answer)
+	}
+}
+
+// AC4, AC16: a forbidden command is denied, for the main session and a subagent, wherever it comes in the line and
+// before an earlier entry of on that would block, with the default message or with its reason, followed by the line;
+// the denial is logged as one of the shortcut at the line of its item. Any other line goes on to the entries.
+func TestAnswerHookForbiddenCommands(t *testing.T) {
+	ev := answerHookEval(t, `version: 1
+guardrails:
+  forbidden_commands:
+    - pattern: "rm -rf /*"
+    - pattern: "git push --force*"
+      reason: "Ask a person to force a push."
+on:
+  pre_command:
+    - action: { block: "regular" }
+`, workflow.PreCommand)
+	cases := map[string]struct {
+		want string
+		line int
+	}{
+		"cd tmp && rm -rf /":            {"This command is forbidden by polix.yaml: a person must run it.\ncd tmp && rm -rf /", 4},
+		"rm -rf / ; ls":                 {"This command is forbidden by polix.yaml: a person must run it.\nrm -rf / ; ls", 4},
+		"git fetch && git push --force": {"Ask a person to force a push.\ngit fetch && git push --force", 5},
+		"rm -rf build":                  {"regular", 9},
+	}
+	for line, c := range cases {
+		for _, actor := range []string{agent.ActorSession, "builder"} {
+			e := answerHookWith(t, ev, func(e *agent.Event) { e.Actor, e.Command = actor, line })
+			out, steps := answerHookWalk(t, e, answerHookFacts{branch: "main"})
 			if !out.Answer.Block || !slices.Equal(out.Answer.Reasons, []string{c.want}) {
-				t.Fatalf("reasons %q, want %q", out.Answer.Reasons, c.want)
+				t.Errorf("%s by %s: reasons %q, want %q", line, actor, out.Answer.Reasons, c.want)
 			}
-		})
+			from := ForbiddenCommandsShortcut
+			if c.want == "regular" {
+				from = workflow.VerbBlock
+			}
+			if logged := answerHookAppended(steps); len(logged) != 1 || logged[0].Action != from ||
+				logged[0].Line != c.line {
+				t.Errorf("%s by %s: logged %+v", line, actor, logged)
+			}
+		}
+	}
+}
+
+// AC6: a commit on a protected branch, also one matched through `*`, is denied; on any other branch it passes.
+func TestAnswerHookProtectedBranches(t *testing.T) {
+	ev := answerHookEval(t, "version: 1\nguardrails:\n  protected_branches: [main, \"release/*\"]\n",
+		workflow.PreCommit)
+	ev = answerHookWith(t, ev, func(e *agent.Event) { e.Command = "git commit -m x" })
+	for branch, block := range map[string]bool{"main": true, "release/1.2": true, "feature/x": false,
+		"main-fix": false} {
+		out, _ := answerHookWalk(t, ev, answerHookFacts{branch: branch})
+		if out.Answer.Block != block {
+			t.Errorf("%s: %+v", branch, out.Answer)
+			continue
+		}
+		want := branch + " is protected in polix.yaml: create a branch for this change and commit there."
+		if block && !slices.Equal(out.Answer.Reasons, []string{want}) {
+			t.Errorf("%s: reasons %q", branch, out.Answer.Reasons)
+		}
+	}
+}
+
+// AC7: format_on_edit runs the command of each item whose path matches the edited path, or that has none, once per
+// path and content, and a failure reaches the agent as context.
+func TestAnswerHookFormatOnEdit(t *testing.T) {
+	ev := answerHookEval(t, `version: 1
+guardrails:
+  format_on_edit:
+    - run: "gofmt -w {path}"
+      path: "*.go"
+    - run: [lint, "{path}"]
+      message: "Lint failed"
+`, workflow.PostEdit)
+	runs := func(steps []Step) []string {
+		var out []string
+		for _, s := range steps {
+			if s.Run != nil {
+				out = append(out, strings.Join(s.Run, " "))
+			}
+		}
+		return out
+	}
+	hashes := []string{"h", "h", "h"}
+	goEdit := answerHookEdit(t, ev, workflow.PostEdit, "src/a.go", agent.ActorSession)
+	out, steps := answerHookWalk(t, goEdit, answerHookFacts{branch: "main", hashes: hashes,
+		runErr: errors.New("exit status 1")})
+	if got := runs(steps); !slices.Equal(got, []string{"gofmt -w src/a.go", "lint src/a.go"}) {
+		t.Fatalf("runs %q", got)
+	}
+	if out.Answer.Block || len(out.Answer.Contexts) != 2 || !strings.HasPrefix(out.Answer.Contexts[1], "Lint failed") {
+		t.Fatalf("a failure reaches the agent as context: %+v", out.Answer)
+	}
+	mdEdit := answerHookEdit(t, ev, workflow.PostEdit, "docs/a.md", agent.ActorSession)
+	_, steps = answerHookWalk(t, mdEdit, answerHookFacts{branch: "main", hashes: hashes})
+	if got := runs(steps); !slices.Equal(got, []string{"lint docs/a.md"}) {
+		t.Fatalf("runs %q", got)
+	}
+	// A run that passed on the content is not run again for the same path, and runs for another path.
+	_, steps = answerHookWalk(t, goEdit, answerHookFacts{branch: "main", hashes: hashes})
+	passed := answerHookLogged(t, state.State{}, steps)
+	if _, steps = answerHookWalk(t, goEdit, answerHookFacts{branch: "main", hashes: hashes, state: passed}); len(runs(steps)) != 0 {
+		t.Fatalf("ran again on the same content: %q", runs(steps))
+	}
+	other := answerHookEdit(t, ev, workflow.PostEdit, "src/b.go", agent.ActorSession)
+	if _, steps = answerHookWalk(t, other, answerHookFacts{branch: "main", hashes: hashes, state: passed}); len(runs(steps)) != 2 {
+		t.Fatalf("another path: %q", runs(steps))
+	}
+}
+
+// AC8: run_before_done blocks the end of the turn while a check fails, and runs a check only when its changed holds.
+func TestAnswerHookRunBeforeDone(t *testing.T) {
+	ev := answerHookEval(t, `version: 1
+guardrails:
+  run_before_done:
+    - run: "go test ./..."
+      changed: "*.go"
+      message: "Tests fail"
+`, workflow.Stop)
+	out, steps := answerHookWalk(t, ev, answerHookFacts{branch: "main", hashes: []string{"h"}, changed: []string{"a.go"},
+		runErr: errors.New("exit status 1")})
+	if !out.Answer.Block || len(out.Answer.Reasons) != 1 || !strings.HasPrefix(out.Answer.Reasons[0], "Tests fail") {
+		t.Fatalf("a failing check blocks the stop: %+v", out.Answer)
+	}
+	if blocked := answerHookObserved(steps); len(blocked) != 1 || blocked[0].Line != 4 {
+		t.Fatalf("the block is of the line of the item: %+v", blocked)
+	}
+	out, steps = answerHookWalk(t, ev, answerHookFacts{branch: "main", hashes: []string{"h"}, changed: []string{"a.md"}})
+	for _, s := range steps {
+		if s.Run != nil {
+			t.Fatalf("ran without a change of its changed: %q", s.Run)
+		}
+	}
+	if out.Answer.Block {
+		t.Fatalf("blocked: %+v", out.Answer)
+	}
+}
+
+// AC16: protected_files denies the edit of a protected path before an earlier entry of on that would block, whether
+// git tracks or ignores it; the entries of on, which govern the change, skip the edit of an ignored file.
+func TestAnswerHookIgnoredEdits(t *testing.T) {
+	regular := "on:\n  pre_edit:\n    - when: { path: \".env\" }\n      action: { block: \"regular\" }\n"
+	protected := answerHookEval(t, "version: 1\nguardrails:\n  protected_files: [.env]\n"+regular, workflow.PreEdit)
+	plain := answerHookEval(t, "version: 1\n"+regular, workflow.PreEdit)
+	cases := []struct {
+		name    string
+		ev      Evaluation
+		ignored bool
+		want    string // the reason, "" when the edit passes
+	}{
+		{"protected and tracked", protected, false, ".env is protected in polix.yaml: only a person changes it."},
+		{"protected and ignored", protected, true, ".env is protected in polix.yaml: only a person changes it."},
+		{"tracked", plain, false, "regular"},
+		{"ignored", plain, true, ""},
+	}
+	for _, c := range cases {
+		edit := answerHookEdit(t, c.ev, workflow.PreEdit, ".env", agent.ActorSession)
+		out, _ := answerHookWalk(t, edit, answerHookFacts{branch: "main", ignored: map[string]bool{".env": c.ignored}})
+		if c.want == "" {
+			if out.Answer.Block {
+				t.Errorf("%s: %+v", c.name, out.Answer)
+			}
+			continue
+		}
+		if !out.Answer.Block || !slices.Equal(out.Answer.Reasons, []string{c.want}) {
+			t.Errorf("%s: reasons %q, want %q", c.name, out.Answer.Reasons, c.want)
+		}
+	}
+}
+
+// AC12: the condition path ignores case only where the file names of the system ignore it.
+func TestAnswerHookPathFoldsCase(t *testing.T) {
+	ev := answerHookEval(t, "version: 1\non:\n  pre_edit:\n    - when: { path: \".env\" }\n"+
+		"      action: { block: \"no\" }\n", workflow.PreEdit)
+	for system, block := range map[string]bool{"linux": false, "darwin": true, "windows": true} {
+		e := answerHookEdit(t, ev, workflow.PreEdit, ".ENV", agent.ActorSession)
+		e = Evaluation{Workflow: e.Workflow, Present: true, Root: e.Root, GitDir: e.GitDir, System: system,
+			Event: e.Event}
+		if err := e.Valid(); err != nil {
+			t.Fatal(err)
+		}
+		if out, _ := answerHookWalk(t, e, answerHookFacts{branch: "main"}); out.Answer.Block != block {
+			t.Errorf("%s: %+v", system, out.Answer)
+		}
 	}
 }
 
@@ -1315,7 +1547,7 @@ on:
 // starts a new count, and the blocks of an unknown hash are counted together, so a broken git never traps the agent.
 func TestAnswerHookLoopGuardCountsBlocked(t *testing.T) {
 	ev := answerHookEval(t, `version: 1
-max_stop_blocks: 2
+max_stop_retries: 2
 on:
   stop:
     - when: { changed: "*.go" }
@@ -1577,7 +1809,7 @@ func TestAnswerHookRepeatWithoutLog(t *testing.T) {
 // run of the subagent, with a new context, gets the injects again, and finished still never holds for it.
 func TestAnswerHookLoopGuardMakesInjectsDue(t *testing.T) {
 	yaml := `version: 1
-max_stop_blocks: 1
+max_stop_retries: 1
 on:
   pre_edit:
     - action: { inject: "Lee el plan" }

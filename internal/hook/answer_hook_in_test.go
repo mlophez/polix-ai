@@ -156,7 +156,7 @@ func TestAnswerHookMergesEvents(t *testing.T) {
 
 // Every path of an edit is located and evaluated; the answers merge.
 func TestAnswerHookLocatesEdits(t *testing.T) {
-	port := &answerHookFakePort{yaml: "version: 1\nprotected: [\"src/**\"]\n"}
+	port := &answerHookFakePort{yaml: "version: 1\nguardrails:\n  protected_files: [\"src/**\"]\n"}
 	patch := `*** Update File: src/a.go\n*** Update File: docs/b.md\n`
 	res, err := answerHook(context.Background(), port, AnswerHookRequest{Agent: "codex", Version: "dev",
 		Input: []byte(`{"hook_event_name":"PreToolUse","tool_name":"apply_patch","cwd":"/repo","tool_input":{"input":"` +

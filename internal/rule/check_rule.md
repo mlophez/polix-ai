@@ -12,7 +12,7 @@ polix rules check [--dir <dir>] [--changed] [--base <branch>]
 - `--dir`: any folder of the repository; defaults to the current one.
 - `--changed`: only the rules whose scope matches the files changed by the branch.
 - `--base`: the branch the change merges into, locally or on origin, for `--changed`; without it, the closest of
-  `base` in polix.yaml, else `main`. Without `--changed` it is an error.
+  `base_branch` in polix.yaml, else `main`. Without `--changed` it is an error.
 
 ## Request
 
@@ -86,7 +86,7 @@ and with 1 otherwise.
   workflow. Of the problems that `polix check` reports on a workflow that parses, only those of `rules`
   stop the use case (see Errors); the rest are left to `polix check`.
 - `Changed`: asks git for the files changed against the first base that exists, locally or on origin; when none
-  exists, its error asks to set `base` in polix.yaml or to pass `--base`.
+  exists, its error asks to set `base_branch` in polix.yaml or to pass `--base`.
 - `RunCheck`: runs one invocation from the root, which may decide several rules, with 5 minutes to finish: the argv
   of its runner or, when empty, the check of its only rule as a program, on Windows through its interpreter (bash of Git for Windows for `.sh`, the py launcher or python for
   `.py`), elsewhere through its shebang. On Windows a runner whose program is `bash`, `sh`, `python`, `python3` or

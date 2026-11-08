@@ -139,7 +139,7 @@ The flow of `polix rules check`:
 - The version set by the linker lives in `pkg/build.Version`; the entries take it from `pkg/build.Current` and
   pass it to their use cases in the request, so the domain never reads it.
 - `polix rules check` changes on purpose: a rule that is not `Valid` (no description, or a `check` without
-  `deterministic`) stops the command; `--base` without `--changed` is an error; the hint to set `base` only comes
+  `deterministic`) stops the command; `--base` without `--changed` is an error; the hint to set `base_branch` only comes
   when no base exists. It always reads polix.yaml when it exists, to know the runners of `rules.run`, and
   `--base` only replaces its base branches; a polix.yaml that cannot be read or parsed stops the command.
 - `polix hook` takes the step shape, since a later entry of an event sees what an earlier one did (an observed

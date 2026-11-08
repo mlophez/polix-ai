@@ -23,21 +23,31 @@ polix graph [--dir <dir>]
 `GraphWorkflow(wf Workflow, found bool) GraphWorkflowOutput` draws the workflow. It takes what the shell read
 through the port:
 
-- `wf`: the workflow of polix.yaml, drawn as it is even when `polix check` would report problems.
+- `wf`: the workflow of polix.yaml, drawn as it is even when `polix check` would report problems, with its
+  protected files and forbidden commands (`ProtectedFiles`, `ForbiddenCommands`) and the other shortcuts of
+  `guardrails` already expanded into entries of `on`.
 - `found`: whether polix.yaml exists.
 
 `GraphWorkflowOutput` holds `Mermaid`, the flowchart, and `Missing`, set when there is no polix.yaml. The rules
 it follows:
 
 1. Without polix.yaml there is nothing to draw: `Missing`, and no flowchart.
-2. The flowchart starts with `flowchart TD` and has one subgraph per event with entries, in the order of
-   `Events`, each closed by `end`.
-3. Each entry is a node `n<k>`, numbered across the whole flowchart, linked to the previous entry of its event
-   with `-->`.
-4. The label of a node joins with `<br/>` its `when` and `unless` conditions, as `when key=value` and
-   `unless key=value` ordered by key, and the verb of its action: `block: <message>`, followed by `(once)` with
+2. The flowchart starts with `flowchart TD`. With protected files or forbidden commands, a subgraph `guardrails`
+   comes first, with the protections the hook applies before the entries of every event: one node
+   `protected_files: <globs>`, the globs joined with `, `, and one node per forbidden command,
+   `forbidden_commands: <pattern>`, followed by `<br/>` and its reason when it has one, in the order the hook applies
+   them and linked with `-->`. Then one subgraph per event with entries, in the order of `Events`. Each subgraph is
+   closed by `end`.
+3. Each entry is a node `n<k>`, numbered across the whole flowchart after the nodes of `guardrails`, linked to the
+   previous entry of its event with `-->`, in the order of the workflow: those of the shortcuts before those written
+   in `on`.
+4. The label of a node of an event joins with `<br/>`: its `when` and `unless` conditions, as `when key=value` and
+   `unless key=value` ordered by key; the verb of its action: `block: <message>`, followed by `(once)` with
    `once: true`; `run` with its command or `rules <target>`, and `inject` with `file <file>`, `rules <target>` or
-   `: <text>`, each followed by `(always)` with `always: true`. Double quotes become single ones.
+   `: <text>`, each followed by `(always)` with `always: true`; and `from <shortcut>` when the entry was expanded
+   from a shortcut (`From`, as `guardrails.format_on_edit`), nothing for an entry written in `on`. In every label,
+   double quotes become single ones, and the line breaks of a message become `<br/>`, so each statement keeps one
+   line.
 
 ## Response
 

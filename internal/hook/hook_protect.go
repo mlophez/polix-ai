@@ -7,13 +7,26 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mlophez/polix-ai/internal/workflow"
 	"github.com/mlophez/polix-ai/pkg/glob"
 )
 
-// The reasons of the protections that come before the workflow.
+// The reasons of the protection of the state of polix, which comes before the workflow.
 const (
 	ReasonStateEdit    = "El estado de polix solo lo escribe polix."
 	ReasonStateCommand = "El estado de polix solo lo escribe polix; para leerlo usa polix log."
+)
+
+// ReasonForbidden is the reason of a forbidden command without a reason of its own, in English since polix writes
+// it; the line of the command follows it.
+const ReasonForbidden = "This command is forbidden by " + workflow.File + ": a person must run it."
+
+// Where a denial of the protections comes from, as the log records it: the protection of the state, built in, or the
+// shortcut of guardrails it applies.
+const (
+	BuiltinProtection         = "builtin"
+	ProtectedFilesShortcut    = "guardrails.protected_files"
+	ForbiddenCommandsShortcut = "guardrails.forbidden_commands"
 )
 
 // stateRef finds the state folder in a command line, written relative to a git directory (`.git/polix`, or
@@ -28,7 +41,8 @@ var stateRefFold = regexp.MustCompile(`(?i)\.git/(worktrees/[^/\s'"]+/)?polix(/|
 // writesFiles recognises commands that can create, change or delete files: a heuristic, since a shell command
 // cannot be fully analysed, aimed at accidents rather than at an agent determined to get around it. A `>`
 // followed by `&` and a digit or `-` duplicates a descriptor (`2>&1`) and writes nothing; `>&file` writes file.
-// It guards the state, which any mention may reach; protected paths go through Writes instead.
+// It guards the state, which any mention may reach; guardrails.protected_files and the condition writes go through
+// Writes instead.
 var writesFiles = regexp.MustCompile(`(^|[\s;&|(])(rm|mv|cp|tee|truncate|dd|touch|ln|install|chmod|rsync)(\s|$)|(sed|perl)\s+(-\S*\s+)*-i|>([^&]|&\s*[^0-9\s-]|$)`)
 
 // FoldsCase reports whether the file names of the system goos usually ignore case.
@@ -79,6 +93,17 @@ func AnyPathFold(patterns []string, p string, fold bool) bool {
 		lower[i] = strings.ToLower(pattern)
 	}
 	return glob.AnyPath(lower, strings.ToLower(p))
+}
+
+// Forbidden returns the first of the forbidden commands, in file order, whose pattern matches one of the commands of
+// the line, wherever it comes in it (see MatchingCommands); false when none does.
+func Forbidden(forbidden []workflow.ForbiddenCommand, line string) (workflow.ForbiddenCommand, bool) {
+	for _, f := range forbidden {
+		if len(MatchingCommands([]string{f.Pattern}, line)) > 0 {
+			return f, true
+		}
+	}
+	return workflow.ForbiddenCommand{}, false
 }
 
 // holdsAny returns the first pattern with a slash whose paths the folder dir holds: dir is the literal folder the

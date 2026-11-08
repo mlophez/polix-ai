@@ -49,7 +49,7 @@ The prompt names:
 
 ### Change
 
-The base is the `base` of `polix.yaml`, else `main`.
+The base is the `base_branch` of `polix.yaml` (the first that exists, when it is a list), else `main`.
 Review `git diff $(git merge-base HEAD <base>)`, plus the untracked files of `git status --porcelain`.
 When the branch is the base, review only what is staged, not staged and untracked.
 

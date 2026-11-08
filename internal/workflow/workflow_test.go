@@ -84,15 +84,14 @@ func TestValidRejects(t *testing.T) {
 		{"any not a map", "version: 1\non:\n  pre_commit:\n    - when: { any: [a] }" + block, "any needs a map of conditions"},
 		{"empty weight glob", "version: 1\nrisk:\n  weights:\n    \"\": 1\n", "risk.weights: weight: empty glob"},
 		{"negative weight", "version: 1\nrisk:\n  weights:\n    a: -1\n", `risk.weights: weight "a": the factor must be a finite, non-negative number`},
-		{"negative max_stop_blocks", "version: 1\nmax_stop_blocks: -1\n", "max_stop_blocks must be positive"},
+		{"negative max_stop_retries", "version: 1\nmax_stop_retries: -1\n", "max_stop_retries must be positive"},
 		{"exit outside post_command", "version: 1\non:\n  pre_command:\n    - when: { exit: 0 }" + block, "exit never holds on pre_command"},
 		{"path outside edits", "version: 1\non:\n  stop:\n    - when: { path: x }" + block, "path never holds on stop"},
 		{"command inside not outside commands", "version: 1\non:\n  pre_edit:\n    - when: { not: { command: x } }" + block, "command never holds on pre_edit"},
 		{"contains not a text", "version: 1\non:\n  pre_edit:\n    - unless: { file: x, contains: [a] }" + block, "contains needs a text"},
 		{"contains without file", "version: 1\non:\n  pre_edit:\n    - unless: { contains: a }" + block, "contains only works next to file"},
 		{"writes on pre_edit", "version: 1\non:\n  pre_edit:\n    - when: { writes: x }" + block, "writes never holds on pre_edit"},
-		{"empty protected glob", "version: 1\nprotected: [\".env\", \"\"]\n", "protected: a path glob cannot be empty"},
-		{"empty base name", "version: 1\nbase: [main, \"\"]\n", "base: a branch name cannot be empty"},
+		{"empty base name", "version: 1\nbase_branch: [main, \"\"]\n", "base_branch: a branch name cannot be empty"},
 		{"empty runner", "version: 1\nrules:\n  run:\n    \"*_test.go\": []\n", `polix.yaml:4: rules.run "*_test.go": the command is empty`},
 		{"unknown key in rules", "version: 1\nrules:\n  runs: {}\n", `unknown key "runs" in rules (path, run)`},
 	}
@@ -385,7 +384,7 @@ func TestInjectsOnce(t *testing.T) {
 
 // Valid joins every problem in one Invalid error, whose list is that of Problems.
 func TestValidJoinsProblems(t *testing.T) {
-	w := Workflow{Version: 2, MaxStopBlocks: -1}
+	w := Workflow{Version: 2, MaxStopRetries: -1}
 	err := w.Valid()
 	var invalid Invalid
 	if !errors.As(err, &invalid) || len(invalid) != 2 || err.Error() != strings.Join(w.Problems(), "\n") {
@@ -440,7 +439,7 @@ func TestUseCasesAreValid(t *testing.T) {
 		}
 		workflow := false
 		for line := range strings.SplitSeq(src, "\n") {
-			for _, key := range []string{"version:", "protected:", "vars:", "on:"} {
+			for _, key := range []string{"version:", "guardrails:", "vars:", "on:"} {
 				workflow = workflow || strings.HasPrefix(line, key)
 			}
 		}
@@ -457,5 +456,22 @@ func TestUseCasesAreValid(t *testing.T) {
 	}
 	if checked < 20 {
 		t.Fatalf("only %d recipes found in docs/use-cases.md", checked)
+	}
+}
+
+// AC16: a forbidden command needs a pattern, and the problems of the protections of a workflow built by hand name
+// the line of a forbidden command.
+func TestForbiddenCommandValid(t *testing.T) {
+	if err := (ForbiddenCommand{Pattern: "rm -rf /*"}).Valid(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (ForbiddenCommand{Pattern: " ", Line: 4}).Valid(); err == nil {
+		t.Fatal("an empty pattern is valid")
+	}
+	w := Workflow{Version: 1, ProtectedFiles: []string{""}, ForbiddenCommands: []ForbiddenCommand{{Line: 4}}}
+	want := "polix.yaml: guardrails.protected_files: a path glob cannot be empty\n" +
+		"polix.yaml:4: guardrails.forbidden_commands: an item needs a pattern"
+	if got := strings.Join(w.Problems(), "\n"); got != want {
+		t.Fatalf("problems: %q", got)
 	}
 }
