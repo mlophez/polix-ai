@@ -23,7 +23,7 @@ func parseClaude(input []byte) (string, []Event, error) {
 	native := in.HookEventName
 	switch native {
 	case "SessionStart":
-		return native, []Event{Event{}.begin(in, Claude, workflow.SessionStart)}, nil
+		return native, []Event{Event{}.begin(in, Claude, workflow.Start)}, nil
 	case "UserPromptSubmit":
 		return native, []Event{Event{}.begin(in, Claude, workflow.Prompt)}, nil
 	case "Stop":

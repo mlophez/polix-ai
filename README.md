@@ -26,7 +26,7 @@ One static binary connects Claude Code and Codex to the workflow and rules of yo
 ---
 
 <p align="center">
-  <img src="docs/assets/overview.svg" alt="Claude Code and Codex call Polix through their hooks; Polix reads polix.yaml and ai/rules/, keeps facts and decisions in log.jsonl, and answers by blocking, injecting context or allowing the action" width="100%">
+  <img src="docs/assets/overview.svg" alt="Claude Code and Codex call Polix through their hooks; Polix reads polix.yaml and ai/rules/, keeps what it observed and decided in log.jsonl, and answers by blocking, injecting context or allowing the action" width="100%">
 </p>
 
 ## The problem
@@ -41,26 +41,23 @@ the copy in the next repository.
 ## The idea
 
 **Polix** gives you one declarative file, `polix.yaml`, that says what must happen on each event of an agent
-session: what is blocked, what is required, what runs, what is injected into the context and what is recorded.
+session: what is blocked, what runs and what is injected into the context.
 The same binary answers every hook in milliseconds and keeps an append-only log of what it observed and decided.
 
 ```yaml
 # polix.yaml
+version: 1
 on:
-  post_command:
-    # A green `just test` records the fact "tested" for this exact content.
-    - if: { command: "just test*", exit: 0 }
-      record: tested
-
   stop:
-    # The agent cannot end its turn with Go changes that were not tested as they are now.
-    - if: { changed: "*.go" }
-      unless: { done: tested }
-      deny: "Tests have not passed on this diff: run just test"
+    # The agent cannot end its turn while the tests fail on its Go changes: Polix runs them itself.
+    - when: { changed: "*.go" }
+      action: { run: just test }
 ```
 
-If the agent edits a single line after the tests pass, the fact no longer applies and it has to run them again.
-You don't have to invalidate anything by hand.
+When the tests fail, the agent gets their output and has to go on. When they pass, Polix remembers it for this
+exact content, so the next stop does not run them again; if the agent then edits a single line, they run again.
+You don't have to invalidate anything by hand, and a `just test` the agent ran by itself never counts: Polix only
+trusts what it ran.
 
 > The human writes the rules. Polix only enforces them.
 > It **measures and never judges**: conditions are facts about the repository, the event and the state.
@@ -68,24 +65,26 @@ You don't have to invalidate anything by hand.
 
 ## Highlights
 
-- **Facts tied to content, not to time.** `record: tested` stores the fact together with the hash of the working
-  tree. Any later edit changes the hash, so `done: tested` stops holding by itself.
+- **Tied to content, not to time.** A check Polix ran green is not run again on the same content, and
+  `finished: polix:reviewer` holds once the reviewer ended, until a file it looks at changes. Polix remembers only
+  what the workflow asks about.
+- **Gates and reminders.** A `block` holds every time until its `unless` does; `once: true` turns it into a
+  reminder that asks once per content. A warning is an `inject`, and the first entry that blocks ends the
+  evaluation.
 - **Declarative and validated.** `polix check` rejects unknown events, keys, conditions, placeholders and
   conditions that can never hold on their event, so a typo cannot quietly switch a guardrail off.
-- **Roll out safely.** Every entry can run in `audit` mode (only log what it would have blocked), then `warn` (tell
-  the agent), then `enforce` (block).
 - **Protections.** Nobody can tamper with the state of Polix, even when the repository has no workflow; that is
   all Polix protects on its own. The key `protected` of `polix.yaml` lists paths no agent may write (`.env`, the
   context files), and the condition `writes` keeps some actors away from some paths, as in
   [the recipe](docs/use-cases.md#safety).
 - **Rules that reach the agent and CI.** Rules in `ai/rules/` have a scope. Polix injects only the ones that
-  match the file being edited, once per session. The same checks run in CI with
+  match the file being edited, once per session and agent. The same checks run in CI with
   `polix rules check --changed --base="${{ github.base_ref }}"` on a pull request, after a checkout with
   `fetch-depth: 0` ([the recipe](docs/use-cases.md#the-same-checks-for-the-agent-and-for-ci)).
 - **No infinite loops.** A loop guard lets the agent stop after `max_stop_blocks` identical blocks. A broken
   `polix.yaml` fails closed for edits and commands but never traps a stop.
-- **An audit trail.** Every decision is logged with the entry that caused it, giving evidence of the process
-  each change followed.
+- **An audit trail.** Every decision is logged with the entry that caused it, next to the checks that passed and
+  the subagents that finished on each content, giving evidence of the process each change followed.
 - **Truly cross-platform.** A static Go binary for Linux, macOS and Windows (amd64 and arm64), tested on all
   three in CI. The hooks work the same under `sh`, Git Bash and PowerShell.
 - **Fast.** About 13 ms per hook call, and about 130 ms for a stop that hashes a 730-file repository (measured
@@ -106,16 +105,15 @@ Polix comes in two layers, and the second one is optional.
   - **document**: updates the documentation and the comments that the change made stale.
 
 The harness is not enforced by itself. A skill only helps the agent; Polix enforces a phase when your
-`polix.yaml` says so, for example by recording a fact when a phase ends and requiring it before a commit:
+`polix.yaml` says so, for example by requiring that the reviewer finished on the diff before a commit, and by
+running the tests itself:
 
 ```yaml
 on:
-  subagent_stop:
-    - if: { actor: "polix:reviewer" }
-      record: reviewed
   pre_commit:
-    - unless: { done: [tested, reviewed] }
-      deny: "Test and review the diff before committing"
+    - unless: { finished: "polix:reviewer" }    # Polix observes the end of the reviewer by itself
+      action: { block: "Review the diff with /polix:review before committing" }
+    - action: { run: just test }
 ```
 
 Adopt the whole flow, a single phase or none of it.
@@ -208,7 +206,7 @@ flowchart LR
   B --> C["Protections<br/>state and protected"]
   C --> D["polix.yaml<br/>entries in order"]
   R["ai/rules/"] --> D
-  S[("&lt;git-dir&gt;/polix/log.jsonl<br/>facts and decisions")] <--> D
+  S[("&lt;git-dir&gt;/polix/log.jsonl<br/>observations and decisions")] <--> D
   D -->|exit 2 + reasons| X["Block"]
   D -->|additionalContext| Y["Inject context"]
   D -->|exit 0| Z["Let it go on"]
@@ -221,19 +219,21 @@ flowchart LR
 3. The adapter **answers** the agent. It exits with code 2 and the reasons on stderr to block, or with code 0 and
    `additionalContext` to inject guidance.
 
-Every observation and decision ends up in the log, which lives inside the git directory, so it never appears in a
-diff:
+Every decision ends up in the log, with what Polix observed for the workflow (a check of its own that passed, a
+subagent that finished, an entry that blocked a stop). The log lives inside the git directory, so it never appears
+in a diff:
 
 ```text
 $ polix log --tail 3
-2026-11-04T12:04:04+01:00  stop_block stop          session                    efd99ae6  Tests have not passed on this diff: run just test
-2026-11-04T12:04:04+01:00  decision   stop          session   block deny       efd99ae6  Tests have not passed on this diff: run just test
-2026-11-04T12:04:13+01:00  fact       post_command  session   tested           efd99ae6
+2026-11-04T12:04:04+01:00  observed   stop          session   blocked just test efd99ae6
+2026-11-04T12:04:04+01:00  decision   stop          session   block run        efd99ae6  Falla just test: exit status 1
+2026-11-04T12:09:13+01:00  observed   stop          session   passed just test 3b1c07d2
 ```
 
 ## The workflow in one file
 
-`polix.yaml` is a list of entries per event. Each entry has optional conditions and exactly one action.
+`polix.yaml` is a list of entries per event. Each entry says when it applies (`when`, `unless`) and what it does
+(`action`, with exactly one verb: `block`, `run` or `inject`).
 
 ```yaml
 version: 1
@@ -244,46 +244,48 @@ vars:
 on:
   pre_edit:
     - unless: { var: key }
-      deny: "No ticket in the branch name: create the branch from a ticket"
-    - context: { rules: "{path}" }                # inject the rules that apply to this file
+      action: { block: "No ticket in the branch name: create the branch from a ticket" }
+    # An exception is a `not` in `when`: the plan may be written before it exists.
+    - when: { not: { path: "ai/plans/{key}-*.md" } }
+      unless: { file: "ai/plans/{key}-*.md" }
+      action: { block: "There is no plan for {key}: write it with /polix:plan" }
+    - action: { inject: { rules: "{path}" } }     # the rules that apply to this file, once per session and agent
 
   pre_command:
-    - if: { command: ["git push*origin main*", "git push*origin HEAD:main*"] }
-      deny: "No direct pushes to main: open a pull request"
-
-  post_command:
-    - if: { command: "just test*", exit: 0 }
-      record: tested
-
-  subagent_stop:
-    - if: { actor: polix:reviewer }               # agents of a plugin go with its prefix
-      record: reviewed
+    - when: { command: ["git push*origin main*", "git push*origin HEAD:main*"] }
+      action: { block: "No direct pushes to main: open a pull request" }
 
   pre_commit:
-    - unless: { done: [tested, reviewed] }
-      mode: warn                                  # try it first, enforce it later
-      deny: "Test and review the diff before committing"
+    - action: { run: just test }                  # run by Polix, not again on a content it passed on
+    - when: { changed: "src/**" }
+      unless: { finished: polix:reviewer }        # agents of a plugin go with its prefix
+      action: { block: "Review the diff with /polix:review before committing" }
+    - when: { changed: "src/**" }                 # a reminder: it blocks the first commit, not the next one
+      action:
+        block: { message: "Check whether README.md needs an update; if not, commit again", once: true }
 ```
 
-**Events:** `session_start`, `prompt`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
+**Events:** `start`, `prompt`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
 `subagent_stop`, `stop`.
 
 **Conditions:** `branch`, `var`, `path`, `changed`, `file` (optionally with `contains`), `command`, `exit`,
-`writes`, `actor`, `done`, `not`. In the hooks, `changed` is what is not committed yet (changed since HEAD, or
-untracked).
+`writes`, `actor`, `finished` (a subagent ended on the files of the entry as they are now), `not`, `any`, and the
+measures `changed_lines`, `changed_files` and `risk_score` (a number: at least that much). In the hooks, `changed`
+is what is not committed yet (changed since HEAD, or untracked).
 
 **Top-level keys:** `version`, `requires`, `base` (the branch, or candidates, `rules check --changed` compares
 with), `protected` (paths no agent writes), `max_stop_blocks`, `vars`, `on`, `rules` (`run`: the command that runs
 each kind of `check`, by the glob of its file name).
 
-**Actions:** `deny`, `allow`, `require`, `run` (a command or the checks of the matching rules), `context` (a
-file, a text or the matching rules), `record`. `record` also goes next to any other action, to record a fact once
-it applied (a `run`, once it passed).
-
-**Modes:** `enforce`, `warn`, `audit`.
+**Verbs:** `block` (a message for the AI; a gate on every attempt, or a reminder once per content with
+`once: true`), `run` (a command, or the checks of the matching rules; a failure blocks, or only informs the AI after
+an edit or a command; not run again once it passed on the same content unless `always: true`), `inject` (a text, a
+file or the matching rules; once per agent and session unless `always: true`). The first entry that blocks ends the
+evaluation of the event.
 
 Commands are split and matched the way a shell runs them. In `cd x && just test 2>&1 | tail -3`, Polix sees three
-commands. It also knows that `tail` decides the exit code, so a piped `just test` is not counted as a green run.
+commands. It also knows that `tail` decides the exit code of the line, so `exit` looks at the right command. A
+command the agent runs is never counted as a check that passed: a check that must hold is a `run` of Polix.
 
 The full reference, with comments on every option, is in [`examples/polix.yaml`](examples/polix.yaml).
 
@@ -305,8 +307,6 @@ The full reference, with comments on every option, is in [`examples/polix.yaml`]
   apply` outside main, no `kubectl` on prod contexts.
 - [Secrets never land in a commit](docs/use-cases.md#secrets-never-land-in-a-commit) and
   [hands off generated files and lockfiles](docs/use-cases.md#hands-off-generated-files-and-lockfiles).
-- [Try a guardrail before enforcing it](docs/use-cases.md#try-a-guardrail-before-enforcing-it) with `audit` and
-  `warn`.
 - [The whole flow](docs/use-cases.md#putting-it-together-build-document-test-review-commit): build, document,
   test, review and commit, in the order the content hash demands.
 - [Coming from Claude Code hooks](docs/use-cases.md#coming-from-claude-code-hooks): where each example of the
@@ -316,15 +316,15 @@ The full reference, with comments on every option, is in [`examples/polix.yaml`]
 
 Shell hooks are fine for one trivial check. Polix is for when guardrails are part of how a team works.
 
-- **State.** A shell hook has no memory between calls. Polix keeps facts tied to the exact content of the tree,
-  so "tested" means tested *as it is now*.
+- **State.** A shell hook has no memory between calls. Polix remembers which of its checks passed and which
+  subagents finished on the exact content of the tree, so "tested" means tested *as it is now*.
 - **Correctness.** Splitting command lines, respecting quotes, knowing which command decides the exit code of a
   pipeline and detecting `git commit` all live in one tested engine instead of a `case` statement per repository.
 - **Safety.** Schema validation, fail-closed on broken config, a loop guard on stop and a shared time budget for
   every `run` in one hook call.
 - **Portability.** Claude Code can run hooks under PowerShell on Windows, where `sh` scripts do not run at all.
-- **Rollout and evidence.** `audit` and `warn` modes to introduce new rules gradually, and a log that shows why
-  each block happened.
+- **Gates and evidence.** A gate that holds, a reminder that asks once and a warning that only informs, each one
+  line of YAML, and a log that shows why each block happened.
 - **One thing to maintain.** One binary across every repository, with `polix update` (checksum-verified, atomic
   replace) and `polix doctor`, instead of slightly different copies of the same scripts.
 

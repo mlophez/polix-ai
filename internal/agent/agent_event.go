@@ -81,8 +81,8 @@ func (in inputJSON) actor() string {
 	return ActorSession
 }
 
-// begin returns the event name of agent for the input in. A stop is always of the main session: a subagent
-// stops with subagent_stop.
+// begin returns the event name of agent for the input in. The stop of a turn (stop) is always of the main
+// session: a subagent stops with subagent_stop.
 func (e Event) begin(in inputJSON, agent, name string) Event {
 	e.Name, e.Agent, e.Session, e.Cwd, e.Prompt = name, agent, in.SessionID, in.Cwd, in.Prompt
 	e.Actor = in.actor()

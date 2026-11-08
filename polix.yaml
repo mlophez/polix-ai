@@ -1,16 +1,17 @@
 # Workflow of this repository, enforced by polix itself (dogfooding). Reference of every option:
 # examples/polix.yaml; design and limits: docs/polix.md. Validate with `polix check`, draw with `polix graph`.
 #
-# The hooks of .claude/settings.json send every event to polix, but this workflow only acts on four of them:
-# post_edit (format the edited Go file), pre_commit (a reminder to update README.md and docs/ once per change, and
-# no commit of a large or risky change of Go code without a review), subagent_stop (record the review of
-# polix:reviewer) and stop (lint and test before the turn ends). On the other events polix only applies its
-# protections: the built-in one (no agent writes the state of polix) and the paths of `protected`.
+# The hooks of .claude/settings.json send every event to polix, but this workflow only acts on three of them:
+# post_edit (format the edited Go file), pre_commit (no commit of a large or risky change of Go code without a
+# review, and a reminder to update README.md and docs/ once per change) and stop (lint and test before the turn
+# ends). polix observes the end of polix:reviewer by itself, because a `finished` names it: no entry on
+# subagent_stop is needed. On the other events polix only applies its protections: the built-in one (no agent writes
+# the state of polix) and the paths of `protected`.
 #
 # The review before a commit is asked only past a threshold of the uncommitted Go change: 150 changed lines, 5
 # changed files or a risk score of 25, weighted by `risk.weights` below. Small changes commit without a review; lint
-# and tests still run on every stop. Tune the thresholds and the weights with `polix risk --changed '*.go'`, and on
-# the history with `polix risk --commit <rev> --changed '*.go'`.
+# and tests still run when the turn ends. Tune the thresholds and the weights with `polix risk --changed '*.go'`, and
+# on the history with `polix risk --commit <rev> --changed '*.go'`.
 version: 1
 base: main
 # A stop gate that keeps failing on the same content lets the agent stop after 3 blocks, so it never loops.
@@ -22,7 +23,7 @@ guidance:
   layout: true
 
 # No agent writes the instructions of the repository, the main session included: only a person changes them.
-protected: 
+protected:
   - AGENTS.md
   - CLAUDE.md
   #- /polix.yaml
@@ -49,66 +50,57 @@ risk:
     "internal/state/**": 3
     "pkg/git/**": 2
 
+# The entries of an event run in file order, and the first one that actually blocks ends the evaluation: the order
+# is the priority, and the agent gets one failure per answer. A block blocks every time, unless it says
+# `once: true`, which makes it a reminder; a run of polix that passed is not run again until the files change. polix
+# remembers only what this file asks about: the end of polix:reviewer, the runs that passed and the blocks of a
+# reminder or of a stop. A command the agent runs never counts as passed.
 on:
-  # post_edit: after the agent edits a file, once per edited path.
+  # post_edit: after the agent edits a file, once per edited path. The edit already happened, so a failure (a syntax
+  # error) only reaches the agent as context. The lint of stop checks the format of every file anyway.
   post_edit:
-    # gofmt rewrites the edited Go file, so the agent never has to format by hand. In warn mode: the edit already
-    # happened, and a failure (a syntax error) only reaches the agent as context. The lint of stop checks the
-    # format of every file anyway.
-    #- if: { path: "*.go" }
-    #  mode: warn
-    #  run: { command: ["gofmt", "-w", "{path}"] }
-    - if: { path: "*.go" }
-      mode: warn
-      run: { command: ["golangci-lint", "fmt", "{path}"] }
+    # The formatters of .golangci.yml (gofmt, goimports) rewrite the edited Go file, so the agent never formats by
+    # hand. The {path} makes one command per path, run again whenever that path changes.
+    - when: { path: "*.go" }
+      action: { run: "golangci-lint fmt {path}" }
 
-  # pre_commit: before a git commit runs. A large or risky change of the Go code is committed only once
-  # polix:reviewer reviewed that exact content; any later edit asks for a new review. The `changed` of the `if`
-  # scopes the measures to the Go files, and a change git cannot measure asks for the review too. The deny does not
-  # record: only subagent_stop records the fact.
+  # pre_commit: before a git commit runs.
   pre_commit:
-    - if:
+    # No large or risky change of the Go code is committed without a review of its final diff. The `changed` of the
+    # `when` scopes the measures and the review to the Go files: an edit of README.md or docs/ after the review keeps
+    # it, an edit of a Go file asks for a new one. A change git cannot measure asks for the review too. It blocks
+    # every commit until polix:reviewer ends on this content, and it comes first, so the reminder below only asks
+    # once the diff is reviewed.
+    - when:
         changed: ["*.go", "go.mod", "go.sum"]
         any:
-          changed_lines: { at_least: 150 }
-          changed_files: { at_least: 5 }
-          risk_score: { at_least: 25 }
-      unless: { done: reviewed }
-      why: no large or risky change of the Go code is committed without a review of its final diff
-      deny: "This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score}): run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again."
+          changed_lines: 150
+          changed_files: 5
+          risk_score: 25
+      unless: { finished: polix:reviewer }
+      action:
+        block: "This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score}): run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again."
 
-    # The docs are updated with the change: before a commit that changes the behaviour, the agent is asked once per
-    # content to check whether README.md or docs/ must change. It comes after the review, whose deny stops the
-    # evaluation, so it only asks once the diff is reviewed. The deny records docs, so a second commit on the same
-    # content goes through.
-    - if: { changed: ["*.go", "go.mod", "plugins/**", "examples/**", "polix.yaml", "install.sh", "install.ps1", "scripts/**"] }
-      unless: { done: docs }
-      why: every change of behaviour is documented in the same commit
-      deny: "Before committing, check whether this change affects README.md or docs/ and update them. If it does not affect them, commit again."
-      record: docs
+    # Every change of behaviour is documented in the same commit: before a commit that changes the behaviour, the
+    # agent is asked once per content to check whether README.md or docs/ must change, and a second commit on the
+    # same content goes through. Its `changed` does not name README.md nor docs/, so the docs edit it asks for does
+    # not remind it again.
+    - when: { changed: ["*.go", "go.mod", "plugins/**", "examples/**", "polix.yaml", "install.sh", "install.ps1", "scripts/**"] }
+      action:
+        block:
+          message: "Before committing, check whether this change affects README.md or docs/ and update them. If it does not affect them, commit again."
+          once: true
 
-  # subagent_stop: when a subagent ends. polix:reviewer never edits and the main session waits for it without
-  # editing, so the content hash when it ends is the one it reviewed, and that content is recorded as reviewed.
-  subagent_stop:
-    - if: { actor: polix:reviewer }
-      record: reviewed
-
-  # stop: when the agent ends its turn. The entries run in order, and a failing one blocks the stop but does not
-  # skip the next, so the agent gets every failure in one answer. Each one runs once per content: its fact
-  # (linted, tested), in the record next to its run, is recorded when it passes, and `unless: done` skips it until
-  # the files change again.
+  # stop: when the main session ends its turn. The lint runs first and the tests only once it passes; each one is
+  # not run again on a content it passed on, so a turn with nothing new runs nothing.
   stop:
     # golangci-lint with .golangci.yml over the whole module: the gofmt and goimports formatters, the standard
     # linters, govet (go vet) among them, and those of idiomatic Go. Only when a Go file or the lint configuration
     # changed.
-    - if: { changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"] }
-      unless: { done: linted }
-      run: { command: ["golangci-lint", "run", "./..."] }
-      record: linted
+    - when: { changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"] }
+      action: { run: golangci-lint run ./... }
 
     # Every test of the module, without the agent asking for it. The install scripts and scripts/ are tested from
     # Go, so a change in them runs the tests too. Go caches the results, so a run on code already tested is fast.
-    - if: { changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"] }
-      unless: { done: tested }
-      run: { command: ["go", "test", "./..."] }
-      record: tested
+    - when: { changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"] }
+      action: { run: go test ./... }

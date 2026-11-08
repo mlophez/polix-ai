@@ -60,7 +60,11 @@ type Facts struct {
 	Contents   map[string]string // per epoch and path, see contentKey
 	Unreadable map[string]bool   // per epoch and path, see contentKey
 	Searches   map[string]bool   // per epoch, patterns and text: whether a matching file holds the text
-	Warnings   []string          // warnings of the call, such as an unknown content hash
+	// TreeDiffs and TreeErrs are, per pair of trees (see treeKey), the paths that differ between them or why they
+	// could not be compared; a tree identifies its content, so the answer holds at any epoch.
+	TreeDiffs map[string][]string
+	TreeErrs  map[string]error
+	Warnings  []string // warnings of the call, such as an unknown content hash
 }
 
 // newerVersion matches the problem of a workflow of a later version of the schema.
@@ -91,8 +95,9 @@ func (e Evaluation) KnowBranch(branch string) Evaluation {
 	return e
 }
 
-// KnowHash returns the evaluation knowing the content hash at epoch, or why it could not be computed: then no
-// fact is recorded nor holds, and the call warns once.
+// KnowHash returns the evaluation knowing the content hash at epoch, or why it could not be computed: then nothing
+// tied to a content is observed, finished never holds, a run and a block with once act every time, and the call
+// warns once.
 func (e Evaluation) KnowHash(epoch int, hash string, err error) Evaluation {
 	e.Facts = e.Facts.learnHash(epoch, hash, err)
 	return e
@@ -154,6 +159,13 @@ func (e Evaluation) KnowFound(epoch int, patterns []string, text string, found b
 	return e
 }
 
+// KnowTreeDiff returns the evaluation knowing the paths that differ between the trees from and to, or why they
+// could not be compared (a tree git no longer has, or git failing): then the trees count as different.
+func (e Evaluation) KnowTreeDiff(from, to string, paths []string, err error) Evaluation {
+	e.Facts = e.Facts.learnTreeDiff(from, to, paths, err)
+	return e
+}
+
 // Note returns the evaluation with the outcome of the step that acted last: what it printed and why it failed.
 func (e Evaluation) Note(output string, err error) Evaluation {
 	o := Outcome{Output: output, Err: err}
@@ -205,6 +217,33 @@ func (f Facts) Found(epoch int, patterns []string, text string) (found, known bo
 	return found, known
 }
 
+// TreeDiff returns the paths that differ between the trees from and to, whether they were compared at all, and
+// why they could not be.
+func (f Facts) TreeDiff(from, to string) (paths []string, compared bool, err error) {
+	key := treeKey(from, to)
+	if err, failed := f.TreeErrs[key]; failed {
+		return nil, true, err
+	}
+	paths, compared = f.TreeDiffs[key]
+	return paths, compared, nil
+}
+
+func (f Facts) learnTreeDiff(from, to string, paths []string, err error) Facts {
+	key := treeKey(from, to)
+	if err != nil {
+		m := make(map[string]error, len(f.TreeErrs)+1)
+		maps.Copy(m, f.TreeErrs)
+		m[key] = err
+		f.TreeErrs = m
+		return f
+	}
+	m := make(map[string][]string, len(f.TreeDiffs)+1)
+	maps.Copy(m, f.TreeDiffs)
+	m[key] = slices.Clone(paths)
+	f.TreeDiffs = m
+	return f
+}
+
 func (f Facts) learnFound(epoch int, patterns []string, text string, found bool) Facts {
 	m := make(map[string]bool, len(f.Searches)+1)
 	maps.Copy(m, f.Searches)
@@ -222,7 +261,8 @@ func (f Facts) learnHash(epoch int, hash string, err error) Facts {
 	if err != nil {
 		hash = ""
 		f.Warnings = appendNew(f.Warnings, fmt.Sprintf(
-			"polix no puede calcular el hash del contenido (%v): no se registran ni se cumplen hechos", err))
+			"polix no puede calcular el hash del contenido (%v): no se registra lo observado ni se cumple finished, "+
+				"y run y los block con once actúan cada vez", err))
 	}
 	hashes := make(map[int]string, len(f.Hashes)+1)
 	maps.Copy(hashes, f.Hashes)
@@ -303,6 +343,9 @@ func (f Facts) learnContent(epoch int, path, data string, err error) Facts {
 // contentKey is the key of a file read at epoch.
 func contentKey(epoch int, path string) string { return fmt.Sprintf("%d\x00%s", epoch, path) }
 
+// treeKey is the key of the comparison of two trees.
+func treeKey(from, to string) string { return from + "\x00" + to }
+
 // foundKey is the key of a search at epoch.
 func foundKey(epoch int, patterns []string, text string) string {
 	return fmt.Sprintf("%d\x00%s\x00%s", epoch, strings.Join(patterns, "\x01"), text)
@@ -325,10 +368,18 @@ func Unusable(err error, running string) error {
 }
 
 // mayNeedNewer reports whether the problems of a workflow may come from a newer polix: it requires one, it names
-// something this one does not know, or it has a later version of the schema.
+// something this one does not know (not a name of the old vocabulary, which comes with its new spelling), or it has
+// a later version of the schema.
 func mayNeedNewer(problems string) bool {
-	return strings.Contains(problems, "requires polix") || strings.Contains(problems, "unknown") ||
-		newerVersion.MatchString(problems)
+	if strings.Contains(problems, "requires polix") || newerVersion.MatchString(problems) {
+		return true
+	}
+	for line := range strings.SplitSeq(problems, "\n") {
+		if strings.Contains(line, "unknown") && !workflow.Renamed(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // appendNew appends to a copy of list the texts of more it does not hold yet.

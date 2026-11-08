@@ -1,18 +1,20 @@
 // Package workflow is the domain of polix.yaml: for each neutral event, an ordered list of entries, each with
-// optional `if` and `unless` conditions and exactly one action, plus the variables, the base branches, the
-// protected paths, the loop guard and the runners of the checks of the rules.
+// optional `when` and `unless` conditions and an action with one verb (run, inject or block), plus the variables,
+// the base branches, the protected paths, the loop guard and the runners of the checks of the rules.
 //
 //	version: 1
 //	vars:
 //	  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
 //	on:
-//	  stop:
-//	    - if: { changed: "src/**" }
-//	      unless: { done: reviewed }
-//	      require: "Lanza el subagente reviewer sobre el diff actual"
+//	  pre_commit:
+//	    - when: { changed: "src/**" }
+//	      unless: { finished: polix:reviewer }
+//	      action:
+//	        block: "Lanza el subagente polix:reviewer sobre el diff actual"
 //
-// The vocabulary is closed: Valid rejects unknown events, conditions, actions and keys, so a typo never turns
-// into a rule that silently stops applying. Reading the file is the job of the adapters: Parse takes its bytes.
+// The vocabulary is closed: Valid rejects unknown events, conditions, verbs and keys, so a typo never turns into
+// a rule that silently stops applying, and a name of the old vocabulary is reported with its new spelling.
+// Reading the file is the job of the adapters: Parse takes its bytes.
 package workflow
 
 import (
@@ -46,6 +48,8 @@ type Workflow struct {
 	// Weights are the factors of the risk score per path glob (risk.weights), in file order: the first glob that
 	// matches a file gives its weight, and a file no glob matches weighs 1.
 	Weights []Weight
+	// EventLines is the line of each event of `on` in the file, for messages.
+	EventLines map[string]int
 }
 
 // Var extracts a variable from the branch name: the first group of the regular expression, or the whole match.
@@ -63,6 +67,7 @@ type Invalid []string
 type validator struct {
 	w        *Workflow
 	problems []string
+	lines    []int // the line of each problem, 0 for the whole file
 }
 
 // File is the workflow, relative to the repository root.
@@ -73,7 +78,7 @@ const DefaultMaxStopBlocks = 3
 
 // Neutral events, the same for every agent.
 const (
-	SessionStart = "session_start"
+	Start        = "start"
 	Prompt       = "prompt"
 	PreEdit      = "pre_edit"
 	PostEdit     = "post_edit"
@@ -81,26 +86,25 @@ const (
 	PostCommand  = "post_command"
 	PreCommit    = "pre_commit"
 	SubagentStop = "subagent_stop"
-	Stop         = "stop"
+	Stop         = "stop" // the main session ends its turn; a subagent ends with subagent_stop
 )
 
-// Modes of an entry: enforce applies it, warn turns a block into a warning in the context, audit only logs.
+// Verbs of an action: the action of an entry holds exactly one.
 const (
-	ModeEnforce = "enforce"
-	ModeWarn    = "warn"
-	ModeAudit   = "audit"
+	VerbRun    = "run"
+	VerbInject = "inject"
+	VerbBlock  = "block"
 )
 
 // Events lists every neutral event in lifecycle order.
-var Events = []string{SessionStart, Prompt, PreEdit, PostEdit, PreCommand, PostCommand, PreCommit, SubagentStop, Stop}
+var Events = []string{Start, Prompt, PreEdit, PostEdit, PreCommand, PostCommand, PreCommit, SubagentStop, Stop}
 
-// Actions an entry can take; each entry has exactly one, and record may also go next to any other one, as the
-// fact that action records once it applied.
-var Actions = []string{"deny", "allow", "require", "run", "context", "record"}
+// Actions are the verbs an action can hold, exactly one per entry.
+var Actions = []string{VerbRun, VerbInject, VerbBlock}
 
-// Conditions an `if` or `unless` can use.
-var Conditions = []string{"branch", "var", "path", "changed", "file", "contains", "command", "writes", "exit", "actor", "done", "not",
-	"any", "changed_lines", "changed_files", "risk_score"}
+// Conditions a `when` or `unless` can use.
+var Conditions = []string{"branch", "var", "path", "changed", "file", "contains", "command", "writes", "exit", "actor",
+	"finished", "not", "any", "changed_lines", "changed_files", "risk_score"}
 
 // Measures are the conditions that measure the uncommitted diff, over the files of the nearest `changed`.
 var Measures = []string{"changed_lines", "changed_files", "risk_score"}
@@ -116,6 +120,39 @@ var conditionEvents = map[string][]string{
 	"exit":    {PostCommand},
 }
 
+// Informed are the events that already happened when polix hears of them: a block cannot stop them, and a failing
+// run only reaches the AI as context.
+var Informed = []string{Start, PostEdit, PostCommand}
+
+// renamedEvents maps the events of the old vocabulary to their new name.
+var renamedEvents = map[string]string{"session_start": Start, "turn_stop": Stop}
+
+// renamed holds, per place of the file, the names of the old vocabulary and the hint of their new spelling, which
+// the validator appends to the problem of the unknown name.
+var renamed = map[string]map[string]string{
+	"key": {
+		"if":      "use when",
+		"why":     "remove it, or keep the text as a YAML comment",
+		"mode":    "remove it: a warning is an action: { inject: ... }, a failing run on post_edit or post_command already reaches the AI as context, and audit has no replacement",
+		"deny":    "use action: { block: <message> }",
+		"require": "use action: { block: <message> }",
+		"allow":   "write the exception as a not in when, or in unless",
+		"run":     "move it into action: { run: ... }",
+		"context": "use action: { inject: ... }",
+		"record":  "remove it: polix observes the end of a subagent by itself, so use finished: <subagent> in when or unless; next to a run, a run that passed is not run again on the same content",
+	},
+	"action":    {"deny": "use block", "require": "use block", "context": "use inject"},
+	"condition": {"done": "use finished: <subagent>, which holds once that subagent ended on the same files; for the fact of a run, remove it: a run that passed is not run again on the same content"},
+}
+
+// oldActions are the keys of the old vocabulary that were the action of an entry: an entry that has one is told
+// how to rewrite it, not that it has no action.
+var oldActions = []string{"deny", "require", "allow", "run", "context", "record"}
+
+// renamedProblem finds, in a problem of the validator, the unknown name it reports with its new spelling: the place
+// (key, event or condition), the name and, for a key of the action, " in action".
+var renamedProblem = regexp.MustCompile(`unknown (key|event|condition) "([^"]*)"( in action)?: `)
+
 // placeholder finds the {name} placeholders of a string.
 var placeholder = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
@@ -129,8 +166,8 @@ func (w Workflow) Valid() error {
 	return nil
 }
 
-// Problems returns every problem of the workflow, one per line as `polix check` prints them; an empty list means
-// it is valid.
+// Problems returns every problem of the workflow, one per line as `polix check` prints them, in the order of the
+// file (see byLine); an empty list means it is valid.
 func (w Workflow) Problems() []string {
 	v := &validator{w: &w}
 	if w.Version != 1 {
@@ -166,12 +203,19 @@ func (w Workflow) Problems() []string {
 	}
 	sort.Strings(events)
 	for _, ev := range events {
+		known := ev
 		if !contains(Events, ev) {
-			v.add(0, "unknown event %q (events: %s)", ev, strings.Join(Events, ", "))
-			continue
+			renamedTo, ok := renamedEvents[ev]
+			if !ok {
+				v.add(w.EventLines[ev], "unknown event %q (events: %s)", ev, strings.Join(Events, ", "))
+				continue
+			}
+			// The entries of a renamed event are checked as those of its new name, so every hint comes at once.
+			v.add(w.EventLines[ev], "unknown event %q: use %s", ev, renamedTo)
+			known = renamedTo
 		}
 		for _, e := range w.On[ev] {
-			v.entry(ev, e)
+			v.entry(known, e)
 		}
 	}
 	v.rules(w.Rules)
@@ -183,7 +227,38 @@ func (w Workflow) Problems() []string {
 			v.add(0, "risk.weights: %v", err)
 		}
 	}
-	return v.problems
+	return v.byLine()
+}
+
+// ObservedSubagents returns the subagent types the `finished` conditions of the workflow name, as written, sorted
+// and without repeats: the subagents whose end polix writes to its log.
+func (w Workflow) ObservedSubagents() []string {
+	var out []string
+	for _, entries := range w.On {
+		for _, e := range entries {
+			out = appendFinished(out, e.When)
+			out = appendFinished(out, e.Unless)
+		}
+	}
+	sort.Strings(out)
+	return slices.Compact(out)
+}
+
+// InjectsOnce reports whether the workflow has a once-only inject: an inject without always on an event other than
+// start, which always injects. Its injects are due again when a session starts or a subagent finishes, so polix
+// then writes those events to its log.
+func (w Workflow) InjectsOnce() bool {
+	for ev, entries := range w.On {
+		if ev == Start {
+			continue
+		}
+		for _, e := range entries {
+			if e.Action.Inject != nil && !e.Action.Inject.Always {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Valid tells why the variable is not valid: an unknown key, no branch or a branch that does not compile.
@@ -202,6 +277,22 @@ func (v *validator) add(line int, format string, args ...any) {
 		where = fmt.Sprintf("%s:%d", File, line)
 	}
 	v.problems = append(v.problems, where+": "+fmt.Sprintf(format, args...))
+	v.lines = append(v.lines, line)
+}
+
+// byLine returns the problems sorted by their line, so the report follows the file: those of the whole file (line
+// 0) first, and those of one line in the order they were found.
+func (v *validator) byLine() []string {
+	order := make([]int, len(v.problems))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return v.lines[order[a]] < v.lines[order[b]] })
+	out := make([]string, len(order))
+	for i, j := range order {
+		out[i] = v.problems[j]
+	}
+	return out
 }
 
 // unknownKeys reports the keys of a map that are not in allowed.
@@ -247,4 +338,41 @@ func (v *validator) variable(name string, def Var) {
 	}
 }
 
+// Renamed reports whether a problem of the workflow (one line of Problems) is about a name of the old vocabulary,
+// reported with its new spelling: it is a name this polix knows it replaced, never an option of a newer polix.
+func Renamed(problem string) bool {
+	m := renamedProblem.FindStringSubmatch(problem)
+	if m == nil {
+		return false
+	}
+	place, name, inAction := m[1], m[2], m[3] != ""
+	switch {
+	case place == "event":
+		_, ok := renamedEvents[name]
+		return ok
+	case place == "key" && inAction:
+		_, ok := renamed["action"][name]
+		return ok
+	default:
+		_, ok := renamed[place][name]
+		return ok
+	}
+}
+
 func contains(list []string, s string) bool { return slices.Contains(list, s) }
+
+// appendFinished appends to out the subagent types the `finished` of c names, in c and the maps nested in it.
+func appendFinished(out []string, c Cond) []string {
+	for k, val := range c {
+		switch k {
+		case "finished":
+			names, _ := Strings(val)
+			out = append(out, names...)
+		case "not", "any":
+			if nested, ok := Nested(val); ok {
+				out = appendFinished(out, nested)
+			}
+		}
+	}
+	return out
+}

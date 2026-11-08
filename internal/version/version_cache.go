@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/mlophez/polix-ai/internal/workflow"
 )
 
 // Cache remembers the last check of the latest release, so the session start hook asks at most once an hour, and
@@ -98,10 +100,18 @@ func (c Cache) ShouldCheck(now time.Time, running string, rejected error) bool {
 }
 
 // NeedsNewer reports whether the problems of a workflow may come from a newer polix than the running one: it
-// requires one, it names something this one does not know, or it has a later version of the schema.
+// requires one, it names something this one does not know (not a name of the old vocabulary, which comes with its
+// new spelling), or it has a later version of the schema.
 func NeedsNewer(problems string) bool {
-	return strings.Contains(problems, "requires polix") || strings.Contains(problems, "unknown") ||
-		newerSchema.MatchString(problems)
+	if strings.Contains(problems, "requires polix") || newerSchema.MatchString(problems) {
+		return true
+	}
+	for line := range strings.SplitSeq(problems, "\n") {
+		if strings.Contains(line, "unknown") && !workflow.Renamed(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // within reports whether t is less than d before now. A time after now (saved with a clock that was ahead) is not

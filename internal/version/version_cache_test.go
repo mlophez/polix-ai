@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/mlophez/polix-ai/internal/workflow"
 )
 
 var cacheNow = time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
@@ -91,7 +93,8 @@ func TestCacheShouldCheck(t *testing.T) {
 	}
 }
 
-// A nested option, or a later version of the schema, may come from a newer polix too; a plain mistake may not.
+// A nested option, or a later version of the schema, may come from a newer polix too; a plain mistake may not, nor
+// a name of the old vocabulary, which comes with its new spelling.
 func TestNeedsNewer(t *testing.T) {
 	for problems, want := range map[string]bool{
 		"polix.yaml requires polix 0.2.0 or newer and this is 0.1.0: run polix update": true,
@@ -99,10 +102,29 @@ func TestNeedsNewer(t *testing.T) {
 		"polix.yaml: version must be 1, got 2":                                         true,
 		"polix.yaml: version must be 1, got 12":                                        true,
 		"polix.yaml: version must be 1, got 0":                                         false,
-		"polix.yaml: max_stop_blocks must not be negative":                             false,
+		"polix.yaml: max_stop_blocks must be positive, got -1":                         false,
 	} {
 		if got := NeedsNewer(problems); got != want {
 			t.Errorf("NeedsNewer(%q) = %v, want %v", problems, got, want)
 		}
 	}
+	// The problems of a polix.yaml in the old vocabulary, as the workflow reports them, never need a newer polix; a
+	// name it does not know among them may.
+	old := "version: 1\non:\n  session_start:\n    - context: x\n  turn_stop:\n    - if: { done: x }\n      action: { deny: x }\n    - context: x\n"
+	if got := versionCacheProblems(t, old); NeedsNewer(got) {
+		t.Errorf("the old vocabulary needs a newer polix:\n%s", got)
+	}
+	if got := versionCacheProblems(t, old+"    - action: { block: x }\n      an_option: y\n"); !NeedsNewer(got) {
+		t.Errorf("an unknown option among the old names:\n%s", got)
+	}
+}
+
+// versionCacheProblems returns the problems the workflow reports for src, joined as the hooks see them.
+func versionCacheProblems(t *testing.T, src string) string {
+	t.Helper()
+	_, err := workflow.Parse([]byte(src), "dev")
+	if _, ok := errors.AsType[workflow.Invalid](err); !ok {
+		t.Fatalf("not a workflow with problems: %v", err)
+	}
+	return err.Error()
 }

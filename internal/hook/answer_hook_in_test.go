@@ -27,6 +27,9 @@ type answerHookFakePort struct {
 	appendErr error
 	readErr   error
 	diffErr   error
+	treeErr   error
+	state     state.State
+	trees     []string // the paths TreeDiff gives
 	rules     []rule.Rule
 	calls     []string
 	appended  []state.Entry
@@ -67,6 +70,11 @@ func (p *answerHookFakePort) Hash(context.Context) (string, error) {
 	return "h", nil
 }
 
+func (p *answerHookFakePort) TreeDiff(_ context.Context, from, to string) ([]string, error) {
+	p.calls = append(p.calls, "TreeDiff "+from+" "+to)
+	return p.trees, p.treeErr
+}
+
 func (p *answerHookFakePort) Changed(context.Context) []string { return []string{"src/a.go"} }
 
 func (p *answerHookFakePort) Diff(context.Context) (diff.Diff, error) {
@@ -84,7 +92,10 @@ func (p *answerHookFakePort) LoadRules(context.Context, string) ([]rule.Rule, er
 }
 
 func (p *answerHookFakePort) LoadState(context.Context) (state.State, error) {
-	return state.State{}, p.stateErr
+	if p.stateErr != nil {
+		return state.State{}, p.stateErr
+	}
+	return p.state, nil
 }
 
 func (p *answerHookFakePort) Ignored(context.Context, string) bool { return false }
@@ -131,7 +142,8 @@ func answerHookClaude(input string) AnswerHookRequest {
 // The events of one call are evaluated in turn and their answers merged: a command and its commit give one
 // message.
 func TestAnswerHookMergesEvents(t *testing.T) {
-	port := &answerHookFakePort{yaml: "version: 1\non:\n  pre_command:\n    - deny: \"no\"\n  pre_commit:\n    - deny: \"no\"\n"}
+	port := &answerHookFakePort{yaml: "version: 1\non:\n  pre_command:\n    - action: { block: \"no\" }\n" +
+		"  pre_commit:\n    - action: { block: \"no\" }\n"}
 	res, err := answerHook(context.Background(), port, answerHookClaude(
 		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git commit -m x"}}`))
 	if err != nil {
@@ -192,7 +204,8 @@ func TestAnswerHookNothingToGovern(t *testing.T) {
 	if err != nil || res != (AnswerHookResponse{}) || len(port.calls) != 0 {
 		t.Fatalf("no events: %+v %v %q", res, err, port.calls)
 	}
-	port = &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - require: x\n", openErr: errors.New("not a repo")}
+	port = &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - action: { block: x }\n",
+		openErr: errors.New("not a repo")}
 	res, err = answerHook(context.Background(), port, answerHookClaude(`{"hook_event_name":"Stop","cwd":"/tmp/x"}`))
 	if err != nil || res != (AnswerHookResponse{}) || !slices.Equal(port.calls, []string{"Open /tmp/x"}) {
 		t.Fatalf("outside a repository: %+v %v %q", res, err, port.calls)
@@ -225,17 +238,18 @@ func TestAnswerHookPortErrors(t *testing.T) {
 		code  int
 		wants string
 	}{
-		{"hash", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - record: x\n", hashErr: errors.New("boom")},
+		{"hash", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - unless: { finished: polix:reviewer }\n" +
+			"      action: { run: ls }\n", hashErr: errors.New("boom")},
 			0, "polix: polix no puede calcular el hash del contenido (boom)"},
-		{"rules", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - run: { rules: changed }\n",
+		{"rules", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - action: { run: { rules: changed } }\n",
 			rulesErr: errors.New("boom")}, 2, "No se pueden cargar las rules: boom"},
-		{"state", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - require: x\n", stateErr: errors.New("boom")},
-			0, "no puede usar su log (boom): x"},
-		{"append", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - require: x\n", appendErr: errors.New("boom")},
-			0, "no puede usar su log (boom): x"},
-		{"run", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - run: { command: [just, test] }\n",
+		{"state", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - action: { block: x }\n",
+			stateErr: errors.New("boom")}, 0, "no puede usar su log (boom): x"},
+		{"append", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - action: { block: x }\n",
+			appendErr: errors.New("boom")}, 0, "no puede usar su log (boom): x"},
+		{"run", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - action: { run: [just, test] }\n",
 			runErr: errors.New("exit status 1")}, 2, "Falla just test: exit status 1"},
-		{"check", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - run: { rules: changed }\n",
+		{"check", &answerHookFakePort{yaml: "version: 1\non:\n  stop:\n    - action: { run: { rules: changed } }\n",
 			rules:  []rule.Rule{{ID: "R-1", Description: "d", Deterministic: true, Check: "c.sh"}},
 			runErr: errors.New("exit status 1")}, 2, "- R-1 (c.sh): d"},
 	} {
@@ -245,7 +259,7 @@ func TestAnswerHookPortErrors(t *testing.T) {
 		}
 	}
 	// A file that cannot be read gives no context.
-	port := &answerHookFakePort{yaml: "version: 1\non:\n  prompt:\n    - context: { file: notes.md }\n",
+	port := &answerHookFakePort{yaml: "version: 1\non:\n  prompt:\n    - action: { inject: { file: notes.md } }\n",
 		readErr: errors.New("boom")}
 	res, err := answerHook(context.Background(), port, answerHookClaude(`{"hook_event_name":"UserPromptSubmit","cwd":"/repo"}`))
 	if err != nil || res.Stdout != "" || !slices.Contains(port.calls, "Read notes.md") {
@@ -261,7 +275,7 @@ func TestAnswerHookPortErrors(t *testing.T) {
 // A batch runner checks a passing group of rules with one call of the port.
 func TestAnswerHookRunsAPassingGroupOnce(t *testing.T) {
 	port := &answerHookFakePort{yaml: "version: 1\nrules:\n  run:\n    \"*_test.go\": [go, test, \"{dir}\", -run, " +
-		"\"^Test({names})$\"]\non:\n  stop:\n    - run: { rules: changed }\n",
+		"\"^Test({names})$\"]\non:\n  stop:\n    - action: { run: { rules: changed } }\n",
 		rules: []rule.Rule{
 			{ID: "A-1", Description: "d", Deterministic: true, Check: "t/a1_test.go"},
 			{ID: "A-2", Description: "d", Deterministic: true, Check: "t/a2_test.go"},
@@ -294,12 +308,46 @@ func TestAnswerHookUnusableWorkflow(t *testing.T) {
 	if err != nil || res.Code != 0 || !strings.HasPrefix(res.Stderr, "polix: el workflow no es válido") {
 		t.Fatalf("stop: %+v %v", res, err)
 	}
+	// A workflow of the old vocabulary is told its new spelling, never to update polix to keep it.
+	port = &answerHookFakePort{yaml: "version: 1\non:\n  turn_stop:\n    - require: x\n"}
+	res, err = answerHook(context.Background(), port, answerHookClaude(
+		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"ls"}}`))
+	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, `unknown event "turn_stop": use stop`) ||
+		!strings.Contains(res.Stderr, `unknown key "require": use action: { block: <message> }`) ||
+		strings.Contains(res.Stderr, "no las quites") {
+		t.Fatalf("old vocabulary: %+v %v", res, err)
+	}
+}
+
+// The shell answers the comparison of trees through the port: a review of the Go code holds after an edit of the
+// docs, and not after an edit of a Go file nor when the trees cannot be compared.
+func TestAnswerHookComparesTrees(t *testing.T) {
+	yaml := "version: 1\non:\n  pre_commit:\n    - when: { changed: \"*.go\" }\n" +
+		"      unless: { finished: polix:reviewer }\n      action: { block: \"revisa\" }\n"
+	commit := `{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git commit -m x"}}`
+	reviewed := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeFinished,
+		Key: "polix:reviewer", Branch: "main", Hash: "old"}}}
+	for name, c := range map[string]struct {
+		trees []string
+		err   error
+		code  int
+	}{
+		"docs":    {[]string{"README.md"}, nil, 0},
+		"go":      {[]string{"src/a.go"}, nil, 2},
+		"missing": {nil, errors.New("fatal: bad object old"), 2},
+	} {
+		port := &answerHookFakePort{yaml: yaml, state: reviewed, trees: c.trees, treeErr: c.err}
+		res, err := answerHook(context.Background(), port, answerHookClaude(commit))
+		if err != nil || res.Code != c.code || !slices.Contains(port.calls, "TreeDiff old h") {
+			t.Errorf("%s: %+v %v %q", name, res, err, port.calls)
+		}
+	}
 }
 
 // The shell answers the Diff step through the port; its error makes the measures hold, with a warning.
 func TestAnswerHookMeasuresTheDiff(t *testing.T) {
-	yaml := "version: 1\non:\n  pre_commit:\n    - if: { changed: \"*.go\", changed_lines: { at_least: 150 } }\n" +
-		"      deny: \"{changed_lines} lineas\"\n"
+	yaml := "version: 1\non:\n  pre_commit:\n    - when: { changed: \"*.go\", changed_lines: 150 }\n" +
+		"      action: { block: \"{changed_lines} lineas\" }\n"
 	commit := `{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git commit -m x"}}`
 	port := &answerHookFakePort{yaml: yaml}
 	res, err := answerHook(context.Background(), port, answerHookClaude(commit))

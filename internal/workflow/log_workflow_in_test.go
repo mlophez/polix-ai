@@ -18,11 +18,15 @@ type fakeLogWorkflowPort struct {
 func (f fakeLogWorkflowPort) ReadLog(context.Context) (state.State, error) { return f.st, f.err }
 
 var logWorkflowEntries = []state.Entry{
-	{At: "t1", Kind: state.KindFact, Event: "stop", Actor: "main", Fact: "reviewed", Hash: "0123456789abcdef"},
-	{At: "t2", Kind: state.KindDecision, Event: "pre_edit", Actor: "builder", Action: "deny", Outcome: "deny",
+	{At: "t0", Kind: "fact", Event: "stop", Actor: "session", Hash: "fedcba9876543210", Fact: "reviewed"},
+	{At: "t1", Kind: state.KindObserved, Event: "subagent_stop", Actor: "polix:reviewer", Key: "polix:reviewer",
+		Outcome: state.OutcomeFinished, Hash: "0123456789abcdef"},
+	{At: "t2", Kind: state.KindDecision, Event: "pre_edit", Actor: "builder", Action: "block", Outcome: "block",
 		Line: 4, Reason: "first\nsecond"},
 }
 
+// Each entry is one line: an observed one with its outcome and key, a decision with its outcome and verb, and an
+// old line of a kind polix no longer writes with its kind.
 func TestLogWorkflowShellPrintsText(t *testing.T) {
 	port := fakeLogWorkflowPort{st: state.State{Entries: logWorkflowEntries, Skipped: 1}}
 	res, err := logWorkflow(context.Background(), port, LogWorkflowRequest{Tail: 20})
@@ -31,8 +35,9 @@ func TestLogWorkflowShellPrintsText(t *testing.T) {
 	}
 	var out, errb bytes.Buffer
 	res.print(&out, &errb, false)
-	want := "t1  fact       stop          main      reviewed         01234567  \n" +
-		"t2  decision   pre_edit      builder   deny deny          first\n"
+	want := "t0  fact       stop          session   reviewed         fedcba98  \n" +
+		"t1  observed   subagent_stop polix:reviewer finished polix:reviewer 01234567  \n" +
+		"t2  decision   pre_edit      builder   block block        first\n"
 	if out.String() != want {
 		t.Fatalf("got:\n%q\nwant:\n%q", out.String(), want)
 	}
@@ -43,16 +48,51 @@ func TestLogWorkflowShellPrintsText(t *testing.T) {
 
 func TestLogWorkflowShellPrintsJSON(t *testing.T) {
 	port := fakeLogWorkflowPort{st: state.State{Entries: logWorkflowEntries}}
-	res, err := logWorkflow(context.Background(), port, LogWorkflowRequest{Tail: 1, JSON: true})
+	res, err := logWorkflow(context.Background(), port, LogWorkflowRequest{Tail: 3, JSON: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var out, errb bytes.Buffer
 	res.print(&out, &errb, true)
-	want := `{"at":"t2","kind":"decision","event":"pre_edit","actor":"builder","action":"deny","line":4,` +
-		`"outcome":"deny","reason":"first\nsecond"}` + "\n"
+	// The old fact line keeps its name, read-only.
+	want := `{"at":"t0","kind":"fact","event":"stop","actor":"session","hash":"fedcba9876543210","fact":"reviewed"}` +
+		"\n" + `{"at":"t1","kind":"observed","event":"subagent_stop","actor":"polix:reviewer","hash":"0123456789abcdef",` +
+		`"key":"polix:reviewer","outcome":"finished"}` + "\n" +
+		`{"at":"t2","kind":"decision","event":"pre_edit","actor":"builder","action":"block","line":4,` +
+		`"outcome":"block","reason":"first\nsecond"}` + "\n"
 	if out.String() != want || errb.Len() != 0 {
 		t.Fatalf("got %q %q", out.String(), errb.String())
+	}
+}
+
+// The lines of the repeat rules: a verb spared as a skip decision with its verb, a passed line with what it ran, and
+// the old injected and stop_block lines with their kind, the rule of the injected one included, and an inject of a
+// text of several lines with its first line only.
+func TestLogWorkflowShellPrintsRepeatLines(t *testing.T) {
+	port := fakeLogWorkflowPort{st: state.State{Entries: []state.Entry{
+		{At: "t3", Kind: state.KindDecision, Event: "stop", Actor: "session", Action: "run", Outcome: "skip",
+			Line: 5, Reason: "just test ya pasó en este contenido"},
+		{At: "t4", Kind: state.KindObserved, Event: "stop", Actor: "session", Key: "just test",
+			Outcome: state.OutcomePassed, Line: 5, Hash: "0123456789abcdef"},
+		{At: "t5", Kind: "injected", Session: "s", Rule: "GO-2"},
+		{At: "t6", Kind: "stop_block", Event: "stop", Actor: "session", Line: 4, Hash: "abcdef0123456789",
+			Reason: "revisa"},
+		{At: "t7", Kind: state.KindObserved, Event: "pre_edit", Actor: "session", Key: "uno\ndos",
+			Outcome: state.OutcomeInjected, Line: 9},
+	}}}
+	res, err := logWorkflow(context.Background(), port, LogWorkflowRequest{Tail: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	res.print(&out, &errb, false)
+	want := "t3  decision   stop          session   skip run           just test ya pasó en este contenido\n" +
+		"t4  observed   stop          session   passed just test 01234567  \n" +
+		"t5  injected                           GO-2               \n" +
+		"t6  stop_block stop          session                    abcdef01  revisa\n" +
+		"t7  observed   pre_edit      session   injected uno       \n"
+	if out.String() != want {
+		t.Fatalf("got:\n%q\nwant:\n%q", out.String(), want)
 	}
 }
 

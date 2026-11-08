@@ -9,8 +9,10 @@ import (
 
 // Step is what the evaluation of an event needs from the outside before it can go on: read one fact of the
 // repository, run a command or the check of a rule, or append an entry to the log. The zero Step is none: the
-// answer is ready. Exactly one of its fields asks; Epoch goes with Hash and Read.
+// answer is ready. Exactly one of its fields asks; Epoch goes with Hash and Read, Tree with Compare.
 type Step struct {
+	Compare  string   // the paths that differ between this tree, of an observed line, and Tree
+	Tree     string   // the tree of the current content, at the epoch of the evaluation
 	Branch   bool     // the current branch
 	Hash     bool     // the content hash, at Epoch
 	Epoch    int      // the runs carried out before the fact of Hash or Read, which a run may change
@@ -40,7 +42,8 @@ type Outcome struct {
 func (s Step) Valid() error {
 	n := 0
 	for _, asks := range []bool{s.Branch, s.Hash, s.Changed, s.Diff, s.Files, s.Rules, s.State, s.Ignored != "",
-		s.Real != nil, s.Contains != nil, s.Read != "", s.Run != nil, s.Check != nil, s.Append != nil} {
+		s.Real != nil, s.Contains != nil, s.Read != "", s.Run != nil, s.Check != nil, s.Append != nil,
+		s.Compare != ""} {
 		if asks {
 			n++
 		}
@@ -52,6 +55,8 @@ func (s Step) Valid() error {
 		return errors.New("the epoch of a step cannot be negative")
 	case s.Contains != nil && s.Text == "":
 		return errors.New("a search needs its text")
+	case (s.Compare == "") != (s.Tree == ""):
+		return errors.New("a comparison needs both trees")
 	case s.Run != nil && len(s.Run) == 0:
 		return errors.New("a run needs a command")
 	}
@@ -61,7 +66,8 @@ func (s Step) Valid() error {
 // None reports whether the step asks for nothing: the answer is ready.
 func (s Step) None() bool {
 	return !s.Branch && !s.Hash && !s.Changed && !s.Diff && !s.Files && !s.Rules && !s.State && s.Ignored == "" &&
-		s.Real == nil && s.Contains == nil && s.Read == "" && s.Run == nil && s.Check == nil && s.Append == nil
+		s.Real == nil && s.Contains == nil && s.Read == "" && s.Run == nil && s.Check == nil && s.Append == nil &&
+		s.Compare == ""
 }
 
 // Valid tells why the outcome is not one: it never is, any output and error may come from a step.

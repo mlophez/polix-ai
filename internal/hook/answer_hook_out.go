@@ -70,6 +70,12 @@ func (a *AnswerHookAdapter) Hash(ctx context.Context) (string, error) {
 	return a.Repo.ContentHash(ctx, filepath.Join(a.Repo.GitDir, state.DirName))
 }
 
+// TreeDiff returns the paths that differ between two content hashes, through git; a tree git no longer has is the
+// error.
+func (a *AnswerHookAdapter) TreeDiff(ctx context.Context, from, to string) ([]string, error) {
+	return a.Repo.TreeDiff(ctx, from, to)
+}
+
 // Changed returns the files not committed yet; a failure of git reads as no files. It swallows the error, so it
 // runs detached from the cancellation of ctx, bounded by the timeout of pkg/git.
 func (a *AnswerHookAdapter) Changed(ctx context.Context) []string {
@@ -175,7 +181,7 @@ func (a *AnswerHookAdapter) Append(_ context.Context, e state.Entry) error {
 		at = time.Now().Format(time.RFC3339)
 	}
 	stamped := state.Entry{At: at, Kind: e.Kind, Agent: e.Agent, Session: e.Session, Event: e.Event, Actor: e.Actor,
-		Branch: e.Branch, Hash: e.Hash, Fact: e.Fact, Rule: e.Rule, Action: e.Action, Line: e.Line,
+		Branch: e.Branch, Hash: e.Hash, Rule: e.Rule, Action: e.Action, Line: e.Line, Key: e.Key,
 		Outcome: e.Outcome, Reason: e.Reason}
 	if err := stamped.Valid(); err != nil {
 		return err

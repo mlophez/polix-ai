@@ -3,6 +3,7 @@ package hook
 import (
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -80,9 +81,27 @@ func TestEvaluationKnowStateAndNote(t *testing.T) {
 	}
 }
 
+// The comparison of two trees is kept per pair, whatever the epoch: its paths, or why it could not be done.
+func TestEvaluationKnowTreeDiff(t *testing.T) {
+	var ev Evaluation
+	got := ev.KnowTreeDiff("a", "b", []string{"x.go"}, nil).KnowTreeDiff("c", "b", nil, errors.New("bad object c"))
+	if paths, compared, err := got.Facts.TreeDiff("a", "b"); !compared || err != nil || !slices.Equal(paths, []string{"x.go"}) {
+		t.Fatalf("a b: %q %v %v", paths, compared, err)
+	}
+	if _, compared, err := got.Facts.TreeDiff("c", "b"); !compared || err == nil {
+		t.Fatalf("c b: %v %v", compared, err)
+	}
+	if _, compared, _ := got.Facts.TreeDiff("b", "a"); compared {
+		t.Fatal("b a was not compared")
+	}
+	if ev.Facts.TreeDiffs != nil || ev.Facts.TreeErrs != nil {
+		t.Fatal("the original changed")
+	}
+}
+
 // The next event starts after the runs of this one, with the log as it left it.
 func TestFactsCarry(t *testing.T) {
-	s := state.State{Entries: []state.Entry{{Kind: state.KindFact}}}
+	s := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeStarted}}}
 	f := Facts{HasState: true, StateAt: 3}.Carry(2, s)
 	if f.Epoch != 2 || len(f.State.Entries) != 1 || f.StateAt != 0 {
 		t.Fatalf("%+v", f)
@@ -102,6 +121,10 @@ func TestUnusable(t *testing.T) {
 		"polix.yaml: version must be 1, got 2":                 true,
 		"polix.yaml: requires polix 0.3.0":                     true,
 		"polix.yaml: max_stop_blocks must be positive, got -1": false,
+		"polix.yaml:3: unknown event \"turn_stop\": use stop\npolix.yaml:4: unknown key \"deny\": use action: { block: <message> }":  false,
+		"polix.yaml:3: unknown event \"session_start\": use start":                                                                   false,
+		"polix.yaml:4: unknown condition \"done\": use finished: <subagent>\npolix.yaml:5: unknown key \"x\" (when, unless, action)": true,
+		"polix.yaml:4: unknown key \"context\" in action: use inject":                                                                false,
 	} {
 		err := Unusable(errors.New(problem), "0.1.0")
 		if got := strings.Contains(err.Error(), "no las quites: ejecuta polix update"); got != hint {
@@ -110,6 +133,12 @@ func TestUnusable(t *testing.T) {
 		if !strings.HasPrefix(err.Error(), problem) {
 			t.Errorf("%s: %v", problem, err)
 		}
+	}
+	// The problems of a polix.yaml in the old vocabulary, as the workflow reports them, never hint an update.
+	_, err := workflow.Parse([]byte("version: 1\non:\n  turn_stop:\n    - if: { done: x }\n      action: { deny: x }\n"+
+		"    - context: x\n"), "dev")
+	if err == nil || strings.Contains(Unusable(err, "0.1.0").Error(), "no las quites") {
+		t.Fatalf("the old vocabulary hints an update: %v", err)
 	}
 	old := workflow.TooOld{Requires: "0.2.0", Running: "0.1.0"}
 	var got workflow.TooOld

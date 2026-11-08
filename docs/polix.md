@@ -14,13 +14,12 @@ workflows" (proposal 2).
 - `ai/rules/*.yaml` (the folder `rules.path` of polix.yaml): how the code must be. Polix only reads `id`,
   `description`, `scope`, `deterministic` and `check` of each rule; the rest of the format belongs to the skills
   that write and use the rules. `retired.yaml` holds retired rules, which never apply.
-- `polix.yaml`: what happens on each event of a session: what is blocked, required, run, injected and
-  recorded.
+- `polix.yaml`: what happens on each event of a session: what is blocked, what runs and what is injected.
 - `polix`: the same binary in every repository; it reads the three and answers the hooks.
 
 The human writes the three files; polix only enforces them.
-It measures and never judges: conditions are facts of the repository, the event and the state, and judging the
-code stays with the `reviewer` subagent.
+It measures and never judges: conditions are facts of the repository, the event and what polix observed by itself,
+and judging the code stays with the `reviewer` subagent.
 
 ## Commands
 
@@ -251,7 +250,8 @@ heuristic, aimed at accidents rather than at an agent determined to get around i
   `polix check`, `polix update`, `polix doctor` and `polix version` (optionally after a `cd`), and edits outside
   the repository or of ignored files go through as always. The built-in protections still apply. It never blocks a stop, which
   would trap the agent in a loop. When a problem names something unknown, the reason adds that it may be an
-  option of a newer polix, to update instead of removing it.
+  option of a newer polix, to update instead of removing it; a name of the old vocabulary is reported with its
+  new spelling instead (see [Names of the old vocabulary](#names-of-the-old-vocabulary)).
 - A diff that cannot be measured makes `changed_lines`, `changed_files` and `risk_score` hold (fail closed), with
   one warning per call that names the cause.
 - A workflow that `requires` a newer polix than the one running is not broken but ahead: it blocks the same way,
@@ -290,13 +290,18 @@ vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # first group of the branch name, used as {key}
 on:
   <event>:
-    - if: { <condition>: <value>, ... }      # optional: all must hold
-      unless: { <condition>: <value>, ... }  # optional: skip when all hold
-      mode: enforce | warn | audit           # optional, enforce by default
-      why: <reason of the entry>             # optional, for people
-      <action>: <value>                      # exactly one
-      record: <fact>                         # optional next to another action: recorded once it applied
+    - when: { <condition>: <value>, ... }    # optional: all must hold
+      unless: { <condition>: <value>, ... }  # optional: skip the entry when all hold
+      action:                                # required: exactly one verb, block, run or inject
+        block: <message>                     # or { message: <message>, once: true }
+    - action:
+        run: <command>                       # or [<arg>, ...], or { command | rules, message, always: true }
+    - action:
+        inject: <text>                       # or { file | text | rules, always: true }
 ```
+
+An entry has two parts: when it applies (`when` and `unless`) and what it does (`action`). A comment of YAML is
+the place for its reason, for people; the message of a `block` or a `run` is the reason the AI reads.
 
 `rules.path`, `plans.path` and `reports.path` place the folders of the AI, relative to the root: the rules polix
 reads, injects and checks, the plans the skill `plan` writes and the reports of audits and reviews. Each defaults
@@ -332,7 +337,7 @@ rules of `tests/architecture/` run together as `go test ./tests/architecture -ru
 when it fails, `GOARCH-4` (`check: tests/architecture/goarch04_test.go`) runs alone as
 `go test ./tests/architecture -run ^Test(GOARCH4)$`.
 
-`guidance` turns on or off the instructions polix injects into the agent by itself on `session_start`, so the agent
+`guidance` turns on or off the instructions polix injects into the agent by itself on `start`, so the agent
 works in the forms its heuristics recognise. `commit` asks to run each commit as a `git commit` command of its own,
 not chained with `&&`, `;` or `|` nor wrapped in `sh -c`, so `pre_commit` sees it. `edit` asks to create and change
 the files of the repository with the edit tool of the agent instead of the shell (`sed -i`, redirections, `tee`,
@@ -341,12 +346,14 @@ tells the agent the folders of `rules.path`, `plans.path` and `reports.path`, so
 of assuming `ai/`. Every switch is on when the key, or the switch, is left out, and `false` turns one off. The text
 is the template `templates/session_start.md.tmpl`, embedded in the binary (`text/template`, one block per switch),
 rendered as one context. It is injected only with a valid `polix.yaml`, on every source of the event (startup,
-resume, clear and compaction), before the contexts of the `session_start` entries, and in English. It asks the
+resume, clear and compaction), before the contexts of the `start` entries, and in English. It asks the
 agent to cooperate and blocks nothing. `polix check` reports an unknown key, and a value that is not a boolean, or a
 `guidance` that is not a map, stops the parse.
 
-Events: `session_start`, `prompt`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
+Events: `start`, `prompt`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
 `subagent_stop` and `stop`.
+`stop` is the main session about to end its turn, and `subagent_stop` a subagent about to end: they are
+separate events, so the entries of `stop` never run when a subagent ends.
 
 Conditions:
 
@@ -356,25 +363,41 @@ Conditions:
 - `changed`: a file not committed yet (changed since HEAD, or untracked and not ignored) matches a glob (or a
   list). The flow is reviewed commit by commit: once committed, a change no longer counts, whatever `base` says,
   so gates that must hold before a commit belong on `pre_commit`.
-- `file`: a file of the repository matches a glob; with `contains`, it also holds that text.
+- `file`: a file of the repository matches a glob; with `contains`, it also holds that text. `contains` is only
+  valid next to `file`, and never inside `any`, where it would hold on its own and make the `any` always true.
 - `command` and `exit`: a command of the line matches a pattern (`*` matches anything) and its exit code.
   `command` only on `pre_command`, `post_command` and `pre_commit`; `exit` only on `post_command`.
   The line is split into its commands (`cd x && just test 2>&1 | tail -3` runs `cd x`, `just test 2>&1` and
   `tail -3`, quotes respected), and each one is matched on its own.
   The exit code of the line only counts for a command whose failure propagates to it, alone, last or followed by
-  `&&`: in `just test | tail`, `tail` decides it, so `exit: 0` does not hold and a fact like `tested` is not
-  recorded from it.
+  `&&`: in `just test | tail`, `tail` decides it, so `exit: 1` does not hold. A command of the AI may trigger an
+  `inject` this way, but it never counts as a check that passed (see
+  [What polix observes](#what-polix-observes-and-finished)).
 - `writes`: a command of the line writes files and names a path that matches a glob (or a list), with the same
   heuristic as `protected`; reading does not count. Only on `pre_command`, `post_command` and `pre_commit`.
 - `actor`: who acts, `session` or the subagent type. An agent of a plugin is named with its prefix, as
   `polix:rules-reviewer`; an agent of `.claude/agents/` by its bare name.
-- `done`: a fact was recorded on this branch for exactly the current content.
-- `not`: a map of nested conditions; it holds unless every one of them holds.
+- `finished`: a subagent type, or a list of them (all must hold), ended on this branch and the files of the scope
+  of the entry did not change since. See [What polix observes](#what-polix-observes-and-finished).
+- `not`: a map of nested conditions; it holds unless every one of them holds (with one nested condition, it is its
+  negation).
 - `any`: a map of nested conditions; it holds when at least one of them holds. It may hold `not` and sit inside
-  it, and an empty `any` is a problem.
-- `changed_lines: { at_least: N }`, `changed_files: { at_least: N }` and `risk_score: { at_least: N }`: the
-  measures of the change not committed yet reach `N`, a non-negative integer. See
-  [Measures of the change](#measures-of-the-change).
+  it; an empty `any`, or one that holds `contains`, is a problem.
+- `changed_lines: N`, `changed_files: N` and `risk_score: N`: the measures of the change not committed yet reach
+  `N`, a non-negative integer. See [Measures of the change](#measures-of-the-change).
+
+An exception to an entry is a `not` in its `when`, or a condition in its `unless`. To let the agent write the plan
+before any other edit, the gate leaves the plan itself out:
+
+```yaml
+vars:
+  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+on:
+  pre_edit:
+    - when: { not: { path: "ai/plans/{key}-*.md" } }
+      unless: { file: "ai/plans/{key}-*.md" }
+      action: { block: "There is no plan for {key}: write it with /polix:plan" }
+```
 
 Globs are relative to the root and use `/`: `*` stays inside a segment, `**` crosses segments, a pattern
 without `/` matches the base name anywhere (`*.md`), and a leading `/` anchors it to the root, as in `.gitignore`
@@ -388,14 +411,15 @@ The measure conditions look at the same files as `changed`: the diff against HEA
 ignored (every file, without a commit yet). An untracked file counts all its lines as added; a binary file counts as
 a changed file with zero lines.
 
-- `changed_lines` holds when the added plus deleted lines of the measured files are at least `at_least`.
-- `changed_files` holds when at least `at_least` measured files changed, deleted and binary ones included.
-- `risk_score` holds when the risk score of the measured files is at least `at_least`: the sum over the files of
+Each measure takes a non-negative integer and holds from that number up:
+
+- `changed_lines: N` holds when the added plus deleted lines of the measured files are at least `N`.
+- `changed_files: N` holds when at least `N` measured files changed, deleted and binary ones included.
+- `risk_score: N` holds when the risk score of the measured files is at least `N`: the sum over the files of
   weight times log2(1 + added + deleted lines), rounded half away from zero. The weight of a file is the number of
   the first glob of `risk.weights` that matches it, in the order of the file, else 1; so a test of a critical
   folder can weigh less than the folder if its glob comes first.
 
-Each value is a map with one key, `at_least`; there is no short form, so `changed_lines: 150` is a problem.
 A measure has no globs of its own: it measures the files of the nearest `changed`, the one in its own map, else
 the one of the enclosing map (`any` and `not` nest maps), else the whole uncommitted diff, docs and plans included.
 Write it next to a `changed`:
@@ -403,77 +427,168 @@ Write it next to a `changed`:
 ```yaml
 on:
   pre_commit:
-    - if:
+    - when:
         changed: ["*.go", go.mod, go.sum]   # scopes the measures below
         any:
-          changed_lines: { at_least: 150 }
-          changed_files: { at_least: 5 }
-          risk_score: { at_least: 25 }
-      unless: { done: reviewed }
-      deny: "Cambio de {changed_lines} líneas en {changed_files} ficheros (riesgo {risk_score}): revísalo"
+          changed_lines: 150
+          changed_files: 5
+          risk_score: 25
+      unless: { finished: polix:reviewer }
+      action:
+        block: "Cambio de {changed_lines} líneas en {changed_files} ficheros (riesgo {risk_score}): revísalo con polix:reviewer"
 ```
 
 `{changed_lines}`, `{changed_files}` and `{risk_score}` expand in every string of an entry to the measures over the
-`changed` of its `if`, else the whole diff, so a message shows the numbers its thresholds compare. The diff is read
-once per call, and only when a condition or a string needs it. When it cannot be measured (git fails), the three
-conditions hold and the call warns once with the cause, as `done` with an unknown content hash: a broken git never
-skips a review. The placeholders then show `?`. The measures are those of the start of the call: a `run` that
-rewrites files on the same event does not change them, as for `changed`.
+`changed` of its `when`, else the whole diff, so a message shows the numbers its thresholds compare. The diff is
+read once per call, and only when a condition or a string needs it. When it cannot be measured (git fails), the
+three conditions hold and the call warns once with the cause, as `finished` does not hold with an unknown content
+hash: a broken git never skips a review. The placeholders then show `?`. The measures are those of the start of
+the call: a `run` that rewrites files on the same event does not change them, as for `changed`.
 
-`polix check` reports a measure that is not a map, without `at_least`, with an `at_least` that is not a
-non-negative integer or with another key, an empty `any`, and a weight with an empty glob or a negative number. A
+`polix check` reports a measure that is not a non-negative integer (a map with `at_least`, the old spelling, with
+the hint to write the number alone), an empty `any`, and a weight with an empty glob or a negative number. A
 `risk` or `risk.weights` that is not a map, a key of `risk` other than `weights`, and a weight that is not a number
 stop the parse. Calibrate the thresholds and the weights with `polix risk`.
 
-Actions:
+### Verbs
 
-- `deny: <reason>` blocks the event and stops the evaluation; not valid on `session_start`, `post_edit` or
-  `post_command`, which already happened.
-- `allow: true` stops the evaluation without blocking (`false` is rejected, since it would stop it too).
-- `require: <what to do>` blocks `stop` or `subagent_stop` until it is done; only valid there.
-- `run: { command: [..] }` runs a command from the root, without a shell; a failure blocks with its output.
+The `action` of an entry is a map with exactly one verb. Each verb has a short form, its value alone, and a long
+form, a map:
+
+- `block: <message>` blocks the event with a message for the AI (placeholders allowed). The long form is
+  `block: { message: <message>, once: true }`, and `message` is required. Valid on `prompt`, `pre_edit`,
+  `pre_command`, `pre_commit`, `stop` and `subagent_stop`; `start`, `post_edit` and `post_command`
+  already happened, so `polix check` rejects it there.
+- `run: <command>` runs a command from the root, without a shell (no pipes, redirections or globs). The command is
+  a string, split on spaces into arguments and never given to a shell, or a list of arguments when one holds a
+  space; placeholders are allowed in each argument, and `{path}` stays one argument. The long form is a map with
+  exactly one of `command` (the same command) or `rules`, plus `message`, the text before the output of a failure
+  (placeholders allowed), and `always`.
 - `run: { rules: changed }` runs the checks of the deterministic rules whose scope matches the changed files
-  (`rules: "{path}"` for one path); a failure blocks naming the rule ids. Each check runs with the first runner
-  of `rules.run` whose glob matches it, grouped and rerun on failure as `polix rules check` does, so the block
-  names only the rules that fail; a check no runner matches runs as a
-  program. On Windows, where a shebang does
-  nothing, a `.sh` check runs with the `bash` of Git for Windows, found next to `git` (else a `bash` of the `PATH`
-  outside the Windows folder, never the one of WSL), and a `.py` check with `py -3`, then `python3`, then
-  `python`, skipping the aliases of the Microsoft Store; a missing interpreter fails the check naming it, and
-  `polix doctor` reports it.
-- `context: { file | text | rules }` injects a file, a text, or the rules whose scope matches a path
-  (`rules: "{path}"`), each rule once per session. Not valid on `stop` or `subagent_stop`, which cannot
-  receive context.
-- `record: <fact>` alone records a fact on the current content. A rules file that cannot be loaded fails
-  `run: { rules }`.
+  (`rules: "{path}"` for one path); a failure names the rule ids, and a rules file that cannot be loaded fails it.
+  Each check runs with the first runner of `rules.run` whose glob matches it, grouped and rerun on failure as
+  `polix rules check` does, so the failure names only the rules that fail; a check no runner matches runs as a
+  program. On Windows, where a shebang does nothing, a `.sh` check runs with the `bash` of Git for Windows, found
+  next to `git` (else a `bash` of the `PATH` outside the Windows folder, never the one of WSL), and a `.py` check
+  with `py -3`, then `python3`, then `python`, skipping the aliases of the Microsoft Store; a missing interpreter
+  fails the check naming it, and `polix doctor` reports it.
+- `inject: <text>` injects a text for the AI (placeholders allowed). The long form is a map with exactly one of
+  `file` (a file of the repository; a missing file injects nothing), `text` or `rules` (the rules whose scope
+  matches a path, `rules: "{path}"`, each one as `- <id>: <description>`), plus `always`. Not valid on
+  `stop` or `subagent_stop`, where the agent cannot receive context.
 
-`record` may also go next to any other action of the entry, as the fact that action records once it applied:
+`once` only goes in a `block` and `always` only in a `run` or an `inject`, both as booleans.
 
-- `deny` and `require` record when they block, when they warn and when the loop guard lets a stop through; a
-  `deny` that blocks records before it stops the evaluation.
-- `allow` and `context` record when the entry applies, `context` even when every rule it would inject was
-  already injected in the session.
-- `run` records only when it passes, on the content it saw: a failing run records nothing, and neither does one
-  during which the content changed (a formatter that rewrites files, another agent editing). A gate on `stop`
-  with `unless: { done: <fact> }` then runs until it passes, and once per content after that.
-- In `audit` mode no entry records anything, whatever its action, so trying an entry never changes what the
-  others see.
+A failing `run` answers with its `message`, a blank line and the last 15 lines of the output (the failing rules and
+their output for `rules`). What it does depends on the event:
 
-`record` goes next to `run`, never inside it: `polix check` reports `run: { ..., record }` and names the fix.
-A `deny` or `require` that records the fact its own `unless` (or a `not: { done }` of its `if`) checks asks once
-per content instead of enforcing: the next stop or commit on the same content passes even if nothing was done.
-That suits a request the agent answers in the background, such as a review; keep a `deny` on `pre_commit` without
-`record` when the gate must hold.
+- On `prompt`, `pre_edit`, `pre_command`, `pre_commit`, `stop` and `subagent_stop` it blocks, as a `block`
+  does, and ends the evaluation of the event (up to the [loop guard](#loop-guard) on the two stops).
+- On `start`, `post_edit` and `post_command`, which already happened, it never blocks: the message and the
+  output reach the AI as context, as feedback it acts on at once, and the log records an `inform` decision. A lint
+  or a formatter on `post_edit` is feedback, not a gate.
 
-Modes: `enforce` applies the entry; `warn` turns a block into a warning for the agent; `audit` only logs what it
-would have blocked, to try a new entry before enforcing it. What each one does on each event is in
-[How the entries of an event are evaluated](#how-the-entries-of-an-event-are-evaluated).
+A warning is an `inject`: the AI is told and nothing is blocked. There is no mode to try an entry without
+enforcing it: try a new gate in a branch, and read its decisions with `polix log` once it is enforced.
 
-`polix check` rejects unknown events, conditions, actions and keys (inside `run`, `context` and `vars` too),
-variables and placeholders that are not defined, and conditions on events where they never hold, so a typo
-never turns into an entry that silently stops applying. Of `ai/rules/` it reports every problem, not only the
-first: a rule without id or description, an id repeated, a check that does not exist, a `check` on a rule that is
-not `deterministic: true`, and a `check` named by an absolute path instead of one relative to the root.
+### How often each verb acts
+
+- A `block` blocks every time its entry applies: a gate, which holds until its `unless` does. `once: true` makes it
+  a reminder: it blocks the first attempt of an actor (the main session, or a subagent type) in a session on a
+  content and lets the next attempt through. An edit inside the scope of the entry (see below) makes it block
+  again, an edit outside does not, and another actor or a new session, which never saw it, is reminded on its own.
+  A reminder is for a request the agent may rightly decline, such as checking whether the docs need an update;
+  a gate that must hold has no `once`, since the agent would pass a reminder by trying again.
+- A `run` is not run again once it passed on the same branch and content: the second `stop` on unchanged files
+  runs nothing. The repeat is keyed by what it runs, the expanded arguments joined by spaces (`rules` and the
+  expanded target for `run: { rules }`), whoever's entry it is, so two entries that run `just test` share it and
+  `{path}` in the command makes one key per path. A failing `run` runs again on the next event, and any edit makes
+  it run again. `always: true` runs it every time, for a command whose result depends on more than the files of the
+  repository (the network, the clock, a service).
+- An `inject` reaches each actor once per session for each text it expands to, and `inject: { rules }` each rule
+  once per actor and session. It is due again after a `start` of the session (a new, resumed, cleared or
+  compacted context) and, for a subagent, after that subagent type finished in the session, since its next run
+  starts with a new context. `always: true` injects it on every event. A text with a placeholder that changes on
+  every event (`{command}`, a measure such as `{changed_lines}`) expands to a new text each time, so it is injected
+  every time its value changes; `{path}` gives one inject per path. On `start` every `inject` acts every
+  time, so `always` has no effect there.
+
+A verb that does not act because of these rules is logged as a `skip` decision of its entry and never blocks.
+When the log cannot be read, a `run`, an `inject` and a `block` with `once` act every time, and the call warns once
+with the cause. On `stop` and `subagent_stop` the [loop guard](#loop-guard) cannot count, so it lets the agent
+stop.
+
+The scope of an entry is the set of files the `changed` of its `when` names (the nearest `changed`, as the measures
+take it), or the whole tree when it names none. `finished` and a `once` block compare only the files of that scope:
+an edit of `README.md` or `docs/` keeps a review of `changed: ["*.go"]` and a reminder already given. Name in
+`changed` every file the subagent reviews: `go.mod` is not `*.go`.
+
+### What polix observes, and finished
+
+polix does not keep facts declared by the workflow. It writes to its log an `observed` line only for what the
+workflow, or the evidence, asks about, each with the session, the agent, the actor, the event, the branch, the
+line of the entry, a key and one outcome:
+
+- `finished`: a subagent ended and the answer to its `subagent_stop` did not refuse. It is written, with the
+  content hash and the subagent type as key, when a `finished` of the workflow names that type; polix observes it
+  by itself, so no entry on `subagent_stop` is needed. Without a content hash it is written for any subagent when
+  the workflow has an `inject` that acts once, so the inject reaches its next run; a subagent the loop guard let
+  through gets this line too, never one with the hash.
+- `passed`: a `run` of polix passed, with or without `always`, on a content that did not change while it ran; the
+  key is what it ran and the hash is the content it saw. A run that rewrote files (a formatter) or ran with an
+  unknown hash writes none. These lines show which checks were green on each content.
+- `blocked`: an entry with `once: true` blocked, or any entry blocked a `stop` or a `subagent_stop`, with the
+  content hash: the memory of the reminders and the count of the loop guard. The key is what a failing `run` ran,
+  empty for a `block`.
+- `injected`: an `inject` that acts once reached the AI, keyed by its entry and the text, file or rule it injected,
+  without hash. On `prompt`, an inject followed by a block that rejects the prompt writes none, since the AI never
+  sees that prompt; on the other events an inject before a block reaches the AI with the block and counts.
+- `started`: a session started, resumed, was cleared or was compacted. Written only when the workflow has an
+  `inject` without `always` on an event other than `start` (one that acts once, `inject: { rules }`
+  included).
+
+`finished: <subagent>` (or a list, all of them) holds when the latest `finished` line with a hash of that type on
+the current branch has a content equal to the current one on the scope of the entry: the files that differ between
+its tree and the current tree, if any, are all outside the scope. So a review of the Go code survives an edit of the
+docs, and any edit of a Go file asks for a new one. It never holds for another type, nor without a known content
+hash, nor when the `subagent_stop` of the subagent was refused: a subagent the loop guard let through after its
+blocks did not finish, and the `finished` line without hash it may get is never read by the condition. A tree git
+no longer has (pruned by `git gc`) or a comparison that fails counts as changed, with a `warn` decision that names
+the error: the gate asks again.
+The branch is compared exactly: on a detached HEAD, whose branch is empty, nothing written on a branch counts, and
+the lines written on a detached HEAD only match each other. The same holds for the repeat of `run` and for a `once`
+block.
+
+Only what polix sees by itself counts: its own runs and the end of a subagent. A command the AI runs is never
+recorded and never counts as passed, green or not: its text does not prove what ran (an alias, another folder, a
+wrapper), a command sent to the background reports success before it ends, and the command may change the files it
+checked. A check that must hold is a `run` of polix; the repeat of `run` already spares the AI a second run on a
+content polix saw green, and the order of the entries, with the single stop rule, keeps a later gate from running
+before a failing check.
+
+### What polix check reports
+
+`polix check` rejects unknown events, conditions, verbs and keys (inside `action`, `run`, `inject`, `block` and
+`vars` too), an entry without `action`, an `action` without a verb or with two, a verb on an event where it is not
+valid, a `run` without exactly one of `command` and `rules`, an `inject` without exactly one of `file`, `text` and
+`rules`, a `block` without `message`, a `once` or `always` that is not a boolean or sits in the wrong verb,
+`contains` inside `any`, variables and placeholders that are not defined, and conditions on events where they never
+hold, so a typo never turns into an entry that silently stops applying. Of `ai/rules/` it reports every problem,
+not only the first: a rule without id or description, an id repeated, a check that does not exist, a `check` on a
+rule that is not `deterministic: true`, and a `check` named by an absolute path instead of one relative to the root.
+
+### Names of the old vocabulary
+
+Earlier builds of polix used other names, and only the new ones are accepted. `polix check` reports each old name
+with its line and its new spelling: the events `session_start` (`start`) and `turn_stop` (`stop`), the keys of an
+entry `if` (`when`), `why` (a comment of YAML), `mode` (`warn` is an `inject`, a failing `run` on `post_edit` or
+`post_command` already informs, `audit` has no replacement), `deny` and `require` (`block`), `allow` (a `not` in
+`when`, or `unless`), `run` and `context` at the level of the entry (`action: { run }` and `action: { inject }`) and
+`record` (`finished`), the condition `done` (`finished: <subagent>`) and a measure written as `{ at_least: N }` (the
+number alone), also inside an old `if`, all in the same pass. The entries of an old event are checked as those of
+its new name. Lines of the kinds `fact`, `injected` and `stop_block` written by those
+builds stay in the log, are ignored by every condition and are shown by `polix log` with their kind (and the name
+of a `fact`): after the upgrade, the reminders, the injects and the loop guard start from zero.
 
 ### How the entries of an event are evaluated
 
@@ -483,58 +598,57 @@ merged: the call blocks when any of them blocks, with the reasons of all of them
 
 For every event the [protections](#protections) come first: the state of polix and the `protected` paths are
 denied before any entry is read. Then the entries of the event run one after the other, in the order of the file,
-never in parallel. An entry whose `if` does not hold, or whose `unless` holds, is skipped. A `run` waits for its
-command to finish before the next entry starts, so a `stop` takes the sum of its runs, all of them bounded by the
-budget of 10 minutes of the hook call (see [Limits of the proof of concept](#limits-of-the-proof-of-concept)).
+never in parallel. An entry whose `when` does not hold, or whose `unless` holds, is skipped; one that applies
+carries out the verb of its action, unless the repeat rules of [How often each verb acts](#how-often-each-verb-acts)
+skip it. A `run` waits for its command to finish before the next entry starts, so a `stop` takes the sum of
+its runs, all of them bounded by the budget of 10 minutes of the hook call (see
+[Limits of the proof of concept](#limits-of-the-proof-of-concept)).
 
-Only two things stop the evaluation and leave the later entries of the event unread:
+One rule ends the evaluation, whatever the verb: the first entry that actually blocks, a `block` or a failing `run`
+on an event where it blocks, and not let through by the [loop guard](#loop-guard). The entries after it never run;
+those before it already acted, so the texts of an `inject` before the block reach the agent with it and count as
+given. On `prompt` the rejected prompt never reaches the AI, so an `inject` before the block is not counted as given
+and acts again on the next prompt.
+Everything else goes on to the next entry: an `inject`, a skipped verb, a passing `run`, a failing `run` on
+`start`, `post_edit` or `post_command`, and a block the loop guard let through.
 
-- `allow`, which answers without blocking.
-- `deny` when it actually blocks: in `enforce` mode and not let go by the [loop guard](#loop-guard).
+The trade-off is one failure per answer: when the lint and the tests of a `stop` both fail, the agent gets the
+lint first and the tests on its next attempt. The order of the file is the priority, so put first the gate whose
+failure makes the later ones pointless, and the cheaper one when it does not matter. The repeat of `run` keeps the
+extra turns cheap: on the next attempt the checks that passed on the same content do not run again.
 
-Everything else goes on to the next entry. A failing `run` and a pending `require` block the event, but the later
-entries still run, so one answer reports every failure at once. `context` and `record` never block; when the event
-blocks, the texts of its `context` entries go with the reasons.
-
-What a block does depends on the event, since some of them already happened:
+What a block does depends on the event:
 
 - `pre_edit`, `pre_command`, `pre_commit`: the tool call is denied and the agent receives the reasons.
 - `prompt`: the prompt is rejected before the agent reads it.
-- `post_edit`, `post_command`: the edit or the command already happened. Only a failing `run` blocks here, since
-  `deny` and `require` are not valid on them, and its output reaches the agent as feedback on that call.
-- `stop`, `subagent_stop`: the agent, or the subagent, may not end its turn and receives the reasons to act on
-  them, up to the loop guard.
-- `session_start`: the session starts anyway; the agent only shows the reasons to the user.
+- `stop`, `subagent_stop`: the main session, or the subagent, may not end its turn and receives the reasons to
+  act on them, up to the loop guard.
+- `start`, `post_edit`, `post_command`: they already happened, so nothing blocks there: `block` is rejected
+  by `polix check`, and a failing `run` reaches the agent as context, logged as an `inform` decision.
 
-The mode of the entry decides whether a block happens and who learns about it:
+The `stop` of this repository shows it. It has two entries, golangci-lint over the module and
+`go test ./...`, each a plain `run` with a `when` on the files it depends on. When the agent ends a turn after
+changing a Go file:
 
-- `enforce`: the entry blocks as above.
-- `warn`: nothing is blocked; the log records a `warn` decision and the reason reaches the agent as context, prefixed
-  with "Aviso de polix:", on the events that take context (`session_start`, `prompt`, `pre_*` and `post_*`).
-  `stop` and `subagent_stop` take no context: there a warning only reaches the agent inside the message of a block
-  of another entry of the same stop. Otherwise polix writes it on stderr, which the agent does not read and Claude
-  Code only shows in the transcript, so a gate on stop that the agent must notice is `enforce`.
-- `audit`: nothing is blocked and the agent learns nothing; the log records an `audit` decision, read with
-  `polix log`.
-
-In `enforce` and `warn` mode an entry that applies records its fact, if it has one, and in `audit` none does; an
-entry that does not block lets the evaluation go on.
-
-The `stop` of this repository shows it. It has two entries, golangci-lint and `go test ./...`, both in `enforce`
-mode, each with `record` and `unless: { done: <fact> }`. When the agent ends a turn after changing a Go file:
-
-1. golangci-lint runs. When it fails, the stop blocks and nothing is recorded, but the evaluation goes on.
-2. `go test ./...` runs anyway. When it passes, it records `tested` on the current content.
-3. The agent receives the output of golangci-lint and has to go on. If it fixes the code, the content changes, so on
-   the next stop both entries run again; if it stops again without changing anything, `tested` is done for that
-   content and only golangci-lint runs, until the loop guard lets it stop after the third block.
-4. Once both pass, `linted` and `tested` are recorded, and a later stop on the same content runs nothing.
+1. golangci-lint runs. When it fails, the turn is blocked with its output and the evaluation ends: the tests do not
+   run on code that does not pass the lint.
+2. The agent fixes the lint and ends its turn again. The content changed, so golangci-lint runs again; it passes,
+   polix writes a `passed` line for it, and `go test ./...` runs. When the tests fail, the turn is blocked with
+   only their output.
+3. The agent fixes the tests and ends its turn. The fix changed the content, so both run again, pass and write their
+   `passed` lines; the turn ends.
+4. A later `stop` on the same content runs nothing: both runs are skipped, logged as `skip` decisions.
+   If the agent ends its turn again without changing anything after a failure, the failing run runs again, since
+   only a run that passed is spared, until the loop guard lets it stop after the third block.
 
 ### Loop guard
 
-Every block of `stop` or `subagent_stop` in enforce mode (`require`, `deny` or a failing `run`) counts for the
-loop guard: after `max_stop_blocks` blocks of the same entry, in the same session, by the same actor and on the
-same content, the agent may stop and the log records a `loop_guard` decision.
+Every block of `stop` or `subagent_stop` (a `block`, with or without `once`, or a failing `run`) writes an
+observed `blocked` line and counts for the loop guard: after `max_stop_blocks` blocks of the same entry, on the
+same event, in the same session, by the same actor and on the same content hash, the agent may stop and the log
+records a `loop_guard` decision. A block let through by the guard does not end the evaluation, so the next entries
+run, and a subagent let through does not count as `finished`: when the workflow has an `inject` that acts once it
+gets a `finished` line without hash, so its next run gets those injects again, and the condition never reads it.
 Counting per entry keeps several pending blocks from using up the guard of each other, and subagents never use
 up the guard of the main session.
 When the log cannot be read, or the block cannot be written to it (a read only state folder), the guard cannot
@@ -544,12 +658,18 @@ count: it fails open, lets the agent stop with a warning and records a `loop_gua
 
 `<git-dir>/polix/log.jsonl`, one JSON object per line, only written by polix:
 
-- `fact`: what it observed (`record`), with the branch and the content hash.
-- `decision`: what it answered (block, warn, audit, allow, loop guard), the `action` and `line` of the entry and
-  why: the evidence of the process each change followed. It carries the content hash only when the call already
+- `decision`: what it answered (`block`, `deny` for a protection, `inform`, `warn`, `skip` or `loop_guard`), the
+  action (the verb of the entry, or `builtin` for a protection, `invalid` for an invalid workflow and `finished` for
+  the end of a subagent it could not observe or a tree it could not compare), the `line` of the entry and the
+  reason, the evidence of the process each change followed. It carries the content hash only when the call already
   computed it, since computing it costs a pass over the whole tree.
-- `injected`: the rules already injected in a session.
-- `stop_block`: the blocks of a stop, per entry, session, actor and content, for the loop guard.
+- `observed`: what polix saw by itself and the workflow asks about, with its outcome (`finished`, `passed`,
+  `blocked`, `injected` or `started`) and its key; see
+  [What polix observes](#what-polix-observes-and-finished). Nothing else is recorded: an edit and a command of the
+  AI leave no observed line, nor does the end of a subagent no `finished` names when no `inject` acts once.
+
+Lines of the kinds `fact`, `injected` and `stop_block`, written by earlier builds, stay in the log, are ignored by
+every query and are shown by `polix log` with their kind (and the name of a `fact`).
 
 The reason of an entry is capped at 8 KiB and each line kept from the output of a `run` or a check at 500 bytes,
 both marked where cut, so no line of the log nears the read limit of 4 MiB.
@@ -557,12 +677,22 @@ A line over that limit (written by hand, say) is skipped when the log is read, a
 lines it skipped; the entries around it still count.
 
 The content hash is the git tree the working tree would produce with everything staged (untracked files included,
-ignored ones excluded), computed on a copy of the index.
-Any edit changes it, so a fact recorded before the edit stops counting without anyone invalidating it.
-It is computed again after every `run`, with or without `record`, since a run may rewrite files.
-When it cannot be computed (an unreadable file, a broken index), facts are neither recorded nor satisfied: `done`
-does not hold, and the hook warns with the cause. The loop guard still counts the blocks of a stop made without a
-hash, as one content, so the agent can always stop.
+ignored ones excluded), computed on a copy of the index with `git write-tree`, also in a repository with no
+commit nor index yet.
+The copy keeps the time of the real index, so git still compares the content of the files changed in the same tick
+as it; a hash costs about 25 ms on this repository, mostly the start of two git processes.
+The tree stays in the object database of git, so polix later lists the files that differ between the tree of an
+observed line and the current one (`git diff-tree`) and matches them against the scope of the entry with the globs
+of polix: an edit outside the scope keeps a `finished` or a reminder, any edit inside it makes them ask again,
+without anyone invalidating anything.
+It is computed only when something needs it. Each `run` computes it before it runs, `always` included, and again
+after it passes when the first was known, so `passed` is written only when the run did not change the content;
+anything that needs it after a run computes it again, since a run may rewrite files. A `once` block and the loop
+guard compute it, and `finished` only when a `finished` line of that type exists. An `inject` and a `started` line
+never compute it.
+When it cannot be computed (an unreadable file, a broken index), nothing that needs it is observed nor holds:
+`finished` does not hold, a `run` is not skipped, a `once` block blocks, and the hook warns with the cause. The loop
+guard still counts the blocks of a stop made without a hash, as one content, so the agent can always stop.
 
 ## The plugin and the hooks: polix install
 
@@ -614,7 +744,7 @@ reference of the skill `workflow` (`plugins/polix/skills/workflow/reference.yaml
 `examples/polix.yaml`, kept equal by a test; `claude plugin validate plugins/polix` checks the plugin.
 
 Claude Code merges the hooks of the project, local and user settings, so polix registered in two of them runs
-twice, which doubles every block and every record: `polix install` warns about it and `polix doctor` fails until
+twice, which doubles every block and every observed line: `polix install` warns about it and `polix doctor` fails until
 one of them goes. `examples/claude-settings.json` and `examples/codex-hooks.json` are, byte for byte, what install
 writes in an empty repository for each agent (a test keeps them equal); they remain for a rollout that renders the
 settings itself (Logalty Control).
@@ -652,7 +782,14 @@ In the real rollout Logalty Control would render them and pin the version of the
 - A `git commit` is recognised by a heuristic (global options and quoted commands included); the text of a
   commit inside quotes, as in `echo "git commit"`, also triggers `pre_commit`. The `commit` switch of `guidance`
   asks the agent to run each commit on its own, so it stays recognisable.
-- Every hook call reads the whole log, which grows without bound.
+- Every hook call reads the whole log, which grows without bound: one decision per answer, and one `passed` line
+  per run of polix that passed.
+- A subagent type launched twice in a session gets an `inject` that acts once again only because the first one
+  finished; two of them running at once share it, so the second may not get it.
+- A `run` whose result depends on more than the files (the network, the clock) is skipped after it passed once on
+  a content: give it `always: true`.
+- A scope too narrow lets a `finished` survive an edit it should have seen: `changed: "*.go"` ignores `go.mod`
+  unless it is named too.
 - Releases are not signed: `checksums.txt` protects against a corrupt or swapped download from a mirror, not
   against someone who can publish releases of the repository. Signing them (cosign, or GitHub artifact
   attestations) is pending.
@@ -660,8 +797,9 @@ In the real rollout Logalty Control would render them and pin the version of the
 - The condition `pr` (state of the pull request) is not implemented.
 - The log is appended without a lock; parallel subagents could in theory interleave lines.
 - Injected rules are not bounded: a project with many rules without scope gets all of them on its first edit.
-- No tests inside `polix.yaml` yet. The key `why` of an entry is only a note; expiring entries with `review_by` is
-  pending.
+- No tests inside `polix.yaml` yet, and expiring entries with `review_by` is pending.
+- `finished` only says that a subagent ended on the content, not what it concluded: requiring the verdict of the
+  reviewer needs its output in the input of the hook.
 - Measured on macOS: about 13 ms per hook call without a workflow and about 130 ms for a stop that computes the
   content hash of a 730 file repository.
   Not measured on Windows yet.

@@ -27,7 +27,7 @@ func TestParseClaude(t *testing.T) {
 		actor  string
 		native string
 	}{
-		{`{"hook_event_name":"SessionStart"}`, []string{workflow.SessionStart}, ActorSession, "SessionStart"},
+		{`{"hook_event_name":"SessionStart"}`, []string{workflow.Start}, ActorSession, "SessionStart"},
 		{`{"hook_event_name":"UserPromptSubmit","prompt":"hola"}`, []string{workflow.Prompt}, ActorSession, "UserPromptSubmit"},
 		{`{"hook_event_name":"Stop","agent_type":"builder"}`, []string{workflow.Stop}, ActorSession, "Stop"},
 		{`{"hook_event_name":"SubagentStop","agent_type":"reviewer"}`, []string{workflow.SubagentStop}, "reviewer", "SubagentStop"},

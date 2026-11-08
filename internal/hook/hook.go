@@ -2,8 +2,8 @@
 // for each of them, step by step, the protections that come before the workflow, the conditions of its entries
 // and the heuristic of the commands that write files.
 //
-// It measures and never judges: conditions are facts of the repository, the event and the state; judging the
-// code is the job of the reviewer subagent.
+// It measures and never judges: conditions are questions about the repository, the event and the log of what polix
+// observed; judging the code is the job of the reviewer subagent.
 package hook
 
 import (

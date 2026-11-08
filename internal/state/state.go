@@ -1,12 +1,17 @@
-// Package state is the domain of the append-only log of polix in <git-dir>/polix/log.jsonl: the facts it records
-// (a reviewer finished, the tests passed) tied to the content hash they were observed on, and every decision it
-// takes, which also serves as evidence of the process each change followed.
+// Package state is the domain of the append-only log of polix in <git-dir>/polix/log.jsonl: what polix observed by
+// itself (a session started, a subagent finished, a check of polix passed, an entry blocked, an inject reached the
+// AI), tied to the content hash it was observed on when a query needs it, and every decision it takes, which also
+// serves as evidence of the process each change followed. The repeat of the verbs, the loop guard and the condition
+// finished are queries over the observed entries.
 //
-// Only polix writes it, from events it has seen; the agent never declares that something is done. Reading and
-// writing the file is the job of the adapters, through pkg/jsonl; this package decodes and encodes its lines.
+// Only polix writes it, from events it has seen; the agent never declares that something is done, and a command
+// the agent runs is never observed. Reading and writing the file is the job of the adapters, through pkg/jsonl;
+// this package decodes and encodes its lines. Lines of kinds this polix no longer writes (fact, injected and
+// stop_block) are kept as read and ignored by every query.
 package state
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 )
@@ -15,6 +20,23 @@ import (
 type State struct {
 	Entries []Entry
 	Skipped int
+}
+
+// Query selects observed entries: those of its Outcome, and of each other field that is set. With ByHash, only the
+// entries of exactly Hash; an empty Hash then never matches, since an unknown content is no content. With ByBranch,
+// only the entries of exactly Branch, an empty one included: on a detached HEAD the branch is "", and the entries
+// of a branch are not its own.
+type Query struct {
+	Outcome  string
+	Session  string
+	Actor    string
+	Event    string
+	Branch   string
+	Key      string
+	Line     int // the line of the workflow entry; 0 for any
+	Hash     string
+	ByHash   bool
+	ByBranch bool
 }
 
 // DirName is the folder of the state inside the git directory, so it is never versioned and goes with the
@@ -33,6 +55,18 @@ func (s State) Valid() error {
 	return nil
 }
 
+// Valid tells why the query selects nothing that can be observed: an unknown outcome or a negative line.
+func (q Query) Valid() error {
+	var errs []error
+	if !slices.Contains(Outcomes, q.Outcome) {
+		errs = append(errs, fmt.Errorf("a query needs an outcome of %v, got %q", Outcomes, q.Outcome))
+	}
+	if q.Line < 0 {
+		errs = append(errs, errors.New("the line of a query must not be negative"))
+	}
+	return errors.Join(errs...)
+}
+
 // Append returns a copy of the state with e at the end, as the log reads after appending it, or the error of
 // an entry that is not valid.
 func (s State) Append(e Entry) (State, error) {
@@ -48,41 +82,47 @@ func (s State) Append(e Entry) (State, error) {
 	return out, nil
 }
 
-// Done reports whether fact was recorded on the branch for exactly this content hash; never for an unknown
-// (empty) hash.
-func (s State) Done(fact, branch, hash string) bool {
-	if hash == "" {
-		return false
+// Observed returns the observed entries the query selects, in file order; none for a query that is not valid.
+func (s State) Observed(q Query) []Entry {
+	if q.Valid() != nil || q.ByHash && q.Hash == "" {
+		return nil
 	}
+	var out []Entry
 	for _, e := range s.Entries {
-		if e.Kind == KindFact && e.Fact == fact && e.Branch == branch && e.Hash == hash {
-			return true
+		if e.Kind == KindObserved && e.Outcome == q.Outcome && q.selects(e) {
+			out = append(out, e)
 		}
 	}
-	return false
+	return out
 }
 
-// Injected reports whether rule was already injected as context in session.
-func (s State) Injected(rule, session string) bool {
-	for _, e := range s.Entries {
-		if e.Kind == KindInjected && e.Rule == rule && e.Session == session {
-			return true
-		}
+// Latest returns the last observed entry the query selects, and whether there is one.
+func (s State) Latest(q Query) (Entry, bool) {
+	found := s.Observed(q)
+	if len(found) == 0 {
+		return Entry{}, false
 	}
-	return false
+	return found[len(found)-1], true
 }
 
-// StopBlocks counts the times the workflow entry at line blocked event (stop or subagent_stop) of actor in
-// session on this content hash: the loop guard. Counting per entry keeps several pending blocks from using up
-// the guard of each other, and per event and actor keeps subagents apart from the main session. hash is empty
-// when the content hash is unknown; those blocks are counted together.
-func (s State) StopBlocks(session, event, actor string, line int, hash string) int {
-	n := 0
-	for _, e := range s.Entries {
-		if e.Kind == KindStopBlock && e.Session == session && e.Event == event && e.Actor == actor &&
-			e.Line == line && e.Hash == hash {
-			n++
+// Index returns the position in Entries of the last observed entry the query selects, or -1 when there is none or
+// the query is not valid, so the observations of several queries can be ordered: an inject is due again when a
+// session started after it reached the AI.
+func (s State) Index(q Query) int {
+	if q.Valid() != nil || q.ByHash && q.Hash == "" {
+		return -1
+	}
+	for i, e := range slices.Backward(s.Entries) {
+		if e.Kind == KindObserved && e.Outcome == q.Outcome && q.selects(e) {
+			return i
 		}
 	}
-	return n
+	return -1
+}
+
+// selects reports whether e matches every field the query sets, its outcome apart.
+func (q Query) selects(e Entry) bool {
+	return (q.Session == "" || e.Session == q.Session) && (q.Actor == "" || e.Actor == q.Actor) &&
+		(q.Event == "" || e.Event == q.Event) && (q.Branch == "" && !q.ByBranch || e.Branch == q.Branch) &&
+		(q.Key == "" || e.Key == q.Key) && (q.Line == 0 || e.Line == q.Line) && (!q.ByHash || e.Hash == q.Hash)
 }

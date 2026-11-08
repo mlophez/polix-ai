@@ -6,8 +6,14 @@ it with `polix graph`. The full reference of every option is [`examples/polix.ya
 the design and its limits are in [polix.md](polix.md).
 
 Every recipe follows the same idea: polix **measures and never judges**. It knows which files changed, which
-command ran and with which exit code, which subagent stopped and which facts hold on the current content. Judging
-the code is the job of a subagent; polix makes sure that subagent ran, on the content as it is now.
+command ran and with which exit code, which of its own checks passed on which content and which subagent ended on
+which content. Judging the code is the job of a subagent; polix makes sure that subagent ran, on the content as it
+is now.
+
+Each entry says when it applies (`when`, `unless`) and what it does (`action`: `block`, `run` or `inject`). A
+`block` is a gate that holds every time, or a reminder that asks once with `once: true`; a `run` that passed is not
+run again on the same content; an `inject` reaches the AI once per session and agent (every time on `start`). The first entry that blocks ends the evaluation of the event. The details are in
+[polix.md](polix.md#verbs).
 
 - Quality gates
   - [Review every change with a reviewer subagent](#review-every-change-with-a-reviewer-subagent)
@@ -35,8 +41,6 @@ the code is the job of a subagent; polix makes sure that subagent ran, on the co
   - [Context that survives compaction](#context-that-survives-compaction)
   - [The same checks for the agent and for CI](#the-same-checks-for-the-agent-and-for-ci)
 - Rollout and evidence
-  - [Try a guardrail before enforcing it](#try-a-guardrail-before-enforcing-it)
-  - [A record of every infrastructure command](#a-record-of-every-infrastructure-command)
   - [Evidence of the process each change followed](#evidence-of-the-process-each-change-followed)
 - [Putting it together: build, document, test, review, commit](#putting-it-together-build-document-test-review-commit)
 - [Coming from Claude Code hooks](#coming-from-claude-code-hooks)
@@ -49,43 +53,43 @@ The agent may not end its turn, nor commit, until a reviewer has looked at the d
 
 ```yaml
 on:
-  subagent_stop:
-    # The reviewer finished: record the fact on the content it reviewed.
-    - if: { actor: "polix:reviewer" }
-      record: reviewed
-
+  # polix observes the end of polix:reviewer by itself, since a finished names it.
   stop:
-    - if: { changed: ["src/**", "internal/**"] }
-      unless: { done: reviewed }
-      require: "Run /polix:review on the current diff before you finish"
+    - when: { changed: ["src/**", "internal/**"] }
+      unless: { finished: "polix:reviewer" }
+      action: { block: "Run /polix:review on the current diff before you finish" }
 
   pre_commit:
-    - unless: { done: reviewed }
-      deny: "The diff is not reviewed: run /polix:review before committing"
+    - unless: { finished: "polix:reviewer" }
+      action: { block: "The diff is not reviewed: run /polix:review before committing" }
 ```
 
 How it works:
 
-- `actor` is the subagent type: `polix:reviewer` is the read-only reviewer of the plugin, which the skill
-  `/polix:review` launches. Use the name of your own agent if you have one.
-- `reviewed` is tied to the content hash. If the agent fixes a finding after the review, the fact stops holding
-  and it has to review again: a review never covers code it did not see.
+- `finished` names the subagent type: `polix:reviewer` is the read-only reviewer of the plugin, which the skill
+  `/polix:review` launches. Use the name of your own agent if you have one. polix observes the end of every
+  subagent a `finished` names, so no entry on `subagent_stop` is needed.
+- `finished` is tied to the content the reviewer ended on, compared on the files of the `changed` of the entry. If
+  the agent fixes a finding in `src/` after the review, it stops holding and the agent has to review again: a review
+  never covers code it did not see. An edit of `README.md` keeps it, since it is outside that scope. The entry of
+  `pre_commit` has no `changed`, so any edit asks for a new review there.
 - The reviewer reports and never fixes, so its run does not change the content it just approved.
+- Both are plain blocks, gates that hold on every attempt until the review ran.
 
 When the reviewer runs in the background, the stop above blocks again on every turn until it ends. To ask once
-per content instead, let the require record that it asked, and skip it once that fact holds:
+per content instead, make the block of the stop a reminder with `once: true`:
 
 ```yaml
 on:
   stop:
-    - if: { changed: ["src/**", "internal/**"], not: { done: review_asked } }
-      unless: { done: reviewed }
-      require: "Run /polix:review on the current diff before you finish"
-      record: review_asked
+    - when: { changed: ["src/**", "internal/**"] }
+      unless: { finished: "polix:reviewer" }
+      action:
+        block: { message: "Run /polix:review on the current diff before you finish", once: true }
 ```
 
-The require then stops enforcing: a second stop on the same content passes even if no review ran. Keep the
-`deny` of `pre_commit` to make the review a hard gate.
+The reminder then stops enforcing: a second stop on the same content passes even if no review ran, and an edit of
+`src/` or `internal/` makes it ask again. Keep the plain `block` of `pre_commit` to make the review a hard gate.
 
 ### Document at the end of every task
 
@@ -94,34 +98,41 @@ has run on the final code.
 
 ```yaml
 on:
-  subagent_stop:
-    - if: { actor: documenter }
-      record: documented
-
   stop:
-    - if: { changed: ["src/**", "internal/**", "cmd/**"] }
-      unless: { done: documented }
-      require: "Launch the documenter subagent on the final diff before you finish"
+    - when: { changed: ["src/**", "internal/**", "cmd/**"] }
+      unless: { finished: documenter }
+      action: { block: "Launch the documenter subagent on the final diff before you finish" }
 ```
 
-`documenter` is an agent of your own, for example `.claude/agents/documenter.md`. The fact is recorded when the
-subagent stops, so it covers the docs it just wrote.
+`documenter` is an agent of your own, for example `.claude/agents/documenter.md`. polix observes its end with the
+content as it left it, so `finished: documenter` covers the docs and comments it just wrote.
 
 A cheaper, deterministic variant asks for a change in `docs/` when the code changed, with no subagent at all.
-`changed` holds when any file not committed yet matches, so this nudges the agent before it commits:
+`changed` holds when any file not committed yet matches, so this nudges the agent before it commits. An `inject`
+warns without blocking, once per session and agent; `always: true` would repeat it on every commit:
 
 ```yaml
 on:
   pre_commit:
-    - if: { changed: "internal/**" }
+    - when: { changed: "internal/**" }
       unless: { changed: "docs/**" }
-      mode: warn
-      deny: "The code changed and docs/ did not: check whether the docs need an update"
+      action: { inject: "The code changed and docs/ did not: check whether the docs need an update" }
 ```
 
-Keep in mind that the documenter edits files, so it changes the content hash: facts recorded before it, like
-`tested` or `reviewed`, stop holding. Document first, then test and review. See
-[Putting it together](#putting-it-together-build-document-test-review-commit).
+To ask once per content instead, a reminder blocks the first commit and lets the next one through:
+
+```yaml
+on:
+  pre_commit:
+    - when: { changed: "internal/**" }
+      unless: { changed: "docs/**" }
+      action:
+        block: { message: "The code changed and docs/ did not: update the docs, or commit again if they need nothing", once: true }
+```
+
+Keep in mind that the documenter edits files, so it changes the content: a `run` that passed before it runs again,
+and a `finished` of a reviewer whose scope holds the files it edits stops holding. Document first, then test and
+review. See [Putting it together](#putting-it-together-build-document-test-review-commit).
 
 ### Tests that run themselves
 
@@ -129,24 +140,20 @@ Instead of asking the agent to run the tests, polix runs them when the agent tri
 
 ```yaml
 on:
-  # A green run by the agent counts too.
-  post_command:
-    - if: { command: "just test*", exit: 0 }
-      record: tested
-
   stop:
-    - if: { changed: ["*.go", "go.mod", "go.sum"] }
-      unless: { done: tested }
-      run: { command: ["just", "test"] }
-      record: tested
+    - when: { changed: ["*.go", "go.mod", "go.sum"] }
+      action: { run: just test }
 ```
 
 How it works:
 
 - When the run fails, the stop is blocked and the agent gets the last 15 lines of the output, so it goes back to
-  fix them. When it passes, it records `tested` on that content, and the next stop does not run them again.
-- `exit: 0` only holds when `just test` decides the exit code of the line: `just test | tail -3` is decided by
-  `tail`, so a piped run never counts as green.
+  fix them. When it passes, polix writes a `passed` line for `just test` on that branch and content, and the next
+  stop does not run it again; any edit makes it run again.
+- A `just test` the agent runs by itself does not count, green or not: polix cannot know what it really ran (an
+  alias, another folder, a run still going in the background). Only the runs of polix spare a later one.
+- When the result depends on more than the files, as for integration tests against a service, `always: true` in
+  the long form runs it on every stop: `run: { command: just test-integration, always: true }`.
 - `run` executes without a shell and shares a budget of 10 minutes per hook call. The hook timeout that
   `polix install` writes (900 seconds) is above it.
 
@@ -157,16 +164,16 @@ The linter runs on the file the agent just edited, and its output reaches the ag
 ```yaml
 on:
   post_edit:
-    - if: { path: "**/*.py" }
-      mode: warn
-      run: { command: ["uv", "run", "ruff", "check", "{path}"] }
-    - if: { path: ["**/*.ts", "**/*.tsx"] }
-      mode: warn
-      run: { command: ["npx", "eslint", "{path}"] }
+    - when: { path: "**/*.py" }
+      action: { run: "uv run ruff check {path}" }
+    - when: { path: ["**/*.ts", "**/*.tsx"] }
+      action: { run: "npx eslint {path}" }
 ```
 
-In `warn` mode the agent reads the warnings in the next step and fixes them while the file is still in its head,
-instead of finding a wall of lint errors at the end of the task.
+On `post_edit` a failing `run` never blocks, since the edit already happened: the output of the linter reaches the
+agent as context. It reads the warnings in the next step and fixes them while the file is still in its head,
+instead of finding a wall of lint errors at the end of the task. A lint that passed on a file is not run again
+until that file, or any other, changes.
 
 ### Format every file the agent edits
 
@@ -175,38 +182,37 @@ The formatter rewrites the file right after each edit, so the diff never carries
 ```yaml
 on:
   post_edit:
-    - if: { path: ["**/*.ts", "**/*.tsx", "**/*.css", "**/*.json"] }
-      run: { command: ["npx", "prettier", "--write", "{path}"] }
-    - if: { path: "*.go" }
-      run: { command: ["gofmt", "-w", "{path}"] }
+    - when: { path: ["**/*.ts", "**/*.tsx", "**/*.css", "**/*.json"] }
+      action: { run: "npx prettier --write {path}" }
+    - when: { path: "*.go" }
+      action: { run: "gofmt -w {path}" }
 ```
 
-`run` executes without a shell and passes `{path}` as one argument, so there is no `jq`, no `xargs` and no quoting
-to get wrong, and the same entry works under PowerShell. When the formatter fails, usually on a syntax error, the
-agent gets its output.
+`run` executes without a shell and splits the command on spaces before it replaces `{path}`, so the path stays
+one argument even when it holds a space: there is no `jq`, no `xargs` and no quoting to get wrong, and the same entry works under PowerShell. When the formatter fails, usually on a syntax error, the
+agent gets its output as context, without a block. A formatter that rewrote the file writes no `passed` line, since
+the content changed while it ran, so it runs again on the next edit of the path.
 
 ### Sensitive code gets a security review
 
-Some paths deserve a second, specialised reviewer. A separate fact keeps both reviews independent.
+Some paths deserve a second, specialised reviewer. A subagent type of its own keeps both reviews independent:
+`finished: security-reviewer` only holds once that type ended, whatever `polix:reviewer` did.
 
 ```yaml
 on:
-  subagent_stop:
-    - if: { actor: security-reviewer }
-      record: security-reviewed
-
   stop:
-    - if: { changed: ["**/auth/**", "**/crypto/**", "**/signing/**", "migrations/**"] }
-      unless: { done: security-reviewed }
-      require: "This change touches auth, crypto, signing or the schema: launch the security-reviewer subagent"
+    - when: { changed: ["**/auth/**", "**/crypto/**", "**/signing/**", "migrations/**"] }
+      unless: { finished: security-reviewer }
+      action: { block: "This change touches auth, crypto, signing or the schema: launch the security-reviewer subagent" }
 
   pre_commit:
-    - if: { changed: ["**/auth/**", "**/crypto/**", "**/signing/**", "migrations/**"] }
-      unless: { done: security-reviewed }
-      deny: "Security review missing for a sensitive path"
+    - when: { changed: ["**/auth/**", "**/crypto/**", "**/signing/**", "migrations/**"] }
+      unless: { finished: security-reviewer }
+      action: { block: "Security review missing for a sensitive path" }
 ```
 
-A change to a `README` never pays for a security review; a change to the signing code always does.
+A change to a `README` never pays for a security review; a change to the signing code always does. The scope of
+both entries is the sensitive paths, so an edit elsewhere after the review keeps it.
 
 ## Process
 
@@ -222,15 +228,16 @@ on:
   # A gentle nudge when the conversation starts on a branch without a ticket.
   prompt:
     - unless: { var: key }
-      context: { text: "The branch {branch} has no ticket: create a branch like PLAT-123-short-name first." }
+      action: { inject: "The branch {branch} has no ticket: create a branch like PLAT-123-short-name first." }
 
   # And a hard stop at the first edit.
   pre_edit:
     - unless: { var: key }
-      deny: "No ticket in the branch name: create the branch from a ticket"
+      action: { block: "No ticket in the branch name: create the branch from a ticket" }
 ```
 
-`{key}` is then available in every string of the workflow: in messages, in paths and in `contains`.
+`{key}` is then available in every string of the workflow: in messages, in paths and in `contains`. The nudge of
+`prompt` is an `inject`, so it reaches the agent once per session, and again after a compaction.
 
 ### A plan before the first edit
 
@@ -243,16 +250,17 @@ vars:
 on:
   pre_edit:
     # Writing the plan itself is always allowed.
-    - if: { path: "ai/plans/{key}-*.md" }
-      allow: true
-    - unless: { file: "ai/plans/{key}-*.md" }
-      deny: "There is no plan for {key}: write it with /polix:plan"
-    - unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
-      deny: "The plan of {key} lacks the line 'Ticket: {key}'"
+    - when: { not: { path: "ai/plans/{key}-*.md" } }
+      unless: { file: "ai/plans/{key}-*.md" }
+      action: { block: "There is no plan for {key}: write it with /polix:plan" }
+    - when: { not: { path: "ai/plans/{key}-*.md" } }
+      unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
+      action: { block: "The plan of {key} lacks the line 'Ticket: {key}'" }
 ```
 
-`allow: true` stops the evaluation, so the entries below it never block the plan. The plan is a file of the
-repository, so it is reviewed and committed with the code it explains.
+The `not` in `when` is the exception: the plan itself can always be written, while every other edit waits for it.
+Write an exception this way, or as a condition in `unless`. The plan is a file of the repository, so it is reviewed
+and committed with the code it explains.
 
 ### Unfinished plan steps keep the agent working
 
@@ -265,42 +273,45 @@ vars:
 
 on:
   stop:
-    - if: { file: "ai/plans/{key}-*.md", contains: "- [ ]" }
-      require: "The plan of {key} has unchecked steps: finish them, or mark the ones left out as - [-] and say why"
+    - when: { file: "ai/plans/{key}-*.md", contains: "- [ ]" }
+      action: { block: "The plan of {key} has unchecked steps: finish them, or mark the ones left out as - [-] and say why" }
 ```
 
 `file` with `contains` reads the files of the repository, so the agent ticks the boxes as it goes and the plan
-doubles as the progress report of the task.
+doubles as the progress report of the task. A plain `block` asks on every stop until the boxes are ticked, up to
+the loop guard.
 
 ### The main session orchestrates, the builder builds
 
-The main session keeps a clean context: it plans and delegates, and only the `builder` subagent edits code. The
+The main session keeps its context clean, since it plans and delegates, and only the `builder` subagent edits code. The
 builder cannot hand back work whose tests do not pass.
 
 ```yaml
 on:
   pre_edit:
-    - if: { path: ["src/**", "tests/**"] }
+    - when: { path: ["src/**", "tests/**"] }
       unless: { actor: builder }
-      deny: "Only the builder subagent edits the code: delegate the step to it"
+      action: { block: "Only the builder subagent edits the code: delegate the step to it" }
 
+  # polix runs the tests itself when the builder hands the step back.
   subagent_stop:
-    - if: { actor: builder, changed: "src/**" }
-      unless: { done: tested }
-      require: "Run just test before you hand the step back"
+    - when: { actor: builder, changed: "src/**" }
+      action: { run: { command: just test, message: "The tests fail: fix them before you hand the step back" } }
 ```
 
-`require` on `subagent_stop` blocks the subagent, not the main session: the builder gets the message and keeps
-working. Blocks of subagents never use up the loop guard of the main session.
+A failing `run` on `subagent_stop` blocks the subagent, not the main session: the builder gets the message and the
+output of the tests and keeps working. polix runs the tests itself instead of trusting that the builder ran them,
+since a command of the agent never counts as passed. The entries of `subagent_stop` never run when the main
+session ends its turn, and blocks of subagents never use up the loop guard of the main session.
 
 ### The changelog travels with the change
 
 ```yaml
 on:
   stop:
-    - if: { changed: ["src/**", "internal/**"] }
+    - when: { changed: ["src/**", "internal/**"] }
       unless: { changed: "CHANGELOG.md" }
-      require: "Add an entry to CHANGELOG.md under Unreleased describing this change"
+      action: { block: "Add an entry to CHANGELOG.md under Unreleased describing this change" }
 ```
 
 The release notes are written by the agent that knows the change best, at the moment it knows it best.
@@ -314,8 +325,8 @@ Commands that throw away work nobody saved are blocked, wherever they appear in 
 ```yaml
 on:
   pre_command:
-    - if: { command: ["rm -rf*", "git reset --hard*", "git clean -*f*", "git checkout -- .*", "git restore .*"] }
-      deny: "This line destroys work that may not be saved: ask the user to run it. Line: {command}"
+    - when: { command: ["rm -rf*", "git reset --hard*", "git clean -*f*", "git checkout -- .*", "git restore .*"] }
+      action: { block: "This line destroys work that may not be saved: ask the user to run it. Line: {command}" }
 ```
 
 A script that checks whether the command *starts* with `rm` misses `cd build && rm -rf dist`. polix splits the
@@ -330,14 +341,14 @@ Commands are split the way a shell runs them, so `cd infra && terraform apply -a
 ```yaml
 on:
   pre_command:
-    - if: { command: ["git push*--force*", "git push*-f *"] }
-      deny: "No force pushes: open a pull request or ask a person"
-    - if: { command: ["git push*origin main*", "git push*origin HEAD:main*"] }
-      deny: "No direct pushes to main: open a pull request"
-    - if: { command: "terraform apply*", not: { branch: "^main$" } }
-      deny: "terraform apply only runs from the pipeline of main"
-    - if: { command: ["kubectl*--context*prod*", "aws*--profile*prod*"] }
-      deny: "The agent never acts on production: run it yourself, or use a staging context"
+    - when: { command: ["git push*--force*", "git push*-f *"] }
+      action: { block: "No force pushes: open a pull request or ask a person" }
+    - when: { command: ["git push*origin main*", "git push*origin HEAD:main*"] }
+      action: { block: "No direct pushes to main: open a pull request" }
+    - when: { command: "terraform apply*", not: { branch: "^main$" } }
+      action: { block: "terraform apply only runs from the pipeline of main" }
+    - when: { command: ["kubectl*--context*prod*", "aws*--profile*prod*"] }
+      action: { block: "The agent never acts on production: run it yourself, or use a staging context" }
 ```
 
 In a command pattern `*` matches anything, spaces and slashes included, so `kubectl*--context*prod*` holds wherever
@@ -350,10 +361,10 @@ Generated files are rewritten by a tool, not by hand. The agent is sent to the s
 ```yaml
 on:
   pre_edit:
-    - if: { path: ["**/*.pb.go", "**/*_generated.go", "**/zz_generated.*"] }
-      deny: "{path} is generated: edit its source (.proto, schema...) and run just gen"
-    - if: { path: ["package-lock.json", "pnpm-lock.yaml", "go.sum", "poetry.lock", "uv.lock"] }
-      deny: "{path} is written by the package manager: change the manifest and let the tool update it"
+    - when: { path: ["**/*.pb.go", "**/*_generated.go", "**/zz_generated.*"] }
+      action: { block: "{path} is generated: edit its source (.proto, schema...) and run just gen" }
+    - when: { path: ["package-lock.json", "pnpm-lock.yaml", "go.sum", "poetry.lock", "uv.lock"] }
+      action: { block: "{path} is written by the package manager: change the manifest and let the tool update it" }
 ```
 
 A pattern without `/` matches the base name anywhere, like `.gitignore`, so `go.sum` also covers `tools/go.sum`.
@@ -363,9 +374,9 @@ A pattern without `/` matches the base name anywhere, like `.gitignore`, so `go.
 ```yaml
 on:
   pre_edit:
-    - if: { path: [".env", ".env.*", "*.pem", "*.key", "*.p12"] }
+    - when: { path: [".env", ".env.*", "*.pem", "*.key", "*.p12"] }
       unless: { path: ".env.example" }
-      deny: "{path} would end up in a commit: keep secrets in an ignored file or a secret store"
+      action: { block: "{path} would end up in a commit: keep secrets in an ignored file or a secret store" }
 ```
 
 polix skips the workflow for files git ignores, so this entry never bothers an `.env` that is in `.gitignore`.
@@ -389,13 +400,13 @@ To keep only the subagents away and let the main session change a path, use entr
 ```yaml
 on:
   pre_edit:
-    - if: { path: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
+    - when: { path: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
       unless: { actor: ["polix:workflow-author", "polix:rules-author"] }
-      deny: "{path} is the workflow of the repository: only the main session changes it"
+      action: { block: "{path} is the workflow of the repository: only the main session changes it" }
   pre_command:
-    - if: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
+    - when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
       unless: { actor: ["polix:workflow-author", "polix:rules-author"] }
-      deny: "Only the main session writes the workflow: {command}"
+      action: { block: "Only the main session writes the workflow: {command}" }
 ```
 
 Do not put `polix.yaml` or `ai/rules/` in `protected`: it binds the main session too, so the skills `workflow`
@@ -415,8 +426,8 @@ turn polix off for the rest of the session.
 ```yaml
 on:
   pre_edit:
-    - if: { path: [".claude/settings.json", ".codex/hooks.json"] }
-      deny: "{path} registers the hooks of polix: change it yourself, the agent does not"
+    - when: { path: [".claude/settings.json", ".codex/hooks.json"] }
+      action: { block: "{path} registers the hooks of polix: change it yourself, the agent does not" }
 ```
 
 polix only protects its own state without any entry: `AGENTS.md`, `CLAUDE.md`, `ai/rules/` and `polix.yaml` are
@@ -430,8 +441,8 @@ them.
 ```yaml
 on:
   pre_commit:
-    - if: { branch: "^(main|master)$" }
-      deny: "Do not commit on {branch}: create a branch for this change"
+    - when: { branch: "^(main|master)$" }
+      action: { block: "Do not commit on {branch}: create a branch for this change" }
 ```
 
 `pre_commit` runs for any command line that holds a `git commit`, also inside `git add . && git commit -m ...`.
@@ -441,15 +452,16 @@ on:
 ### The right rules at the right time
 
 Instead of loading every convention into `CLAUDE.md`, polix injects the rules of `ai/rules/` whose scope matches
-the file being edited, once per session, at the moment they matter.
+the file being edited, once per session and agent, at the moment they matter. A subagent has a context of its own,
+so it gets the rules on its own first edit, and again on its next run.
 
 ```yaml
 on:
-  session_start:
-    - context: { file: "docs/architecture.md" }
+  start:
+    - action: { inject: { file: "docs/architecture.md" } }
 
   pre_edit:
-    - context: { rules: "{path}" }
+    - action: { inject: { rules: "{path}" } }
 ```
 
 With a rule like this in `ai/rules/frontend.yaml`, the agent reads it the first time it edits a component, and
@@ -466,20 +478,21 @@ rules:
 ### Context that survives compaction
 
 When the context window fills up, Claude Code compacts the conversation and details get lost. polix answers
-`SessionStart` for every source, a compaction included, so a `session_start` context comes back after each one.
+`SessionStart` for every source, a compaction included, so a `start` context comes back after each one.
 
 ```yaml
 vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
 
 on:
-  session_start:
-    - context: { text: "Branch {branch}, ticket {key}. Use bun, not npm. Run just test before committing." }
-    - context: { file: "docs/conventions.md" }
+  start:
+    - action: { inject: "Branch {branch}, ticket {key}. Use bun, not npm. Run just test before committing." }
+    - action: { inject: { file: "docs/conventions.md" } }
 ```
 
 Keep it short: it is injected at every start, resume and compaction. `file` takes one path, not a glob. Rules
-injected by `context: { rules }` are not repeated after a compaction, since polix injects each one once per session.
+injected by `inject: { rules }` and the other injects that act once come back too: a compaction starts a new
+context, so after it each one is due again on its next event.
 
 ### The same checks for the agent and for CI
 
@@ -491,8 +504,8 @@ The agent runs the checks of the changed files before it stops, and CI runs the 
 ```yaml
 on:
   stop:
-    - if: { changed: "**" }
-      run: { rules: changed }
+    - when: { changed: "**" }
+      action: { run: { rules: changed } }
 ```
 
 ```yaml
@@ -518,73 +531,43 @@ blocked by it in CI.
 
 ## Rollout and evidence
 
-### Try a guardrail before enforcing it
-
-A new entry starts in `audit`: it blocks nothing and says nothing, it only logs what it would have blocked.
-
-```yaml
-on:
-  pre_edit:
-    - unless: { actor: builder }
-      mode: audit       # then warn, then enforce
-      deny: "Only the builder subagent edits the project"
-```
-
-After a few days of real sessions, read what it would have done:
-
-```bash
-polix log --json | jq -c 'select(.kind == "decision" and .outcome == "audit")'
-```
-
-When there are no false positives, move it to `warn` (the agent is told, nothing is blocked) and then to
-`enforce`. Nobody's afternoon is broken by a guardrail that was wrong.
-
-### A record of every infrastructure command
-
-An entry in `audit` mode never blocks and never speaks, but it logs every time it holds. Pointed at the commands
-that touch infrastructure, it becomes a record of what the agent ran against it.
-
-```yaml
-on:
-  pre_command:
-    - if: { command: ["kubectl*", "terraform*", "helm*", "aws*", "gcloud*"] }
-      mode: audit
-      deny: "Infrastructure command: {command}"
-```
-
-```bash
-polix log --json | jq -r 'select(.outcome == "audit") | "\(.at)  \(.actor)  \(.reason)"'
-```
-
-polix only sees the edit tools and `Bash`: calls to MCP tools do not reach it.
-
 ### Evidence of the process each change followed
 
-Every fact and every decision is appended to `<git-dir>/polix/log.jsonl`, with the entry that caused it and the
-content hash. Nobody, agent included, can edit it.
+Every decision polix makes, and every line it observed for the workflow, is appended to
+`<git-dir>/polix/log.jsonl`, with the entry that caused it and, when it was computed, the content hash. Nobody, agent
+included, can edit it. The observed lines say what polix saw by itself: a subagent that `finished`, a run of polix
+that `passed`, an entry that `blocked`, an inject made once and the start of a session.
 
 ```bash
 polix log --tail 20
-polix log --json | jq -c 'select(.kind == "fact")'
+polix log --tail 0 --json | jq -c 'select(.kind == "observed" and .outcome == "passed")'
+polix log --tail 0 --json | jq -c 'select(.kind == "observed" and .outcome == "finished" and .key == "polix:reviewer")'
+polix log --tail 0 --json | jq -c 'select(.kind == "decision" and .event == "pre_commit" and .outcome == "block"
+  and .branch == "PLAT-123-add-retry" and (.reason | startswith("The diff is not reviewed")))' | wc -l
 ```
 
-That log answers questions such as *were the tests green on the exact content that was committed?* or *how many
-times did the reviewer block this branch?*. For teams that must show how a change was made, not only what changed,
-it is evidence produced as a side effect of working.
+That log answers questions such as *were the tests green on the exact content that was committed?* (a `passed` line
+of `just test` with the hash of that content) or *how many times was a commit of this branch blocked for a missing
+review?* (the `block` decisions of `pre_commit` with the message of the review gate). `--tail 0` reads the whole log,
+not only its last 20 entries. A command the agent ran by itself never appears as passed. For teams that must show
+how a change was made, not only what changed, it is evidence produced as a side effect of working.
 
 ## Putting it together: build, document, test, review, commit
 
-Facts are tied to the content, and every edit changes it. So the order of the phases matters: a phase that edits
-files must run before the facts that should cover its edits.
+What polix observes is tied to the content, and every edit changes it. So the order of the phases matters: a phase
+that edits files must run before the checks and reviews that should cover its edits.
 
 1. **build**: the agent implements the change.
 2. **document**: the documenter edits docs and comments, so it runs before the tests and the review.
 3. **test**: polix runs the tests itself on stop, once per content.
-4. **review**: the reviewer is read-only, so its fact survives until the next edit.
-5. **commit**: only when every fact holds on the content being committed.
+4. **review**: the reviewer is read-only, so its `finished` holds until the next edit inside the scope of the
+   entry.
+5. **commit**: only when the documenter and the reviewer finished on the content being committed, and the tests
+   pass on it.
 
-The `done` conditions in the `if` of the stop entries enforce that order: the tests do not run on code the
-documenter is about to change, and the reviewer is not asked for before the tests are green.
+The `finished: documenter` in the `when` of the later stop entries, and the single stop rule, enforce that order:
+the tests do not run on code the documenter is about to change, and a failing run ends the evaluation, so the
+reviewer is not asked for before the tests are green.
 
 ```yaml
 version: 1
@@ -596,40 +579,31 @@ vars:
 on:
   pre_edit:
     - unless: { var: key }
-      deny: "No ticket in the branch name: create the branch from a ticket"
-    - context: { rules: "{path}" }
-
-  post_command:
-    - if: { command: "just test*", exit: 0 }
-      record: tested
-
-  subagent_stop:
-    - if: { actor: documenter }
-      record: documented
-    - if: { actor: "polix:reviewer" }
-      record: reviewed
+      action: { block: "No ticket in the branch name: create the branch from a ticket" }
+    - action: { inject: { rules: "{path}" } }
 
   stop:
-    - if: { changed: "src/**" }
-      unless: { done: documented }
-      require: "Launch the documenter subagent first: it edits files, so it goes before the tests and the review"
-    # Tests only once the docs are written, review only once the tests pass.
-    - if: { changed: "src/**", done: documented }
-      unless: { done: tested }
-      run: { command: ["just", "test"] }
-      record: tested
-    - if: { changed: "src/**", done: [documented, tested] }
-      unless: { done: reviewed }
-      require: "Run /polix:review on the final diff"
+    - when: { changed: "src/**" }
+      unless: { finished: documenter }
+      action: { block: "Launch the documenter subagent first: it edits files, so it goes before the tests and the review" }
+    # Tests only once the docs are written, review only once the tests pass: a failing run ends the evaluation.
+    - when: { changed: "src/**", finished: documenter }
+      action: { run: just test }
+    - when: { changed: "src/**", finished: documenter }
+      unless: { finished: "polix:reviewer" }
+      action: { block: "Run /polix:review on the final diff" }
 
   pre_commit:
-    - unless: { done: [documented, tested, reviewed] }
-      deny: "Document, test and review this exact diff before committing ({key})"
+    - unless: { finished: [documenter, "polix:reviewer"] }
+      action: { block: "Document and review this exact diff before committing ({key})" }
+    - action: { run: { command: just test, message: "The tests fail on this exact diff ({key})" } }
 ```
 
-If the reviewer finds a bug and the agent fixes it, `documented`, `tested` and `reviewed` all stop holding, and the
-flow runs again on the fixed code. Nobody has to remember to invalidate anything: the fix is a new content, and
-no fact was recorded on it yet.
+If the reviewer finds a bug and the agent fixes it in `src/`, `finished: documenter` and
+`finished: polix:reviewer` stop holding and `just test` runs again, so the flow runs again on the fixed code.
+Nobody has to remember to invalidate anything: the fix is a new content, and polix observed nothing on it yet. The
+`just test` of `pre_commit` shares its repeat with the one of the stop, since both run the same command: on a
+content the stop already tested, the commit does not run it again.
 
 ## Coming from Claude Code hooks
 
@@ -677,7 +651,6 @@ What polix does, without a script:
   and `ai/rules/` kept from subagents with `path` and `writes`, so the skills can still change them. polix only
   protects its own state on its own.
 - **Log what the agent does** (a `PreToolUse` hook that appends to a file): see
-  [A record of every infrastructure command](#a-record-of-every-infrastructure-command) and
   [Evidence of the process each change followed](#evidence-of-the-process-each-change-followed).
 
 What stays outside of polix, because it is not policy or polix does not listen to it:
@@ -690,8 +663,8 @@ What stays outside of polix, because it is not policy or polix does not listen t
   call, so what the agent ran is what the log says it ran.
 - **Checking the text of a prompt**: a `prompt` entry can block or add context, but its conditions are facts of the
   repository, not the words of the user.
-- **Context computed by a command**, such as `git log --oneline -5` at session start: `context` takes a text or a
-  file, not the output of a command.
+- **Context computed by a command**, such as `git log --oneline -5` at session start: `inject` takes a text, a
+  file or the rules, not the output of a command.
 - **MCP tools**: polix governs the edit tools and `Bash` only.
 - **Environment reloads, worktrees, compaction, model switches, elicitations, tasks and teammates** (`CwdChanged`,
   `FileChanged`, `WorktreeCreate`, `PreCompact`, `PreModelSwitch`, `Elicitation`, `TaskCreated`, `TeammateIdle`):

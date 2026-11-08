@@ -21,7 +21,8 @@ func TestLogWorkflowAdapterReadLog(t *testing.T) {
 		`{"kind":"decision","reason":"` + strings.Repeat("x", 5*1024*1024) + "\"}\n" +
 		`{"at":"t2","kind":"stop_block"}` + "\n"
 	st, err = LogWorkflowAdapter{Repo: workflowTestRepo(t, map[string]string{logWorkflowFile: log})}.ReadLog(ctx)
-	if err != nil || len(st.Entries) != 2 || st.Skipped != 1 || st.Entries[1].At != "t2" {
+	if err != nil || len(st.Entries) != 2 || st.Skipped != 1 || st.Entries[1].At != "t2" ||
+		st.Entries[0].Fact != "reviewed" {
 		t.Fatalf("log: %+v %v", st, err)
 	}
 }

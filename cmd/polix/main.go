@@ -21,7 +21,7 @@ func main() {
 	root := cli.Root("polix",
 		"Applies the polix.yaml and ai/rules/ of a repository to Claude Code and Codex",
 		"polix applies the workflow (polix.yaml) and the rules (ai/rules/, or rules.path) of a repository to Claude Code and "+
-			"Codex through their hooks: it blocks, requires, runs, injects and records what the workflow says.",
+			"Codex through their hooks: it runs, injects and blocks what the workflow says.",
 		"  # Set up this machine: the polix plugin with its skills and hooks\n"+
 			"  polix install\n\n"+
 			"  # Check the machine and the repository\n"+

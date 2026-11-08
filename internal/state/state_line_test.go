@@ -6,17 +6,21 @@ import (
 )
 
 // Every line that decodes is kept, even without kind; the lines that do not decode are left out, and the count
-// of skipped lines is kept.
+// of skipped lines is kept. An old fact line is kept with its kind and never selected by a query.
 func TestParse(t *testing.T) {
-	lines := [][]byte{[]byte(`{"kind":"fact","fact":"a"}`), []byte(`not json`), []byte(`{"fact":"x"}`),
-		[]byte(`{"kind":"fact","fact":"b"}`)}
+	lines := [][]byte{[]byte(`{"kind":"fact","fact":"reviewed","branch":"main","hash":"h"}`), []byte(`not json`),
+		[]byte(`{"key":"x"}`), []byte(`{"kind":"observed","outcome":"finished","key":"polix:reviewer","branch":"main"}`)}
 	s, err := Parse(lines, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Entries) != 3 || s.Entries[0].Fact != "a" || s.Entries[1].Fact != "x" || s.Entries[1].Kind != "" ||
-		s.Entries[2].Fact != "b" || s.Skipped != 1 {
+	if len(s.Entries) != 3 || s.Entries[0].Kind != "fact" || s.Entries[0].Hash != "h" ||
+		s.Entries[0].Fact != "reviewed" || s.Entries[1].Key != "x" ||
+		s.Entries[1].Kind != "" || s.Entries[2].Key != "polix:reviewer" || s.Skipped != 1 {
 		t.Fatalf("state: %+v", s)
+	}
+	if got := s.Observed(Query{Outcome: OutcomeFinished, Branch: "main"}); len(got) != 1 || got[0].Kind != KindObserved {
+		t.Fatalf("the old fact line is ignored: %+v", got)
 	}
 	if s, err := Parse(nil, 0); err != nil || len(s.Entries) != 0 {
 		t.Fatalf("an empty log: %v %+v", err, s)
@@ -43,11 +47,20 @@ func TestEncodeLineCapsReason(t *testing.T) {
 
 // The fields keep the names of the log, and empty ones are left out.
 func TestEncodeLineFields(t *testing.T) {
-	line, err := EncodeLine(Entry{At: "t", Kind: KindStopBlock, Session: "s", Line: 3})
+	line, err := EncodeLine(Entry{At: "t", Kind: KindDecision, Session: "s", Line: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(line); got != `{"at":"t","kind":"stop_block","session":"s","line":3}` {
+	if got := string(line); got != `{"at":"t","kind":"decision","session":"s","line":3}` {
+		t.Fatal(got)
+	}
+	line, err = EncodeLine(Entry{At: "t", Kind: KindObserved, Actor: "polix:reviewer", Hash: "h",
+		Key: "polix:reviewer", Outcome: OutcomeFinished})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"at":"t","kind":"observed","actor":"polix:reviewer","hash":"h","key":"polix:reviewer","outcome":"finished"}`
+	if got := string(line); got != want {
 		t.Fatal(got)
 	}
 	if _, err := EncodeLine(Entry{}); err == nil {

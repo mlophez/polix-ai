@@ -2,12 +2,16 @@ package git
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Paths that are not plain ASCII come back as they are, not quoted and escaped by git.
@@ -63,7 +67,7 @@ func TestNonASCIIPaths(t *testing.T) {
 }
 
 // gitRepo creates an empty repository in a temporary folder and returns it with a git runner and a writer.
-func gitRepo(t *testing.T) (dir string, git func(args ...string) string, write func(rel string)) {
+func gitRepo(t testing.TB) (dir string, git func(args ...string) string, write func(rel string)) {
 	t.Helper()
 	dir = t.TempDir()
 	git = func(args ...string) string {
@@ -225,6 +229,282 @@ func TestRepoFacts(t *testing.T) {
 	git("checkout", "--quiet", "--detach")
 	if b := r.Branch(ctx); b != "" {
 		t.Fatalf("Branch on a detached HEAD = %q", b)
+	}
+}
+
+// TreeDiff lists the paths that differ between two content hashes, none for equal trees, and fails for a tree git
+// does not have.
+func TestTreeDiff(t *testing.T) {
+	ctx := context.Background()
+	dir, git, write := gitRepo(t)
+	commit(git, write, "src/a.go")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scratch := filepath.Join(r.GitDir, "polix")
+	before, err := r.ContentHash(ctx, scratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write("README.md")
+	if err := os.WriteFile(filepath.Join(dir, "src", "a.go"), []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	after, err := r.ContentHash(ctx, scratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths, err := r.TreeDiff(ctx, before, after); err != nil || !slices.Equal(paths, []string{"README.md", "src/a.go"}) {
+		t.Fatalf("TreeDiff = %q, %v", paths, err)
+	}
+	if paths, err := r.TreeDiff(ctx, after, after); err != nil || len(paths) != 0 {
+		t.Fatalf("TreeDiff of equal trees = %q, %v", paths, err)
+	}
+	missing := strings.Repeat("1", len(before))
+	if _, err := r.TreeDiff(ctx, missing, after); err == nil {
+		t.Fatal("a missing tree is an error")
+	}
+	if _, err := r.TreeDiff(ctx, "", after); err == nil {
+		t.Fatal("an empty tree is an error")
+	}
+}
+
+// A repository without an index yet (git init, no git add) has a content hash, the same for the same files, and the
+// real index is never created; only the index of polix stays in the scratch folder.
+func TestContentHashWithoutIndex(t *testing.T) {
+	ctx := context.Background()
+	dir, _, write := gitRepo(t)
+	write("a.txt")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scratch := filepath.Join(r.GitDir, "polix")
+	first, err := r.ContentHash(ctx, scratch)
+	if err != nil || first == "" {
+		t.Fatalf("ContentHash without an index = %q, %v", first, err)
+	}
+	again, err := r.ContentHash(ctx, scratch)
+	if err != nil || again != first {
+		t.Fatalf("ContentHash again = %q, %v, want %q", again, err, first)
+	}
+	if _, err := os.Stat(filepath.Join(r.GitDir, "index")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the real index is touched: %v", err)
+	}
+	if left, err := filepath.Glob(filepath.Join(scratch, "index-*")); err != nil || len(left) != 0 {
+		t.Fatalf("the temporary index is left behind: %v %v", left, err)
+	}
+}
+
+// BenchmarkContentHash measures the content hash of a repository of 3000 committed files and 200 untracked ones,
+// with one file edited before each hash, as a hook sees it after an edit. The files are dated an hour back, as in a
+// real repository: files written in the same second as an index are racily clean, and git reads them again on
+// every call.
+func BenchmarkContentHash(b *testing.B) {
+	ctx := context.Background()
+	dir, git, write := gitRepo(b)
+	var files []string
+	for i := range 3000 {
+		files = append(files, filepath.ToSlash(filepath.Join("src", strconv.Itoa(i%30), strconv.Itoa(i)+".go")))
+	}
+	for i := range 200 {
+		files = append(files, filepath.ToSlash(filepath.Join("new", strconv.Itoa(i)+".txt")))
+	}
+	past := time.Now().Add(-time.Hour)
+	for _, f := range files {
+		write(f)
+		if err := os.Chtimes(filepath.Join(dir, filepath.FromSlash(f)), past, past); err != nil {
+			b.Fatal(err)
+		}
+	}
+	git("add", "--all", "src")
+	git("commit", "--quiet", "-m", "files")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		b.Fatal(err)
+	}
+	scratch := filepath.Join(r.GitDir, "polix")
+	edited := filepath.Join(dir, "src", "0", "0.go")
+	if _, err := r.ContentHash(ctx, scratch); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := range b.N {
+		if err := os.WriteFile(edited, []byte(strconv.Itoa(i)), 0o644); err != nil {
+			b.Fatal(err)
+		}
+		if _, err := r.ContentHash(ctx, scratch); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// freshHash is the content hash computed from a new copy of the real index, outside the scratch folder: what
+// ContentHash must return.
+func freshHash(t *testing.T, r *Repo) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "index")
+	if err := r.copyIndex(path); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := stageTree(context.Background(), r.Root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hash
+}
+
+// The copy of the index keeps the time of the real one, so git still compares the content of the files changed in
+// the same tick as the real index (racily clean).
+func TestCopyIndexKeepsTime(t *testing.T) {
+	ctx := context.Background()
+	dir, git, write := gitRepo(t)
+	commit(git, write, "a.txt")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.Stat(filepath.Join(r.GitDir, "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "index")
+	if err := r.copyIndex(path); err != nil {
+		t.Fatal(err)
+	}
+	cp, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cp.ModTime().Equal(src.ModTime()) || cp.Size() != src.Size() {
+		t.Fatalf("copy %v %d bytes, real index %v %d bytes", cp.ModTime(), cp.Size(), src.ModTime(), src.Size())
+	}
+}
+
+// ContentHash gives the hash of a fresh copy of the real index through edits, new and deleted files, commits, and a
+// file git stops tracking and ignores; and it never touches the real index.
+func TestContentHashFollowsTheFiles(t *testing.T) {
+	ctx := context.Background()
+	dir, git, write := gitRepo(t)
+	commit(git, write, "a.txt")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scratch := filepath.Join(r.GitDir, "polix")
+	realIndex := func() string {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join(r.GitDir, "index"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(filepath.Join(r.GitDir, "index"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info.ModTime().String() + string(data)
+	}
+	check := func(step string) string {
+		t.Helper()
+		before := realIndex()
+		got, err := r.ContentHash(ctx, scratch)
+		if err != nil {
+			t.Fatalf("%s: %v", step, err)
+		}
+		if realIndex() != before {
+			t.Fatalf("%s: the real index changed", step)
+		}
+		if want := freshHash(t, r); got != want {
+			t.Fatalf("%s: ContentHash = %s, want %s", step, got, want)
+		}
+		return got
+	}
+	first := check("first call")
+	if again := check("no change"); again != first {
+		t.Fatalf("the hash changed without an edit: %s, %s", first, again)
+	}
+	write("b.txt")
+	check("untracked file")
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("edited"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	check("edit")
+	if err := os.Remove(filepath.Join(dir, "b.txt")); err != nil {
+		t.Fatal(err)
+	}
+	check("deleted untracked file")
+	commit(git, write, "c.txt")
+	check("commit")
+	// A tracked build output, then ignored and no longer tracked: it leaves the tree.
+	commit(git, write, "out/x.bin")
+	check("tracked output")
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("out/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("rm", "--quiet", "--cached", "-r", "out")
+	check("output ignored and untracked")
+}
+
+// Calls at the same time, while the real index keeps changing under them, each return the hash of the files and
+// leave no temporary index behind.
+func TestContentHashConcurrent(t *testing.T) {
+	ctx := context.Background()
+	dir, git, write := gitRepo(t)
+	commit(git, write, "a.txt")
+	write("b.txt")
+	write("c.txt")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scratch := filepath.Join(r.GitDir, "polix")
+	want := freshHash(t, r)
+	stop := make(chan struct{})
+	toggled := make(chan struct{})
+	go func() {
+		defer close(toggled)
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			// Staging and unstaging b.txt changes the real index, never the files: the hash stays the same.
+			args := []string{"add", "b.txt"}
+			if i%2 == 1 {
+				args = []string{"reset", "--quiet", "b.txt"}
+			}
+			cmd := exec.Command("git", args...)
+			cmd.Dir = dir
+			_ = cmd.Run()
+		}
+	}()
+	errs := make(chan error, 8)
+	for range 8 {
+		go func() {
+			for range 5 {
+				got, err := r.ContentHash(ctx, scratch)
+				if err == nil && got != want {
+					err = errors.New("hash " + got + ", want " + want)
+				}
+				if err != nil {
+					errs <- err
+					return
+				}
+			}
+			errs <- nil
+		}()
+	}
+	for range 8 {
+		if err := <-errs; err != nil {
+			t.Error(err)
+		}
+	}
+	close(stop)
+	<-toggled
+	if left, _ := filepath.Glob(filepath.Join(scratch, "index-*")); len(left) != 0 {
+		t.Fatalf("temporary indexes are left behind: %v", left)
 	}
 }
 

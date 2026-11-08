@@ -58,7 +58,7 @@ func TestGraphWorkflowAdapterLoadWorkflow(t *testing.T) {
 		t.Fatalf("without file: %+v %v %v", wf, found, err)
 	}
 	// A workflow with problems is drawn as it is.
-	repo := workflowTestRepo(t, map[string]string{File: "version: 1\non:\n  pre_edit:\n    - if: { pth: x }\n      deny: x\n"})
+	repo := workflowTestRepo(t, map[string]string{File: "version: 1\non:\n  pre_edit:\n    - when: { pth: x }\n      action: { block: x }\n"})
 	wf, found, err = GraphWorkflowAdapter{Repo: repo}.LoadWorkflow(ctx, "dev")
 	if err != nil || !found || len(wf.On[PreEdit]) != 1 {
 		t.Fatalf("invalid: %+v %v %v", wf, found, err)
@@ -80,9 +80,9 @@ func TestGraphWorkflowCommand(t *testing.T) {
 	if code != 1 || !strings.Contains(stderr, "polix.yaml not found") || strings.Contains(stderr, "<nil>") {
 		t.Fatalf("without workflow: %d %q", code, stderr)
 	}
-	repo := workflowTestRepo(t, map[string]string{File: "version: 1\non:\n  stop:\n    - require: \"r\"\n"})
+	repo := workflowTestRepo(t, map[string]string{File: "version: 1\non:\n  stop:\n    - action: { block: \"r\" }\n"})
 	code, stdout, stderr := workflowTestRun(t, repo, "graph")
-	if want := "flowchart TD\n  subgraph stop\n    n0[\"require: r\"]\n  end\n"; code != 0 || stdout != want {
+	if want := "flowchart TD\n  subgraph stop\n    n0[\"block: r\"]\n  end\n"; code != 0 || stdout != want {
 		t.Fatalf("graph: %d %q %q", code, stdout, stderr)
 	}
 }

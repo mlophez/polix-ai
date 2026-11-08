@@ -37,10 +37,11 @@ type LogWorkflowEntry struct {
 	Actor   string `json:"actor,omitempty"`
 	Branch  string `json:"branch,omitempty"`
 	Hash    string `json:"hash,omitempty"`
-	Fact    string `json:"fact,omitempty"`
-	Rule    string `json:"rule,omitempty"`
+	Rule    string `json:"rule,omitempty"` // the rule id of a line of kind injected an older polix wrote
+	Fact    string `json:"fact,omitempty"` // the name of a line of kind fact an older polix wrote
 	Action  string `json:"action,omitempty"`
 	Line    int    `json:"line,omitempty"`
+	Key     string `json:"key,omitempty"`
 	Outcome string `json:"outcome,omitempty"`
 	Reason  string `json:"reason,omitempty"`
 }
@@ -95,7 +96,9 @@ func logWorkflow(ctx context.Context, port LogWorkflowPort, req LogWorkflowReque
 }
 
 // print writes the warning of the skipped lines to stderr and the entries to stdout, as JSON lines or as one
-// line each: time, kind, event, actor, what happened, the start of the hash and the first line of the reason.
+// line each: time, kind, event, actor, what happened (the outcome with the action, the rule, the fact or the first
+// line of the key, which for an inject is its text), the start of the hash and the first line of the reason. A line
+// of a kind polix no longer writes shows its kind, and its rule or its fact.
 func (res LogWorkflowResponse) print(stdout, stderr io.Writer, raw bool) {
 	if res.Skipped > 0 {
 		fmt.Fprintf(stderr, "polix: %d lines of the log are longer than %d bytes and were skipped\n", res.Skipped,
@@ -107,10 +110,8 @@ func (res LogWorkflowResponse) print(stdout, stderr io.Writer, raw bool) {
 			fmt.Fprintln(stdout, string(line))
 			continue
 		}
-		what := e.Fact
-		if what == "" {
-			what = strings.TrimSpace(e.Outcome + " " + e.Action + e.Rule)
-		}
+		key, _, _ := strings.Cut(e.Key, "\n")
+		what := strings.TrimSpace(e.Outcome + " " + e.Action + e.Rule + e.Fact + key)
 		reason, _, _ := strings.Cut(e.Reason, "\n")
 		fmt.Fprintf(stdout, "%s  %-10s %-13s %-9s %-16s %.8s  %s\n", e.At, e.Kind, e.Event, e.Actor, what, e.Hash,
 			reason)

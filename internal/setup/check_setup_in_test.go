@@ -80,7 +80,7 @@ func TestCheckSetupCommand(t *testing.T) {
 	if code, stdout, stderr := runCheckSetup(r); code != 0 || !strings.HasPrefix(stdout, "ok: polix.yaml and 0 rules") {
 		t.Fatalf("the example is valid: %d %q %q", code, stdout, stderr)
 	}
-	write(t, filepath.Join(r, "polix.yaml"), "version: 1\non:\n  pre_edit:\n    - deny: x\n      an_option_of_0_2: 1\n")
+	write(t, filepath.Join(r, "polix.yaml"), "version: 1\non:\n  pre_edit:\n    - action: { block: x }\n      an_option_of_0_2: 1\n")
 	if code, _, stderr := runCheckSetup(r); code != 1 || !strings.Contains(stderr, "newer polix") ||
 		strings.Contains(stderr, "polix:") {
 		t.Fatalf("unknown options hint an update, exit 1 without the error handler: %d %q", code, stderr)

@@ -78,13 +78,15 @@ func TestEventLocate(t *testing.T) {
 	}
 }
 
-// An event needs a neutral name and its agent.
+// An event needs a neutral name and its agent; the old names of the start and the stop of a turn are not ones.
 func TestEventValid(t *testing.T) {
 	if err := (Event{Name: workflow.Stop, Agent: Claude}).Valid(); err != nil {
 		t.Fatal(err)
 	}
-	if (Event{Name: "Stop", Agent: Claude}).Valid() == nil || (Event{Name: workflow.Stop}).Valid() == nil {
-		t.Fatal("a native name or no agent is valid")
+	if (Event{Name: "Stop", Agent: Claude}).Valid() == nil || (Event{Name: workflow.Stop}).Valid() == nil ||
+		(Event{Name: "turn_stop", Agent: Claude}).Valid() == nil ||
+		(Event{Name: "session_start", Agent: Claude}).Valid() == nil {
+		t.Fatal("a native name, an old name or no agent is valid")
 	}
 }
 

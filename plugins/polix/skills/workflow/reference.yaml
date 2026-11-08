@@ -11,8 +11,8 @@
 #    polix protects nothing else on its own: AGENTS.md, CLAUDE.md, ai/rules/ and polix.yaml are only protected
 #    when this file says so.
 # 3. Edits outside the repository or of files git ignores skip the workflow: only the protections apply to them.
-# 4. The entries of the event run in file order; each one whose `if` holds and whose `unless` does not hold applies
-#    its action. `deny` in enforce mode and `allow` stop the evaluation; every other action lets it go on.
+# 4. The entries of the event run in file order; each one whose `when` holds and whose `unless` does not hold
+#    carries out its action. The first entry that actually blocks ends the evaluation (see `on` below).
 #
 # An invalid file (any problem `polix check` reports) blocks pre_edit, pre_command and pre_commit with the
 # problems (fail closed), except the main session editing polix.yaml or running `polix check`, `polix update`,
@@ -46,9 +46,10 @@ base: [main, dev]
 # keeps every .env); a leading `/` anchors it to the root, as in .gitignore (`/AGENTS.md` is only the one of the root).
 protected: [".env", "/AGENTS.md", "/CLAUDE.md"]
 
-# Optional, default 3 (0 also means 3; negative is rejected). Loop guard of every block of stop and subagent_stop
-# in enforce mode (require, deny or a failing run): after this many blocks of the same entry, in the same session,
-# by the same actor and on the same content hash, the agent may stop, and the log records a `loop_guard` decision.
+# Optional, default 3 (0 also means 3; negative is rejected). Loop guard of every block of stop and
+# subagent_stop (a block or a failing run): after this many blocks of the same entry, in the same session, by the
+# same actor and on the same content hash, the agent may stop, and the log records a `loop_guard` decision. A block
+# let through by the guard does not end the evaluation, and a subagent let through does not count as `finished`.
 max_stop_blocks: 3
 
 # Optional. The rules on how to write the code, which polix injects and checks.
@@ -88,11 +89,10 @@ risk:
     "src/core/**": 3
     "docs/**": 0.2
 
-# Optional, every switch true by default. Built-in instructions polix injects into the agent on every
-# session_start (startup, resume, clear, compaction), in English, as one context before those of the session_start
-# entries. Its text is the template templates/session_start.md.tmpl of the binary. They ask for cooperation and
-# block nothing. Injected only with a valid polix.yaml; a switch left out is on, false turns it off, and an unknown
-# key is rejected.
+# Optional, every switch true by default. Built-in instructions polix injects into the agent on every start
+# (startup, resume, clear, compaction), in English, as one context before those of the start entries. Its text is
+# the template templates/session_start.md.tmpl of the binary. They ask for cooperation and block nothing. Injected
+# only with a valid polix.yaml; a switch left out is on, false turns it off, and an unknown key is rejected.
 # - commit: run each commit as a git commit command of its own, not chained with &&, ; or | nor wrapped in sh -c,
 #   so pre_commit sees it.
 # - edit: create and change files with the edit tool of the agent, not from the shell (sed -i, redirections, tee,
@@ -112,13 +112,13 @@ guidance:
 vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # PLAT-123-add-retry -> PLAT-123
 
-# Placeholders, replaced in the strings of conditions (except `branch`), actions and `contains`; an unknown one
+# Placeholders, replaced in the strings of conditions (except `branch`), verbs and `contains`; an unknown one
 # is rejected by `polix check`:
 # - {path}: the edited path, relative to the root (pre_edit and post_edit; empty elsewhere);
 # - {command}: the whole command line (pre_command, post_command and pre_commit; empty elsewhere);
 # - {branch}: the current branch;
 # - {changed_lines}, {changed_files}, {risk_score}: the measures of the change not committed yet, over the files of
-#   the `changed` of the `if` of the entry, else the whole change; `?` when git cannot measure it. The change is
+#   the `changed` of the `when` of the entry, else the whole change; `?` when git cannot measure it. The change is
 #   only read when a string or a condition needs it;
 # - {<var>}: each variable of `vars`.
 #
@@ -132,167 +132,200 @@ vars:
 # command, and "just test*" also matches `just test -k x` or `just test 2>&1`.
 
 on:
-  # Events, in lifecycle order. Each holds a list of entries. Keys of an entry:
-  #   if:     optional map of conditions; all must hold (no `if` always holds).
+  # Events, in lifecycle order. Each holds a list of entries, and an entry has two parts, when it applies and what
+  # it does:
+  #   when:   optional map of conditions; all must hold (no `when` always holds).
   #   unless: optional map of conditions; the entry is skipped when all hold (no `unless` never skips).
-  #   mode:   optional, enforce (default) | warn | audit; how a block of the entry is applied (see deny).
-  #   why:    optional free text for people; the engine ignores it.
-  #   <action>: exactly one of deny, allow, require, run, context, record.
-  #   record: alone it is the action record; next to any other action, the name of a fact (placeholders allowed)
-  #           recorded on the current content once that action applied: blocked, warned or let through by the
-  #           loop guard, and a run only when it passed on a content that did not change. In audit mode nothing
-  #           is recorded. A deny or require that records the fact its own `unless` checks asks once per content
-  #           instead of enforcing.
-  # Unknown events, keys (also inside run, context and vars), conditions, actions and modes are rejected by
-  # `polix check`, and so are conditions on events where they never hold (path, command, writes, exit).
+  #   action: required, a map with exactly one verb:
+  #     run:    run a command, or the checks of the rules (see post_edit);
+  #     inject: inject text for the AI (see start);
+  #     block:  block the event with a message for the AI (see pre_edit).
+  # The first entry that actually blocks (a block, or a failing run on an event where a run blocks, not let through
+  # by the loop guard) ends the evaluation of the event: the entries after it do not run, and those before it already
+  # acted, so an inject before a block reaches the AI with it (on prompt, a rejected prompt never reaches the AI, so
+  # that inject acts again on the next prompt). The order of the file is the priority: the AI gets one failure per
+  # answer, the first one.
   #
-  # Modes, for the actions that can block (deny, require, run):
-  # - enforce: blocks. The agent gets the reasons (exit 2 on stderr) and cannot go on.
-  # - warn: does not block. On session_start, prompt, pre_* and post_* the reason reaches the agent as context
-  #   ("Aviso de polix: ..."); on stop and subagent_stop the agent cannot receive context, so only the user sees
-  #   it on stderr. The log records a `warn` decision.
-  # - audit: does not block and says nothing; the log only records what the entry would have blocked. Use it to try
-  #   a new entry on real sessions, then move it to warn and to enforce once it is trusted.
+  # How often each verb acts:
+  # - block blocks every time its entry applies: a gate, which holds until its `unless` does. `once: true` makes it a
+  #   reminder: it blocks the first attempt of an actor (the main session, or a subagent type) in a session on a
+  #   content and lets the next one through; an edit inside the scope of the entry, another actor or a new session
+  #   is reminded again.
+  # - run is not run again once it passed on the same branch and content (the same command, whoever's entry it is;
+  #   {path} in it makes one command per path); a failing run runs again on the next event. `always: true` runs it
+  #   every time, for a command whose result depends on more than the files (network, clock).
+  # - inject reaches each actor once per session for each text it expands to, and again after the context is
+  #   compacted or, for a subagent, on its next run. `always: true` injects it on every event. A text with a
+  #   placeholder that changes on every event ({command}, a measure) is a new text, so it is injected every time;
+  #   {path} gives once per path.
+  # The scope of an entry is the set of files the `changed` of its `when` names (the nearest `changed`, as the
+  # measures take it), or the whole tree without one: `finished` and a `once` block compare only the files of that
+  # scope, so an edit of README.md or docs/ keeps a review of `changed: "src/**"` and a reminder already given. Name
+  # in `changed` every file the subagent reviews (go.mod is not "*.go").
+  #
+  # What polix remembers: its log (<git-dir>/polix/log.jsonl, read with `polix log`) holds a decision for each
+  # answer, and an `observed` line only for what this file asks about: the end of a subagent a `finished` names,
+  # a run of polix that passed, a block of a `once` entry or of a stop, an inject made once and the start of a
+  # session. When an inject acts once, the end of any subagent is also written, without hash, so its next run gets
+  # the inject again; `finished` never reads those lines. A command the AI runs is never recorded and never counts
+  # as passed: polix cannot know what it really ran (an alias, another folder, a command still running in the
+  # background). A check that must hold is a `run` of polix.
+  #
+  # Unknown events, keys (also inside action, run, inject, block and vars), conditions and verbs are rejected by
+  # `polix check`, and so are conditions on events where they never hold (path, command, writes, exit). A name of
+  # the old vocabulary (session_start, turn_stop, if, why, mode, deny, require, allow, run or context as keys of an
+  # entry, record, done, at_least) is reported with its new spelling.
 
-  # session_start: a session starts. It cannot be blocked: deny and allow are rejected; context, run and record
-  # work, and a failing run only shows its output, since the session starts anyway.
-  session_start:
-    # context: inject text into the session. Exactly one of:
+  # start: a session starts, resumes, is cleared or is compacted. It cannot be blocked: block is rejected, and a
+  # failing run reaches the AI as context, its message first.
+  start:
+    # inject: text for the AI. The short form is the text (placeholders allowed); the long form a map with exactly
+    # one of:
     # - file: a file of the repository (placeholders allowed); a missing file injects nothing;
     # - text: a literal text (placeholders allowed);
-    # - rules: the rules of rules.path whose scope matches a path (rules without scope match any path), injected
-    #   at most once per session each, as "- <id>: <description>".
-    - context: { text: "Rama {branch}: el flujo es ticket, plan, build, review y commit." }
+    # - rules: the rules of rules.path whose scope matches a path (rules without scope match any path), each one
+    #   injected once per actor and session, as "- <id>: <description>";
+    # plus `always`. On start every inject acts every time, so `always` has no effect there.
+    - action: { inject: "Rama {branch}: el flujo es ticket, plan, build, review y commit." }
+    - action:
+        inject: { file: docs/flujo.md }
 
-  # prompt: the user sends a prompt. deny rejects the prompt before the model sees it.
+  # prompt: the user sends a prompt. A block rejects the prompt before the model sees it.
   prompt:
     # var: every variable of the list has a value (a string is a list of one).
     - unless: { var: key }
-      context: { text: "No hay ticket en la rama: créalo con /ticket antes de cambiar nada." }
+      action:
+        inject: { text: "No hay ticket en la rama: créalo con /ticket antes de cambiar nada.", always: true }
 
   # pre_edit: before a file is edited, once per path. Conditions of the edit: path, actor.
   pre_edit:
+    # block: block the event with a message for the AI. The short form is the message (placeholders allowed); the
+    # long form a map with `message` and `once`. Valid on prompt, pre_edit, pre_command, pre_commit, stop and
+    # subagent_stop; the other events already happened.
+    # Every change is tracked by a Jira ticket:
     - unless: { var: key }
-      why: "Every change is tracked by a Jira ticket"
-      deny: "No hay ticket: crea la rama con /ticket"
+      action: { block: "No hay ticket: crea la rama con /ticket" }
+    # An exception is a `not` in `when`, or a condition in `unless`: the plan is written before it exists.
     # path: the edited path matches a glob, or one of a list. Never holds outside pre_edit and post_edit.
-    # allow: true lets the event pass and stops the evaluation; later entries do not run. Only true is valid.
-    - if: { path: "ai/plans/{key}-*.md" }
-      allow: true
+    # not: a map of nested conditions; it holds unless every one of them holds (with one nested condition, it is its
+    # negation).
     # file: a file of the repository, tracked or untracked but not ignored, matches a glob (or one of a list).
-    - unless: { file: "ai/plans/{key}-*.md" }
-      deny: "No hay plan: escríbelo con /plan"
-    # file + contains: some matching file also holds this text (plain substring, placeholders allowed).
-    # contains is only valid next to file.
-    - unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
-      deny: "El plan no tiene la línea Ticket: {key}"
+    - when: { not: { path: "ai/plans/{key}-*.md" } }
+      unless: { file: "ai/plans/{key}-*.md" }
+      action: { block: "No hay plan: escríbelo con /plan" }
+    # file + contains: some matching file also holds this text (plain substring, placeholders allowed). contains is
+    # only valid next to file, and never inside any, where it would hold on its own.
+    - when: { not: { path: "ai/plans/{key}-*.md" } }
+      unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
+      action: { block: "El plan no tiene la línea Ticket: {key}" }
     # actor: who acts, `session` (the main session) or the subagent type; a list holds when any matches. An agent of
     # a plugin is named with its prefix, `plugin:agent`, as polix:reviewer or acme:builder (a builder agent of a
     # plugin acme); an agent of .claude/agents/ by its bare name.
-    # deny: block the event with the reason; in enforce mode it stops the evaluation, in warn or audit it does not.
-    - unless: { actor: acme:builder }
-      mode: audit       # new entry: it only logs what it would block until it is trusted
-      deny: "Solo el subagente acme:builder edita el proyecto: usa /build"
-    - context: { rules: "{path}" }
+    - when: { not: { path: "ai/plans/**" } }
+      unless: { actor: acme:builder }
+      action: { block: "Solo el subagente acme:builder edita el proyecto: usa /build" }
+    - action:
+        inject: { rules: "{path}" }
 
-  # post_edit: after a file is edited, once per path. It cannot be blocked: deny and allow are rejected.
-  # A failing run gives its output to the agent as context in warn mode, and as a block reason in enforce mode.
+  # post_edit: after a file is edited, once per path. It cannot be blocked: block is rejected. A failing run
+  # reaches the AI as context, its message first: feedback the AI acts on at once, not a gate.
   post_edit:
-    # run: execute a command from the root, without a shell (no pipes, redirections or globs). Every run of one
-    # hook call shares a budget of 10 minutes; the timeout of the hook in the agent settings must be longer.
-    # Exactly one of:
-    # - command: a list of arguments, or a string split on spaces; placeholders allowed in each argument. A non
-    #   zero exit blocks with the last 15 lines of its output;
+    # run: run a command from the root, without a shell (no pipes, redirections or globs). Every run of one hook
+    # call shares a budget of 10 minutes; the timeout of the hook in the agent settings must be longer. The short
+    # form is the command, a string split on spaces or a list of arguments (placeholders allowed in each); the long
+    # form a map with exactly one of:
+    # - command: the same command;
     # - rules: `changed` (the changed files) or a path such as "{path}": runs the check of every deterministic
-    #   rule with a check whose scope matches; a failure names the rule ids and their output.
-    # A `record` next to run names a fact recorded on the current content when the run passes (never when it
-    # fails, nor in audit mode).
-    - if: { path: "**/*.py" }
-      mode: warn
-      run: { command: ["uv", "run", "ruff", "check", "{path}"] }
-    - if: { path: "checks/**" }
-      mode: warn
-      run: { rules: "{path}" }
+    #   rule with a check whose scope matches; a failure names the rule ids and their output;
+    # plus `message`, the text before the output of a failure (placeholders allowed), and `always`.
+    # A failure answers with the message, a blank line and the last 15 lines of the output. On prompt, pre_edit,
+    # pre_command, pre_commit, stop and subagent_stop it blocks, as a block does; on start, post_edit and
+    # post_command it reaches the AI as context.
+    - when: { path: "**/*.py" }
+      action: { run: "uv run ruff check {path}" }
+    - when: { path: "checks/**" }
+      action:
+        run: { rules: "{path}", message: "La check de {path} no pasa:" }
 
   # pre_command: before a shell command runs. The line is split into its commands (`cd x && just test | tail -3`
   # gives `cd x`, `just test` and `tail -3`, quotes respected), and `command` holds when any of them matches.
   pre_command:
     # command: a command of the line matches a pattern, or one of a list.
-    - if: { command: ["git push*origin main*", "git push*origin HEAD:main*"] }
-      deny: "No se hace push directo a main: abre un PR"
+    - when: { command: ["git push*origin main*", "git push*origin HEAD:main*"] }
+      action: { block: "No se hace push directo a main: abre un PR" }
     # branch: the current branch matches a regular expression. It is not anchored: use ^ and $ for a whole match.
-    # not: a map of nested conditions; it holds unless every one of them holds (with one nested condition, it is its
-    # negation). Inside `if` it says the same as moving the nested conditions to `unless`; it is needed to negate
-    # some conditions of an `unless` or to combine a negation with other conditions in the same `if`.
-    - if: { command: "terraform apply*", not: { branch: "^main$" } }
-      mode: warn
-      deny: "terraform apply solo se lanza desde el pipeline de main"
+    # A warning is an inject: the AI is told, nothing is blocked.
+    - when: { command: "terraform apply*", not: { branch: "^main$" } }
+      action: { inject: "Aviso: terraform apply solo se lanza desde el pipeline de main." }
     # writes: a command of the line writes a path that matches a glob, or one of a list: the target of a
     # redirection into the repository, or a file named by a program that writes by itself (rm, mv, cp, tee,
     # sed -i...), which also matches on a folder holding it or a wildcard reaching it (`rm -rf ai` or `rm -rf ai/*`
     # for ai/rules/**). A heuristic: reads do not count, and `python -c` that opens a file is not seen. Only on
     # pre_command, post_command and pre_commit.
-    - if: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
-      deny: "Solo la sesión principal cambia {command}"
+    - when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
+      action: { block: "Solo la sesión principal cambia {command}" }
 
-  # post_command: after a shell command ran. It cannot be blocked: deny and allow are rejected.
+  # post_command: after a shell command ran. It cannot be blocked: block is rejected. Whatever it ran, the command of
+  # the AI never counts as a check that passed: a check that must hold is a run of polix (see pre_commit).
   post_command:
     # exit: the exit code of the line. Next to command, it only holds when a matching command decides the code of
     # the line: alone, last, or followed by && (`just test | tail` is decided by tail, so it never holds).
     # A command that failed to run (PostToolUseFailure) without an exit code counts as 1.
-    # record: record a fact (placeholders allowed) tied to the branch and the content hash, for `done`.
-    - if: { command: "just test*", exit: 0 }
-      record: tested
+    # always: true tells the AI on every failure, not only the first one of the session.
+    - when: { command: "just test*", exit: 1 }
+      action:
+        inject: { text: "Los tests fallan: arréglalos antes de seguir.", always: true }
 
   # pre_commit: before a command line that holds a `git commit` runs; it comes right after its pre_command.
   pre_commit:
-    # done: every fact of the list was recorded on this branch for exactly the current content hash: the git tree
-    # of the working tree with everything staged (untracked included, ignored excluded). Any edit to any file that
-    # is not ignored changes the hash, so earlier facts stop counting; going back to an earlier content brings them
-    # back. Facts are not tied to the session.
-    - unless: { done: tested }
-      deny: "Los tests no han pasado sobre este diff: ejecuta just test"
+    # A gate polix runs itself: the tests run before every commit, and not again on a content they passed on.
+    - action:
+        run: { command: just test, message: "Los tests no pasan sobre este diff:" }
+    # changed: some file not committed yet (changed since HEAD, or untracked) matches a glob, or one of a list.
     # changed_lines, changed_files, risk_score: measures of the change not committed yet (the files of `changed`,
-    # untracked ones whole), each a map with `at_least`, a non-negative integer; there is no short form. They
-    # measure the files of the nearest `changed` (in their own map, else in the enclosing one), else the whole
-    # change. changed_lines sums added and deleted lines; changed_files counts files, deleted and binary included;
+    # untracked ones whole), each a non-negative integer: the measure holds from that number up. They measure the
+    # files of the nearest `changed` (in their own map, else in the enclosing one), else the whole change.
+    # changed_lines sums added and deleted lines; changed_files counts files, deleted and binary included;
     # risk_score uses risk.weights. When git cannot measure the change they hold and the call warns (fail closed).
     # any: a map of nested conditions; it holds when at least one of them holds. It may hold `not` and sit in it.
-    # Here a small change of the source commits without a review; a large or risky one needs it.
-    - if:
+    # finished: every subagent type of the list (a string is a list of one) ended on this branch, its stop not
+    # refused nor let through by the loop guard, and the files of the scope of the entry did not change since. polix
+    # observes the end of the subagents a finished names by itself: no entry on subagent_stop is needed.
+    # A gate released by finished: a small change of the source commits without a review; a large or risky one
+    # waits for polix:reviewer, whose review survives an edit of README.md or docs/, outside the scope.
+    - when:
         changed: "src/**"
         any:
-          changed_lines: { at_least: 150 }
-          changed_files: { at_least: 5 }
-          risk_score: { at_least: 25 }
-      unless: { done: reviewed }
-      deny: "Cambio de {changed_lines} líneas en {changed_files} ficheros (riesgo {risk_score}): lanza el subagente polix:reviewer"
+          changed_lines: 150
+          changed_files: 5
+          risk_score: 25
+      unless: { finished: polix:reviewer }
+      action:
+        block: "Cambio de {changed_lines} líneas en {changed_files} ficheros (riesgo {risk_score}): lanza el subagente polix:reviewer"
+    # A reminder: once: true blocks the first commit of each actor in a session on this content, and lets the next
+    # one through. The docs it asks for are outside its scope, so editing them does not remind it again.
+    - when: { changed: "src/**" }
+      action:
+        block: { message: "Revisa si README.md y docs/ deben cambiar con este diff; si no, repite el commit.", once: true }
 
-  # subagent_stop: a subagent is about to stop; actor is its type. require blocks it until the condition is met.
+  # subagent_stop: a subagent is about to stop; actor is its type. A block keeps it working. Its entries never run
+  # when the main session ends its turn.
   subagent_stop:
-    - if: { actor: polix:reviewer }
-      record: reviewed
-    - if: { actor: acme:builder, changed: "src/**" }
-      unless: { done: tested }
-      require: "Ejecuta just test antes de terminar"
+    # The builder does not finish until the tests pass: polix runs them, it never trusts that the builder ran them.
+    - when: { actor: acme:builder, changed: "src/**" }
+      action: { run: { command: just test, message: "Los tests no pasan: arréglalos antes de terminar." } }
 
-  # stop: the main session is about to end its turn; actor is always `session`.
+  # stop: the main session is about to end its turn; actor is always `session`. A subagent ends with subagent_stop,
+  # which never runs these entries. inject is rejected here and on subagent_stop: the agent cannot receive context
+  # when it stops.
   stop:
-    # changed: some file not committed yet (changed since HEAD, or untracked) matches a glob, or one of a list.
-    - if: { changed: "**" }
-      run: { rules: changed }
-    # A run that records a fact: the tests run on stop without the agent, once per content.
-    - if: { changed: "src/**" }
-      unless: { done: tested }
-      run: { command: ["just", "test"] }
-      record: tested
-    # require: what the agent must do before it stops; only valid on stop and subagent_stop. In enforce mode it
-    # blocks with the text and counts for the loop guard (max_stop_blocks), like any block of a stop; it never
-    # stops the evaluation, so every pending require is reported at once.
-    # context is not valid on stop and subagent_stop: the agent cannot receive it there.
-    # With record, the request is made once per content: the review runs in the background, and the next stop on
-    # the same content does not block again; subagent_stop records reviewed when the reviewer ends.
-    - if: { changed: "src/**", not: { done: review_asked } }
-      unless: { done: reviewed }
-      require: "Lanza el subagente polix:reviewer sobre el diff actual"
-      record: review_asked
+    - when: { changed: "**" }
+      action: { run: { rules: changed } }
+    # always: true runs it on every turn, also on a content it passed on: its result depends on more than the files.
+    - when: { changed: "src/**" }
+      action:
+        run: { command: just test-integration, always: true }
+    - when: { changed: "src/**" }
+      unless: { finished: polix:reviewer }
+      action:
+        block: { message: "Lanza el subagente polix:reviewer sobre el diff actual", once: true }

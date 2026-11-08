@@ -48,32 +48,41 @@ func GraphWorkflow(wf Workflow, found bool) GraphWorkflowOutput {
 // which would end the label.
 func graphWorkflowLabel(e Entry) string {
 	var parts []string
-	if c := graphWorkflowCond(e.If); c != "" {
-		parts = append(parts, "if "+c)
+	if c := graphWorkflowCond(e.When); c != "" {
+		parts = append(parts, "when "+c)
 	}
 	if c := graphWorkflowCond(e.Unless); c != "" {
 		parts = append(parts, "unless "+c)
 	}
-	act := e.Action()
+	a := e.Action
+	act := a.Verb()
 	switch act {
-	case "deny":
-		act += ": " + *e.Deny
-	case "require":
-		act += ": " + *e.Require
-	case "record":
-		act += ": " + *e.Record
-	case "run":
-		if e.Run.Rules != "" {
-			act += " rules " + e.Run.Rules
-		} else {
-			act += " " + strings.Join(e.Run.Command, " ")
+	case VerbBlock:
+		act += ": " + a.Block.Message
+		if a.Block.Once {
+			act += " (once)"
 		}
-	}
-	if e.Record != nil && e.Action() != "record" {
-		act += " → record " + *e.Record
-	}
-	if m := e.Mode; m != "" && m != ModeEnforce {
-		act += " (" + m + ")"
+	case VerbRun:
+		if a.Run.Rules != "" {
+			act += " rules " + a.Run.Rules
+		} else {
+			act += " " + strings.Join(a.Run.Command, " ")
+		}
+		if a.Run.Always {
+			act += " (always)"
+		}
+	case VerbInject:
+		switch {
+		case a.Inject.File != "":
+			act += " file " + a.Inject.File
+		case a.Inject.Rules != "":
+			act += " rules " + a.Inject.Rules
+		default:
+			act += ": " + a.Inject.Text
+		}
+		if a.Inject.Always {
+			act += " (always)"
+		}
 	}
 	parts = append(parts, act)
 	return strings.ReplaceAll(strings.Join(parts, "<br/>"), `"`, "'")

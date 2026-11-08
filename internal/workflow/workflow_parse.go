@@ -52,35 +52,52 @@ type varYAML struct {
 	keys   []string
 }
 
-// entryYAML is an entry of an event.
+// entryYAML is an entry of an event. The keys of the old vocabulary reach the validator as unknown keys, which
+// reports their new spelling; only the conditions of if are decoded, so their problems come with that hint.
 type entryYAML struct {
-	If      map[string]any `yaml:"if"`
-	Unless  map[string]any `yaml:"unless"`
-	Mode    string         `yaml:"mode"`
-	Why     string         `yaml:"why"`
-	Deny    *string        `yaml:"deny"`
-	Allow   *bool          `yaml:"allow"`
-	Require *string        `yaml:"require"`
-	Run     *runYAML       `yaml:"run"`
-	Context *contextYAML   `yaml:"context"`
-	Record  *string        `yaml:"record"`
-	line    int
-	keys    []string
+	When   map[string]any `yaml:"when"`
+	Unless map[string]any `yaml:"unless"`
+	If     ifYAML         `yaml:"if"`
+	Action *actionYAML    `yaml:"action"`
+	line   int
+	keys   []string
 }
 
-// runYAML is the action run.
+// ifYAML is the value of the old key if: its conditions when it is a map, else nothing, since the hint of the key
+// already tells how to rewrite it.
+type ifYAML map[string]any
+
+// actionYAML is the action of an entry: a map with one verb.
+type actionYAML struct {
+	Run    *runYAML    `yaml:"run"`
+	Inject *injectYAML `yaml:"inject"`
+	Block  *blockYAML  `yaml:"block"`
+	keys   []string
+}
+
+// runYAML is the verb run: a command (a string split on spaces, or a list) or a map.
 type runYAML struct {
 	Command argsYAML `yaml:"command"`
 	Rules   string   `yaml:"rules"`
+	Message string   `yaml:"message"`
+	Always  bool     `yaml:"always"`
 	keys    []string
 }
 
-// contextYAML is the action context.
-type contextYAML struct {
-	File  string `yaml:"file"`
-	Text  string `yaml:"text"`
-	Rules string `yaml:"rules"`
-	keys  []string
+// injectYAML is the verb inject: a text or a map.
+type injectYAML struct {
+	File   string `yaml:"file"`
+	Text   string `yaml:"text"`
+	Rules  string `yaml:"rules"`
+	Always bool   `yaml:"always"`
+	keys   []string
+}
+
+// blockYAML is the verb block: a message or a map.
+type blockYAML struct {
+	Message string `yaml:"message"`
+	Once    bool   `yaml:"once"`
+	keys    []string
 }
 
 // rulesYAML is the key rules.
@@ -126,13 +143,18 @@ var decodeNames = []string{
 	"workflow.workflowYAML", "workflow.Workflow",
 	"workflow.entryYAML", "workflow.Entry",
 	"workflow.varYAML", "workflow.Var",
+	"workflow.actionYAML", "workflow.Action",
 	"workflow.runYAML", "workflow.Run",
-	"workflow.contextYAML", "workflow.Context",
+	"workflow.injectYAML", "workflow.Inject",
+	"workflow.blockYAML", "workflow.Block",
 	"workflow.rulesYAML", "workflow.Rules",
 	"workflow.folderYAML", "workflow.Folder",
 	"workflow.guidanceYAML", "workflow.Guidance",
 	"workflow.stringsYAML", "[]string",
 	"workflow.argsYAML", "[]string",
+	// The local type each UnmarshalYAML decodes a map into; they check the kind of their node first, so this only
+	// keeps a name of the decoding out of a message that slips through.
+	"workflow.plain", "a map",
 }
 
 // topKeys are the keys of polix.yaml.
@@ -176,11 +198,15 @@ func Parse(data []byte, running string) (Workflow, error) {
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return Workflow{}, fmt.Errorf("%s: %w", File, err)
 	}
+	var lines map[string]int
 	if len(root.Content) == 1 && root.Content[0].Kind == yaml.MappingNode {
 		top := root.Content[0]
 		for i := 0; i < len(top.Content); i += 2 {
 			if k := top.Content[i].Value; !contains(topKeys, k) {
 				return Workflow{}, fmt.Errorf("%s:%d: unknown key %q", File, top.Content[i].Line, k)
+			}
+			if top.Content[i].Value == "on" && i+1 < len(top.Content) {
+				lines = keyLines(top.Content[i+1])
 			}
 		}
 	}
@@ -191,13 +217,13 @@ func Parse(data []byte, running string) (Workflow, error) {
 	if y.MaxStopBlocks == 0 {
 		y.MaxStopBlocks = DefaultMaxStopBlocks
 	}
-	return y.workflow()
+	return y.workflow(lines)
 }
 
-// workflow builds the domain value of the file. The problems of each value are reported by Workflow.Valid,
-// which walks them all together with those that depend on the event and the vars, so the errors of the parts
-// are not returned on their own.
-func (y workflowYAML) workflow() (Workflow, error) {
+// workflow builds the domain value of the file, with the line of each event of `on`. The problems of each value
+// are reported by Workflow.Valid, which walks them all together with those that depend on the event and the vars,
+// so the errors of the parts are not returned on their own.
+func (y workflowYAML) workflow(eventLines map[string]int) (Workflow, error) {
 	var vars map[string]Var
 	if y.Vars != nil {
 		vars = make(map[string]Var, len(y.Vars))
@@ -235,6 +261,7 @@ func (y workflowYAML) workflow() (Workflow, error) {
 		Plans:         plans,
 		Reports:       reports,
 		Guidance:      guidance,
+		EventLines:    eventLines,
 	}
 	return w, w.Valid()
 }
@@ -245,31 +272,48 @@ func (y varYAML) variable() (Var, error) {
 }
 
 func (y entryYAML) entry() (Entry, error) {
+	var action Action
+	if y.Action != nil {
+		action, _ = y.Action.action()
+	}
+	e := Entry{When: Cond(y.When), Unless: Cond(y.Unless), Action: action, Line: y.line, Keys: y.keys,
+		OldIf: Cond(y.If)}
+	return e, e.Valid()
+}
+
+func (y actionYAML) action() (Action, error) {
 	var run *Run
 	if y.Run != nil {
 		r, _ := y.Run.run()
 		run = &r
 	}
-	var context *Context
-	if y.Context != nil {
-		c, _ := y.Context.context()
-		context = &c
+	var inject *Inject
+	if y.Inject != nil {
+		c, _ := y.Inject.inject()
+		inject = &c
 	}
-	e := Entry{
-		If: Cond(y.If), Unless: Cond(y.Unless), Mode: y.Mode, Why: y.Why, Deny: y.Deny, Allow: y.Allow,
-		Require: y.Require, Run: run, Context: context, Record: y.Record, Line: y.line, Keys: y.keys,
+	var block *Block
+	if y.Block != nil {
+		b, _ := y.Block.block()
+		block = &b
 	}
-	return e, e.Valid()
+	a := Action{Run: run, Inject: inject, Block: block, Keys: y.keys}
+	return a, a.Valid()
 }
 
 func (y runYAML) run() (Run, error) {
-	r := Run{Command: []string(y.Command), Rules: y.Rules, Keys: y.keys}
+	r := Run{Command: []string(y.Command), Rules: y.Rules, Message: y.Message, Always: y.Always, Keys: y.keys}
 	return r, r.Valid()
 }
 
-func (y contextYAML) context() (Context, error) {
-	c := Context{File: y.File, Text: y.Text, Rules: y.Rules, Keys: y.keys}
+func (y injectYAML) inject() (Inject, error) {
+	c := Inject{File: y.File, Text: y.Text, Rules: y.Rules, Always: y.Always, Keys: y.keys}
 	return c, c.Valid()
+}
+
+func (y blockYAML) block() (Block, error) {
+	b := Block{Message: y.Message, Once: y.Once, Keys: y.keys}
+	return b, b.Valid()
 }
 
 func (y rulesYAML) rules() (Rules, error) {
@@ -348,6 +392,9 @@ func (a *argsYAML) UnmarshalYAML(n *yaml.Node) error {
 
 // UnmarshalYAML keeps the line of the entry and the keys it uses, so Valid can reject unknown ones.
 func (y *entryYAML) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: an entry must be a map with %s", n.Line, strings.Join(entryKeys, ", "))
+	}
 	type plain entryYAML
 	var p plain
 	if err := n.Decode(&p); err != nil {
@@ -359,8 +406,24 @@ func (y *entryYAML) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
+// UnmarshalYAML reads the conditions of the old key if when it is a map, and ignores any other value.
+func (y *ifYAML) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return nil
+	}
+	var c map[string]any
+	if err := n.Decode(&c); err != nil {
+		return err
+	}
+	*y = c
+	return nil
+}
+
 // UnmarshalYAML keeps the keys of plans or reports, so Valid can reject unknown ones.
 func (y *folderYAML) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: plans and reports must be a map with path", n.Line)
+	}
 	type plain folderYAML
 	var p plain
 	if err := n.Decode(&p); err != nil {
@@ -373,6 +436,9 @@ func (y *folderYAML) UnmarshalYAML(n *yaml.Node) error {
 
 // UnmarshalYAML keeps the keys of the variable, so Valid can reject unknown ones.
 func (y *varYAML) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: a variable of vars must be a map with branch", n.Line)
+	}
 	type plain varYAML
 	var p plain
 	if err := n.Decode(&p); err != nil {
@@ -383,32 +449,98 @@ func (y *varYAML) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
-// UnmarshalYAML keeps the keys of the run, so Valid can reject unknown ones.
-func (y *runYAML) UnmarshalYAML(n *yaml.Node) error {
-	type plain runYAML
+// UnmarshalYAML reads the action, a map, and keeps its keys, so Valid can reject unknown ones.
+func (y *actionYAML) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: action must be a map with one of %s", n.Line, strings.Join(Actions, ", "))
+	}
+	type plain actionYAML
 	var p plain
 	if err := n.Decode(&p); err != nil {
 		return err
 	}
-	*y = runYAML(p)
+	*y = actionYAML(p)
 	y.keys = mapKeys(n)
 	return nil
 }
 
-// UnmarshalYAML keeps the keys of the context, so Valid can reject unknown ones.
-func (y *contextYAML) UnmarshalYAML(n *yaml.Node) error {
-	type plain contextYAML
-	var p plain
-	if err := n.Decode(&p); err != nil {
-		return err
+// UnmarshalYAML reads the run: a string split on spaces or a list of arguments is the command, and a map keeps its
+// keys, so Valid can reject unknown ones.
+func (y *runYAML) UnmarshalYAML(n *yaml.Node) error {
+	switch n.Kind {
+	case yaml.ScalarNode, yaml.SequenceNode:
+		var args argsYAML
+		if err := n.Decode(&args); err != nil {
+			return err
+		}
+		*y = runYAML{Command: args}
+		return nil
+	case yaml.MappingNode:
+		if err := boolKeys(n, VerbRun, "always"); err != nil {
+			return err
+		}
+		type plain runYAML
+		var p plain
+		if err := n.Decode(&p); err != nil {
+			return err
+		}
+		*y = runYAML(p)
+		y.keys = mapKeys(n)
+		return nil
 	}
-	*y = contextYAML(p)
-	y.keys = mapKeys(n)
-	return nil
+	return fmt.Errorf("line %d: run takes a command, a list of arguments or a map with command or rules", n.Line)
+}
+
+// UnmarshalYAML reads the inject: a string is the text, and a map keeps its keys, so Valid can reject unknown ones.
+func (y *injectYAML) UnmarshalYAML(n *yaml.Node) error {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		*y = injectYAML{Text: n.Value}
+		return nil
+	case yaml.MappingNode:
+		if err := boolKeys(n, VerbInject, "always"); err != nil {
+			return err
+		}
+		type plain injectYAML
+		var p plain
+		if err := n.Decode(&p); err != nil {
+			return err
+		}
+		*y = injectYAML(p)
+		y.keys = mapKeys(n)
+		return nil
+	}
+	return fmt.Errorf("line %d: inject takes a text or a map with one of file, text or rules", n.Line)
+}
+
+// UnmarshalYAML reads the block: a string is the message, and a map keeps its keys, so Valid can reject unknown
+// ones.
+func (y *blockYAML) UnmarshalYAML(n *yaml.Node) error {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		*y = blockYAML{Message: n.Value}
+		return nil
+	case yaml.MappingNode:
+		if err := boolKeys(n, VerbBlock, "once"); err != nil {
+			return err
+		}
+		type plain blockYAML
+		var p plain
+		if err := n.Decode(&p); err != nil {
+			return err
+		}
+		*y = blockYAML(p)
+		y.keys = mapKeys(n)
+		return nil
+	}
+	return fmt.Errorf("line %d: block takes a message or a map with message and once", n.Line)
 }
 
 // UnmarshalYAML keeps the keys of rules, so Valid can reject unknown ones.
 func (y *rulesYAML) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: rules must be a map with path and run", n.Line)
+	}
 	type plain rulesYAML
 	var p plain
 	if err := n.Decode(&p); err != nil {
@@ -515,6 +647,29 @@ func mapKeys(n *yaml.Node) []string {
 		}
 	}
 	return keys
+}
+
+// keyLines returns the line of each key of a mapping node.
+func keyLines(n *yaml.Node) map[string]int {
+	if n.Kind != yaml.MappingNode {
+		return nil
+	}
+	lines := make(map[string]int, len(n.Content)/2)
+	for i := 0; i < len(n.Content); i += 2 {
+		lines[n.Content[i].Value] = n.Content[i].Line
+	}
+	return lines
+}
+
+// boolKeys returns the error of a key of the map n, of the verb what, among keys whose value is not true or false.
+func boolKeys(n *yaml.Node, what string, keys ...string) error {
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		k, val := n.Content[i], n.Content[i+1]
+		if contains(keys, k.Value) && (val.Kind != yaml.ScalarNode || val.ShortTag() != "!!bool") {
+			return fmt.Errorf("line %d: %s.%s must be true or false", val.Line, what, k.Value)
+		}
+	}
+	return nil
 }
 
 // requires reads the top level `requires` of a workflow without decoding the rest; "" when it has none or the

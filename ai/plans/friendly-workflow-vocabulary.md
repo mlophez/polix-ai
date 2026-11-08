@@ -30,6 +30,16 @@ A command the AI runs never counts as passed, because polix cannot know what it 
 The old names stop working, and `polix check` names the new spelling of each one.
 This repository, the example, the docs and the plugin move to the new vocabulary.
 
+Changes decided after the plan, during the implementation:
+
+- The events are named `start` (was `session_start`) and `stop` (the `turn_stop` of this plan), not `turn_stop`;
+  `stop` keeps the meaning of `turn_stop` (the main session ends its turn, never a subagent), and `polix check`
+  reports `session_start` and `turn_stop` with their new spelling.
+- The commands of `run` are written in the short string form in this repository, the example and the docs
+  (`run: golangci-lint run ./...`); a list stays valid for arguments with spaces.
+- An index of polix kept between calls to speed up the content hash was tried and withdrawn: it could hide edits.
+  The hash stays on a temporary copy of the index, which now keeps the time of the real one.
+
 ## Context
 
 The friction of writing a polix.yaml is the main obstacle to adopting polix, and presets will build on this vocabulary.

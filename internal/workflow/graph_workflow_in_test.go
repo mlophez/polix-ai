@@ -21,8 +21,8 @@ func (f *fakeGraphWorkflowPort) LoadWorkflow(_ context.Context, running string) 
 }
 
 func TestGraphWorkflowShell(t *testing.T) {
-	deny := "x"
-	port := &fakeGraphWorkflowPort{found: true, wf: Workflow{Version: 1, On: map[string][]Entry{PreEdit: {{Deny: &deny}}}}}
+	port := &fakeGraphWorkflowPort{found: true, wf: Workflow{Version: 1, On: map[string][]Entry{
+		PreEdit: {{Action: Action{Block: &Block{Message: "x"}}}}}}}
 	res, err := graphWorkflow(context.Background(), port, GraphWorkflowRequest{Version: "1.2.3"})
 	if err != nil {
 		t.Fatal(err)
@@ -32,7 +32,7 @@ func TestGraphWorkflowShell(t *testing.T) {
 	}
 	var out bytes.Buffer
 	res.print(&out)
-	if want := "flowchart TD\n  subgraph pre_edit\n    n0[\"deny: x\"]\n  end\n"; out.String() != want || res.Missing {
+	if want := "flowchart TD\n  subgraph pre_edit\n    n0[\"block: x\"]\n  end\n"; out.String() != want || res.Missing {
 		t.Fatalf("got %+v", res)
 	}
 }

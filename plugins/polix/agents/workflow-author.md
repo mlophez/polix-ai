@@ -32,7 +32,8 @@ The prompt names:
 ## Rules
 
 - Apply the `Rules` of the skill `workflow`.
-- When the request leaves an event, a condition or an action open, stop and return the question with its options.
+- When the request leaves an event, a condition or a verb open, or whether a block is a gate or a reminder, stop
+  and return the question with its options.
 
 ## How to operate
 
@@ -49,6 +50,7 @@ Workflow author progress:
 
 Your output is read by the main session, which relays it to the user.
 
-- **Entries**: the entries proposed or added, with their event and mode.
+- **Entries**: the entries proposed or added, with their event, their verb and whether each is a gate, a reminder
+  or a warning.
 - **Diagram**: the output of `polix graph` for the events changed, when written.
 - **Pending**: the open questions with their options, or what was not done, or "none".

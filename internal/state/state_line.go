@@ -16,10 +16,11 @@ type entryJSON struct {
 	Actor   string `json:"actor,omitempty"`
 	Branch  string `json:"branch,omitempty"`
 	Hash    string `json:"hash,omitempty"`
-	Fact    string `json:"fact,omitempty"`
 	Rule    string `json:"rule,omitempty"`
+	Fact    string `json:"fact,omitempty"`
 	Action  string `json:"action,omitempty"`
 	Line    int    `json:"line,omitempty"`
+	Key     string `json:"key,omitempty"`
 	Outcome string `json:"outcome,omitempty"`
 	Reason  string `json:"reason,omitempty"`
 }

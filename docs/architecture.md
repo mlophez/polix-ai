@@ -30,7 +30,8 @@ pkg/<library>/               technology shared by several adapters, without doma
   cli/                       the ui, the exit code error, the flag --dir, the root command and Run (with fang)
   file/                      files as the agents expect them: a missing one is empty, atomic writes that keep
                              symlinks and modes, a folder synced to a set of files, the cache folder
-  git/                       the repository: root, branch, changed files, base branch, content hash
+  git/                       the repository: root, branch, changed files, base branch, content hash, the paths
+                             that differ between two trees
   github/                    the releases of a repository: latest tag, checked download, replace of a binary
   glob/                      paths and command lines matched against patterns
   jsonl/                     files of one record per line: bounded reading and appending
@@ -141,5 +142,6 @@ The flow of `polix rules check`:
   `deterministic`) stops the command; `--base` without `--changed` is an error; the hint to set `base` only comes
   when no base exists. It always reads polix.yaml when it exists, to know the runners of `rules.run`, and
   `--base` only replaces its base branches; a polix.yaml that cannot be read or parsed stops the command.
-- `polix hook` takes the step shape, since a later entry of an event sees what an earlier one did (a `record`,
-  or a `run` that changes the hash `done` is pinned to), and `allow` and `deny` stop the evaluation.
+- `polix hook` takes the step shape, since a later entry of an event sees what an earlier one did (an observed
+  line it wrote, or a `run` that rewrites files and changes the content a later `finished` compares), and the
+  first entry that actually blocks ends the evaluation.

@@ -6,7 +6,9 @@ package git
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -238,30 +240,74 @@ func (r *Repo) ResolveBase(ctx context.Context, candidates []string) (string, er
 }
 
 // ContentHash returns the hash of the git tree the working tree would produce if everything were staged,
-// untracked files included and ignored files excluded. Facts of the state are tied to it, so any edit makes
-// them stale. It uses a copy of the index, so the real index is never touched and the stat cache keeps it fast.
+// untracked files included and ignored files excluded, so any edit changes it. It stages into a copy of the index
+// in a temporary folder of scratchDir, so the real index is never touched and its stat cache keeps it fast; a
+// repository without an index yet (no git add since git init) starts from none.
 func (r *Repo) ContentHash(ctx context.Context, scratchDir string) (string, error) {
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		return "", err
 	}
-	tmp, err := os.CreateTemp(scratchDir, "index-*")
+	dir, err := os.MkdirTemp(scratchDir, "index-*")
 	if err != nil {
 		return "", err
 	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-	if data, err := os.ReadFile(filepath.Join(r.GitDir, "index")); err == nil {
-		if _, err := tmp.Write(data); err != nil {
-			tmp.Close()
-			return "", err
-		}
-	}
-	tmp.Close()
-	env := []string{"GIT_INDEX_FILE=" + tmpPath}
-	if _, err := run(ctx, r.Root, env, "add", "--all", "--", "."); err != nil {
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "index")
+	if err := r.copyIndex(path); err != nil {
 		return "", err
 	}
-	return run(ctx, r.Root, env, "write-tree")
+	return stageTree(ctx, r.Root, path)
+}
+
+// copyIndex writes a copy of the real index to path, or nothing when the repository has no index yet. The copy keeps
+// the time of the real index: git compares the content of the files changed in the same tick as the index (racily
+// clean), and the later time of a new file would hide an edit made in that tick.
+func (r *Repo) copyIndex(path string) error {
+	src := filepath.Join(r.GitDir, "index")
+	info, err := os.Stat(src)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chtimes(path, info.ModTime(), info.ModTime())
+}
+
+// stageTree stages the whole working tree into the index at path and returns the tree it writes.
+func stageTree(ctx context.Context, root, path string) (string, error) {
+	env := []string{"GIT_INDEX_FILE=" + path}
+	if _, err := run(ctx, root, env, "add", "--all", "--", "."); err != nil {
+		return "", err
+	}
+	return run(ctx, root, env, "write-tree")
+}
+
+// TreeDiff returns the repository relative paths that differ between the trees from and to, as ContentHash gives
+// them, sorted; none for equal trees. A tree git does not have (never written, or pruned by git gc) is an error.
+func (r *Repo) TreeDiff(ctx context.Context, from, to string) ([]string, error) {
+	if from == "" || to == "" {
+		return nil, fmt.Errorf("tree diff needs two trees, got %q and %q", from, to)
+	}
+	for _, tree := range []string{from, to} {
+		if _, err := r.git(ctx, "cat-file", "-e", tree+"^{tree}"); err != nil {
+			return nil, fmt.Errorf("tree %s: %w", tree, err)
+		}
+	}
+	out, err := r.paths(ctx, "diff-tree", "-r", "--name-only", "--no-renames", "-z", from, to)
+	if err != nil {
+		return nil, err
+	}
+	list := splitPaths(out)
+	sort.Strings(list)
+	return list, nil
 }
 
 // Files returns every file of the working tree that git does not ignore, tracked or not.

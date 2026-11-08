@@ -58,6 +58,10 @@ func TestParseCodex(t *testing.T) {
 			t.Errorf("%s: %+v %v", in, evs, err)
 		}
 	}
+	if _, evs, _ := parseCodex([]byte(`{"hook_event_name":"Stop"}`)); evs[0].Name != workflow.Stop ||
+		evs[0].Actor != ActorSession {
+		t.Fatalf("the stop of a turn: %+v", evs)
+	}
 	if _, evs, _ := parseCodex([]byte(`{"hook_event_name":"PreToolUse","tool_name":"web_search"}`)); len(evs) != 0 {
 		t.Fatalf("unknown tool: %+v", evs)
 	}

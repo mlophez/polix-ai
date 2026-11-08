@@ -34,10 +34,10 @@ it follows:
    `Events`, each closed by `end`.
 3. Each entry is a node `n<k>`, numbered across the whole flowchart, linked to the previous entry of its event
    with `-->`.
-4. The label of a node joins with `<br/>` its `if` and `unless` conditions, as `key=value` ordered by key, and its
-   action: `deny`, `require` and `record` with their text, `run` with its rules or its command, then
-   `→ record <fact>` when an entry with another action records a fact, and the mode in parentheses when it is not
-   `enforce`. Double quotes become single ones.
+4. The label of a node joins with `<br/>` its `when` and `unless` conditions, as `when key=value` and
+   `unless key=value` ordered by key, and the verb of its action: `block: <message>`, followed by `(once)` with
+   `once: true`; `run` with its command or `rules <target>`, and `inject` with `file <file>`, `rules <target>` or
+   `: <text>`, each followed by `(always)` with `always: true`. Double quotes become single ones.
 
 ## Response
 

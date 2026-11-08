@@ -9,29 +9,40 @@ func TestGraphWorkflowWithoutFile(t *testing.T) {
 }
 
 func TestGraphWorkflowDrawsEventsInOrder(t *testing.T) {
-	deny, require, record, tested := `no "x"`, "review", "reviewed", "tested"
 	wf := Workflow{Version: 1, On: map[string][]Entry{
 		Stop: {
-			{If: Cond{"changed": "src/**", "branch": "^f"}, Unless: Cond{"done": "reviewed"}, Require: &require,
-				Record: &record},
-			{Run: &Run{Command: []string{"go", "test"}}, Record: &tested, Mode: ModeWarn},
+			{When: Cond{"changed": "src/**", "branch": "^f"}, Unless: Cond{"finished": "polix:reviewer"},
+				Action: Action{Block: &Block{Message: "review"}}},
+			{Action: Action{Run: &Run{Command: []string{"go", "test"}, Always: true}}},
 		},
-		PreEdit:  {{Deny: &deny, Mode: ModeEnforce}},
-		PostEdit: {{Run: &Run{Rules: "{path}"}}, {Record: &record, If: Cond{"not": Cond{"branch": "main"}}}},
+		PreEdit: {{Action: Action{Block: &Block{Message: `no "x"`, Once: true}}}},
+		PostEdit: {
+			{Action: Action{Run: &Run{Rules: "{path}"}}},
+			{When: Cond{"not": Cond{"branch": "main"}}, Action: Action{Inject: &Inject{Rules: "{path}", Always: true}}},
+		},
+		Start: {
+			{Action: Action{Inject: &Inject{Text: "hola"}}},
+			{Action: Action{Inject: &Inject{File: "AGENTS.md"}}},
+		},
 	}}
 	want := "flowchart TD\n" +
+		"  subgraph start\n" +
+		"    n0[\"inject: hola\"]\n" +
+		"    n1[\"inject file AGENTS.md\"]\n" +
+		"    n0 --> n1\n" +
+		"  end\n" +
 		"  subgraph pre_edit\n" +
-		"    n0[\"deny: no 'x'\"]\n" +
+		"    n2[\"block: no 'x' (once)\"]\n" +
 		"  end\n" +
 		"  subgraph post_edit\n" +
-		"    n1[\"run rules {path}\"]\n" +
-		"    n2[\"if not=map[branch:main]<br/>record: reviewed\"]\n" +
-		"    n1 --> n2\n" +
+		"    n3[\"run rules {path}\"]\n" +
+		"    n4[\"when not=map[branch:main]<br/>inject rules {path} (always)\"]\n" +
+		"    n3 --> n4\n" +
 		"  end\n" +
 		"  subgraph stop\n" +
-		"    n3[\"if branch=^f, changed=src/**<br/>unless done=reviewed<br/>require: review → record reviewed\"]\n" +
-		"    n4[\"run go test → record tested (warn)\"]\n" +
-		"    n3 --> n4\n" +
+		"    n5[\"when branch=^f, changed=src/**<br/>unless finished=polix:reviewer<br/>block: review\"]\n" +
+		"    n6[\"run go test (always)\"]\n" +
+		"    n5 --> n6\n" +
 		"  end\n"
 	if out := GraphWorkflow(wf, true); out.Missing || out.Mermaid != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", out.Mermaid, want)

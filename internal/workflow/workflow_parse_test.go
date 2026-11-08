@@ -72,10 +72,10 @@ func TestParseValues(t *testing.T) {
 max_stop_blocks: 5
 on:
   stop:
-    - if: { changed: "src/**" }
-      run: { command: just test }
-      record: tested
-      mode: warn
+    - when: { changed: "src/**" }
+      unless: { finished: polix:reviewer }
+      action:
+        run: { command: just test, message: "Arregla los tests", always: true }
 rules:
   run:
     "*_test.go": [go, test, "{dir}"]
@@ -86,13 +86,83 @@ rules:
 		t.Fatal(err)
 	}
 	e := w.On[Stop][0]
-	if e.Line != 5 || e.Run == nil || strings.Join(e.Run.Command, ",") != "just,test" || e.Record == nil || *e.Record != "tested" ||
-		e.EffectiveMode() != ModeWarn || w.MaxStopBlocks != 5 {
-		t.Fatalf("entry: %+v %+v", e, e.Run)
+	r := e.Action.Run
+	if e.Line != 5 || r == nil || strings.Join(r.Command, ",") != "just,test" || r.Message != "Arregla los tests" ||
+		!r.Always || e.When["changed"] != "src/**" || e.Unless["finished"] != "polix:reviewer" ||
+		strings.Join(e.Keys, ",") != "when,unless,action" || strings.Join(e.Action.Keys, ",") != "run" ||
+		strings.Join(r.Keys, ",") != "command,message,always" || w.MaxStopBlocks != 5 || w.EventLines[Stop] != 4 {
+		t.Fatalf("entry: %+v %+v", e, r)
 	}
-	r := w.Rules.Run
-	if len(r) != 2 || r[0].Glob != "*_test.go" || r[0].Line != 11 || strings.Join(r[1].Argv, " ") != "bash {file}" {
-		t.Fatalf("runners: %+v", r)
+	runners := w.Rules.Run
+	if len(runners) != 2 || runners[0].Glob != "*_test.go" || runners[0].Line != 11 ||
+		strings.Join(runners[1].Argv, " ") != "bash {file}" {
+		t.Fatalf("runners: %+v", runners)
+	}
+}
+
+// Each verb takes a short form (a run string split on spaces or a list, an inject text, a block message) and a
+// long form, a map with once and always where they apply.
+func TestParseVerbForms(t *testing.T) {
+	src := `version: 1
+on:
+  pre_commit:
+    - action: { run: "go vet  ./..." }
+    - action: { run: [go, test, "./..."] }
+    - action: { run: { rules: changed, message: "m" } }
+    - action: { inject: "texto" }
+    - action: { inject: { file: AGENTS.md, always: true } }
+    - action: { block: "mensaje" }
+    - action: { block: { message: "recuerda", once: true } }
+`
+	w, err := Parse([]byte(src), "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	es := w.On[PreCommit]
+	if a := es[0].Action.Run; a == nil || strings.Join(a.Command, ",") != "go,vet,./..." || a.Always || a.Keys != nil {
+		t.Fatalf("run string: %+v", a)
+	}
+	if a := es[1].Action.Run; a == nil || strings.Join(a.Command, ",") != "go,test,./..." {
+		t.Fatalf("run list: %+v", a)
+	}
+	if a := es[2].Action.Run; a == nil || a.Rules != "changed" || a.Message != "m" || len(a.Command) != 0 {
+		t.Fatalf("run map: %+v", a)
+	}
+	if a := es[3].Action.Inject; a == nil || a.Text != "texto" || a.Always {
+		t.Fatalf("inject text: %+v", a)
+	}
+	if a := es[4].Action.Inject; a == nil || a.File != "AGENTS.md" || !a.Always {
+		t.Fatalf("inject map: %+v", a)
+	}
+	if a := es[5].Action.Block; a == nil || a.Message != "mensaje" || a.Once {
+		t.Fatalf("block message: %+v", a)
+	}
+	if a := es[6].Action.Block; a == nil || a.Message != "recuerda" || !a.Once {
+		t.Fatalf("block map: %+v", a)
+	}
+	for i, e := range es {
+		if e.Action.Verb() == "" || e.Line != 4+i {
+			t.Fatalf("entry %d: %+v", i, e)
+		}
+	}
+}
+
+// A verb, an action, once or always of the wrong kind of node stop the parse with the key and its line.
+func TestParseVerbErrors(t *testing.T) {
+	cases := map[string]string{
+		"version: 1\non:\n  pre_commit:\n    - action: [block]\n":                                   "polix.yaml: line 4: action must be a map with one of run, inject, block",
+		"version: 1\non:\n  pre_commit:\n    - action: { block: [a] }\n":                            "polix.yaml: line 4: block takes a message or a map with message and once",
+		"version: 1\non:\n  pre_commit:\n    - action: { inject: [a] }\n":                           "polix.yaml: line 4: inject takes a text or a map with one of file, text or rules",
+		"version: 1\non:\n  pre_commit:\n    - action:\n        run: { command: [ls, { a: b }] }\n": "polix.yaml: yaml: unmarshal errors:",
+		"version: 1\non:\n  pre_commit:\n    - action: { block: { message: x, once: maybe } }\n":    "polix.yaml: line 4: block.once must be true or false",
+		"version: 1\non:\n  pre_commit:\n    - action: { run: { command: ls, always: 1 } }\n":       "polix.yaml: line 4: run.always must be true or false",
+		"version: 1\non:\n  pre_commit:\n    - action: { inject: { text: x, always: [a] } }\n":      "polix.yaml: line 4: inject.always must be true or false",
+	}
+	var invalid Invalid
+	for src, want := range cases {
+		if _, err := Parse([]byte(src), "dev"); err == nil || errors.As(err, &invalid) || !strings.HasPrefix(err.Error(), want) {
+			t.Errorf("%q: got %v", src, err)
+		}
 	}
 }
 
@@ -103,6 +173,19 @@ func TestParseDecodeErrorsNameDomainTypes(t *testing.T) {
 		"version: 1\non: { stop: foo }\n": "polix.yaml: yaml: unmarshal errors:\n  line 2: cannot unmarshal !!str `foo` into []workflow.Entry",
 		"version: 1\non: []\n":            "polix.yaml: yaml: unmarshal errors:\n  line 2: cannot unmarshal !!seq into map[string][]workflow.Entry",
 		"version: 1\nvars: []\n":          "polix.yaml: yaml: unmarshal errors:\n  line 2: cannot unmarshal !!seq into map[string]workflow.Var",
+	}
+	for src, want := range cases {
+		if _, err := Parse([]byte(src), "dev"); err == nil || err.Error() != want {
+			t.Errorf("%q: got %v", src, err)
+		}
+	}
+	// A value that is not the map its type decodes says what it needs, never the local type of the decoding: a
+	// rules file passed as polix.yaml, an entry, a variable or a folder that is not a map.
+	cases = map[string]string{
+		"rules:\n  - id: GO-1\n":            "polix.yaml: line 2: rules must be a map with path and run",
+		"version: 1\non: { stop: [foo] }\n": "polix.yaml: line 2: an entry must be a map with when, unless, action",
+		"version: 1\nvars: { key: x }\n":    "polix.yaml: line 2: a variable of vars must be a map with branch",
+		"version: 1\nplans: x\n":            "polix.yaml: line 2: plans and reports must be a map with path",
 	}
 	for src, want := range cases {
 		if _, err := Parse([]byte(src), "dev"); err == nil || err.Error() != want {

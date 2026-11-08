@@ -95,7 +95,7 @@ func MatchingCommands(patterns []string, command string) []shell.Segment {
 }
 
 // Propagates reports whether the failure of one of the commands reaches the exit code of the line: in
-// `just test | tail`, tail decides it, so a fact like tested must not be recorded from it.
+// `just test | tail`, tail decides it, so the exit code of the line says nothing of how just test ended.
 func Propagates(segs []shell.Segment) bool {
 	for _, seg := range segs {
 		if seg.Propagates {

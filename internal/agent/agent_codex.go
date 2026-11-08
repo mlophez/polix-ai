@@ -34,7 +34,7 @@ func parseCodex(input []byte) (string, []Event, error) {
 	native := in.HookEventName
 	switch native {
 	case "SessionStart":
-		return native, []Event{Event{}.begin(in, Codex, workflow.SessionStart)}, nil
+		return native, []Event{Event{}.begin(in, Codex, workflow.Start)}, nil
 	case "UserPromptSubmit":
 		return native, []Event{Event{}.begin(in, Codex, workflow.Prompt)}, nil
 	case "Stop":

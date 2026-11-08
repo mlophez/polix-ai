@@ -158,16 +158,14 @@ func answerHookSkipFileModes(t *testing.T) {
 
 const answerHookReviewOnStop = `version: 1
 on:
-  subagent_stop:
-    - if: { actor: reviewer }
-      record: reviewed
   stop:
-    - if: { changed: "**" }
-      unless: { done: reviewed }
-      require: "Lanza el subagente reviewer sobre el diff actual"
+    - when: { changed: "**" }
+      unless: { finished: reviewer }
+      action: { block: "Lanza el subagente reviewer sobre el diff actual" }
 `
 
-// Example 1 of the design: a review is required before stopping, and a new edit requires a new one.
+// Example 1 of the design: a review is required before stopping, and a new edit requires a new one. polix observes
+// the end of the reviewer by itself, since a finished names it.
 func TestAnswerHookReviewOnStop(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
 	r.write("polix.yaml", answerHookReviewOnStop)
@@ -211,25 +209,18 @@ vars:
 on:
   pre_edit:
     - unless: { var: key }
-      deny: "No hay ticket"
-    - if: { path: "ai/plans/{key}-*.md" }
-      allow: true
-    - unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
-      deny: "No hay plan"
-    - unless: { actor: builder }
-      deny: "Solo el builder edita"
-    - context: { rules: "{path}" }
-  post_command:
-    - if: { command: "just test", exit: 0 }
-      record: tested
-  subagent_stop:
-    - if: { actor: reviewer }
-      record: reviewed
+      action: { block: "No hay ticket" }
+    - when: { not: { path: "ai/plans/{key}-*.md" } }
+      unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
+      action: { block: "No hay plan" }
+    - when: { not: { path: "ai/plans/{key}-*.md" } }
+      unless: { actor: builder }
+      action: { block: "Solo el builder edita" }
+    - action: { inject: { rules: "{path}" } }
   pre_commit:
-    - unless: { done: tested }
-      deny: "Faltan los tests"
-    - unless: { done: reviewed }
-      deny: "Falta la revisión"
+    - action: { run: { command: [git, rev-parse, --verify, --quiet, tested], message: "Faltan los tests" } }
+    - unless: { finished: reviewer }
+      action: { block: "Falta la revisión" }
 `
 
 const answerHookArchRules = `rules:
@@ -239,7 +230,8 @@ const answerHookArchRules = `rules:
     deterministic: false
 `
 
-// Example 2 of the design: ticket, plan, builder, rules as context, tests and review before committing.
+// Example 2 of the design: ticket, plan, builder, rules as context, tests and review before committing. The tests
+// are a run of polix, which passes once the ref tested exists.
 func TestAnswerHookLogaltyFlow(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
 	r.write("polix.yaml", answerHookLogaltyFlow)
@@ -276,9 +268,11 @@ func TestAnswerHookLogaltyFlow(t *testing.T) {
 	r.write("src/domain/order.go", "package domain\n")
 	code, _, stderr = r.bash("git commit -m 'PLAT-7 orders'", false)
 	answerHookExpect(t, "commit without tests", code, 2, stderr)
+	if !strings.HasPrefix(stderr, "Faltan los tests\n\nFalla git rev-parse") {
+		t.Fatalf("reason: %q", stderr)
+	}
 
-	code, _, stderr = r.bash("just test", true)
-	answerHookExpect(t, "tests pass", code, 0, stderr)
+	r.git("branch", "tested")
 	code, _, stderr = r.bash("git commit -m 'PLAT-7 orders'", false)
 	answerHookExpect(t, "commit without review", code, 2, stderr)
 	if !strings.Contains(stderr, "Falta la revisión") {
@@ -296,26 +290,24 @@ func TestAnswerHookChainedCommands(t *testing.T) {
 	r.write("polix.yaml", `version: 1
 on:
   post_command:
-    - if: { command: "just test*", exit: 0 }
-      record: tested
+    - when: { command: "just test*", exit: 0 }
+      action: { inject: "Los tests pasan" }
   pre_command:
-    - if: { command: "git push*origin main*" }
-      deny: "push a main"
-  pre_commit:
-    - unless: { done: tested }
-      deny: "Faltan los tests"
+    - when: { command: "git push*origin main*" }
+      action: { block: "push a main" }
 `)
 	r.write("src/a.go", "package a\n")
 
-	r.bash("just test 2>&1 | tail -3", true)
-	code, _, stderr := r.bash("git commit -m x", false)
-	answerHookExpect(t, "commit after piped tests", code, 2, stderr)
+	_, stdout, _ := r.bash("just test 2>&1 | tail -3", true)
+	if strings.Contains(stdout, "Los tests pasan") {
+		t.Fatalf("the exit of piped tests is decided by tail: %q", stdout)
+	}
+	_, stdout, _ = r.bash("cd . && just test -k sync", true)
+	if !strings.Contains(stdout, "Los tests pasan") {
+		t.Fatalf("the exit of chained tests is theirs: %q", stdout)
+	}
 
-	r.bash("cd . && just test -k sync", true)
-	code, _, stderr = r.bash("git commit -m x", false)
-	answerHookExpect(t, "commit after chained tests", code, 0, stderr)
-
-	code, _, stderr = r.bash("git fetch && git push origin main", false)
+	code, _, stderr := r.bash("git fetch && git push origin main", false)
 	answerHookExpect(t, "chained push to main", code, 2, stderr)
 	code, _, stderr = r.bash(`echo "git push origin main"`, false)
 	answerHookExpect(t, "the text of a push inside quotes", code, 0, stderr)
@@ -345,7 +337,7 @@ func TestAnswerHookProtections(t *testing.T) {
 // Edits outside the repository or of ignored files are not part of the change.
 func TestAnswerHookOutsideAndIgnored(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - deny: \"bloqueado\"\n")
+	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - action: { block: \"bloqueado\" }\n")
 	r.write(".gitignore", "build/\n")
 
 	code, _, stderr := r.edit("src/a.go", "")
@@ -358,32 +350,123 @@ func TestAnswerHookOutsideAndIgnored(t *testing.T) {
 	answerHookExpect(t, "edit outside the repository", code, 0, stderr)
 }
 
-// warn turns a block into a warning in the context, audit only logs it.
-func TestAnswerHookModes(t *testing.T) {
+// A warning is an inject, and a failing run after an edit reaches the AI as context, with its message, instead of
+// blocking.
+func TestAnswerHookFeedbackAfterAnEdit(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
 	r.write("polix.yaml", `version: 1
 on:
   pre_edit:
-    - if: { path: "a.txt" }
-      mode: warn
-      deny: "cuidado con a.txt"
-    - if: { path: "b.txt" }
-      mode: audit
-      deny: "b.txt"
+    - when: { path: "a.txt" }
+      action: { inject: "cuidado con a.txt" }
+  post_edit:
+    - when: { path: "b.txt" }
+      action: { run: { command: [git, rev-parse, --verify, --quiet, no-such-ref], message: "b.txt no pasa el check" } }
 `)
 	code, stdout, stderr := r.edit("a.txt", "")
-	answerHookExpect(t, "warn", code, 0, stderr)
+	answerHookExpect(t, "inject", code, 0, stderr)
 	if !strings.Contains(stdout, "cuidado con a.txt") {
-		t.Fatalf("warn should add context: %q", stdout)
+		t.Fatalf("the inject adds context: %q", stdout)
 	}
-	code, stdout, stderr = r.edit("b.txt", "")
-	answerHookExpect(t, "audit", code, 0, stderr)
-	if stdout != "" {
-		t.Fatalf("audit should be silent: %q", stdout)
+	code, stdout, stderr = r.hook("claude", map[string]any{"hook_event_name": "PostToolUse", "tool_name": "Edit",
+		"tool_input": map[string]any{"file_path": filepath.Join(r.dir, "b.txt")}})
+	answerHookExpect(t, "a failing run after an edit", code, 0, stderr)
+	if !strings.Contains(stdout, `"additionalContext":"b.txt no pasa el check\n\nFalla git rev-parse`) {
+		t.Fatalf("the failure reaches the AI as context: %q", stdout)
 	}
-	log, _ := os.ReadFile(filepath.Join(r.dir, ".git", "polix", "log.jsonl"))
-	if !strings.Contains(string(log), `"outcome":"audit"`) {
-		t.Fatalf("audit should be logged: %s", log)
+	if !strings.Contains(r.log(), `"outcome":"inform"`) {
+		t.Fatalf("the failure is logged: %s", r.log())
+	}
+}
+
+// finished holds once the reviewer ended and after an edit outside the scope of the entry, through the real trees
+// of git; an edit inside the scope or a tree git does not have asks for a new review.
+func TestAnswerHookFinishedOnTheScope(t *testing.T) {
+	r := answerHookNewRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  pre_commit:
+    - when: { changed: "*.go" }
+      unless: { finished: polix:reviewer }
+      action: { block: "Falta la revisión" }
+`)
+	r.write("src/a.go", "package a\n")
+	commit := func(what string, want int) {
+		t.Helper()
+		code, _, stderr := r.bash("git commit -m x", false)
+		answerHookExpect(t, what, code, want, stderr)
+	}
+	commit("commit before the review", 2)
+	code, _, stderr := r.subagentStop("polix:reviewer")
+	answerHookExpect(t, "the reviewer stops", code, 0, stderr)
+	if !strings.Contains(r.log(), `"kind":"observed","agent":"claude","session":"s1","event":"subagent_stop",`+
+		`"actor":"polix:reviewer","branch":"main","hash":`) || !strings.Contains(r.log(), `"key":"polix:reviewer",`+
+		`"outcome":"finished"`) {
+		t.Fatalf("the end of the reviewer is observed: %s", r.log())
+	}
+	commit("commit after the review", 0)
+	r.write("README.md", "docs\n")
+	r.write("docs/guide.md", "docs\n")
+	commit("commit after an edit of the docs", 0)
+	r.write("src/a.go", "package a\n\nvar x = 1\n")
+	commit("commit after an edit of a Go file", 2)
+
+	r.subagentStop("polix:reviewer")
+	commit("commit after a new review", 0)
+	r.write(".git/polix/log.jsonl", `{"kind":"observed","outcome":"finished","key":"polix:reviewer","branch":"main",`+
+		`"hash":"`+strings.Repeat("1", 40)+`"}`+"\n")
+	commit("commit with the tree of the review missing", 2)
+	if !strings.Contains(r.log(), "no se puede comparar el contenido en que terminó polix:reviewer") {
+		t.Fatalf("the failed comparison is logged: %s", r.log())
+	}
+}
+
+// A reminder with once blocks the first commit on a content and lets the next through; an edit outside its scope
+// keeps it given, one inside it reminds again, and so does a new session.
+func TestAnswerHookReminderOnTheScope(t *testing.T) {
+	r := answerHookNewRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  pre_commit:
+    - when: { changed: "*.go" }
+      action: { block: { message: "Actualiza la documentación", once: true } }
+`)
+	r.write("src/a.go", "package a\n")
+	commit := func(what string, want int) {
+		t.Helper()
+		code, _, stderr := r.bash("git commit -m x", false)
+		answerHookExpect(t, what, code, want, stderr)
+	}
+	commit("first commit", 2)
+	if !strings.Contains(r.log(), `"line":4,"outcome":"blocked"`) {
+		t.Fatalf("the reminder is observed: %s", r.log())
+	}
+	commit("second commit", 0)
+	r.write("README.md", "docs\n")
+	commit("commit after an edit of the docs", 0)
+	r.write("src/a.go", "package a\n\nvar x = 1\n")
+	commit("commit after an edit of a Go file", 2)
+	code, _, stderr := r.hook("claude", map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash",
+		"tool_input": map[string]any{"command": "git commit -m x"}, "session_id": "s2"})
+	answerHookExpect(t, "commit of a new session", code, 2, stderr)
+}
+
+// A run that passed is not run again on the same content: the next stop logs the skip, and an edit runs it again.
+func TestAnswerHookRunRepeatOnTheContent(t *testing.T) {
+	r := answerHookNewRepo(t, "main")
+	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - action: { run: [git, status, --short] }\n")
+	r.write("src/app.go", "package app\n")
+	r.stops("", 0, 0)
+	if n := strings.Count(r.log(), `"key":"git status --short","outcome":"passed"`); n != 1 {
+		t.Fatalf("passed %d times: %s", n, r.log())
+	}
+	if !strings.Contains(r.log(), `"action":"run","line":4,"outcome":"skip"`) {
+		t.Fatalf("the skip is logged: %s", r.log())
+	}
+	r.write("src/app.go", "package app\n\nfunc A() {}\n")
+	r.stops("", 0)
+	if n := strings.Count(r.log(), `"outcome":"passed"`); n != 2 {
+		t.Fatalf("an edit runs it again: %s", r.log())
 	}
 }
 
@@ -393,7 +476,7 @@ func TestAnswerHookRuleChecksOnStop(t *testing.T) {
 		t.Skip("the test check is a shell script")
 	}
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - if: { changed: \"**\" }\n      run: { rules: changed }\n")
+	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - when: { changed: \"**\" }\n      action: { run: { rules: changed } }\n")
 	r.write("ai/rules/style.yaml", `rules:
   - id: STYLE-1
     description: Files under src/ end with a newline.
@@ -416,7 +499,7 @@ func TestAnswerHookRuleChecksOnStop(t *testing.T) {
 // An invalid workflow blocks edits and commands but never a stop.
 func TestAnswerHookInvalidWorkflow(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - if: { pth: \"x\" }\n      deny: \"x\"\n")
+	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - when: { pth: \"x\" }\n      action: { block: \"x\" }\n")
 
 	code, _, stderr := r.edit("src/a.go", "")
 	answerHookExpect(t, "edit with an invalid workflow", code, 2, stderr)
@@ -434,10 +517,10 @@ func TestAnswerHookNot(t *testing.T) {
 	r.write("polix.yaml", `version: 1
 on:
   pre_command:
-    - if: { command: "terraform apply*", not: { branch: "^main$" } }
-      deny: "apply solo desde main"
-    - if: { command: "deploy*", not: { branch: "^PLAT-", file: "ai/plans/*.md" } }
-      deny: "deploy sin plan"
+    - when: { command: "terraform apply*", not: { branch: "^main$" } }
+      action: { block: "apply solo desde main" }
+    - when: { command: "deploy*", not: { branch: "^PLAT-", file: "ai/plans/*.md" } }
+      action: { block: "deploy sin plan" }
 `)
 	code, _, stderr := r.bash("terraform apply", false)
 	answerHookExpect(t, "apply outside main", code, 2, stderr)
@@ -458,11 +541,11 @@ func TestAnswerHookCodex(t *testing.T) {
 	r.write("polix.yaml", `version: 1
 on:
   pre_edit:
-    - if: { path: "src/**" }
-      deny: "src bloqueado"
+    - when: { path: "src/**" }
+      action: { block: "src bloqueado" }
   pre_command:
-    - if: { command: "terraform apply*" }
-      deny: "apply solo desde el pipeline"
+    - when: { command: "terraform apply*" }
+      action: { block: "apply solo desde el pipeline" }
 `)
 	patch := "*** Begin Patch\n*** Update File: src/a.go\n@@\n-a\n+b\n*** End Patch\n"
 	code, _, stderr := r.hook("codex", map[string]any{"hook_event_name": "PreToolUse", "tool_name": "apply_patch",
@@ -598,8 +681,8 @@ func TestAnswerHookWritesCondition(t *testing.T) {
 	r.write("polix.yaml", `version: 1
 on:
   pre_command:
-    - if: { writes: ["AGENTS.md", "ai/rules/**"], not: { actor: session } }
-      deny: "Solo la sesión principal cambia AGENTS.md"
+    - when: { writes: ["AGENTS.md", "ai/rules/**"], not: { actor: session } }
+      action: { block: "Solo la sesión principal cambia AGENTS.md" }
 `)
 	code, _, stderr := r.bashAs("rm -rf ai/rules", false, "builder")
 	answerHookExpect(t, "builder removes ai/rules", code, 2, stderr)
@@ -613,60 +696,10 @@ on:
 	answerHookExpect(t, "the session writes AGENTS.md", code, 0, stderr)
 }
 
-// run with record records the fact only when the run passes, so a passing gate on stop counts as done.
-func TestAnswerHookRunRecordsOnSuccess(t *testing.T) {
-	const gate = `  pre_commit:
-    - unless: { done: tested }
-      deny: "Faltan los tests"
-`
-	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", `version: 1
-on:
-  stop:
-    - unless: { done: tested }
-      mode: warn
-      run: { command: [git, rev-parse, --verify, --quiet, no-such-ref] }
-      record: tested
-`+gate)
-	r.write("src/a.go", "package a\n")
-	code, _, stderr := r.stop()
-	answerHookExpect(t, "stop with the run failing in warn mode", code, 0, stderr)
-	code, _, stderr = r.bash("git commit -m x", false)
-	answerHookExpect(t, "commit after a failing run", code, 2, stderr)
-
-	r.write("polix.yaml", `version: 1
-on:
-  stop:
-    - unless: { done: tested }
-      run: { command: [git, rev-parse, --verify, --quiet, HEAD] }
-      record: tested
-`+gate)
-	code, _, stderr = r.stop()
-	answerHookExpect(t, "stop with the run passing", code, 0, stderr)
-	code, _, stderr = r.bash("git commit -m x", false)
-	answerHookExpect(t, "commit after a passing run", code, 0, stderr)
-
-	r.write("src/a.go", "package a\n\nvar x = 1\n")
-	code, _, stderr = r.bash("git commit -m x", false)
-	answerHookExpect(t, "commit after an edit", code, 2, stderr)
-
-	// A run that passes in warn mode records too.
-	r.write("polix.yaml", `version: 1
-on:
-  stop:
-    - mode: warn
-      run: { command: [git, rev-parse, --verify, --quiet, HEAD] }
-      record: tested
-`+gate)
-	r.stop()
-	code, _, stderr = r.bash("git commit -m x", false)
-	answerHookExpect(t, "commit after a passing run in warn mode", code, 0, stderr)
-}
-
-// Rules that cannot be loaded fail run: { rules }, instead of passing with no checks and recording a fact.
+// Rules that cannot be loaded fail run: { rules }, instead of passing with no checks.
 func TestAnswerHookRunRulesFailsOnBadRules(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - run: { rules: changed }\n      record: checked\n")
+	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - action: { run: { rules: changed } }\n")
 	r.write("ai/rules/bad.yaml", "rules: [\n")
 	code, _, stderr := r.stop()
 	answerHookExpect(t, "stop with rules that do not load", code, 2, stderr)
@@ -675,67 +708,54 @@ func TestAnswerHookRunRulesFailsOnBadRules(t *testing.T) {
 	}
 }
 
-// A run that changes the content proves nothing about the result: its fact is not recorded.
-func TestAnswerHookRunRecordSkipsChangedContent(t *testing.T) {
-	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", `version: 1
-on:
-  stop:
-    - run: { command: [git, checkout, --, README.md] }
-      record: tested
-  pre_commit:
-    - unless: { done: tested }
-      deny: "Faltan los tests"
-`)
-	r.write("README.md", "changed\n")
-	code, _, stderr := r.stop()
-	answerHookExpect(t, "stop with a run that rewrites a file", code, 0, stderr)
-	code, _, stderr = r.bash("git commit -m x", false)
-	answerHookExpect(t, "commit after a run that changed the content", code, 2, stderr)
-
-	// Same run, nothing left to rewrite: the content holds and the fact is recorded.
-	r.stop()
-	code, _, stderr = r.bash("git commit -m x", false)
-	answerHookExpect(t, "commit after a run on stable content", code, 0, stderr)
-}
-
-// The loop guard covers every block of a stop, not only require: a deny or a failing run cannot trap the agent.
+// The loop guard covers every block of a stop: a block or a failing run cannot trap the agent.
 func TestAnswerHookStopLoopGuardOnAnyBlock(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
 	r.write("polix.yaml", `version: 1
 on:
   stop:
-    - deny: "nunca paras"
+    - action: { block: "nunca paras" }
   subagent_stop:
-    - run: { command: [git, rev-parse, --verify, --quiet, no-such-ref] }
+    - action: { run: [git, rev-parse, --verify, --quiet, no-such-ref] }
 `)
 	r.stops("", 2, 2, 2, 0)
 	r.stops("builder", 2, 2, 2, 0)
 }
 
-// Each entry has its own guard, and subagents do not use up the guard of the main session.
+// Each entry has its own guard, and subagents do not use up the guard of the main session: once the guard lets
+// the first block through, the next one blocks on its own.
 func TestAnswerHookStopLoopGuardPerEntry(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
 	r.write("polix.yaml", `version: 1
 on:
   stop:
-    - require: "A"
-    - require: "B"
+    - action: { block: "A" }
+    - action: { block: "B" }
   subagent_stop:
-    - require: "C"
+    - action: { block: "C" }
 `)
 	r.stops("builder", 2, 2, 2, 0)
-	r.stops("", 2, 2, 2, 0)
-	code, _, stderr := r.stop()
-	if !strings.Contains(stderr, "A") || !strings.Contains(stderr, "B") {
-		t.Fatalf("both requires should hit the guard together: %d %q", code, stderr)
+	for i := range 3 {
+		code, _, stderr := r.stop()
+		answerHookExpect(t, fmt.Sprintf("stop %d", i+1), code, 2, stderr)
+		if stderr != "A\n" {
+			t.Fatalf("the first block ends the evaluation: %q", stderr)
+		}
 	}
+	for i := range 3 {
+		code, _, stderr := r.stop()
+		answerHookExpect(t, fmt.Sprintf("stop %d", i+4), code, 2, stderr)
+		if stderr != "B\n" {
+			t.Fatalf("A is let through and B blocks: %q", stderr)
+		}
+	}
+	r.stops("", 0)
 }
 
 // An invalid workflow fails closed, but the main session can still fix it, and the protections still apply.
 func TestAnswerHookInvalidWorkflowCanBeFixed(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - deny: x\n      foo: 1\n")
+	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - action: { block: x }\n      foo: 1\n")
 	r.write(".gitignore", "build/\n")
 
 	code, _, stderr := r.edit("polix.yaml", "")
@@ -795,11 +815,19 @@ func TestAnswerHookWorkflowAheadOfPolix(t *testing.T) {
 // Unknown options may belong to a newer polix: the reason says so, so the agent updates instead of removing them.
 func TestAnswerHookUnknownOptionsHintAnUpdate(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - deny: x\n      an_option_of_0_2: 1\n")
+	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - action: { block: x }\n      an_option_of_0_2: 1\n")
 	code, _, stderr := r.edit("src/a.go", "")
 	answerHookExpect(t, "edit", code, 2, stderr)
 	if !strings.Contains(stderr, "no las quites: ejecuta polix update") {
 		t.Fatalf("the reason hints an update: %q", stderr)
+	}
+	// A name of the old vocabulary comes with its new spelling, not with an update.
+	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - deny: x\n")
+	code, _, stderr = r.edit("src/a.go", "")
+	answerHookExpect(t, "edit with the old vocabulary", code, 2, stderr)
+	if !strings.Contains(stderr, `unknown key "deny": use action: { block: <message> }`) ||
+		strings.Contains(stderr, "polix update") {
+		t.Fatalf("the reason gives the new spelling: %q", stderr)
 	}
 	r.write("polix.yaml", "version: 2\n")
 	if _, _, stderr = r.edit("src/a.go", ""); !strings.Contains(stderr, "polix update") {
@@ -823,7 +851,7 @@ func TestAnswerHookCodexRelativeStatePath(t *testing.T) {
 // Paths that are not plain ASCII match globs.
 func TestAnswerHookNonASCIIChangedFiles(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - if: { changed: \"*.md\" }\n      require: \"md cambiado\"\n")
+	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - when: { changed: \"*.md\" }\n      action: { block: \"md cambiado\" }\n")
 	r.git("add", "--all")
 	r.git("commit", "--quiet", "-m", "workflow")
 	r.write("diseño/año.md", "x\n")
@@ -853,7 +881,7 @@ func TestAnswerHookAdapterDiff(t *testing.T) {
 // In the hooks, changed is what is not committed yet, whatever base says.
 func TestAnswerHookChangedSinceHead(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\nbase: main\non:\n  stop:\n    - if: { changed: \"src/**\" }\n      require: \"src cambiado\"\n")
+	r.write("polix.yaml", "version: 1\nbase: main\non:\n  stop:\n    - when: { changed: \"src/**\" }\n      action: { block: \"src cambiado\" }\n")
 	r.git("add", "--all")
 	r.git("commit", "--quiet", "-m", "workflow")
 	r.git("checkout", "--quiet", "-b", "feature")
@@ -895,13 +923,13 @@ func TestAnswerHookExampleHookTimeouts(t *testing.T) {
 	}
 }
 
-// A decision does not compute the content hash just to log it: a plain deny costs no git tree.
+// A decision does not compute the content hash just to log it: a plain block costs no git tree.
 func TestAnswerHookDecisionsSkipTheHash(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - deny: x\n")
+	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - action: { block: x }\n")
 	r.edit("src/a.go", "")
 	data, _ := os.ReadFile(filepath.Join(r.dir, ".git", "polix", "log.jsonl"))
-	if !strings.Contains(string(data), `"action":"deny","line":4`) || strings.Contains(string(data), `"hash"`) {
+	if !strings.Contains(string(data), `"action":"block","line":4`) || strings.Contains(string(data), `"hash"`) {
 		t.Fatalf("log: %s", data)
 	}
 }
@@ -950,7 +978,7 @@ func TestAnswerHookRunHugeOutputCapped(t *testing.T) {
 	r.write("polix.yaml", `version: 1
 on:
   stop:
-    - run: { command: [git, diff, --no-index, empty.txt, big.txt] }
+    - action: { run: [git, diff, --no-index, empty.txt, big.txt] }
 `)
 	r.write("empty.txt", "")
 	r.write("big.txt", strings.Repeat("y", 4*1000*1000)+"\n")
@@ -972,19 +1000,16 @@ on:
 	}
 }
 
-// Without a content hash, no fact is recorded, done does not hold and the hook says why.
-func TestAnswerHookUnknownHashRecordsNothing(t *testing.T) {
+// Without a content hash, the end of a subagent is not observed, finished does not hold and the hook says why.
+func TestAnswerHookUnknownHashObservesNothing(t *testing.T) {
 	answerHookSkipFileModes(t)
 	r := answerHookNewRepo(t, "main")
 	r.write("polix.yaml", `version: 1
 on:
-  post_command:
-    - if: { command: "just test", exit: 0 }
-      record: tested
   stop:
-    - if: { changed: "**" }
-      unless: { done: tested }
-      require: "Faltan los tests"
+    - when: { changed: "**" }
+      unless: { finished: reviewer }
+      action: { block: "Falta la revisión" }
 `)
 	r.write("secret.txt", "x\n")
 	p := filepath.Join(r.dir, "secret.txt")
@@ -992,47 +1017,42 @@ on:
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(p, 0o644) })
-	code, _, stderr := r.bash("just test", true)
-	answerHookExpect(t, "tests pass without a hash", code, 0, stderr)
+	code, _, stderr := r.subagentStop("reviewer")
+	answerHookExpect(t, "the reviewer stops without a hash", code, 0, stderr)
 	if !strings.Contains(stderr, "hash del contenido") {
 		t.Fatalf("stderr should warn about the hash: %q", stderr)
 	}
-	data, _ := os.ReadFile(filepath.Join(r.dir, ".git", "polix", "log.jsonl"))
-	if strings.Contains(string(data), `"kind":"fact"`) || strings.Contains(string(data), "unknown") {
-		t.Fatalf("log: %s", data)
+	if strings.Contains(r.log(), `"kind":"observed"`) {
+		t.Fatalf("log: %s", r.log())
 	}
 	r.write("src/a.go", "package a\n")
 	code, _, stderr = r.stop()
 	answerHookExpect(t, "stop after an edit without a hash", code, 2, stderr)
 }
 
-// A run without record may rewrite files: the later entries of the call use the content after it.
+// A run may rewrite files: the later entries of the call use the content after it.
 func TestAnswerHookRunRefreshesHash(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
 	r.write("polix.yaml", `version: 1
 on:
   stop:
-    - unless: { done: formatted }
-      run: { command: [git, checkout, --, README.md] }
-    - record: tested
-  pre_commit:
-    - unless: { done: tested }
-      deny: "Faltan los tests"
+    - action: { run: [git, checkout, --, README.md] }
+    - unless: { finished: reviewer }
+      action: { block: "Falta la revisión" }
 `)
 	r.git("add", "polix.yaml")
 	r.git("commit", "--quiet", "-m", "workflow")
+	r.subagentStop("reviewer")
 	r.write("README.md", "changed\n")
 	code, _, stderr := r.stop()
-	answerHookExpect(t, "stop with a run that rewrites a file", code, 0, stderr)
-	code, _, stderr = r.bash("git commit -m x", false)
-	answerHookExpect(t, "commit on the content after the rewrite", code, 0, stderr)
+	answerHookExpect(t, "stop with a run that restores the reviewed content", code, 0, stderr)
 }
 
 // A failed command reaches post_command with exit 1, and a failed edit runs no post_edit.
 func TestAnswerHookPostToolUseFailure(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\non:\n  post_command:\n    - if: { exit: 1 }\n      context: { text: \"el comando falló\" }\n"+
-		"  post_edit:\n    - context: { text: \"post edit\" }\n")
+	r.write("polix.yaml", "version: 1\non:\n  post_command:\n    - when: { exit: 1 }\n      action: { inject: \"el comando falló\" }\n"+
+		"  post_edit:\n    - action: { inject: \"post edit\" }\n")
 	_, stdout, stderr := r.hook("claude", map[string]any{"hook_event_name": "PostToolUseFailure", "tool_name": "Bash",
 		"tool_input": map[string]any{"command": "go test ./..."}, "error": "exit status 1"})
 	if !strings.Contains(stdout, "el comando falló") {
@@ -1059,8 +1079,8 @@ rules:
     "*.ref": [git, rev-parse, --verify, --quiet, "{name}"]
 on:
   stop:
-    - if: { changed: "src/**" }
-      run: { rules: changed }
+    - when: { changed: "src/**" }
+      action: { run: { rules: changed } }
 `)
 	r.write("ai/rules/style.yaml", `rules:
   - id: STYLE-1
@@ -1130,8 +1150,20 @@ func TestAnswerHookAdapter(t *testing.T) {
 	if !slices.Contains(a.Changed(ctx), "src/a.go") || !slices.Contains(a.Files(ctx), "README.md") {
 		t.Fatalf("Changed %q Files %q", a.Changed(ctx), a.Files(ctx))
 	}
-	if h, err := a.Hash(ctx); err != nil || h == "" {
-		t.Fatalf("Hash = %q %v", h, err)
+	before, err := a.Hash(ctx)
+	if err != nil || before == "" {
+		t.Fatalf("Hash = %q %v", before, err)
+	}
+	r.write("docs/guide.md", "x\n")
+	after, err := a.Hash(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths, err := a.TreeDiff(ctx, before, after); err != nil || !slices.Equal(paths, []string{"docs/guide.md"}) {
+		t.Fatalf("TreeDiff = %q %v", paths, err)
+	}
+	if _, err := a.TreeDiff(ctx, strings.Repeat("1", len(before)), after); err == nil {
+		t.Fatal("TreeDiff of a missing tree")
 	}
 	if data, err := a.Read(ctx, "src/a.go"); err != nil || data != "package a\n" {
 		t.Fatalf("Read = %q %v", data, err)
@@ -1142,11 +1174,16 @@ func TestAnswerHookAdapter(t *testing.T) {
 	if out, err := a.Run(ctx, []string{"git", "rev-parse", "--abbrev-ref", "HEAD"}); err != nil || out != "feature\n" {
 		t.Fatalf("Run = %q %v", out, err)
 	}
-	if err := a.Append(ctx, state.Entry{Kind: state.KindFact, Fact: "tested"}); err != nil {
+	if err := a.Append(ctx, state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeFinished,
+		Key: "polix:reviewer"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := a.Append(ctx, state.Entry{Kind: state.KindObserved, Outcome: state.OutcomePassed}); err == nil {
+		t.Fatal("an observed passed without hash is appended")
+	}
 	s, err := a.LoadState(ctx)
-	if err != nil || len(s.Entries) != 1 || s.Entries[0].At == "" || !strings.Contains(r.log(), `"fact":"tested"`) {
+	if err != nil || len(s.Entries) != 1 || s.Entries[0].At == "" ||
+		!strings.Contains(r.log(), `"key":"polix:reviewer","outcome":"finished"`) {
 		t.Fatalf("LoadState = %+v %v", s, err)
 	}
 	if reals := a.Real(ctx, []string{r.dir}); len(reals) != 1 || reals[0] == "" {
@@ -1160,7 +1197,7 @@ func TestAnswerHookAdapter(t *testing.T) {
 // With rules.path the rules come from that folder, not from ai/rules/, and the context names it.
 func TestAnswerHookRulesOfRulesPath(t *testing.T) {
 	r := answerHookNewRepo(t, "main")
-	r.write("polix.yaml", "version: 1\nrules: { path: governance/rules }\non:\n  pre_edit:\n    - context: { rules: \"{path}\" }\n")
+	r.write("polix.yaml", "version: 1\nrules: { path: governance/rules }\non:\n  pre_edit:\n    - action: { inject: { rules: \"{path}\" } }\n")
 	r.write("ai/rules/old.yaml", "rules:\n  - id: OLD-1\n    description: Old rule.\n")
 	r.write("governance/rules/style.yaml", "rules:\n  - id: NEW-1\n    description: New rule.\n")
 	r.write("src/a.txt", "x\n")
@@ -1177,9 +1214,9 @@ func TestAnswerHookInvalidRuleNextToValid(t *testing.T) {
 	r.write("polix.yaml", `version: 1
 on:
   pre_edit:
-    - context: { rules: "{path}" }
+    - action: { inject: { rules: "{path}" } }
   stop:
-    - run: { rules: changed }
+    - action: { run: { rules: changed } }
 `)
 	r.write("ai/rules/style.yaml", `rules:
   - id: BAD-1

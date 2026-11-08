@@ -203,9 +203,9 @@ func TestUpdateVersionAdapterWorkflowRejected(t *testing.T) {
 		t.Fatalf("without polix.yaml: %v", err)
 	}
 	for src, ahead := range map[string]bool{
-		"version: 1\nrequires: 0.2.0\n":                                     true,
-		"version: 1\nan_option: true\n":                                     true,
-		"version: 1\non:\n  pre_edit:\n    - deny: x\n      an_option: 1\n": true,
+		"version: 1\nrequires: 0.2.0\n": true,
+		"version: 1\nan_option: true\n": true,
+		"version: 1\non:\n  pre_edit:\n    - action: { block: x }\n      an_option: 1\n": true,
 		"version: 2\n":                      true,
 		"version: 1\nmax_stop_blocks: -1\n": false,
 		"version: 1\n":                      false,

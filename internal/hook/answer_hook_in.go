@@ -50,6 +50,8 @@ type AnswerHookPort interface {
 	Branch(ctx context.Context) string
 	// Hash returns the hash of the current content of the working tree.
 	Hash(ctx context.Context) (string, error)
+	// TreeDiff returns the paths that differ between two content hashes, or why they cannot be compared.
+	TreeDiff(ctx context.Context, from, to string) ([]string, error)
 	// Changed returns the files not committed yet: changed since HEAD, or untracked.
 	Changed(ctx context.Context) []string
 	// Diff returns the size of the change of each file not committed yet, the same files as Changed, or why it
@@ -171,6 +173,9 @@ func answerHook(ctx context.Context, port AnswerHookPort, req AnswerHookRequest)
 			case s.Hash:
 				hash, err := port.Hash(ctx)
 				ev = ev.KnowHash(s.Epoch, hash, err)
+			case s.Compare != "":
+				paths, err := port.TreeDiff(ctx, s.Compare, s.Tree)
+				ev = ev.KnowTreeDiff(s.Compare, s.Tree, paths, err)
 			case s.Changed:
 				ev = ev.KnowChanged(port.Changed(ctx))
 			case s.Diff:

@@ -32,8 +32,22 @@ type answerHookRun struct {
 	state state.State // the log as this pass left it
 	next  int         // the next outcome of the journal
 	step  *Step       // the step the pass waits for; nil while it goes on
-	// entryIf is the `if` of the entry being evaluated, whose `changed` scopes the measure placeholders.
-	entryIf workflow.Cond
+	// entry is the entry being evaluated: the `changed` of its `when` scopes the measure placeholders and the
+	// content `finished` compares.
+	entry workflow.Entry
+	// guarded tells that the loop guard let a block of the event through: the event did not end as asked.
+	guarded bool
+	// warnings are the warnings of the pass for the user, such as a log that cannot be read.
+	warnings []string
+	// injected are the once-only injects that reached the answer, written as observed `injected` lines once the
+	// answer is known (see writeInjected).
+	injected []answerHookInjected
+}
+
+// answerHookInjected is a once-only inject that reached the answer: the line of its entry and its key.
+type answerHookInjected struct {
+	line int
+	key  string
 }
 
 // answerHookOutputLines is how many lines of the output of a failing command its reason keeps, the last ones.
@@ -53,8 +67,13 @@ func AnswerHook(ev Evaluation) AnswerHookOutput {
 	return AnswerHookOutput{Answer: ans, Facts: ev.Facts.Carry(r.epoch, r.state)}
 }
 
-// handle answers the event: the protections, then the entries of the event in order. It stops early when a step
-// is missing; the answer is then meaningless.
+// handle answers the event: the protections, then the entries of the event in order, until the first one that
+// actually blocks, a block or a failing run, whatever its verb (see apply); the entries after it never run, and the
+// contexts of those before it reach the agent with the block. With the answer known, it writes the once-only injects
+// that reached the AI (see writeInjected). On a subagent_stop the answer does not refuse, it then writes that the
+// subagent finished when the workflow observes its type or injects once (see observeFinished), and on start that
+// the session started when the workflow injects once, so its once-only injects are due again. It stops early
+// when a step is missing; the answer is then meaningless.
 func (r *answerHookRun) handle() agent.Answer {
 	ans, blocked := r.protect()
 	if r.waiting() {
@@ -74,14 +93,14 @@ func (r *answerHookRun) handle() agent.Answer {
 		return agent.Answer{}
 	}
 	// The built-in guidance comes before the entries, so the contexts of the repository have the last word.
-	if r.ev.Event.Name == workflow.SessionStart {
+	if r.ev.Event.Name == workflow.Start {
 		if text := r.ev.Workflow.SessionContext(); text != "" {
 			ans = ans.Inform(text)
 		}
 	}
 	for _, e := range r.ev.Workflow.On[r.ev.Event.Name] {
-		r.entryIf = e.If
-		if !r.matches(e.If, nil) || len(e.Unless) > 0 && r.matches(e.Unless, nil) {
+		r.entry = e
+		if !r.matches(e.When, nil) || len(e.Unless) > 0 && r.matches(e.Unless, nil) {
 			if r.waiting() {
 				return ans
 			}
@@ -96,7 +115,23 @@ func (r *answerHookRun) handle() agent.Answer {
 			break
 		}
 	}
-	for _, w := range r.ev.Facts.Warnings {
+	if r.waiting() {
+		return ans
+	}
+	r.writeInjected(ans)
+	if r.waiting() {
+		return ans
+	}
+	switch {
+	case r.ev.Event.Name == workflow.SubagentStop && !ans.Block:
+		r.observeFinished()
+	case r.ev.Event.Name == workflow.Start && r.ev.Workflow.InjectsOnce():
+		_ = r.write(state.KindObserved, "", 0, state.OutcomeStarted, "", "", "")
+	}
+	if r.waiting() {
+		return ans
+	}
+	for _, w := range append(slices.Clone(r.warnings), r.ev.Facts.Warnings...) {
 		if !slices.Contains(ans.Warnings, w) {
 			ans = ans.Warn(w)
 		}
@@ -227,149 +262,332 @@ func (r *answerHookRun) outsideChange() bool {
 	return ev.Outside || r.ignored(ev.Path)
 }
 
-// apply runs the action of a matching entry and reports whether the evaluation of the event stops there. Once the
-// action applied, the fact of the entry is recorded (recordEntry), before the evaluation stops when it does; a run
-// records it itself, only when it passed (runEntry).
+// apply carries out the verb of the action of a matching entry and reports whether the evaluation of the event
+// stops there. One rule, whatever the verb: the first entry that actually blocks ends the evaluation, a `block` or
+// a failing `run` on an event where it blocks. A block let through by the loop guard, an inject, a skipped verb, a
+// passing run and a failing run on an event where it only informs let it go on.
 func (r *answerHookRun) apply(e workflow.Entry, ans agent.Answer) (agent.Answer, bool) {
-	switch e.Action() {
-	case "deny":
-		// Only a block that happened stops the evaluation; a warning, an audit or the loop guard let it go on.
-		reason := r.expand(*e.Deny)
+	a := e.Action
+	switch a.Verb() {
+	case workflow.VerbBlock:
+		if a.Block.Once {
+			reminded := r.reminded(e)
+			if r.waiting() {
+				return ans, false
+			}
+			if reminded {
+				r.log(workflow.VerbBlock, e.Line, "skip", "ya bloqueó a "+r.ev.Event.Actor+
+					" en esta sesión sobre el mismo contenido")
+				return ans, false
+			}
+		}
+		reason := r.expand(a.Block.Message)
 		if r.waiting() {
 			return ans, false
 		}
-		ans, stop := r.block(e, ans, reason)
-		r.recordEntry(e)
-		return ans, stop
-	case "allow":
-		r.log("allow", e.Line, "allow", "")
-		r.recordEntry(e)
-		return ans, true
-	case "require":
-		reason := r.expand(*e.Require)
-		if r.waiting() {
-			return ans, false
-		}
-		ans, _ = r.block(e, ans, reason)
-		r.recordEntry(e)
-		return ans, false
-	case "run":
-		return r.runEntry(e, ans), false
-	case "context":
-		if t := r.context(*e.Context); t != "" && !r.waiting() {
-			ans = ans.Inform(t)
-		}
-		r.recordEntry(e)
-		return ans, false
-	case "record":
-		r.recordEntry(e)
-		return ans, false
+		return r.block(e, ans, reason, "")
+	case workflow.VerbRun:
+		return r.runEntry(e, ans)
+	case workflow.VerbInject:
+		return r.inject(e, ans), false
 	}
 	return ans, false
 }
 
-// recordEntry records the fact of the entry e, if it has one, on the current content: its action applied, blocked,
-// warned or let through by the loop guard. An entry in audit mode records nothing, so trying an entry never
-// changes what the others see.
-func (r *answerHookRun) recordEntry(e workflow.Entry) {
-	if e.Record == nil || e.EffectiveMode() == workflow.ModeAudit {
-		return
-	}
-	fact := r.expand(*e.Record)
-	if r.waiting() {
-		return
-	}
-	r.recordFact(fact)
-}
-
-// block applies a block of the entry e in its mode and reports whether the event is actually blocked. On stop and
-// subagent_stop, the loop guard of every block (require, deny or a failing run): after max_stop_blocks blocks of
-// this entry on this same content, the agent may stop and a trace is left. An unknown hash counts as one content.
-// When the log cannot be read or written the guard cannot count, so it fails open.
-func (r *answerHookRun) block(e workflow.Entry, ans agent.Answer, reason string) (agent.Answer, bool) {
+// block blocks the event for the entry e and reports whether it is actually blocked; key is what a failing run ran,
+// "" for a block. A block with once writes an observed `blocked` line, which reminded reads. On stop and
+// subagent_stop every block (a block or a failing run) writes it too, for the loop guard: after max_stop_blocks
+// blocks of this entry of the actor in the session on this same content (the whole hash), the agent may stop and a
+// trace is left. An unknown hash counts as one content (state.UnknownHash). When the log cannot be read or written
+// the guard cannot count, so it fails open. A block with once outside the stops blocks without writing when the
+// hash is unknown or the log cannot be read, so it blocks again.
+func (r *answerHookRun) block(e workflow.Entry, ans agent.Answer, reason, key string) (agent.Answer, bool) {
 	ev := r.ev.Event
-	switch e.EffectiveMode() {
-	case workflow.ModeAudit:
-		r.log(e.Action(), e.Line, "audit", reason)
-		return ans, false
-	case workflow.ModeWarn:
-		ans = ans.Inform("Aviso de polix: " + reason).Warn(reason)
-		r.log(e.Action(), e.Line, "warn", reason)
+	verb := e.Action.Verb()
+	stop := ev.Name == workflow.Stop || ev.Name == workflow.SubagentStop
+	once := e.Action.Block != nil && e.Action.Block.Once
+	if !stop && !once {
+		r.log(verb, e.Line, "block", reason)
+		return ans.Refuse(reason), true
+	}
+	hash, known := r.hash()
+	st, err := r.currentState()
+	if r.waiting() {
 		return ans, false
 	}
-	if ev.Name == workflow.Stop || ev.Name == workflow.SubagentStop {
-		hash, _ := r.hash()
-		st, err := r.currentState()
+	if stop {
+		if err != nil {
+			return r.release(e, ans, fmt.Sprintf("polix deja parar porque no puede usar su log (%v): %s", err, reason),
+				reason), false
+		}
+		if !known {
+			hash, known = state.UnknownHash, true
+		}
+		q := state.Query{Outcome: state.OutcomeBlocked, Session: ev.Session, Event: ev.Name, Actor: ev.Actor,
+			Line: e.Line, Hash: hash, ByHash: true}
+		if err := q.Valid(); err != nil {
+			return r.release(e, ans, fmt.Sprintf("polix deja parar porque no puede usar su log (%v): %s", err, reason),
+				reason), false
+		}
+		if n := len(st.Observed(q)); n >= r.ev.Workflow.MaxStopBlocks {
+			return r.release(e, ans, fmt.Sprintf("polix deja parar tras %d bloqueos: %s", n, reason), reason), false
+		}
+	}
+	if known && err == nil {
+		werr := r.write(state.KindObserved, "", e.Line, state.OutcomeBlocked, "", key, hash)
 		if r.waiting() {
 			return ans, false
 		}
-		if n := st.StopBlocks(ev.Session, ev.Name, ev.Actor, e.Line, hash); err == nil && n >= r.ev.Workflow.MaxStopBlocks {
-			r.log(e.Action(), e.Line, "loop_guard", reason)
-			return ans.Warn(fmt.Sprintf("polix deja parar tras %d bloqueos: %s", n, reason)), false
-		}
-		if err == nil {
-			err = r.write(state.KindStopBlock, "", e.Line, "", reason, "", hash)
-			if r.waiting() {
-				return ans, false
-			}
-		}
-		if err != nil {
-			r.log(e.Action(), e.Line, "loop_guard", reason)
-			return ans.Warn(fmt.Sprintf("polix deja parar porque no puede usar su log (%v): %s", err, reason)), false
+		if werr != nil && stop {
+			return r.release(e, ans, fmt.Sprintf("polix deja parar porque no puede usar su log (%v): %s", werr, reason),
+				reason), false
 		}
 	}
-	r.log(e.Action(), e.Line, "block", reason)
+	r.log(verb, e.Line, "block", reason)
 	return ans.Refuse(reason), true
 }
 
-// runEntry runs the action run of the entry e. The fact is about the content the run saw: it is pinned before
-// running, and nothing is recorded if the run (or anyone else meanwhile) changed it, or if the hash is unknown.
-// Only a run that passed records, and never in audit mode. Any run may rewrite files, so the content hash and the
-// files read after it are those of a new epoch.
-func (r *answerHookRun) runEntry(e workflow.Entry, ans agent.Answer) agent.Answer {
-	records := e.Record != nil && e.EffectiveMode() != workflow.ModeAudit
-	before, knownBefore := "", true
-	if records {
-		before, knownBefore = r.hash()
-	}
-	reason := r.run(*e.Run)
-	if r.waiting() {
-		return ans
-	}
-	r.epoch++
-	if reason != "" {
-		ans, _ = r.block(e, ans, reason)
-		return ans
-	}
-	if !records {
-		return ans
-	}
-	fact := r.expand(*e.Record)
-	after, knownAfter := r.hash()
-	if r.waiting() {
-		return ans
-	}
-	switch {
-	case !knownBefore || !knownAfter:
-		r.log("run", e.Line, "warn", "hash del contenido desconocido; no se registra "+fact)
-	case after != before:
-		reason := "el contenido cambió durante el run; no se registra " + fact
-		ans = ans.Warn(reason)
-		r.log("run", e.Line, "warn", reason)
-	default:
-		r.recordFact(fact)
-	}
-	return ans
+// release lets the stop through for the loop guard, with warning for the user: the block of the entry e is logged
+// as loop_guard with its reason, and the event did not end as asked.
+func (r *answerHookRun) release(e workflow.Entry, ans agent.Answer, warning, reason string) agent.Answer {
+	r.guarded = true
+	r.log(e.Action.Verb(), e.Line, "loop_guard", reason)
+	return ans.Warn(warning)
 }
 
-// run executes a command or the checks of the rules and returns why it failed, or "".
-func (r *answerHookRun) run(run workflow.Run) string {
+// reminded reports whether the block with once of the entry e already blocked the actor of the event in its
+// session on the current branch, on a content whose files in the scope of the entry did not change since: the tree
+// of its latest observed `blocked` line is compared with the current one. An unknown hash, a log that cannot be
+// read and two trees that cannot be compared never count as reminded, the last with the error in the log: the
+// reminder blocks again.
+func (r *answerHookRun) reminded(e workflow.Entry) bool {
+	ev := r.ev.Event
+	branch := r.branch()
+	hash, known := r.hash()
+	st, err := r.currentState()
+	if r.waiting() || !known {
+		return false
+	}
+	if err != nil {
+		r.warnLog(err)
+		return false
+	}
+	q := state.Query{Outcome: state.OutcomeBlocked, Session: ev.Session, Actor: ev.Actor, Line: e.Line, Branch: branch,
+		ByBranch: true}
+	if q.Valid() != nil {
+		return false
+	}
+	last, ok := st.Latest(q)
+	if !ok || last.Hash == "" || last.Hash == state.UnknownHash {
+		return false
+	}
+	same, err := r.sameScope(last.Hash, hash, r.whenScope())
+	if err != nil {
+		r.log(workflow.VerbBlock, e.Line, "warn", fmt.Sprintf(
+			"no se puede comparar el contenido en que se recordó con el actual (%v): el block vuelve a bloquear", err))
+		return false
+	}
+	return same
+}
+
+// runEntry runs the verb run of the entry e and reports whether the event is actually blocked, which ends its
+// evaluation. Without always, a run whose key already passed on the current branch and content hash is skipped,
+// whoever's entry ran it. A run that passes on a content that did not change during it writes an observed `passed`
+// line, with or without always; one during which the content changed, or with an unknown hash, writes none, and the
+// hash after the run is only computed when the one before it is known. A
+// failure, with the message of the run before its output, blocks the event as a block does (see block), so the
+// loop guard may let it through; on the events that already happened (workflow.Informed) it reaches the AI as
+// context instead, as feedback, and never blocks. Any run may rewrite files, so the content hash and the files read
+// after it are those of a new epoch.
+func (r *answerHookRun) runEntry(e workflow.Entry, ans agent.Answer) (agent.Answer, bool) {
+	run := *e.Action.Run
+	args, key := r.runKey(run)
+	hash, known := r.hash()
+	if r.waiting() {
+		return ans, false
+	}
+	if !run.Always && known {
+		passed := r.passed(key, hash)
+		if r.waiting() {
+			return ans, false
+		}
+		if passed {
+			r.log(workflow.VerbRun, e.Line, "skip", key+" ya pasó en este contenido")
+			return ans, false
+		}
+	}
+	message := r.expand(run.Message)
+	if r.waiting() {
+		return ans, false
+	}
+	reason := r.run(run, args)
+	if r.waiting() {
+		return ans, false
+	}
+	r.epoch++
+	if reason == "" {
+		if !known {
+			return ans, false // the content before the run is unknown: the one after it would prove nothing
+		}
+		if after, knownAfter := r.hash(); knownAfter && after == hash {
+			_ = r.write(state.KindObserved, "", e.Line, state.OutcomePassed, "", key, hash)
+		}
+		return ans, false
+	}
+	if message != "" {
+		reason = message + "\n\n" + reason
+	}
+	if slices.Contains(workflow.Informed, r.ev.Event.Name) {
+		r.log(workflow.VerbRun, e.Line, "inform", reason)
+		return ans.Inform(reason), false
+	}
+	return r.block(e, ans, reason, key)
+}
+
+// runKey returns the arguments of the command of run, expanded, and the key of its repeat: those arguments joined
+// by single spaces, or for the checks of the rules the word rules and the expanded target. A {path} in the command
+// or the target makes the key differ per path.
+func (r *answerHookRun) runKey(run workflow.Run) ([]string, string) {
 	if run.Rules != "" {
-		return r.runRules(run.Rules)
+		return nil, "rules " + r.expand(run.Rules)
 	}
 	args := make([]string, len(run.Command))
 	for i, a := range run.Command {
 		args[i] = r.expand(a)
+	}
+	return args, strings.Join(args, " ")
+}
+
+// passed reports whether a run of key passed on the current branch and the content hash. A log that cannot be read
+// never counts as passed: the run runs again.
+func (r *answerHookRun) passed(key, hash string) bool {
+	branch := r.branch()
+	st, err := r.currentState()
+	if r.waiting() {
+		return false
+	}
+	if err != nil {
+		r.warnLog(err)
+		return false
+	}
+	q := state.Query{Outcome: state.OutcomePassed, Branch: branch, ByBranch: true, Key: key, Hash: hash, ByHash: true}
+	if q.Valid() != nil {
+		return false
+	}
+	return st.Index(q) >= 0
+}
+
+// observeFinished writes that the subagent of a subagent_stop the answer does not refuse finished, its type as the
+// key: with the content hash when a `finished` of the workflow names the type, so the condition can hold; without
+// it, and without computing it, when the workflow only injects once, so the injects of that subagent are due again.
+// Without a known hash, whose cause the facts already keep as a warning, the condition gets nothing, with a warn
+// decision, and the line is written without hash only when the workflow injects once. A stop the loop guard let
+// through did not end as asked: it is written without hash, only when the workflow injects once, so the subagent
+// never counts as finished but its next run, with a new context, gets the injects again.
+func (r *answerHookRun) observeFinished() {
+	ev := r.ev.Event
+	if r.guarded {
+		if r.ev.Workflow.InjectsOnce() {
+			_ = r.write(state.KindObserved, "", 0, state.OutcomeFinished, "", ev.Actor, "")
+		}
+		return
+	}
+	observed := false
+	for _, name := range r.ev.Workflow.ObservedSubagents() {
+		observed = observed || r.expand(name) == ev.Actor
+	}
+	if r.waiting() {
+		return
+	}
+	once := r.ev.Workflow.InjectsOnce()
+	hash := ""
+	if observed {
+		h, known := r.hash()
+		if r.waiting() {
+			return
+		}
+		if !known {
+			r.log("finished", 0, "warn", "hash del contenido desconocido; no se registra que "+ev.Actor+
+				" terminó para finished")
+		}
+		hash = h
+	}
+	if hash != "" || once {
+		_ = r.write(state.KindObserved, "", 0, state.OutcomeFinished, "", ev.Actor, hash)
+	}
+}
+
+// finished reports whether the subagent type name finished on the current branch on a content whose files in scope
+// did not change since: the tree of its latest observed finished with a hash is compared with the current one (see
+// sameScope). The log is read first, so without such a line the content hash is never computed. A log that cannot be
+// read, with a warning, an unknown hash, a tree git no longer has or a comparison that fails never holds, the last
+// two with the error in the log.
+func (r *answerHookRun) finished(name string, scope []string) bool {
+	branch := r.branch()
+	st, err := r.currentState()
+	if r.waiting() {
+		return false
+	}
+	if err != nil {
+		r.warnLog(err)
+		return false
+	}
+	q := state.Query{Outcome: state.OutcomeFinished, Branch: branch, ByBranch: true, Key: name}
+	if q.Valid() != nil {
+		return false
+	}
+	var last state.Entry
+	for _, e := range st.Observed(q) {
+		if e.Hash != "" {
+			last = e
+		}
+	}
+	if last.Hash == "" {
+		return false
+	}
+	hash, known := r.hash()
+	if r.waiting() || !known {
+		return false
+	}
+	same, err := r.sameScope(last.Hash, hash, scope)
+	if err != nil {
+		r.log("finished", r.entry.Line, "warn", fmt.Sprintf(
+			"no se puede comparar el contenido en que terminó %s con el actual (%v): finished no se cumple", name, err))
+		return false
+	}
+	return same
+}
+
+// sameScope reports whether the files in scope are the same in the trees from and to: the trees are equal, or no
+// path that differs between them matches the globs of scope; with no scope, any differing path counts. It asks for
+// the comparison it lacks, and returns why the trees could not be compared (a tree git no longer has, or git
+// failing): they then count as different.
+func (r *answerHookRun) sameScope(from, to string, scope []string) (bool, error) {
+	if from == to {
+		return true, nil
+	}
+	paths, compared, err := r.ev.Facts.TreeDiff(from, to)
+	if !compared {
+		s := Step{Compare: from, Tree: to}
+		r.ask(s, s.Valid())
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, p := range paths {
+		if len(scope) == 0 || glob.AnyPath(scope, p) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// run executes the command of run, with its expanded args, or the checks of the rules and returns why it failed,
+// or "".
+func (r *answerHookRun) run(run workflow.Run, args []string) string {
+	if run.Rules != "" {
+		return r.runRules(run.Rules)
 	}
 	s := Step{Run: args}
 	o := r.act(s, s.Valid())
@@ -426,52 +644,148 @@ func (r *answerHookRun) runRules(target string) string {
 	return b.String()
 }
 
-// context builds the text of a context action; the rules are injected once per session.
-func (r *answerHookRun) context(c workflow.Context) string {
-	switch {
-	case c.File != "":
-		data, readable := r.read(r.expand(c.File))
-		if !readable {
-			return ""
+// inject carries out the verb inject of the entry e: the text, the file or the rules that apply to a path. On
+// start, which always injects, or with always, it injects every time it applies. Otherwise it injects
+// once: keyed by the session, the actor, the line of the entry and the expanded text or file path (one key per rule
+// id for the rules), it is skipped while not due (see due) and, once the answer shows it reaches the AI, an observed
+// `injected` line is written for it (see writeInjected). A placeholder that changes on every event makes a new key,
+// so it injects every time.
+func (r *answerHookRun) inject(e workflow.Entry, ans agent.Answer) agent.Answer {
+	in := *e.Action.Inject
+	once := !in.Always && r.ev.Event.Name != workflow.Start
+	if in.Rules != "" {
+		target := r.expand(in.Rules)
+		if r.waiting() {
+			return ans
 		}
-		return data
-	case c.Text != "":
-		return r.expand(c.Text)
-	case c.Rules != "":
-		return r.contextRules(r.expand(c.Rules))
+		if t := r.contextRules(e.Line, target, once); t != "" && !r.waiting() {
+			ans = ans.Inform(t)
+		}
+		return ans
 	}
-	return ""
+	key := in.Text
+	if in.File != "" {
+		key = in.File
+	}
+	key = r.expand(key)
+	if r.waiting() || key == "" {
+		return ans // a file whose name expands to nothing names no file
+	}
+	if once {
+		due := r.due(e.Line, key)
+		if r.waiting() {
+			return ans
+		}
+		if !due {
+			r.log(workflow.VerbInject, e.Line, "skip", "ya se inyectó a "+r.ev.Event.Actor+" en esta sesión")
+			return ans
+		}
+	}
+	text := key
+	if in.File != "" {
+		data, readable := r.read(key)
+		if !readable {
+			return ans
+		}
+		text = data
+	}
+	if text == "" {
+		return ans
+	}
+	if once {
+		r.injected = append(r.injected, answerHookInjected{line: e.Line, key: key})
+	}
+	return ans.Inform(text)
 }
 
-// contextRules lists the rules that apply to target and were not injected in the session yet, and records that
-// they were.
-func (r *answerHookRun) contextRules(target string) string {
+// writeInjected writes an observed `injected` line, without hash, for each once-only inject that reached the answer
+// ans, in the order they were injected. On prompt a refusal rejects the prompt, so its contexts never reach the AI
+// and nothing is written; on the other events the contexts reach the AI with the block, and they are written.
+func (r *answerHookRun) writeInjected(ans agent.Answer) {
+	if r.ev.Event.Name == workflow.Prompt && ans.Block {
+		return
+	}
+	for _, in := range r.injected {
+		_ = r.write(state.KindObserved, "", in.line, state.OutcomeInjected, "", in.key, "")
+		if r.waiting() {
+			return
+		}
+	}
+}
+
+// contextRules lists the rules that apply to target; with once, only those due for the actor of the event (see
+// due), each kept to be written as injected with its id as the key (see writeInjected), and the skip is logged when
+// every rule that applies was already injected.
+func (r *answerHookRun) contextRules(line int, target string, once bool) string {
 	all, _ := r.rules()
 	if r.waiting() {
 		return ""
 	}
-	ev := r.ev.Event
+	matching := rule.Matching(all, []string{target})
 	var lines []string
-	for _, rl := range rule.Matching(all, []string{target}) {
-		st, _ := r.currentState()
-		if r.waiting() {
-			return ""
-		}
-		if st.Injected(rl.ID, ev.Session) {
-			continue
+	for _, rl := range matching {
+		if once {
+			due := r.due(line, rl.ID)
+			if r.waiting() {
+				return ""
+			}
+			if !due {
+				continue
+			}
+			r.injected = append(r.injected, answerHookInjected{line: line, key: rl.ID})
 		}
 		lines = append(lines, fmt.Sprintf("- %s: %s", rl.ID, rl.Description))
-		e := state.Entry{Kind: state.KindInjected, Agent: ev.Agent, Session: ev.Session, Rule: rl.ID}
-		_ = r.appendEntry(e, e.Valid())
-		if r.waiting() {
-			return ""
-		}
 	}
 	if len(lines) == 0 {
+		if len(matching) > 0 {
+			r.log(workflow.VerbInject, line, "skip", "las rules de "+target+" ya se inyectaron a "+r.ev.Event.Actor+
+				" en esta sesión")
+		}
 		return ""
 	}
 	return fmt.Sprintf("Rules that apply to %s (%s/):\n%s", target, r.ev.Workflow.RulesPath(),
 		strings.Join(lines, "\n"))
+}
+
+// due reports whether a once-only inject of the entry at line with key is due for the actor of the event: it never
+// reached the actor in the session, or after it reached it a start of the session (a new or compacted
+// context) or, for a subagent, the end of a subagent of its type in the session (its next run starts with a new
+// context) was observed. A log that cannot be read makes it due every time, with a warning.
+func (r *answerHookRun) due(line int, key string) bool {
+	st, err := r.currentState()
+	if r.waiting() {
+		return false
+	}
+	if err != nil {
+		r.warnLog(err)
+		return true
+	}
+	ev := r.ev.Event
+	injected := state.Query{Outcome: state.OutcomeInjected, Session: ev.Session, Actor: ev.Actor, Line: line, Key: key}
+	started := state.Query{Outcome: state.OutcomeStarted, Session: ev.Session}
+	finished := state.Query{Outcome: state.OutcomeFinished, Session: ev.Session, Key: ev.Actor}
+	if injected.Valid() != nil || started.Valid() != nil || finished.Valid() != nil {
+		return true
+	}
+	last := st.Index(injected)
+	if last < 0 {
+		return true
+	}
+	reset := st.Index(started)
+	if ev.Actor != agent.ActorSession {
+		reset = max(reset, st.Index(finished))
+	}
+	return reset > last
+}
+
+// warnLog warns the user, once per pass, that the log cannot be read: the verbs that repeat by it act every time, and
+// finished never holds.
+func (r *answerHookRun) warnLog(err error) {
+	w := fmt.Sprintf("polix no puede usar su log (%v): run, inject y los block con once actúan cada vez, y finished "+
+		"no se cumple", err)
+	if !slices.Contains(r.warnings, w) {
+		r.warnings = append(r.warnings, w)
+	}
 }
 
 // matches reports whether every condition of c holds for the event, cheapest first, then in the order of their
@@ -516,7 +830,7 @@ func answerHookCost(k string) int {
 		return 3
 	case "changed_lines", "changed_files", "risk_score":
 		return 4
-	case "done":
+	case "finished":
 		return 5
 	}
 	return 6 // not and any, which may read anything
@@ -598,11 +912,13 @@ func (r *answerHookRun) condition(k string, v any, all workflow.Cond, scope []st
 		return ev.ExitCode == n
 	case "actor":
 		return slices.Contains(r.list(v), ev.Actor)
-	case "done":
-		for _, fact := range r.list(v) {
-			hash, known := r.hash()
-			st, _ := r.currentState()
-			if r.waiting() || !known || !st.Done(fact, r.branch(), hash) {
+	case "finished":
+		// The content finished compares is the scope of the entry: the nearest changed, else the one of its when.
+		if scope == nil {
+			scope = r.whenScope()
+		}
+		for _, name := range r.list(v) {
+			if !r.finished(name, scope) || r.waiting() {
 				return false
 			}
 		}
@@ -667,7 +983,7 @@ func (r *answerHookRun) writes(patterns []string) (p, held string, ok bool) {
 }
 
 // expand replaces {var}, {path}, {command}, {branch} and the measures in s. The diff is read only when s holds a
-// measure placeholder, and measured over the globs of the `changed` of the `if` of the entry, else whole.
+// measure placeholder, and measured over the globs of the `changed` of the `when` of the entry, else whole.
 func (r *answerHookRun) expand(s string) string {
 	if !strings.Contains(s, "{") {
 		return s
@@ -677,18 +993,29 @@ func (r *answerHookRun) expand(s string) string {
 	var measures map[string]string
 	if UsesMeasures(s) {
 		d, measured := r.diff()
+		scope := r.whenScope()
 		if r.waiting() {
 			return s
-		}
-		// The globs are expanded without the measures, so a glob never asks for the diff it scopes.
-		globs, _ := workflow.Strings(r.entryIf["changed"])
-		scope := make([]string, len(globs))
-		for i, g := range globs {
-			scope[i] = Expand(g, r.ev.Event, branch, vars, nil)
 		}
 		measures = Measures(d.Narrow(scope), r.ev.Workflow.Weights, measured)
 	}
 	return Expand(s, r.ev.Event, branch, vars, measures)
+}
+
+// whenScope returns the globs of the `changed` of the `when` of the entry, expanded without the measures, so a glob
+// never asks for the diff it scopes; nil without one.
+func (r *answerHookRun) whenScope() []string {
+	globs, _ := workflow.Strings(r.entry.When["changed"])
+	if len(globs) == 0 {
+		return nil
+	}
+	branch := r.branch()
+	vars := Vars(r.ev.Workflow, branch)
+	scope := make([]string, len(globs))
+	for i, g := range globs {
+		scope[i] = Expand(g, r.ev.Event, branch, vars, nil)
+	}
+	return scope
 }
 
 // diff returns the size of the change of each file not committed yet, and whether it could be measured.
@@ -701,39 +1028,26 @@ func (r *answerHookRun) diff() (diff.Diff, bool) {
 	return diff.Diff{}, false
 }
 
-// recordFact records fact on the current content; nothing without a known hash, whose cause the facts already
-// keep as a warning.
-func (r *answerHookRun) recordFact(fact string) {
-	hash, known := r.hash()
-	if r.waiting() {
-		return
-	}
-	if !known {
-		r.log("record", 0, "warn", "hash del contenido desconocido; no se registra "+fact)
-		return
-	}
-	_ = r.write(state.KindFact, "", 0, "", "", fact, hash)
-}
-
 // log records a decision on the event.
 func (r *answerHookRun) log(action string, line int, outcome, reason string) {
 	_ = r.write(state.KindDecision, action, line, outcome, reason, "", "")
 }
 
 // write appends to the log an entry of kind about the event and returns the error of appending it. The content
-// hash costs a git call over the whole tree, so an entry without its own hash only carries the one this call
-// already computed; facts and stop blocks, which depend on it, give theirs.
-func (r *answerHookRun) write(kind, action string, line int, outcome, reason, fact, hash string) error {
+// hash costs a git call over the whole tree, so a decision only carries the one this call already computed; an
+// observed entry carries the hash it is given, none for those that are not about a content (injected, started and
+// a finished that only makes injects due again).
+func (r *answerHookRun) write(kind, action string, line int, outcome, reason, key, hash string) error {
 	ev := r.ev.Event
 	branch := r.branch()
 	if r.waiting() {
 		return nil
 	}
-	if hash == "" {
+	if hash == "" && kind == state.KindDecision {
 		hash, _, _ = r.ev.Facts.Hash(r.epoch)
 	}
 	e := state.Entry{Kind: kind, Agent: ev.Agent, Session: ev.Session, Event: ev.Name, Actor: ev.Actor,
-		Branch: branch, Hash: hash, Fact: fact, Action: action, Line: line, Outcome: outcome, Reason: reason}
+		Branch: branch, Hash: hash, Action: action, Line: line, Key: key, Outcome: outcome, Reason: reason}
 	return r.appendEntry(e, e.Valid())
 }
 
