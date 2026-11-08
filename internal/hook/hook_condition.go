@@ -123,8 +123,14 @@ func Indent(s string) string {
 // OnlyPolix reports whether a command line only checks the workflow or updates polix (`polix config check`, `polix
 // config fmt --check`, `polix update`, `polix doctor`, `polix version`, maybe after a cd): what an invalid or too new
 // workflow needs. `polix config fmt` writes polix.yaml, so only its exact form with --check is one of them: any
-// other flag after it (--check=false) could turn the write back on.
+// other flag after it (--check=false) could turn the write back on. A line with a command substitution ($( or `) or
+// a redirection (< or >) is never one of them, since it could run or write anything behind an allowed command; only
+// 2>&1 and 1>&2, which join the outputs and write no file, are let through.
 func OnlyPolix(command string) bool {
+	if bare := strings.NewReplacer("2>&1", "", "1>&2", "").Replace(command); strings.ContainsAny(bare, "`<>") ||
+		strings.Contains(bare, "$(") {
+		return false
+	}
 	segs := shell.Split(command)
 	for _, seg := range segs {
 		if !slices.ContainsFunc(onlyPolixCommands, func(p string) bool { return glob.Command(p, seg.Text) }) {

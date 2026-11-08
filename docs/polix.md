@@ -280,8 +280,8 @@ heuristic, aimed at accidents rather than at an agent determined to get around i
 - An invalid workflow blocks edits and commands (fail closed) with the problems found, so a broken file is
   noticed at once, except what fixing it needs: the main session may edit `polix.yaml`, any actor may run
   `polix config check`, `polix config fmt --check`, `polix update`, `polix doctor` and `polix version` (optionally
-  after a `cd`), and edits outside
-  the repository or of ignored files go through as always. The built-in protection still applies, but
+  after a `cd`, never with a command substitution or a redirection but `2>&1`), and edits outside the repository or
+  of ignored files go through as always. The built-in protection still applies, but
   `protected_files` and `forbidden_commands` do not: an ignored `.env` of `protected_files` may be edited until the
   file is fixed. It never blocks a stop, which
   would trap the agent in a loop. When a problem names something unknown, the reason adds that it may be an

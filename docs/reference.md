@@ -801,8 +801,8 @@ the [order of the expanded entries](#order-of-the-expanded-entries).
 
 An invalid file blocks `pre_edit`, `pre_command` and `pre_commit` with its problems (fail closed), except the main
 session editing `polix.yaml` or running `polix config check`, `polix config fmt --check`, `polix update`,
-`polix doctor` or `polix version`; on the
-other events it only warns, so a broken file never traps a stop in a loop. Its protected files and forbidden
+`polix doctor` or `polix version`, with no command substitution nor redirection but `2>&1`; on the other events it
+only warns, so a broken file never traps a stop in a loop. Its protected files and forbidden
 commands do not apply then: only the built-in protection does, and an edit outside the repository or of a file git
 ignores goes through. The details are in
 [polix.md](polix.md#how-the-entries-of-an-event-are-evaluated).

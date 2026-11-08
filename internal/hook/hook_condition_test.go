@@ -84,7 +84,11 @@ func TestOnlyPolix(t *testing.T) {
 	for command, want := range map[string]bool{"polix config check": true, "cd . && polix config check --dir .": true,
 		"polix update --version 0.2.0": true, "polix version": true, "polix doctor": true, "ls": false,
 		"polix config check && ls": false, "polix check": false, "polix config fmt --check": true, "polix config fmt": false, "polix config fmt --check=false": false,
-		"polix config fmt --check --check=false": false, "": false} {
+		"polix config fmt --check --check=false": false, "": false,
+		// A substitution or a redirection could run or write anything behind an allowed command.
+		"polix config check $(polix config fmt)": false, "polix config check `polix config fmt`": false,
+		"polix config check > polix.yaml": false, "polix doctor >> polix.yaml": false, "polix version < x": false,
+		"polix config check 2>&1": true, "polix doctor 1>&2 | tail -3": false, "polix doctor 2>&1; polix version": true} {
 		if got := OnlyPolix(command); got != want {
 			t.Errorf("OnlyPolix(%q) = %v", command, got)
 		}
