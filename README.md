@@ -65,13 +65,16 @@ guardrails:
 
   # The agent cannot end its turn while a check fails.
   run_before_done:
-    - { run: "go test ./...", changed: "*.go" }
+    - run: go test ./...
+      changed: "*.go"
 
 on:
   pre_commit:
     # A commit needs the reviewer subagent to have seen the diff as it is now.
-    - unless: { finished: polix:reviewer }
-      action: { block: "Review the diff with the polix:reviewer subagent, then commit again." }
+    - unless:
+        finished: polix:reviewer
+      action:
+        block: "Review the diff with the polix:reviewer subagent, then commit again."
 ```
 
 `guardrails:` are the basics: the files and the commands are protections of the engine, applied before everything
