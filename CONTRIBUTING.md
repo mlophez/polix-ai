@@ -82,7 +82,8 @@ permission prompt.
 Regenerate it with `just demo` from the root of the repository, which needs vhs, ttyd, ffmpeg, golangci-lint and
 Claude Code logged in.
 The recipe records `docs/assets/demo.mp4` in real time (ignored by git) and turns it into the GIF, sped up and
-without its idle frames; `just demo 3` speeds it up more.
+without its idle frames, at 1.5 times its speed by default; `just demo 2` speeds it up more.
+`just demo-gif <speed>` turns the last recording into the GIF again, without spending a new session.
 The session is real, so every recording differs and spends tokens: watch the GIF before committing it.
 Regenerate it only when the demo needs to change, and keep it under 2 MB, since every version stays in the history
 of the repository.

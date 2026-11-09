@@ -33,14 +33,19 @@ check: install
     "$polix" rules check
     "$polix" doctor --offline
 
-# Record a real Claude Code session with docs/assets/demo/demo.tape and turn it into docs/assets/demo.gif: idle
-# frames dropped and the rest sped up. It needs vhs (with ttyd and ffmpeg) and Claude Code with the plugin polix.
-demo speed="2":
+# Record a real Claude Code session with docs/assets/demo/demo.tape into docs/assets/demo.mp4 and turn it into
+# docs/assets/demo.gif (see demo-gif). It needs vhs (with ttyd and ffmpeg), golangci-lint and Claude Code logged in.
+demo speed="1.5": && (demo-gif speed)
+    vhs docs/assets/demo/demo.tape
+
+# Turn docs/assets/demo.mp4 into docs/assets/demo.gif without recording again: idle frames dropped, the rest at
+# 12 * speed frames per second shown at 10, and the last frame held 5 seconds so the end can be read; 48 colors keep
+# it under 2 MB.
+demo-gif speed="1.5":
     #!/bin/sh
     set -eu
-    vhs docs/assets/demo/demo.tape
     ffmpeg -loglevel error -y -i docs/assets/demo.mp4 -filter_complex \
-        "mpdecimate=hi=512:lo=256:frac=0.5,setpts=N/(12*$1*TB),fps=12,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse=dither=none" \
+        "mpdecimate=hi=512:lo=256:frac=0.5,setpts=N/(12*$1*TB),fps=10,tpad=stop_mode=clone:stop_duration=5,split[a][b];[a]palettegen=max_colors=48[p];[b][p]paletteuse=dither=none" \
         docs/assets/demo.gif
 
 # Build the assets of a release into dist/ (what the release workflow publishes)
