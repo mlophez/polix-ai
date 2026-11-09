@@ -43,8 +43,10 @@ guardrails:
 # Entries run in file order after guardrails, and the first block ends the evaluation.
 on:
   pre_commit:
-    # A large or risky Go change needs a review of polix:reviewer before it is committed.
+    # A large or risky Go change needs a review of polix:reviewer before the main session commits it. Subagents are
+    # left out: a command of theirs that only quotes a git commit (a probe of the reviewer) counts as a commit too.
     - when:
+        actor: session
         changed: ["*.go", "go.mod", "go.sum"]
         any:
           changed_lines: 150
@@ -55,7 +57,9 @@ on:
         block: "This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score}): run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again."
 
     # Remind once per content to update README.md and docs/ when the behaviour changes.
-    - when: { changed: ["*.go", "go.mod", "plugins/**", "examples/**", "polix.yaml", "install.sh", "install.ps1", "scripts/**"] }
+    - when:
+        actor: session
+        changed: ["*.go", "go.mod", "plugins/**", "examples/**", "polix.yaml", "install.sh", "install.ps1", "scripts/**"]
       action:
         block:
           message: "Before committing, check whether this change affects README.md or docs/ and update them. If it does not affect them, commit again."
