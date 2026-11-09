@@ -41,16 +41,8 @@ type Outcome struct {
 
 // Valid tells why the step is not one step: it asks for several things at once, or a negative epoch.
 func (s Step) Valid() error {
-	n := 0
-	for _, asks := range []bool{s.Branch, s.Hash, s.Changed, s.Diff, s.Files, s.Rules, s.State, s.Ignored != "",
-		s.Real != nil, s.Foreign != "", s.Contains != nil, s.Read != "", s.Run != nil, s.Check != nil, s.Append != nil,
-		s.Compare != ""} {
-		if asks {
-			n++
-		}
-	}
 	switch {
-	case n > 1:
+	case s.asks() > 1:
 		return errors.New("a step asks for one thing at a time")
 	case s.Epoch < 0:
 		return errors.New("the epoch of a step cannot be negative")
@@ -65,10 +57,19 @@ func (s Step) Valid() error {
 }
 
 // None reports whether the step asks for nothing: the answer is ready.
-func (s Step) None() bool {
-	return !s.Branch && !s.Hash && !s.Changed && !s.Diff && !s.Files && !s.Rules && !s.State && s.Ignored == "" &&
-		s.Real == nil && s.Foreign == "" && s.Contains == nil && s.Read == "" && s.Run == nil && s.Check == nil &&
-		s.Append == nil && s.Compare == ""
+func (s Step) None() bool { return s.asks() == 0 }
+
+// asks counts the things the step asks for: one for a step, none when the answer is ready.
+func (s Step) asks() int {
+	n := 0
+	for _, asks := range []bool{s.Branch, s.Hash, s.Changed, s.Diff, s.Files, s.Rules, s.State, s.Ignored != "",
+		s.Real != nil, s.Foreign != "", s.Contains != nil, s.Read != "", s.Run != nil, s.Check != nil, s.Append != nil,
+		s.Compare != ""} {
+		if asks {
+			n++
+		}
+	}
+	return n
 }
 
 // Valid tells why the outcome is not one: it never is, any output and error may come from a step.

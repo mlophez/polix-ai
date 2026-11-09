@@ -1,8 +1,12 @@
 package answer
 
 import (
+	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,6 +18,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 )
 
 // The logic is walked step by step with domain values: each step it asks is answered from a table of facts and
@@ -114,10 +119,26 @@ func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
 	return Output{}, nil
 }
 
+// parseWorkflow loads src as the polix.yaml of a temporary folder for the polix of version running, through the
+// loader of polix.yaml (internal/app/workflow/load) as cmd/polix builds it: the workflow and the error of loading
+// it.
+func parseWorkflow(src, running string) (workflow.Workflow, error) {
+	root, err := os.MkdirTemp("", "polix-answer-")
+	if err != nil {
+		return workflow.Workflow{}, err
+	}
+	defer os.RemoveAll(root)
+	if err := os.WriteFile(filepath.Join(root, workflow.File), []byte(src), 0o644); err != nil {
+		return workflow.Workflow{}, err
+	}
+	loaded := workflowload.Command()(context.Background(), root, running)
+	return loaded.Workflow, loaded.Err
+}
+
 // eval returns the evaluation of event name of the main session with the workflow of yaml.
 func eval(t *testing.T, yaml, name string) hook.Evaluation {
 	t.Helper()
-	wf, err := workflow.Parse([]byte(yaml), "dev")
+	wf, err := parseWorkflow(yaml, "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -725,7 +746,7 @@ func TestProtectsState(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, steps := walk(t, ev, facts{branch: "main"})
-	if !out.Answer.Block || out.Answer.Reasons[0] != hook.ReasonStateEdit {
+	if !out.Answer.Block || out.Answer.Reasons[0] != reasonStateEdit {
 		t.Fatalf("answer: %+v", out.Answer)
 	}
 	if logged := appended(steps); len(logged) != 1 || logged[0].Action != "builtin" {
@@ -737,7 +758,7 @@ func TestProtectsState(t *testing.T) {
 // the entries of the event.
 func TestGuidance(t *testing.T) {
 	session := func(yaml string) []string {
-		wf, _ := workflow.Parse([]byte(yaml), "dev")
+		wf, _ := parseWorkflow(yaml, "dev")
 		return []string{wf.SessionContext()}
 	}
 	defaults := session("version: 1\n")
@@ -831,7 +852,7 @@ func TestProtectedReasons(t *testing.T) {
 				if !out.Answer.Block || !slices.Equal(out.Answer.Reasons, []string{c.want}) {
 					t.Fatalf("reasons %q, want %q", out.Answer.Reasons, c.want)
 				}
-				from, line := hook.ProtectedFilesShortcut, 0
+				from, line := protectedFilesShortcut, 0
 				if c.want == "regular" {
 					from, line = workflow.VerbBlock, 8
 				}
@@ -900,7 +921,7 @@ on:
 			if !out.Answer.Block || !slices.Equal(out.Answer.Reasons, []string{c.want}) {
 				t.Errorf("%s by %s: reasons %q, want %q", line, actor, out.Answer.Reasons, c.want)
 			}
-			from := hook.ForbiddenCommandsShortcut
+			from := forbiddenCommandsShortcut
 			if c.want == "regular" {
 				from = workflow.VerbBlock
 			}
@@ -2008,5 +2029,35 @@ func TestDetachedHead(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Decide routes each event of the workflow to its family: session for start and prompt, edit for pre_edit and
+// post_edit, command for pre_command, post_command and pre_commit, and stop for stop and subagent_stop; an event
+// polix does not evaluate reaches none.
+func TestRoutesByFamily(t *testing.T) {
+	families := map[string]func(*pass) agent.Answer{
+		workflow.Start: (*pass).session, workflow.Prompt: (*pass).session,
+		workflow.PreEdit: (*pass).edit, workflow.PostEdit: (*pass).edit,
+		workflow.PreCommand: (*pass).command, workflow.PostCommand: (*pass).command, workflow.PreCommit: (*pass).command,
+		workflow.Stop: (*pass).stop, workflow.SubagentStop: (*pass).stop,
+	}
+	if len(families) != len(workflow.Events) {
+		t.Fatalf("%d families for %d events", len(families), len(workflow.Events))
+	}
+	name := func(f func(*pass) agent.Answer) string {
+		if f == nil {
+			return "none"
+		}
+		return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
+	}
+	for _, event := range workflow.Events {
+		want, ok := families[event]
+		if got := route(event); !ok || name(got) != name(want) {
+			t.Errorf("%s reaches %s, want %s", event, name(got), name(want))
+		}
+	}
+	if got := route("turn_stop"); got != nil {
+		t.Errorf("an unknown event reaches %s", name(got))
 	}
 }

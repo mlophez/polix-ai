@@ -1,6 +1,9 @@
 package rule
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestRuleValid(t *testing.T) {
 	for _, tc := range []struct {
@@ -28,5 +31,41 @@ func TestRuleHasCheck(t *testing.T) {
 	}
 	if (Rule{Deterministic: true}).HasCheck() || (Rule{Check: "c.sh"}).HasCheck() {
 		t.Fatal("a rule without check or not deterministic has a check")
+	}
+}
+
+func TestLoadedValid(t *testing.T) {
+	boom := errors.New("boom")
+	rules := []Rule{{ID: "A-1"}}
+	for _, tc := range []struct {
+		name   string
+		loaded Loaded
+		valid  bool
+	}{
+		{"no folder", Loaded{}, true},
+		{"rules of the folder", Loaded{Rules: rules, Exists: true, Problems: []string{"x"}}, true},
+		{"a folder that cannot be read", Loaded{Exists: true, Err: boom, Strict: boom}, true},
+		{"rules with the error", Loaded{Rules: rules, Exists: true, Err: boom, Strict: boom}, false},
+		{"problems with the error", Loaded{Exists: true, Problems: []string{"x"}, Err: boom, Strict: boom}, false},
+		{"an error without a strict one", Loaded{Exists: true, Err: boom}, false},
+		{"rules without the folder", Loaded{Rules: rules}, false},
+	} {
+		if err := tc.loaded.Valid(); (err == nil) != tc.valid {
+			t.Errorf("%s: Valid() = %v, want valid %v", tc.name, err, tc.valid)
+		}
+	}
+}
+
+// Fail drops what was read and stops every reading at its error, on a copy.
+func TestLoadedFail(t *testing.T) {
+	boom := errors.New("boom")
+	l := Loaded{Rules: []Rule{{ID: "A-1"}}, Exists: true, Problems: []string{"x"}}
+	failed := l.Fail(boom)
+	if failed.Rules != nil || failed.Problems != nil || !failed.Exists || !errors.Is(failed.Err, boom) ||
+		!errors.Is(failed.Strict, boom) || failed.Valid() != nil {
+		t.Fatalf("Fail = %+v", failed)
+	}
+	if len(l.Rules) != 1 || l.Err != nil {
+		t.Fatal("Fail returns a copy")
 	}
 }

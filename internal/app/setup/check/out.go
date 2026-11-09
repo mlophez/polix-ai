@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 
 	"github.com/mlophez/polix-ai/internal/app/rule"
-	"github.com/mlophez/polix-ai/internal/app/setup"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 	"github.com/mlophez/polix-ai/internal/platform/file"
 	"github.com/mlophez/polix-ai/internal/platform/git"
@@ -14,26 +13,24 @@ import (
 // Adapter implements Port on the disk and git of a repository. The entry fills it and passes
 // it as the port; there is no constructor.
 type Adapter struct {
-	Repo *git.Repo // the repository whose workflow and rules are checked
+	Repo     *git.Repo     // the repository whose workflow and rules are checked
+	Rules    rule.Load     // the loader of the rules (internal/app/rule/load), which cmd/polix builds once
+	Workflow workflow.Load // the loader of polix.yaml (internal/app/workflow/load), which cmd/polix builds once too
 }
 
-// LoadWorkflow reads polix.yaml and parses it (setup.ParseWorkflow); without the file, the default workflow and false.
-func (a Adapter) LoadWorkflow(_ context.Context, running string) (workflow.Workflow, bool, error) {
-	data, existed, err := file.Read(filepath.Join(a.Repo.Root, workflow.File))
-	if err != nil {
-		return workflow.Workflow{}, true, err
-	}
-	return setup.ParseWorkflow(data, existed, running)
+// LoadWorkflow loads polix.yaml of the repository through the loader of polix.yaml: the workflow, whether the file
+// exists, and the error of loading it, a workflow.Invalid with the workflow when it parses; without the file, the
+// default workflow and false.
+func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, bool, error) {
+	loaded := a.Workflow(ctx, a.Repo.Root, running)
+	return loaded.Workflow, loaded.Exists, loaded.Err
 }
 
-// LoadRules reads the yaml files of the folder dir and parses them (rule.ParseFilesAll); without the folder there
-// are none.
-func (a Adapter) LoadRules(_ context.Context, dir string) ([]rule.Rule, []string, error) {
-	files, err := file.ReadDir(filepath.Join(a.Repo.Root, filepath.FromSlash(dir)), ".yaml")
-	if err != nil {
-		return nil, nil, err
-	}
-	return rule.ParseFilesAll(dir, files)
+// LoadRules loads the rules of the folder dir through the loader of the rules: every rule, the problems of the
+// invalid ones, and the error of a file that cannot be read or is not yaml; without the folder there are none.
+func (a Adapter) LoadRules(ctx context.Context, dir string) ([]rule.Rule, []string, error) {
+	loaded := a.Rules(ctx, a.Repo.Root, dir)
+	return loaded.Rules, loaded.Problems, loaded.Err
 }
 
 // Missing reports whether the check does not exist below the root.

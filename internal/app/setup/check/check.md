@@ -21,16 +21,18 @@ polix config check [--dir <dir>]
 ## Logic
 
 `Decide(running string, found bool, wfErr error, rulesPath string, rules []rule.Rule, invalid []string,
-rulesErr error, missing map[string]bool, baseErr error) Output` gathers the problems, with the domain of
-`internal/app/setup/setup_problems.go`, which `polix doctor` shares:
+rulesErr error, missing map[string]bool, baseErr error) Output` puts what it was given in a `setup.Inspection`, with
+a `setup.Setup` of the running version (an empty version is the only problem), and gathers the problems with the
+methods of `setup.Inspection` of `internal/app/setup/setup_problems.go`, which `polix doctor` shares:
 
-1. `setup.WorkflowProblems`: the error of loading polix.yaml is one problem, or each problem of a workflow that parses
+1. `WorkflowProblems`: the error of loading polix.yaml is one problem, or each problem of a workflow that parses
    (`workflow.Invalid`, the runners of `rules.run` included), with whether they may come from a newer polix
-   (`version.NeedsNewer`, never when the workflow requires one: `workflow.TooOld`).
-2. The error of reading the rules is one problem; else `setup.RuleProblems`: every invalid rule (`rule.ParseAll`, in the
-   words `<file> <id>: no description`), every id repeated (`rule.Repeated`) and every check that does not exist.
-3. With problems, the output holds them and, when they may come from a newer polix, the hint `setup.NewerHint`.
-4. Without problems, `setup.BaseWarning`: when a deterministic rule has a check and no base branch exists,
+   (`version.Problems.NeedsNewer`, never when the workflow requires one: `workflow.TooOld`).
+2. The error of reading the rules is one problem; else `RuleProblems`: every invalid rule (`rule.Loaded.Problems`,
+   in the words `<file> <id>: no description`), every id repeated (`rule.Rules.Repeated`) and every check that does
+   not exist.
+3. With problems, the output holds them and, when they may come from a newer polix, the hint `NewerHint`.
+4. Without problems, `BaseWarning`: when a deterministic rule has a check and no base branch exists,
    `polix rules check --changed` would fail.
 
 ## Response
@@ -45,11 +47,13 @@ problem to stderr and the hint as a warning, and exits with 1; else it prints th
 
 `Port`, implemented by `Adapter` on the repository:
 
-- `LoadWorkflow`: reads polix.yaml; without it, the default workflow and false; a workflow that parses with
-  problems comes back with its `workflow.Invalid`.
-- `LoadRules`: reads the `*.yaml` of the folder it is given (`rules.path` of the workflow, `ai/rules/` by
-  default) but `retired.yaml` with `rule.ParseAll`, ordered by id; without the folder, none; a file that cannot be
-  read or parsed is an error.
+- `LoadWorkflow`: loads polix.yaml through the field `Workflow` of the adapter, the loader of `LoadWorkflow`
+  (`internal/app/workflow/load`) that `cmd/polix` builds once and passes to `Command`; without it, the default
+  workflow and false; a workflow that parses with problems comes back with its `workflow.Invalid`.
+- `LoadRules`: loads the rules of the folder it is given (`rules.path` of the workflow, `ai/rules/` by default)
+  through the field `Rules` of the adapter, the loader of `LoadRule` (`internal/app/rule/load`) that `cmd/polix`
+  builds once and passes to `Command`: every rule but those of `retired.yaml`, ordered by id, with the problems of
+  the invalid ones; without the folder, none; a file that cannot be read or parsed is an error.
 - `Missing`: whether the file of a check does not exist below the root.
 - `ResolveBase`: why no base branch of the workflow exists, locally or on origin.
 
@@ -60,7 +64,8 @@ problem to stderr and the hint as a warning, and exits with 1; else it prints th
 
 ## Flow
 
-1. `Command` opens the repository of `--dir` and injects `Adapter{Repo: repo}`.
+1. `Command` opens the repository of `--dir` and injects `Adapter{Repo: repo, Rules: rules, Workflow:
+   loadWorkflow}`, with the loaders of the rules and of polix.yaml it was given.
 2. The shell reads the workflow, then the rules of its `rules.path`, whether each check exists and whether a base
    branch exists.
 3. `Decide` decides the problems, the hint and the warning.

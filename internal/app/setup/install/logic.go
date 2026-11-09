@@ -4,13 +4,13 @@ import "github.com/mlophez/polix-ai/internal/app/setup"
 
 // Output is the decision of the logic of InstallSetup, which the shell carries out through the port.
 type Output struct {
-	Failure      string            // why nothing can be installed; empty when it can
-	Setup        setup.Setup       // where to install, for which agents
-	Files        map[string][]byte // the files of the local marketplace, relative to it
-	Summary      string            // what the install is about to do, for the person to confirm
-	Skills       []string          // the skills of the plugin
-	PluginAgents []string          // the agents of the plugin
-	HooksFiles   []string          // the hooks files of the repository, one per agent; none without a repository
+	Failure      string       // why nothing can be installed; empty when it can
+	Setup        setup.Setup  // where to install, for which agents
+	Plugin       setup.Plugin // the plugin of the binary, to write to the local marketplace
+	Summary      string       // what the install is about to do, for the person to confirm
+	Skills       []string     // the skills of the plugin
+	PluginAgents []string     // the agents of the plugin
+	HooksFiles   []string     // the hooks files of the repository, one per agent; none without a repository
 }
 
 // Decide decides what polix install writes for the polix of version running: the plugin of the user below
@@ -25,8 +25,8 @@ func Decide(home, root string, asked []string, running string, embedded map[stri
 	if err := s.Valid(); err != nil {
 		return Output{Failure: err.Error()}
 	}
-	files, err := setup.MarketplaceFiles(embedded, running)
-	if err != nil {
+	p := setup.Plugin{Embedded: embedded, Version: running}
+	if err := p.Valid(); err != nil {
 		return Output{Failure: err.Error()}
 	}
 	var hooksFiles []string
@@ -35,6 +35,6 @@ func Decide(home, root string, asked []string, running string, embedded map[stri
 			hooksFiles = append(hooksFiles, s.HooksFile(a))
 		}
 	}
-	return Output{Setup: s, Files: files, Summary: s.Summary("write"), Skills: setup.PluginSkills(embedded),
-		PluginAgents: setup.PluginAgents(embedded), HooksFiles: hooksFiles}
+	return Output{Setup: s, Plugin: p, Summary: s.Summary("write"), Skills: p.Skills(), PluginAgents: p.Agents(),
+		HooksFiles: hooksFiles}
 }

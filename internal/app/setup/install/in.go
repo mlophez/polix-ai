@@ -24,7 +24,7 @@ import (
 type Request struct {
 	User    bool     // only the plugin of the user, not the hooks of the repository
 	Dir     string   // any folder of the repository whose hooks to register
-	Agents  []string // the agents asked, parsed (ParseAgents); empty for the default ones
+	Agents  []string // the agents asked, parsed (parseAgents); empty for the default ones
 	Quiet   bool     // only print what changed
 	Version string   // version of the running polix
 }
@@ -56,15 +56,20 @@ type Port interface {
 	Confirm(ctx context.Context, summary string) error
 	// Plugin returns the files of the plugin embedded in the binary, by path below polix/.
 	Plugin(ctx context.Context) (map[string][]byte, error)
+	// MarketplaceFiles returns the files of the local marketplace that holds the plugin p, relative to it, with
+	// slashes; the error tells why a manifest of the plugin cannot take its version.
+	MarketplaceFiles(ctx context.Context, p setup.Plugin) (map[string][]byte, error)
 	// WritePlugin makes dir hold exactly files (relative to it, with slashes): it writes the ones that differ and
 	// removes the rest.
 	WritePlugin(ctx context.Context, dir string, files map[string][]byte) ([]setup.Change, error)
 	// RegisterPlugin registers the local marketplace and its plugin with an agent, for the user.
 	RegisterPlugin(ctx context.Context, s setup.Setup, agent string) ([]setup.Change, error)
-	// RegisterHooks writes the hooks of polix for agent in its hooks file, keeping every other setting and hook.
-	RegisterHooks(ctx context.Context, file, agent string) ([]setup.Change, error)
-	// ReadFiles returns the content of the files of paths that exist and can be read.
-	ReadFiles(ctx context.Context, paths []string) map[string][]byte
+	// RegisterHooks writes hooks, the hooks of polix of an agent by event, in a hooks file in place of the ones of
+	// polix it had, keeping every other setting and hook.
+	RegisterHooks(ctx context.Context, file string, hooks map[string][]setup.HookGroup) ([]setup.Change, error)
+	// Registered reports, by path, whether each of the files of paths exists, can be read and registers a hook of
+	// polix.
+	Registered(ctx context.Context, paths []string) map[string]bool
 	// OnPath returns why the program name is not on the PATH; nil when it is.
 	OnPath(ctx context.Context, name string) error
 }
@@ -99,8 +104,7 @@ func Command() *cobra.Command {
 			"  # Codex too (not implemented: untested)\n  polix install --agent claude,codex",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			var err error
-			if req.Agents, err = setup.ParseAgents(agents); err != nil {
+			if err := req.parseAgents(agents); err != nil {
 				return err
 			}
 			in, okIn := c.InOrStdin().(*os.File)
@@ -129,9 +133,9 @@ func Command() *cobra.Command {
 }
 
 // run is the shell, from request to response: it reads through the port the home, the repository unless
-// --user and the plugin of the binary, calls the logic once, asks for confirmation, and carries out its output: the
-// plugin, then for each agent its registration and the hooks of the repository; then it asks whether polix is on
-// the PATH and which other settings register the hooks too.
+// --user and the plugin of the binary, calls the logic once, asks the port for the files of the marketplace, asks
+// for confirmation, and carries out its output: the plugin, then for each agent its registration and the hooks of
+// the repository; then it asks whether polix is on the PATH and which other settings register the hooks too.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	res := Response{Version: req.Version, User: req.User, Quiet: req.Quiet}
 	home, err := port.Home(ctx)
@@ -150,11 +154,15 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	if out.Failure != "" {
 		return res, errors.New(out.Failure)
 	}
+	files, err := port.MarketplaceFiles(ctx, out.Plugin)
+	if err != nil {
+		return res, err
+	}
 	res.Agents, res.Skills, res.PluginAgents, res.HooksFiles = out.Setup.Agents, out.Skills, out.PluginAgents, out.HooksFiles
 	if err := port.Confirm(ctx, out.Summary); err != nil {
 		return res, err
 	}
-	if res.Changes, err = port.WritePlugin(ctx, out.Setup.MarketplaceDir(), out.Files); err != nil {
+	if res.Changes, err = port.WritePlugin(ctx, out.Setup.MarketplaceDir(), files); err != nil {
 		return res, err
 	}
 	// An agent that refuses the plugin does not keep the hooks of the repository from being registered.
@@ -163,7 +171,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		ch, err := port.RegisterPlugin(ctx, out.Setup, a)
 		res.Changes, errs = append(res.Changes, ch...), append(errs, err)
 		if out.Setup.Root != "" {
-			ch, err := port.RegisterHooks(ctx, out.Setup.HooksFile(a), a)
+			ch, err := port.RegisterHooks(ctx, out.Setup.HooksFile(a), out.Setup.Hooks(a))
 			res.Changes, errs = append(res.Changes, ch...), append(errs, err)
 		}
 	}
@@ -172,9 +180,27 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	}
 	res.NotOnPath = port.OnPath(ctx, "polix") != nil
 	if out.Setup.Root != "" {
-		res.Duplicates = out.Setup.Duplicates(port.ReadFiles(ctx, out.Setup.ClaudeSettingsFiles()))
+		res.Duplicates = out.Setup.Duplicates(port.Registered(ctx, out.Setup.ClaudeSettingsFiles()))
 	}
 	return res, nil
+}
+
+// parseAgents reads the agents asked with --agent into the request: trimmed, in lower case and once each; an agent
+// the domain does not know (setup.Setup.Valid: neither Claude nor Codex) is an error.
+func (req *Request) parseAgents(asked []string) error {
+	var agents []string
+	for _, a := range asked {
+		a = strings.ToLower(strings.TrimSpace(a))
+		if !slices.Contains(agents, a) {
+			agents = append(agents, a)
+		}
+	}
+	s := setup.Setup{Agents: agents, Version: req.Version}
+	if err := s.Valid(); err != nil {
+		return err
+	}
+	req.Agents = agents
+	return nil
 }
 
 // printChanges writes what changed to stdout: a command to run by hand as a warning, the rest one per line.

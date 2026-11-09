@@ -42,14 +42,22 @@ type Port interface {
 	Root(ctx context.Context, dir string) string
 	// Plugin returns the files of the plugin embedded in the binary, by path below polix/.
 	Plugin(ctx context.Context) (map[string][]byte, error)
-	// ReadFiles returns the content of the files of paths that exist and can be read.
-	ReadFiles(ctx context.Context, paths []string) map[string][]byte
+	// ReadManifest returns the version of the manifest of the plugin at path, and whether it is the plugin polix:
+	// false when it does not exist, cannot be read or is another one.
+	ReadManifest(ctx context.Context, path string) (string, bool)
+	// Registered reports, by path, whether each of the files of paths exists, can be read and registers a hook of
+	// polix.
+	Registered(ctx context.Context, paths []string) map[string]bool
+	// MarketplaceFiles returns the files of the local marketplace that holds the plugin p, relative to it, with
+	// slashes; the error tells why a manifest of the plugin cannot take its version.
+	MarketplaceFiles(ctx context.Context, p setup.Plugin) (map[string][]byte, error)
 	// WritePlugin makes dir hold exactly files (relative to it, with slashes).
 	WritePlugin(ctx context.Context, dir string, files map[string][]byte) ([]setup.Change, error)
 	// UpdatePlugin tells the agents that use the plugin of s that it changed, so they copy the new version.
 	UpdatePlugin(ctx context.Context, s setup.Setup)
-	// RegisterHooks writes the hooks of polix for agent in its hooks file, keeping every other setting and hook.
-	RegisterHooks(ctx context.Context, file, agent string) ([]setup.Change, error)
+	// RegisterHooks writes hooks, the hooks of polix of an agent by event, in a hooks file in place of the ones of
+	// polix it had, keeping every other setting and hook.
+	RegisterHooks(ctx context.Context, file string, hooks map[string][]setup.HookGroup) ([]setup.Change, error)
 }
 
 // Command is the hidden command `polix __refresh`, the entry of the use case RefreshSetup, which the
@@ -73,8 +81,9 @@ func Command() *cobra.Command {
 }
 
 // run is the shell, from request to response: it reads through the port the home, with --hooks the
-// repository, the plugin of the binary and the files that tell what polix installed, calls the logic once and
-// carries out its output: the plugin, telling the agents when it changed, and the hooks. Every error is joined.
+// repository, the plugin of the binary and what tells what polix installed (the manifest of the plugin and the
+// hooks files that register polix), calls the logic once and carries out its output: the files of the marketplace
+// of the plugin, written, telling the agents when it changed, and the hooks. Every error of writing is joined.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	res := Response{Quiet: req.Quiet}
 	home, err := port.Home(ctx)
@@ -93,21 +102,26 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	if err != nil {
 		return res, err
 	}
-	files := port.ReadFiles(ctx, []string{s.PluginManifest(), s.HooksFile(setup.Claude), s.HooksFile(setup.Codex)})
-	out := Decide(s, files, embedded)
-	if out.Failure != "" {
-		return res, errors.New(out.Failure)
+	manifest, written := port.ReadManifest(ctx, s.PluginManifest())
+	p := setup.Plugin{Written: written, Manifest: manifest, Embedded: embedded, Version: req.Version}
+	if err := p.Valid(); err != nil {
+		return res, err
 	}
+	out := Decide(s, p, port.Registered(ctx, []string{s.HooksFile(setup.Claude), s.HooksFile(setup.Codex)}))
 	var errs []error
 	if out.Plugin {
-		ch, err := port.WritePlugin(ctx, s.MarketplaceDir(), out.Files)
+		files, err := port.MarketplaceFiles(ctx, out.Marketplace)
+		if err != nil {
+			return res, err
+		}
+		ch, err := port.WritePlugin(ctx, s.MarketplaceDir(), files)
 		res.Changes, errs = append(res.Changes, ch...), append(errs, err)
 		if err == nil && len(ch) != 0 {
 			port.UpdatePlugin(ctx, s)
 		}
 	}
 	for _, a := range out.Hooks {
-		ch, err := port.RegisterHooks(ctx, s.HooksFile(a), a)
+		ch, err := port.RegisterHooks(ctx, s.HooksFile(a), s.Hooks(a))
 		res.Changes, errs = append(res.Changes, ch...), append(errs, err)
 	}
 	return res, errors.Join(errs...)

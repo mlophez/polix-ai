@@ -6,11 +6,15 @@ import (
 	"github.com/mlophez/polix-ai/internal/platform/glob"
 )
 
+// Rules are several rules, such as those of a folder of rules, in their order. It is domain, not of a use case:
+// CheckRule, AnswerHook and the setup use cases ask it.
+type Rules []Rule
+
 // Matching returns the rules whose scope matches at least one of the paths; a rule without scope applies to
-// the whole project. It is domain, not a use case: other packages (hook) use it.
-func Matching(all []Rule, paths []string) []Rule {
-	var out []Rule
-	for _, r := range all {
+// the whole project.
+func (rs Rules) Matching(paths []string) Rules {
+	var out Rules
+	for _, r := range rs {
 		if len(r.Scope) == 0 && len(paths) > 0 {
 			out = append(out, r)
 			continue
@@ -25,12 +29,12 @@ func Matching(all []Rule, paths []string) []Rule {
 	return out
 }
 
-// Repeated returns one problem for each rule whose id an earlier rule already has, naming its file and that of the last earlier one, so polix
-// check tells that an id names one rule only.
-func Repeated(all []Rule) []string {
+// Repeated returns one problem for each rule whose id an earlier rule already has, naming its file and that of the
+// last earlier one, so polix check tells that an id names one rule only.
+func (rs Rules) Repeated() []string {
 	var problems []string
 	seen := map[string]string{}
-	for _, r := range all {
+	for _, r := range rs {
 		if r.ID == "" {
 			continue
 		}

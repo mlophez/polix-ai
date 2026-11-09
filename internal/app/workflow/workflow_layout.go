@@ -13,6 +13,9 @@ type Folder struct {
 	Keys []string // the keys the file used, so Valid rejects unknown ones
 }
 
+// folderPath is the path of a folder of the AI as polix.yaml writes it: rules.path, plans.path or reports.path.
+type folderPath string
+
 // The default folders of the AI, relative to the root.
 const (
 	DefaultRulesPath   = "ai/rules"
@@ -38,31 +41,31 @@ func (f Folder) Valid() error {
 
 // RulesPath is the folder of the rules, relative to the root, with slashes and no trailing slash: rules.path or
 // DefaultRulesPath.
-func (w Workflow) RulesPath() string { return layoutPath(w.Rules.Path, DefaultRulesPath) }
+func (w Workflow) RulesPath() string { return folderPath(w.Rules.Path).clean(DefaultRulesPath) }
 
 // PlansPath is the folder of the plans, as RulesPath: plans.path or DefaultPlansPath.
-func (w Workflow) PlansPath() string { return layoutPath(w.Plans.Path, DefaultPlansPath) }
+func (w Workflow) PlansPath() string { return folderPath(w.Plans.Path).clean(DefaultPlansPath) }
 
 // ReportsPath is the folder of the reports, as RulesPath: reports.path or DefaultReportsPath.
-func (w Workflow) ReportsPath() string { return layoutPath(w.Reports.Path, DefaultReportsPath) }
+func (w Workflow) ReportsPath() string { return folderPath(w.Reports.Path).clean(DefaultReportsPath) }
 
-// layoutPath is p cleaned, with slashes and without ./ nor a trailing slash; def when p is empty.
-func layoutPath(p, def string) string {
-	p = strings.TrimSpace(p)
+// clean is the path cleaned, with slashes and without ./ nor a trailing slash; def when it is empty.
+func (f folderPath) clean(def string) string {
+	p := strings.TrimSpace(string(f))
 	if p == "" {
 		return def
 	}
 	return strings.TrimPrefix(path.Clean(strings.ReplaceAll(p, `\`, "/")), "./")
 }
 
-// layoutProblem tells why p cannot be a folder of the AI: absolute, the root itself, outside the root or with
-// wildcards; empty when it can or when p is empty (the default).
-func layoutProblem(p string) string {
-	p = strings.TrimSpace(p)
+// problem tells why the path cannot be a folder of the AI: absolute, the root itself, outside the root or with
+// wildcards; empty when it can or when it is empty (the default).
+func (f folderPath) problem() string {
+	p := strings.TrimSpace(string(f))
 	if p == "" {
 		return ""
 	}
-	clean := layoutPath(p, "")
+	clean := f.clean("")
 	switch {
 	case path.IsAbs(clean) || layoutDrive.MatchString(p):
 		return "must be relative to the root, not absolute"
@@ -79,7 +82,7 @@ func layoutProblem(p string) string {
 // folder reports the problems of the folder of the key what.
 func (v *validator) folder(what string, f Folder) {
 	v.unknownKeys(0, what, f.Keys, FolderKeys)
-	if p := layoutProblem(f.Path); p != "" {
+	if p := folderPath(f.Path).problem(); p != "" {
 		v.add(0, "%s.path %q %s", what, f.Path, p)
 	}
 }

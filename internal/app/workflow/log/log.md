@@ -25,9 +25,10 @@ read it through the port, and `tail` from the request.
 `Output.Entries` holds the last `tail` entries of the log in file order, or all of them when `tail` is 0 or less
 or the log holds no more.
 
-The domain decides the rest:
+The loader of the log and the domain decide the rest:
 
-- `state.Parse`: every line that decodes is an entry, kept as it is; a line that does not decode is left out.
+- `LoadState` (`internal/app/state/load`): every line that decodes is an entry, kept as it is; a line that does not
+  decode is left out.
 - `state.State.Skipped`: the lines over `state.MaxLine` (4 MiB), skipped as they are read.
 
 ## Response
@@ -50,8 +51,9 @@ line included. It exits with 0.
 
 `Port`, declared in `in.go` and implemented by `Adapter` in `out.go`:
 
-- `ReadLog`: reads the log through `internal/platform/jsonl` with the limit `state.MaxLine` and parses it with
-  `state.Parse`; without the file, an empty log.
+- `ReadLog`: loads the log through the field `State` of the adapter, the loader of `LoadState`
+  (`internal/app/state/load`) that `cmd/polix` builds once and passes to `Command`, which reads it through
+  `internal/platform/jsonl` with the limit `state.MaxLine` and decodes its lines; without the file, an empty log.
 
 ## Errors
 
@@ -62,7 +64,8 @@ The use case fails, printing the error and exiting with 1, when:
 
 ## Flow
 
-1. `Command` turns the flags into a `Request` and injects `Adapter{Repo: repo}` as the `Port`.
+1. `Command` turns the flags into a `Request` and injects `Adapter{Repo: repo, State: loadState}`, with the loader
+   of the log it was given, as the `Port`.
 2. The shell reads the log through the port.
 3. `Decide` picks the entries to show: `Output`.
 4. The shell builds the response from the output and the skipped lines of the state.

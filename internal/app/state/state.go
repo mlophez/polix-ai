@@ -5,9 +5,10 @@
 // finished are queries over the observed entries.
 //
 // Only polix writes it, from events it has seen; the agent never declares that something is done, and a command
-// the agent runs is never observed. Reading and writing the file is the job of the adapters, through
-// internal/platform/jsonl; this package decodes and encodes its lines. Lines of kinds this polix no longer writes
-// (fact, injected and stop_block) are kept as read and ignored by every query.
+// the agent runs is never observed. Reading and writing the file, and the format of its lines, are the job of the
+// adapters, through internal/platform/jsonl: the use case LoadState (internal/app/state/load) reads and decodes it
+// for every use case that reads it, and AnswerHook, its only writer, encodes its lines. Lines of kinds this polix no
+// longer writes (fact, injected and stop_block) are kept as read and ignored by every query.
 package state
 
 import (

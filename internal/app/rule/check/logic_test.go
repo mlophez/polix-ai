@@ -127,7 +127,7 @@ func TestDecideBatchAsksForTheSharedRun(t *testing.T) {
 		t.Fatalf("got %+v", out)
 	}
 	out = Decide(archRules(), batchFlow, false, nil, []rule.Outcome{{Output: "ok"}})
-	if out.Next != nil || len(out.Results) != 3 || len(rule.Failed(out.Results)) != 0 {
+	if out.Next != nil || len(out.Results) != 3 || len(rule.Results(out.Results).Failed()) != 0 {
 		t.Fatalf("a passing shared run passes every rule: %+v", out)
 	}
 }
@@ -142,7 +142,7 @@ func TestDecideBatchRerunsAFailedGroup(t *testing.T) {
 	if out.Next != nil || len(out.Results) != 3 {
 		t.Fatalf("got %+v", out)
 	}
-	if got := resultIDs(rule.Failed(out.Results)); !slices.Equal(got, []string{"A-2"}) {
+	if got := resultIDs(rule.Results(out.Results).Failed()); !slices.Equal(got, []string{"A-2"}) {
 		t.Fatalf("only the rules whose rerun fails fail: %v", got)
 	}
 }
@@ -153,7 +153,7 @@ func TestDecideBatchWithoutPlaceholdersFailsEveryRule(t *testing.T) {
 	}}}
 	fail := func(rule.Run) rule.Outcome { return rule.Outcome{Output: "boom", Err: errors.New("exit status 1")} }
 	runs, out := walk(archRules(), wf, false, nil, fail)
-	if len(runs) != 1 || len(rule.Failed(out.Results)) != 3 {
+	if len(runs) != 1 || len(rule.Results(out.Results).Failed()) != 3 {
 		t.Fatalf("got %d runs and %+v", len(runs), out)
 	}
 }

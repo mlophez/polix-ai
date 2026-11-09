@@ -35,7 +35,7 @@ choice of the request and what the runs carried out so far gave:
 - `changed`: the files changed by the branch against its base, relative to the root; only with `--changed`.
 - `outcomes`: the `rule.Outcome` of each run carried out so far, in order.
 
-It plans the runs of the rules (`rule.Plan`) and walks them, and the reruns of each failed shared run, taking one
+It plans the runs of the rules (`rule.Rules.Plan`) and walks them, and the reruns of each failed shared run, taking one
 outcome for each. `Output.Next` is the first run without outcome, the next one the shell carries out;
 when none is left it is nil and `Output.Results` holds a `rule.Result` for every rule that ran, in the
 order of the rules. The rules it follows:
@@ -58,15 +58,16 @@ order of the rules. The rules it follows:
 
 The domain decides the rest:
 
-- `workflow.Bases`: the base is the branch of `--base` when given, else the base branches of polix.yaml, closest
+- `Workflow.Bases`: the base is the branch of `--base` when given, else the base branches of polix.yaml, closest
   first.
-- `rule.Plan`: turns the rules with a check into runs through `Workflow.CheckCommands`.
+- `rule.Rules`: `Matching` keeps the rules whose scope matches the changed files, and `Plan` turns the rules with a
+  check into runs through `Workflow.CheckCommands`.
 - `rule.Run`: `Valid` requires at least one rule, each valid and with a check, and an argv when there are several;
   `Settle` turns its `rule.Outcome` into the results of its rules or into the reruns of rule 7.
 - `rule.Outcome`: the output and the error of carrying out a run.
 - `rule.Result`: a check fails when its run returned an error; `Valid` requires a valid rule with a check, and
   `Tail` shows the last 15 non-empty lines of the output and the error, each cut to 500 bytes.
-- `rule.Failed`: the results whose check failed.
+- `rule.Results.Failed`: the results whose check failed.
 
 ## Response
 
@@ -80,10 +81,14 @@ and with 1 otherwise.
 
 `Port`, declared in `in.go` and implemented by `Adapter` in `out.go`:
 
-- `LoadRules`: reads and parses the files of the folder it is given (`Workflow.RulesPath`), `retired.yaml` left
-  out, ordered by id; without the folder, no rules.
-- `LoadWorkflow`: reads polix.yaml, always, for its runners and its base branches; without polix.yaml, the default
-  workflow. Of the problems that `polix config check` reports on a workflow that parses, only those of `rules`
+- `LoadRules`: loads the rules of the folder it is given (`Workflow.RulesPath`) through the field `Rules` of the
+  adapter, the loader of `LoadRule` (`internal/app/rule/load`) that `cmd/polix` builds once and passes to
+  `Command`: `retired.yaml` left out, ordered by id; without the folder, no rules. It stops where a strict reading
+  does (`rule.Loaded.Strict`): at the first invalid rule of the files in the order of their names, with its file,
+  or at a file that cannot be read or is not yaml.
+- `LoadWorkflow`: loads polix.yaml, always, for its runners and its base branches, through the field `Workflow` of
+  the adapter, the loader of `LoadWorkflow` (`internal/app/workflow/load`) that `cmd/polix` builds once and passes
+  to `Command`; without polix.yaml, the default workflow. Of the problems that `polix config check` reports on a workflow that parses, only those of `rules`
   stop the use case (see Errors); the rest are left to `polix config check`.
 - `Changed`: asks git for the files changed against the first base that exists, locally or on origin; when none
   exists, its error asks to set `base_branch` in polix.yaml or to pass `--base`.
@@ -118,13 +123,14 @@ with 1.
 ## Flow
 
 1. `Command` checks the flags, turns them into a `Request` and injects
-   `Adapter{Repo: repo}` as the `Port`.
-2. The shell reads the workflow, stopping on an invalid key `rules`, and then the rules of its `rules.path`,
-   stopping on one that is not `Valid`, through the port and, with `--changed`, the changed files against
-   `--base` or else the base branches of the workflow.
+   `Adapter{Repo: repo, Log: stderr, Rules: rules, Workflow: loadWorkflow}`, with the loaders of the rules and of
+   polix.yaml it was given, as the `Port`.
+2. The shell reads, in `load`, the workflow, stopping on an invalid key `rules`, and then the rules of its
+   `rules.path`, stopping on one that is not `Valid`, through the port and, with `--changed`, the changed files
+   against `--base` or else the base branches of the workflow.
 3. The shell calls `Decide` in a loop, from one call site, with the outcomes so far: while
    `Output.Next` is set, it runs it through `RunCheck`, builds a `rule.Outcome` from the run, followed by
    `Valid`, and appends it.
-4. When `Next` is nil, the shell checks each of `Output.Results` with `Valid`.
-5. The shell builds the response from the results.
+4. When `Next` is nil, `response` checks each of `Output.Results` with `Valid`.
+5. `response` builds the response from the results.
 6. `Command` serializes the response to the console and sets the exit code.

@@ -6,17 +6,13 @@ package git
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -25,17 +21,6 @@ type Repo struct {
 	Root   string // absolute path of the working tree
 	GitDir string // absolute path of its git directory (per worktree)
 }
-
-// Stat is the size of the change of one file: its added and deleted lines, or Binary with both at zero.
-type Stat struct {
-	Path    string // relative to the root, with forward slashes
-	Added   int
-	Deleted int
-	Binary  bool
-}
-
-// binaryProbe is how many leading bytes of a file are searched for a NUL byte, as git does, to call it binary.
-const binaryProbe = 8000
 
 // timeout bounds every git call: a hook must never hang the agent.
 const timeout = 20 * time.Second
@@ -98,241 +83,12 @@ func (r *Repo) Changed(ctx context.Context, ref string) ([]string, error) {
 	return list, nil
 }
 
-// Stats returns the size of the change of each file that Changed lists, sorted by path. An empty ref means HEAD.
-// The tracked files come from git diff --numstat against ref; the untracked files not ignored, and every file of a
-// repository without commits, are read whole from the working tree, each line counted as added. A file that
-// vanished between listing and reading is left out.
-func (r *Repo) Stats(ctx context.Context, ref string) ([]Stat, error) {
-	if ref == "" {
-		ref = "HEAD"
-	}
-	stats := map[string]Stat{}
-	var whole []string
-	if _, err := r.git(ctx, "rev-parse", "--verify", "--quiet", "HEAD"); err == nil {
-		out, err := r.paths(ctx, "diff", "--numstat", "-z", "--no-renames", ref)
-		if err != nil {
-			return nil, err
-		}
-		if err := addNumstat(stats, out); err != nil {
-			return nil, err
-		}
-	} else {
-		out, err := r.paths(ctx, "ls-files", "-z")
-		if err != nil {
-			return nil, err
-		}
-		whole = append(whole, splitPaths(out)...)
-	}
-	out, err := r.paths(ctx, "ls-files", "-z", "--others", "--exclude-standard")
-	if err != nil {
-		return nil, err
-	}
-	whole = append(whole, splitPaths(out)...)
-	for _, p := range whole {
-		s, ok, err := r.readStat(p)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			stats[p] = s
-		}
-	}
-	return sortStats(stats), nil
-}
-
-// CommitStats returns the size of the change of each file that the commit rev introduced, sorted by path: its
-// diff against its first parent, or against the empty tree for a root commit. The working tree does not count.
-func (r *Repo) CommitStats(ctx context.Context, rev string) ([]Stat, error) {
-	if rev == "" || strings.HasPrefix(rev, "-") {
-		return nil, fmt.Errorf("%q is not a commit", rev)
-	}
-	hash, err := r.git(ctx, "rev-parse", "--verify", "--quiet", rev+"^{commit}")
-	if err != nil || hash == "" {
-		return nil, fmt.Errorf("%q is not a commit", rev)
-	}
-	var out string
-	if _, err := r.git(ctx, "rev-parse", "--verify", "--quiet", hash+"^1"); err == nil {
-		out, err = r.paths(ctx, "diff", "--numstat", "-z", "--no-renames", hash+"^1", hash)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		out, err = r.paths(ctx, "diff-tree", "-r", "--root", "--no-commit-id", "--numstat", "-z", "--no-renames", hash)
-		if err != nil {
-			return nil, err
-		}
-	}
-	stats := map[string]Stat{}
-	if err := addNumstat(stats, out); err != nil {
-		return nil, err
-	}
-	return sortStats(stats), nil
-}
-
 // Summary returns the short hash and the subject of the commit rev, as one line.
 func (r *Repo) Summary(ctx context.Context, rev string) (string, error) {
 	if rev == "" || strings.HasPrefix(rev, "-") {
 		return "", fmt.Errorf("%q is not a commit", rev)
 	}
 	return r.git(ctx, "log", "-1", "--no-decorate", "--format=%h %s", rev+"^{commit}", "--")
-}
-
-// readStat reads a file of the working tree whole: every line counts as added, and a NUL byte in its first
-// bytes makes it binary. ok is false when the file is gone or is not a regular file.
-func (r *Repo) readStat(rel string) (Stat, bool, error) {
-	info, err := os.Lstat(filepath.Join(r.Root, filepath.FromSlash(rel)))
-	if os.IsNotExist(err) {
-		return Stat{}, false, nil
-	}
-	if err != nil {
-		return Stat{}, false, err
-	}
-	if !info.Mode().IsRegular() {
-		return Stat{}, false, nil
-	}
-	data, err := os.ReadFile(filepath.Join(r.Root, filepath.FromSlash(rel)))
-	if os.IsNotExist(err) {
-		return Stat{}, false, nil
-	}
-	if err != nil {
-		return Stat{}, false, err
-	}
-	if bytes.IndexByte(data[:min(len(data), binaryProbe)], 0) >= 0 {
-		return Stat{Path: rel, Binary: true}, true, nil
-	}
-	lines := bytes.Count(data, []byte{'\n'})
-	if len(data) > 0 && data[len(data)-1] != '\n' {
-		lines++
-	}
-	return Stat{Path: rel, Added: lines}, true, nil
-}
-
-// ResolveBase returns the merge base of HEAD with the closest of the candidate branches: each is tried as a
-// local branch and then as origin/<name>, and among those that exist the one with the fewest commits from its
-// merge base to HEAD wins; ties keep the order of the list. It fails, naming the candidates, when none exists.
-func (r *Repo) ResolveBase(ctx context.Context, candidates []string) (string, error) {
-	best, bestCount := "", -1
-	for _, name := range candidates {
-		for _, ref := range []string{"refs/heads/" + name, "refs/remotes/origin/" + name} {
-			if _, err := r.git(ctx, "rev-parse", "--verify", "--quiet", ref+"^{commit}"); err != nil {
-				continue
-			}
-			mb, err := r.git(ctx, "merge-base", "HEAD", ref)
-			if err != nil || mb == "" {
-				break
-			}
-			out, err := r.git(ctx, "rev-list", "--count", mb+"..HEAD")
-			if err != nil {
-				break
-			}
-			var n int
-			if _, err := fmt.Sscan(out, &n); err != nil {
-				break
-			}
-			if bestCount < 0 || n < bestCount {
-				best, bestCount = mb, n
-			}
-			break
-		}
-	}
-	if best == "" {
-		return "", fmt.Errorf("no base branch found: tried %s, locally and on origin", strings.Join(candidates, ", "))
-	}
-	return best, nil
-}
-
-// ContentHash returns the hash of the git tree the working tree would produce if everything were staged,
-// untracked files included and ignored files excluded, so any edit changes it. It stages into a copy of the index
-// in a temporary folder of scratchDir, so the real index is never touched and its stat cache keeps it fast; a
-// repository without an index yet (no git add since git init) starts from none.
-func (r *Repo) ContentHash(ctx context.Context, scratchDir string) (string, error) {
-	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
-		return "", err
-	}
-	dir, err := os.MkdirTemp(scratchDir, "index-*")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(dir)
-	path := filepath.Join(dir, "index")
-	if err := r.copyIndex(path); err != nil {
-		return "", err
-	}
-	return stageTree(ctx, r.Root, path)
-}
-
-// copyIndex writes a copy of the real index to path, or nothing when the repository has no index yet. The copy keeps
-// the time of the real index: git compares the content of the files changed in the same tick as the index (racily
-// clean), and the later time of a new file would hide an edit made in that tick.
-func (r *Repo) copyIndex(path string) error {
-	src := filepath.Join(r.GitDir, "index")
-	info, err := os.Stat(src)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	data, err := readShared(src)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		return err
-	}
-	return os.Chtimes(path, info.ModTime(), info.ModTime())
-}
-
-// readShared reads the file at path, retrying for about a second while another process holds it without sharing
-// it: on Windows a git command that replaces the index (git add, git reset) keeps it locked for an instant, and a
-// read in that instant fails with a sharing violation instead of waiting.
-func readShared(path string) ([]byte, error) {
-	for wait := 10 * time.Millisecond; ; wait *= 2 {
-		data, err := os.ReadFile(path)
-		if err == nil || !lockedByOther(runtime.GOOS, err) || wait > 640*time.Millisecond {
-			return data, err
-		}
-		time.Sleep(wait)
-	}
-}
-
-// lockedByOther reports whether err, on the system goos, means another process holds the file for now: on Windows
-// a sharing violation, or access denied while a file replaced by a rename is still pending its delete.
-func lockedByOther(goos string, err error) bool {
-	const (
-		errorAccessDenied     = syscall.Errno(5)  // ERROR_ACCESS_DENIED
-		errorSharingViolation = syscall.Errno(32) // ERROR_SHARING_VIOLATION
-	)
-	return goos == "windows" && (errors.Is(err, errorSharingViolation) || errors.Is(err, errorAccessDenied))
-}
-
-// stageTree stages the whole working tree into the index at path and returns the tree it writes.
-func stageTree(ctx context.Context, root, path string) (string, error) {
-	env := []string{"GIT_INDEX_FILE=" + path}
-	if _, err := run(ctx, root, env, "add", "--all", "--", "."); err != nil {
-		return "", err
-	}
-	return run(ctx, root, env, "write-tree")
-}
-
-// TreeDiff returns the repository relative paths that differ between the trees from and to, as ContentHash gives
-// them, sorted; none for equal trees. A tree git does not have (never written, or pruned by git gc) is an error.
-func (r *Repo) TreeDiff(ctx context.Context, from, to string) ([]string, error) {
-	if from == "" || to == "" {
-		return nil, fmt.Errorf("tree diff needs two trees, got %q and %q", from, to)
-	}
-	for _, tree := range []string{from, to} {
-		if _, err := r.git(ctx, "cat-file", "-e", tree+"^{tree}"); err != nil {
-			return nil, fmt.Errorf("tree %s: %w", tree, err)
-		}
-	}
-	out, err := r.paths(ctx, "diff-tree", "-r", "--name-only", "--no-renames", "-z", from, to)
-	if err != nil {
-		return nil, err
-	}
-	list := splitPaths(out)
-	sort.Strings(list)
-	return list, nil
 }
 
 // Files returns every file of the working tree that git does not ignore, tracked or not.
@@ -491,43 +247,5 @@ func splitPaths(out string) []string {
 			list = append(list, p)
 		}
 	}
-	return list
-}
-
-// addNumstat adds the records of a --numstat -z output without renames ("added\tdeleted\tpath\0") to stats; a
-// "-" count marks a binary file.
-func addNumstat(stats map[string]Stat, out string) error {
-	for rec := range strings.SplitSeq(out, "\x00") {
-		if rec == "" {
-			continue
-		}
-		parts := strings.SplitN(rec, "\t", 3)
-		if len(parts) != 3 || parts[2] == "" {
-			return fmt.Errorf("unexpected numstat record %q", rec)
-		}
-		s := Stat{Path: parts[2]}
-		if parts[0] == "-" || parts[1] == "-" {
-			s.Binary = true
-		} else {
-			var err error
-			if s.Added, err = strconv.Atoi(parts[0]); err != nil {
-				return fmt.Errorf("unexpected numstat record %q", rec)
-			}
-			if s.Deleted, err = strconv.Atoi(parts[1]); err != nil {
-				return fmt.Errorf("unexpected numstat record %q", rec)
-			}
-		}
-		stats[s.Path] = s
-	}
-	return nil
-}
-
-// sortStats returns the stats of the map sorted by path.
-func sortStats(stats map[string]Stat) []Stat {
-	list := make([]Stat, 0, len(stats))
-	for _, s := range stats {
-		list = append(list, s)
-	}
-	sort.Slice(list, func(i, j int) bool { return list[i].Path < list[j].Path })
 	return list
 }

@@ -15,7 +15,10 @@ import (
 
 	"github.com/mlophez/polix-ai/internal/app/diff"
 	"github.com/mlophez/polix-ai/internal/app/hook"
+	ruleload "github.com/mlophez/polix-ai/internal/app/rule/load"
 	"github.com/mlophez/polix-ai/internal/app/state"
+	stateload "github.com/mlophez/polix-ai/internal/app/state/load"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 	"github.com/mlophez/polix-ai/internal/platform/build"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
 )
@@ -70,10 +73,11 @@ func (r *repo) log() string {
 	return string(data)
 }
 
-// call runs `polix hook` with args and stdin through the command of the use case, as cmd/polix does.
+// call runs `polix hook` with args and stdin through the command of the use case, as cmd/polix does, with the
+// loaders of the rules, of polix.yaml and of the log built once per call, as cmd/polix builds them once per process.
 func call(args []string, stdin []byte) (code int, stdout, stderr string) {
 	root := cli.Root("polix", "", "", "")
-	root.AddCommand(Command())
+	root.AddCommand(Command(ruleload.Command(), workflowload.Command(), stateload.Command()))
 	var out, errb bytes.Buffer
 	code = cli.Run(root, append([]string{"hook"}, args...), bytes.NewReader(stdin), &out, &errb)
 	return code, out.String(), errb.String()
@@ -1134,7 +1138,7 @@ func TestAdapterLoadStateUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(p, 0o644) })
-	a := &Adapter{}
+	a := &Adapter{State: stateload.Command()}
 	if _, _, err := a.Open(context.Background(), r.dir); err != nil {
 		t.Fatal(err)
 	}
@@ -1149,7 +1153,7 @@ func TestAdapter(t *testing.T) {
 	r.write(".gitignore", "build/\n")
 	r.write("src/a.go", "package a\n")
 	ctx := context.Background()
-	a := &Adapter{}
+	a := &Adapter{Rules: ruleload.Command(), Workflow: workflowload.Command(), State: stateload.Command()}
 	root, gitDir, err := a.Open(ctx, r.dir)
 	if err != nil || root == "" || gitDir == "" || a.Deadline.IsZero() {
 		t.Fatalf("Open: %q %q %v", root, gitDir, err)
@@ -1158,6 +1162,7 @@ func TestAdapter(t *testing.T) {
 		t.Fatalf("no polix.yaml: %v %v", present, err)
 	}
 	r.write("polix.yaml", "version: 1\nfoo: 1\n")
+	a.Workflow = workflowload.Command() // the loader reads polix.yaml once: a new one reads it again
 	if _, present, err := a.LoadWorkflow(ctx, "dev"); !present || err == nil {
 		t.Fatalf("a broken polix.yaml: %v %v", present, err)
 	}

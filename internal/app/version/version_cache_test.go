@@ -6,30 +6,71 @@ import (
 	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	"github.com/mlophez/polix-ai/internal/platform/semver"
 )
 
 var cacheNow = time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 
-func TestParseCache(t *testing.T) {
-	c := Cache{CheckedAt: cacheNow, Latest: "0.2.0"}
-	data, err := c.Encode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != `{"checked_at":"2026-11-05T12:00:00Z","latest":"0.2.0"}` {
-		t.Fatalf("the file keeps its shape, without a failure: %s", data)
-	}
-	if got := ParseCache(data); !got.CheckedAt.Equal(cacheNow) || got.Latest != "0.2.0" || !got.FailedAt.IsZero() {
-		t.Fatalf("round trip: %+v", got)
-	}
-	failed, _ := c.Fail(cacheNow).Encode()
-	if got := ParseCache(failed); !got.FailedAt.Equal(cacheNow) {
-		t.Fatalf("the failure is kept: %s %+v", failed, got)
-	}
-	for _, bad := range []string{"", "{", `{"latest":"nightly"}`} {
-		if got := ParseCache([]byte(bad)); got != (Cache{}) {
-			t.Errorf("ParseCache(%q) = %+v, want an empty cache", bad, got)
+// The versions of the cache are text with the semantics of internal/platform/semver: a development build, an empty
+// text and 0.0.0 are no release.
+func TestReleased(t *testing.T) {
+	for v, want := range map[string]bool{"0.2.0": true, "1.0.0-rc1": true, "dev": false, "": false, "0.0.0": false} {
+		if got := semver.IsRelease(v); got != want {
+			t.Errorf("IsRelease(%q) = %v, want %v", v, got, want)
 		}
+	}
+}
+
+// A missing number counts as 0 and a text that is no version as 0.0.0, as the cache compares its versions.
+func TestCompare(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want int
+	}{
+		{"0.2.0", "v0.2.0", 0},
+		{"0.1.0", "0.2.0", -1},
+		{"dev", "0.0.1", -1},
+		{"0.0.1", "nightly", 1},
+		{"0.3", "0.2.0", 1},
+		{"1.2", "1.2.0", 0},
+	}
+	for _, c := range cases {
+		if got := semver.Compare(c.a, c.b); got != c.want {
+			t.Errorf("Compare(%q, %q) = %d, want %d", c.a, c.b, got, c.want)
+		}
+	}
+}
+
+func TestLoadedValid(t *testing.T) {
+	boom := errors.New("boom")
+	for _, tc := range []struct {
+		name   string
+		loaded Loaded
+		valid  bool
+	}{
+		{"no file", Loaded{}, true},
+		{"a cache", Loaded{Cache: Cache{Latest: "0.2.0"}, Exists: true}, true},
+		{"a file that cannot be read", Loaded{Exists: true, Err: boom}, true},
+		{"a cache with the error", Loaded{Cache: Cache{Latest: "0.2.0"}, Exists: true, Err: boom}, false},
+		{"a cache without the file", Loaded{Cache: Cache{Latest: "0.2.0"}}, false},
+		{"a cache that is not valid", Loaded{Cache: Cache{Latest: "nightly"}, Exists: true}, false},
+	} {
+		if err := tc.loaded.Valid(); (err == nil) != tc.valid {
+			t.Errorf("%s: Valid() = %v, want valid %v", tc.name, err, tc.valid)
+		}
+	}
+}
+
+// Fail empties the cache and keeps why, on a copy.
+func TestLoadedFail(t *testing.T) {
+	boom := errors.New("boom")
+	l := Loaded{Cache: Cache{Latest: "nightly"}, Exists: true}
+	failed := l.Fail(boom)
+	if failed.Cache != (Cache{}) || !failed.Exists || !errors.Is(failed.Err, boom) || failed.Valid() != nil {
+		t.Fatalf("Fail = %+v", failed)
+	}
+	if l.Cache.Latest != "nightly" || l.Err != nil {
+		t.Fatal("Fail returns a copy")
 	}
 }
 
@@ -104,27 +145,46 @@ func TestNeedsNewer(t *testing.T) {
 		"polix.yaml: version must be 1, got 0":                                         false,
 		"polix.yaml: max_stop_blocks must be positive, got -1":                         false,
 	} {
-		if got := NeedsNewer(problems); got != want {
-			t.Errorf("NeedsNewer(%q) = %v, want %v", problems, got, want)
+		if got := Problems(problems).NeedsNewer(); got != want {
+			t.Errorf("Problems(%q).NeedsNewer() = %v, want %v", problems, got, want)
 		}
 	}
 	// The problems of a polix.yaml in the old vocabulary, as the workflow reports them, never need a newer polix; a
 	// name it does not know among them may.
-	old := "version: 1\non:\n  session_start:\n    - context: x\n  turn_stop:\n    - if: { done: x }\n      action: { deny: x }\n    - context: x\n"
-	if got := versionCacheProblems(t, old); NeedsNewer(got) {
+	// version: 1
+	// on:
+	//   session_start:
+	//     - context: x
+	//   turn_stop:
+	//     - if: { done: x }
+	//       action: { deny: x }
+	//     - context: x
+	old := []workflow.Entry{
+		{Line: 6, Keys: []string{"if", "action"}, OldIf: workflow.Cond{"done": "x"},
+			Action: workflow.Action{Keys: []string{"deny"}}},
+		{Line: 8, Keys: []string{"context"}},
+	}
+	if got := versionCacheProblems(t, old); got.NeedsNewer() {
 		t.Errorf("the old vocabulary needs a newer polix:\n%s", got)
 	}
-	if got := versionCacheProblems(t, old+"    - action: { block: x }\n      an_option: y\n"); !NeedsNewer(got) {
+	//     - action: { block: x }
+	//       an_option: y
+	option := workflow.Entry{Line: 9, Keys: []string{"action", "an_option"},
+		Action: workflow.Action{Block: &workflow.Block{Message: "x"}, Keys: []string{workflow.VerbBlock}}}
+	if got := versionCacheProblems(t, append(old, option)); !got.NeedsNewer() {
 		t.Errorf("an unknown option among the old names:\n%s", got)
 	}
 }
 
-// versionCacheProblems returns the problems the workflow reports for src, joined as the hooks see them.
-func versionCacheProblems(t *testing.T, src string) string {
+// versionCacheProblems returns the problems the workflow reports with the entries of turn_stop, joined as the hooks
+// see them.
+func versionCacheProblems(t *testing.T, turnStop []workflow.Entry) Problems {
 	t.Helper()
-	_, err := workflow.Parse([]byte(src), "dev")
+	w := workflow.Workflow{Version: 1, EventLines: map[string]int{"session_start": 3, "turn_stop": 5},
+		On: map[string][]workflow.Entry{"session_start": {{Line: 4, Keys: []string{"context"}}}, "turn_stop": turnStop}}
+	err := w.Valid()
 	if _, ok := errors.AsType[workflow.Invalid](err); !ok {
 		t.Fatalf("not a workflow with problems: %v", err)
 	}
-	return err.Error()
+	return Problems(err.Error())
 }

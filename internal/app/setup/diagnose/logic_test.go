@@ -19,20 +19,57 @@ var logicPlugin = map[string][]byte{
 	"polix/agents/reviewer.md":         []byte("x"),
 }
 
+// hooksOf is a hooks file with the content data, as the adapter reads it: the handlers that run a command, in
+// the groups that keep one; a content that is not JSON is its error.
+func hooksOf(data []byte) setup.HooksFile {
+	var doc struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher"`
+			Hooks   []struct {
+				Command string  `json:"command"`
+				Timeout float64 `json:"timeout"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return setup.HooksFile{Err: err}
+	}
+	hooks := map[string][]setup.HookGroup{}
+	for ev, groups := range doc.Hooks {
+		for _, g := range groups {
+			group := setup.HookGroup{Matcher: g.Matcher}
+			for _, h := range g.Hooks {
+				if h.Command != "" {
+					group.Handlers = append(group.Handlers, setup.HookHandler{Command: h.Command, Timeout: h.Timeout})
+				}
+			}
+			if len(group.Handlers) > 0 {
+				hooks[ev] = append(hooks[ev], group)
+			}
+		}
+	}
+	return setup.HooksFile{Hooks: hooks}
+}
+
+// exampleSettings is the example settings of Claude Code of the repository, what install writes.
+func exampleSettings(t *testing.T) []byte {
+	t.Helper()
+	settings, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "examples", "claude-settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return settings
+}
+
 // healthy is the inspection of a ready machine and repository: the latest release, on the PATH, a valid
 // workflow, the example settings, the plugin installed and Claude Code with it.
 func healthy(t *testing.T) setup.Inspection {
 	t.Helper()
 	s := setup.Setup{Home: "/h", Root: "/r", Agents: []string{setup.Claude, setup.Codex}, Version: "0.2.0"}
-	settings, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "examples", "claude-settings.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	return setup.Inspection{Setup: s, Exe: "/bin/polix", Latest: "0.2.0", Path: "/bin/polix", SamePath: true, Found: true,
-		Files: map[string][]byte{s.HooksFile(setup.Claude): settings,
-			s.PluginManifest(): []byte(`{"name": "polix", "version": "0.2.0"}`)},
-		Embedded: logicPlugin, Claude: []byte(`[{"id":"polix@polix","scope":"user","enabled":true}]`),
-		StateDir: "/r/state"}
+		ClaudeHooks:     map[string]setup.HooksFile{s.HooksFile(setup.Claude): hooksOf(exampleSettings(t))},
+		Plugin:          setup.Plugin{Written: true, Manifest: "0.2.0", Embedded: logicPlugin, Version: "0.2.0"},
+		ClaudeInstalled: true, ClaudeEnabled: true, StateDir: "/r/state"}
 }
 
 // text is the report as lines "level area message".
@@ -54,14 +91,14 @@ func TestDecideHealthy(t *testing.T) {
 func TestDecideFindsProblems(t *testing.T) {
 	i := healthy(t)
 	var settings map[string]map[string][]map[string]any
-	if err := json.Unmarshal(i.Files[i.Setup.HooksFile(setup.Claude)], &settings); err != nil {
+	if err := json.Unmarshal(exampleSettings(t), &settings); err != nil {
 		t.Fatal(err)
 	}
 	delete(settings["hooks"], "Stop")
 	settings["hooks"]["PreToolUse"][0]["matcher"] = "Edit|Write"
 	settings["hooks"]["PostToolUse"][0]["hooks"] = []map[string]any{{"type": "command", "command": "polix hook claude"}}
 	data, _ := json.Marshal(settings)
-	i.Files[i.Setup.HooksFile(setup.Claude)] = data
+	i.ClaudeHooks[i.Setup.HooksFile(setup.Claude)] = hooksOf(data)
 	i.Latest = "0.3.0"
 	i.WorkflowErr = workflow.Invalid{`polix.yaml:5: unknown key "foo"`}
 	i.Rules = []rule.Rule{{ID: "A-1", Description: "d", Deterministic: true, Check: "checks/a.sh", File: "ai/rules/a.yaml"}}
@@ -89,28 +126,33 @@ func TestDecideFindsProblems(t *testing.T) {
 func TestDecideHooks(t *testing.T) {
 	i := healthy(t)
 	file := i.Setup.HooksFile(setup.Claude)
-	settings := string(i.Files[file])
-	i.Files[file] = []byte(strings.Replace(settings, `"polix update --hook"`, `"polix update --hook; polix doctor --hook"`, 1))
+	settings := string(exampleSettings(t))
+	i.ClaudeHooks[file] = hooksOf([]byte(strings.Replace(settings, `"polix update --hook"`, `"polix update --hook; polix doctor --hook"`, 1)))
 	if got := text(Decide(i, false)); !strings.Contains(got, "command of an earlier polix") {
 		t.Fatalf("legacy command:\n%s", got)
 	}
-	i.Files[file] = []byte(strings.Replace(settings, `"polix update --hook"`, `"echo hi"`, 1))
+	i.ClaudeHooks[file] = hooksOf([]byte(strings.Replace(settings, `"polix update --hook"`, `"echo hi"`, 1)))
 	if got := text(Decide(i, false)); !strings.Contains(got, "does not update itself") {
 		t.Fatalf("no update command:\n%s", got)
 	}
 	var doc map[string]map[string]any
 	_ = json.Unmarshal([]byte(settings), &doc)
 	delete(doc["hooks"], "PostToolUseFailure")
-	i.Files[file], _ = json.Marshal(doc)
+	data, _ := json.Marshal(doc)
+	i.ClaudeHooks[file] = hooksOf(data)
 	if out := Decide(i, false); out.Failed || !strings.Contains(text(out), "warn hooks PostToolUseFailure does not run") {
 		t.Fatalf("old settings only warn:\n%s", text(out))
 	}
-	i.Files[filepath.FromSlash("/h/.claude/settings.json")] = []byte(settings)
-	i.Files[file] = []byte(settings)
+	i.ClaudeHooks[filepath.FromSlash("/h/.claude/settings.json")] = hooksOf([]byte(settings))
+	i.ClaudeHooks[file] = hooksOf([]byte(settings))
 	if got := text(Decide(i, false)); !strings.Contains(got, "runs polix twice") {
 		t.Fatalf("duplicated:\n%s", got)
 	}
-	i.Files = map[string][]byte{}
+	i.ClaudeHooks[filepath.FromSlash("/h/.claude/settings.json")] = setup.HooksFile{ReadErr: errors.New("denied")}
+	if got := text(Decide(i, false)); !strings.Contains(got, "fail hooks "+filepath.FromSlash("/h/.claude/settings.json")+": denied") {
+		t.Fatalf("a settings file that cannot be read:\n%s", got)
+	}
+	i.ClaudeHooks = nil
 	if got := text(Decide(i, false)); !strings.Contains(got, "does not run polix in this repository") {
 		t.Fatalf("no hooks:\n%s", got)
 	}
@@ -135,16 +177,16 @@ func TestDecideMachine(t *testing.T) {
 		t.Fatal(got)
 	}
 	i = healthy(t)
-	i.Setup.Version = "dev"
+	i.Setup.Version, i.Plugin.Version = "dev", "dev"
 	if got := text(Decide(i, false)); !strings.Contains(got, "development build") || !strings.Contains(got, "is from polix 0.2.0") {
 		t.Fatal(got)
 	}
 	i = healthy(t)
-	i.Claude, i.ClaudeErr = nil, setup.ErrNoCLI
+	i.ClaudeInstalled, i.ClaudeEnabled, i.ClaudeErr = false, false, setup.ErrNoCLI
 	if out := Decide(i, false); out.Failed || strings.Contains(text(out), "warn") {
 		t.Fatalf("without Claude Code:\n%s", text(out))
 	}
-	i.Claude, i.ClaudeErr = []byte("[]"), nil
+	i.ClaudeErr = nil
 	if got := text(Decide(i, false)); !strings.Contains(got, "does not have polix@polix installed") {
 		t.Fatal(got)
 	}
@@ -171,40 +213,44 @@ func codexLines(out Output) string {
 // Codex is checked only when polix is registered for it: its hooks run polix or its plugin is enabled.
 func TestDecideCodex(t *testing.T) {
 	i := healthy(t)
-	hooksFile, config := i.Setup.HooksFile(setup.Codex), i.Setup.CodexConfigFile()
+	hooksFile := i.Setup.HooksFile(setup.Codex)
+	i.CodexHooks = map[string]setup.HooksFile{}
 	if got := codexLines(Decide(i, false)); got != "" {
 		t.Fatalf("no Codex files, no Codex finding:\n%s", got)
 	}
 	// A Codex that was never set up for polix, even with a broken hooks file of its own, is not checked.
-	i.Files[hooksFile] = []byte(`{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}}`)
-	i.Files[config] = []byte("model = \"x\"\n")
+	i.CodexHooks[hooksFile] = hooksOf([]byte(`{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}}`))
 	if got := codexLines(Decide(i, false)); got != "" {
 		t.Fatalf("Codex without polix, no Codex finding:\n%s", got)
 	}
-	i.Files[hooksFile] = []byte("{")
+	i.CodexHooks[hooksFile] = hooksOf([]byte("{"))
 	if got := codexLines(Decide(i, false)); got != "" {
 		t.Fatalf("a broken hooks file of a Codex without polix:\n%s", got)
 	}
-	delete(i.Files, hooksFile)
-	i.Files[config] = []byte("[plugins.\"" + setup.PluginID + "\"]\nenabled = true\n")
+	delete(i.CodexHooks, hooksFile)
+	i.CodexEnabled = true
 	if got := codexLines(Decide(i, false)); !strings.Contains(got, "warn Codex does not run polix in this repository: run polix install --agent codex") ||
 		strings.Contains(got, "ok ") {
 		t.Fatalf("the plugin enabled without hooks:\n%s", got)
 	}
-	i.Files[hooksFile] = []byte(`{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "polix hook codex"}]}]}}`)
+	i.CodexHooks[hooksFile] = hooksOf([]byte(`{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "polix hook codex"}]}]}}`))
 	out := Decide(i, false)
 	if got := codexLines(out); got != "ok hooks registered (Codex runs them once trusted with /hooks); "+
 		"Codex support is not implemented and untested\n" || out.Failed {
 		t.Fatalf("registered and enabled:\n%s", got)
 	}
-	delete(i.Files, config)
+	i.CodexEnabled = false
 	if got := codexLines(Decide(i, false)); !strings.Contains(got, "warn the plugin polix@polix is not enabled in Codex") {
 		t.Fatalf("registered without the plugin:\n%s", got)
 	}
-	i.Files[config] = []byte("[plugins.\"" + setup.PluginID + "\"]\nenabled = true\n")
-	i.Files[hooksFile] = []byte("{")
+	i.CodexEnabled = true
+	i.CodexHooks[hooksFile] = hooksOf([]byte("{"))
 	if out := Decide(i, false); !out.Failed || !strings.Contains(codexLines(out), "fail "+hooksFile+": ") {
 		t.Fatalf("a hooks file that cannot be parsed fails:\n%s", codexLines(out))
+	}
+	i.CodexHooks[hooksFile] = setup.HooksFile{ReadErr: errors.New("open " + hooksFile + ": denied")}
+	if got := codexLines(Decide(i, false)); !strings.Contains(got, "fail open "+hooksFile+": denied\n") {
+		t.Fatalf("a hooks file that cannot be read fails with its error:\n%s", got)
 	}
 }
 
@@ -222,5 +268,35 @@ func TestDecideMissingBase(t *testing.T) {
 	i.Found = false
 	if got := text(Decide(i, false)); !strings.Contains(got, "no polix.yaml") || !strings.Contains(got, "would fail") {
 		t.Fatal(got)
+	}
+}
+
+func TestFound(t *testing.T) {
+	if found("info", "x", "y") != nil || found(setup.LevelOK, "", "y") != nil {
+		t.Fatal("an unknown level, or no area, is not a finding")
+	}
+	f := append(found(setup.LevelOK, "git", "repository at %s", "/r"), found(setup.LevelWarn, "hooks", "old")...)
+	if len(f) != 2 || f[0].Message != "repository at /r" || f[0].Problem() || !f[1].Problem() {
+		t.Fatalf("%+v", f)
+	}
+}
+
+var problemRules = []rule.Rule{
+	{ID: "A-1", Description: "d", Deterministic: true, Check: "checks/a.sh", File: "ai/rules/a.yaml"},
+	{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"},
+	{ID: "B-1", Description: "d", Deterministic: true, Check: "tests/b_test.go", File: "ai/rules/b.yaml"},
+}
+
+// A check that a runner runs is never reported as not executable; the same error is reported once.
+func TestRunProblems(t *testing.T) {
+	wf := workflow.Workflow{Rules: workflow.Rules{Run: []workflow.Runner{{Glob: "*_test.go", Argv: []string{"go", "test"}}}}}
+	runnable := map[string]error{"checks/a.sh": errors.New("check checks/a.sh is not executable (chmod +x)"),
+		"tests/b_test.go": errors.New("check tests/b_test.go is not executable (chmod +x)")}
+	got := runProblems(setup.Inspection{Rules: problemRules, Workflow: wf, Runnable: runnable})
+	if len(got) != 1 || got[0] != "ai/rules/a.yaml A-1: check checks/a.sh is not executable (chmod +x)" {
+		t.Fatalf("%v", got)
+	}
+	if got := runProblems(setup.Inspection{Rules: problemRules, Runnable: runnable}); len(got) != 2 {
+		t.Fatalf("without runner: %v", got)
 	}
 }

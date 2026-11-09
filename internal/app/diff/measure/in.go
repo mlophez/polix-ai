@@ -57,8 +57,9 @@ type Port interface {
 	CommitDiff(ctx context.Context, rev string) (diff.Diff, string, error)
 }
 
-// Command is the command `polix risk`, the entry of the use case MeasureDiff.
-func Command() *cobra.Command {
+// Command is the command `polix risk`, the entry of the use case MeasureDiff. It reads polix.yaml through
+// loadWorkflow, the loader of polix.yaml (internal/app/workflow/load), which cmd/polix builds once.
+func Command(loadWorkflow workflow.Load) *cobra.Command {
 	req := Request{Version: build.Current()}
 	c := &cobra.Command{
 		Use:   "risk",
@@ -76,7 +77,7 @@ func Command() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := run(c.Context(), Adapter{Repo: repo}, req)
+			res, err := run(c.Context(), Adapter{Repo: repo, Workflow: loadWorkflow}, req)
 			if err != nil {
 				return err
 			}

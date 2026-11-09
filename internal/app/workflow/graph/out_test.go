@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 )
@@ -46,31 +47,36 @@ func newRepo(t *testing.T, files map[string]string) *git.Repo {
 func runCommand(t *testing.T, repo *git.Repo, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	root := cli.Root("polix", "", "", "")
-	root.AddCommand(Command())
+	root.AddCommand(Command(workflowload.Command()))
 	var out, errb bytes.Buffer
 	code = cli.Run(root, append(args, "--dir", repo.Root), strings.NewReader(""), &out, &errb)
 	return code, out.String(), errb.String()
 }
 
+// adapter is the adapter of the command on repo, with the loader of polix.yaml as cmd/polix builds it.
+func adapter(repo *git.Repo) Adapter {
+	return Adapter{Repo: repo, Workflow: workflowload.Command()}
+}
+
 func TestAdapterLoadWorkflow(t *testing.T) {
 	ctx := context.Background()
-	wf, found, err := Adapter{Repo: newRepo(t, nil)}.LoadWorkflow(ctx, "dev")
+	wf, found, err := adapter(newRepo(t, nil)).LoadWorkflow(ctx, "dev")
 	if err != nil || found || wf.Version != 1 {
 		t.Fatalf("without file: %+v %v %v", wf, found, err)
 	}
 	// A workflow with problems is drawn as it is.
 	repo := newRepo(t, map[string]string{workflow.File: "version: 1\non:\n  pre_edit:\n    - when: { pth: x }\n      action: { block: x }\n"})
-	wf, found, err = Adapter{Repo: repo}.LoadWorkflow(ctx, "dev")
+	wf, found, err = adapter(repo).LoadWorkflow(ctx, "dev")
 	if err != nil || !found || len(wf.On[workflow.PreEdit]) != 1 {
 		t.Fatalf("invalid: %+v %v %v", wf, found, err)
 	}
 	repo = newRepo(t, map[string]string{workflow.File: "version: 1\nrequires: 0.2.0\n"})
 	var old workflow.TooOld
-	if _, _, err = (Adapter{Repo: repo}).LoadWorkflow(ctx, "0.1.0"); !errors.As(err, &old) {
+	if _, _, err = adapter(repo).LoadWorkflow(ctx, "0.1.0"); !errors.As(err, &old) {
 		t.Fatalf("too old: %v", err)
 	}
 	repo = newRepo(t, map[string]string{workflow.File: "version: [\n"})
-	if _, _, err = (Adapter{Repo: repo}).LoadWorkflow(ctx, "dev"); err == nil {
+	if _, _, err = adapter(repo).LoadWorkflow(ctx, "dev"); err == nil {
 		t.Fatal("broken yaml must fail")
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -25,7 +26,7 @@ type lintIssue struct {
 	}
 }
 
-// lintRun is the run of depguard on one root, once per test binary.
+// lintRun is the run of golangci-lint with some linters on one root, once per test binary.
 type lintRun struct {
 	once  sync.Once
 	found []string // the findings, as path:line: text, the path relative to the root with slashes
@@ -53,7 +54,7 @@ const depguardRoot = "testdata/depguard"
 const installLint = "install golangci-lint v2.15.0, the version that .github/workflows/ci.yml pins " +
 	"(https://golangci-lint.run/docs/welcome/install/), and put it on the PATH"
 
-// linted caches the runs of depguard by root, shared by the tests of every rule it decides.
+// linted caches the runs of golangci-lint by root and linters, shared by the tests of every rule they decide.
 var linted sync.Map
 
 // checkDepguard runs depguard, through golangci-lint, on the module under check, where the lists of rule must find
@@ -62,13 +63,21 @@ var linted sync.Map
 // golangci-lint the test fails, never skips.
 func checkDepguard(t *testing.T, rule string, want ...string) {
 	t.Helper()
+	checkLint(t, depguardRoot, func(t *testing.T, at string) []string { return depguardFindings(t, at, rule) },
+		want...)
+}
+
+// checkLint runs findings on the module under check, where it must find nothing, and on the module at, where every
+// string of want must appear in some finding and no test file is reported.
+func checkLint(t *testing.T, at string, findings func(t *testing.T, at string) []string, want ...string) {
+	t.Helper()
 	t.Run("module", func(t *testing.T) {
-		for _, f := range mustLint(t, *root, rule) {
+		for _, f := range findings(t, *root) {
 			t.Error(f)
 		}
 	})
 	t.Run("detects", func(t *testing.T) {
-		found := mustLint(t, depguardRoot, rule)
+		found := findings(t, at)
 		got := strings.Join(found, "\n")
 		for _, w := range want {
 			if !strings.Contains(got, w) {
@@ -83,22 +92,29 @@ func checkDepguard(t *testing.T, rule string, want ...string) {
 	})
 }
 
-// mustLint returns the findings of the lists of rule on the module at, running depguard on it once per test binary.
-func mustLint(t *testing.T, at, rule string) []string {
+// depguardFindings returns the findings of the lists of rule on the module at.
+func depguardFindings(t *testing.T, at, rule string) []string {
 	t.Helper()
-	v, _ := linted.LoadOrStore(at, &lintRun{})
-	run := v.(*lintRun)
-	run.once.Do(func() { run.found, run.err = depguard(at) })
-	if run.err != nil {
-		t.Fatal(run.err)
-	}
 	var out []string
-	for _, f := range run.found {
+	for _, f := range mustLint(t, at, "depguard") {
 		if ofRule(f, rule) {
 			out = append(out, f)
 		}
 	}
 	return out
+}
+
+// mustLint returns the findings of linters on the module at, running golangci-lint with them on it once per test
+// binary.
+func mustLint(t *testing.T, at string, linters ...string) []string {
+	t.Helper()
+	v, _ := linted.LoadOrStore(at+"\x00"+strings.Join(linters, ","), &lintRun{})
+	run := v.(*lintRun)
+	run.once.Do(func() { run.found, run.err = lint(at, linters...) })
+	if run.err != nil {
+		t.Fatal(run.err)
+	}
+	return run.found
 }
 
 // ofRule reports whether the finding f comes from a list of rule: golangci-lint prints the name of the list in
@@ -113,13 +129,15 @@ func ofRule(f, rule string) bool {
 	return list == r || strings.HasPrefix(list, r+"-")
 }
 
-// depguard runs golangci-lint with only depguard and the .golangci.yml of the module under check on every package
-// of the module at, and returns its findings. It fails when golangci-lint is missing, ends with an error other than its
-// findings, or reports a finding of another linter (a package that does not compile), with its output.
-func depguard(at string) ([]string, error) {
+// lint runs golangci-lint with only linters and the .golangci.yml of the module under check on every package of the
+// module at, and returns its findings. Of revive it keeps only file-length-limit, the rule of GO-4: its other rules
+// are the lint of the module, not a rule of ai/rules/. It fails when golangci-lint is missing, ends with an error
+// other than its findings, or reports a finding of another linter (a package that does not compile), with its
+// output.
+func lint(at string, linters ...string) ([]string, error) {
 	bin, err := exec.LookPath("golangci-lint")
 	if err != nil {
-		return nil, fmt.Errorf("the rules that depguard decides need golangci-lint: %s: %w", installLint, err)
+		return nil, fmt.Errorf("the rules that golangci-lint decides need it: %s: %w", installLint, err)
 	}
 	dir, err := realPath(at)
 	if err != nil {
@@ -129,8 +147,8 @@ func depguard(at string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(bin, "run", "--enable-only", "depguard", "--config", config, "--allow-parallel-runners",
-		"--path-mode", "abs", "--show-stats=false", "--output.json.path", "stdout", "./...")
+	cmd := exec.Command(bin, "run", "--enable-only", strings.Join(linters, ","), "--config", config,
+		"--allow-parallel-runners", "--path-mode", "abs", "--show-stats=false", "--output.json.path", "stdout", "./...")
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -146,9 +164,12 @@ func depguard(at string) ([]string, error) {
 	}
 	var out []string
 	for _, is := range report.Issues {
-		if is.FromLinter != "depguard" {
-			return nil, fmt.Errorf("golangci-lint on %s reports %s, not depguard: %s:%d: %s", at, is.FromLinter,
-				is.Pos.Filename, is.Pos.Line, is.Text)
+		if !slices.Contains(linters, is.FromLinter) {
+			return nil, fmt.Errorf("golangci-lint on %s reports %s, not %s: %s:%d: %s", at, is.FromLinter,
+				strings.Join(linters, ", "), is.Pos.Filename, is.Pos.Line, is.Text)
+		}
+		if is.FromLinter == "revive" && !strings.HasPrefix(is.Text, "file-length-limit:") {
+			continue
 		}
 		file, err := realPath(is.Pos.Filename)
 		if err != nil {
@@ -233,10 +254,10 @@ func depguardMatch(e, p string) bool {
 }
 
 // TestDepguardWithoutGolangciLint checks that the run of depguard fails, saying how to install golangci-lint, when
-// it is not on the PATH, so the tests of the rules that depguard decides fail instead of skipping.
+// it is not on the PATH, so the tests of the rules that golangci-lint decides fail instead of skipping.
 func TestDepguardWithoutGolangciLint(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	_, err := depguard(depguardRoot)
+	_, err := lint(depguardRoot, "depguard")
 	if err == nil || !strings.Contains(err.Error(), "install golangci-lint") {
 		t.Fatalf("depguard without golangci-lint: got error %v, want one that says how to install it", err)
 	}

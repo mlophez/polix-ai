@@ -15,8 +15,8 @@ import (
 type fakePort struct {
 	calls     []string
 	pluginErr error // of RegisterPlugin
-	files     map[string][]byte
-	refuse    bool // Confirm refuses
+	filesErr  error // of MarketplaceFiles
+	refuse    bool  // Confirm refuses
 }
 
 func (f *fakePort) Confirm(_ context.Context, _ string) error {
@@ -31,6 +31,9 @@ func (f *fakePort) Root(_ context.Context, _ string) string { return "/r" }
 func (f *fakePort) Plugin(_ context.Context) (map[string][]byte, error) {
 	return map[string][]byte{"polix/.claude-plugin/plugin.json": []byte(`{"name": "polix", "version": "0"}`)}, nil
 }
+func (f *fakePort) MarketplaceFiles(_ context.Context, _ setup.Plugin) (map[string][]byte, error) {
+	return map[string][]byte{".claude-plugin/marketplace.json": []byte("{}")}, f.filesErr
+}
 func (f *fakePort) WritePlugin(_ context.Context, dir string, _ map[string][]byte) ([]setup.Change, error) {
 	f.calls = append(f.calls, "WritePlugin "+dir)
 	return []setup.Change{{Path: dir, Action: "created"}}, nil
@@ -39,14 +42,12 @@ func (f *fakePort) RegisterPlugin(_ context.Context, _ setup.Setup, agent string
 	f.calls = append(f.calls, "RegisterPlugin "+agent)
 	return nil, f.pluginErr
 }
-func (f *fakePort) RegisterHooks(_ context.Context, file, _ string) ([]setup.Change, error) {
+func (f *fakePort) RegisterHooks(_ context.Context, file string, _ map[string][]setup.HookGroup) ([]setup.Change, error) {
 	f.calls = append(f.calls, "RegisterHooks "+file)
 	return nil, nil
 }
-func (f *fakePort) ReadFiles(_ context.Context, _ []string) map[string][]byte {
-	return f.files
-}
-func (f *fakePort) OnPath(_ context.Context, _ string) error { return errors.New("no") }
+func (f *fakePort) Registered(_ context.Context, _ []string) map[string]bool { return nil }
+func (f *fakePort) OnPath(_ context.Context, _ string) error                 { return errors.New("no") }
 
 func TestShell(t *testing.T) {
 	port := &fakePort{}
@@ -66,6 +67,24 @@ func TestShell(t *testing.T) {
 	_, err = run(context.Background(), port, Request{Version: "1.2.3", User: true})
 	if !errors.Is(err, setup.ErrCancelled) || len(port.calls) != 0 {
 		t.Fatalf("%v %v", err, port.calls)
+	}
+	// A plugin whose marketplace cannot be written stops it before asking.
+	port = &fakePort{filesErr: errors.New("no version"), refuse: true}
+	if _, err = run(context.Background(), port, Request{Version: "1.2.3"}); err == nil || err.Error() != "no version" ||
+		len(port.calls) != 0 {
+		t.Fatalf("%v %v", err, port.calls)
+	}
+}
+
+func TestParseAgents(t *testing.T) {
+	req := Request{Version: "1"}
+	if err := req.parseAgents([]string{" Claude", "codex", "claude"}); err != nil ||
+		!slices.Equal(req.Agents, []string{setup.Claude, setup.Codex}) {
+		t.Fatalf("%v %v", req.Agents, err)
+	}
+	req = Request{Version: "1"}
+	if err := req.parseAgents([]string{"cursor"}); err == nil || err.Error() != `unknown agent "cursor" (claude, codex)` {
+		t.Fatalf("unknown agent: %v", err)
 	}
 }
 

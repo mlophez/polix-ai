@@ -1,10 +1,26 @@
 package graph
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 )
+
+// parseWorkflow loads src as the polix.yaml of a temporary root through the loader of polix.yaml, as cmd/polix
+// builds it: the workflow and the error of loading it.
+func parseWorkflow(t *testing.T, src string) (workflow.Workflow, error) {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, workflow.File), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded := workflowload.Command()(context.Background(), root, "dev")
+	return loaded.Workflow, loaded.Err
+}
 
 func TestDecideWithoutFile(t *testing.T) {
 	if out := Decide(workflow.Workflow{Version: 1}, false); !out.Missing || out.Mermaid != "" {
@@ -56,7 +72,7 @@ func TestDecideDrawsEventsInOrder(t *testing.T) {
 // AC16: the protected files and the forbidden commands are drawn in a subgraph guardrails before the events, an
 // expanded entry names its shortcut, and an entry written in on names none.
 func TestDecideGuardrailsAndOrigin(t *testing.T) {
-	wf, err := workflow.Parse([]byte(`version: 1
+	wf, err := parseWorkflow(t, `version: 1
 guardrails:
   protected_files: [.env, AGENTS.md]
   forbidden_commands:
@@ -75,7 +91,7 @@ on:
     - when: { path: "secrets/**" }
       action: { block: "Secrets." }
     - action: { block: "Written." }
-`), "dev")
+`)
 	if err != nil {
 		t.Fatal(err)
 	}

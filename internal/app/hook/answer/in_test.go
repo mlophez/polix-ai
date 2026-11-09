@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/diff"
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/state"
@@ -51,7 +52,7 @@ func (p *fakePort) LoadWorkflow(_ context.Context, running string) (workflow.Wor
 	if p.yaml == "" {
 		return workflow.Workflow{}, false, nil
 	}
-	wf, err := workflow.Parse([]byte(p.yaml), running)
+	wf, err := parseWorkflow(p.yaml, running)
 	return wf, true, err
 }
 
@@ -140,8 +141,8 @@ func (p *fakePort) Append(_ context.Context, e state.Entry) error {
 	return nil
 }
 
-// claude returns the request of a hook call of Claude Code with input.
-func claude(input string) Request {
+// claudeRequest returns the request of a hook call of Claude Code with input.
+func claudeRequest(input string) Request {
 	return Request{Agent: "claude", Input: []byte(input), Version: "dev", System: "linux"}
 }
 
@@ -150,7 +151,7 @@ func claude(input string) Request {
 func TestMergesEvents(t *testing.T) {
 	port := &fakePort{yaml: "version: 1\non:\n  pre_command:\n    - action: { block: \"no\" }\n" +
 		"  pre_commit:\n    - action: { block: \"no\" }\n"}
-	res, err := run(context.Background(), port, claude(
+	res, err := run(context.Background(), port, claudeRequest(
 		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git commit -m x"}}`))
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +168,7 @@ func TestCommitInAnotherRepository(t *testing.T) {
 	other := filepath.FromSlash("/other")
 	for foreign, code := range map[bool]int{true: 0, false: 2} {
 		port := &fakePort{yaml: yaml, foreign: map[string]bool{other: foreign}}
-		res, err := run(context.Background(), port, claude(
+		res, err := run(context.Background(), port, claudeRequest(
 			`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git -C /other commit -m x"}}`))
 		if err != nil {
 			t.Fatal(err)
@@ -213,7 +214,7 @@ func TestGuidanceRendered(t *testing.T) {
 		if err := json.Unmarshal([]byte(res.Stdout), &out); err != nil {
 			t.Fatalf("%s: stdout %q: %v", agentName, res.Stdout, err)
 		}
-		wf, _ := workflow.Parse([]byte("version: 1\n"), "dev")
+		wf, _ := parseWorkflow("version: 1\n", "dev")
 		if want := wf.SessionContext(); want == "" || out.HookSpecificOutput.AdditionalContext != want {
 			t.Fatalf("%s: additionalContext %q", agentName, out.HookSpecificOutput.AdditionalContext)
 		}
@@ -224,17 +225,17 @@ func TestGuidanceRendered(t *testing.T) {
 // everything through; an input that is not JSON is an error.
 func TestNothingToGovern(t *testing.T) {
 	port := &fakePort{}
-	res, err := run(context.Background(), port, claude(`{"hook_event_name":"PreToolUse","tool_name":"Read"}`))
+	res, err := run(context.Background(), port, claudeRequest(`{"hook_event_name":"PreToolUse","tool_name":"Read"}`))
 	if err != nil || res != (Response{}) || len(port.calls) != 0 {
 		t.Fatalf("no events: %+v %v %q", res, err, port.calls)
 	}
 	port = &fakePort{yaml: "version: 1\non:\n  stop:\n    - action: { block: x }\n",
 		openErr: errors.New("not a repo")}
-	res, err = run(context.Background(), port, claude(`{"hook_event_name":"Stop","cwd":"/tmp/x"}`))
+	res, err = run(context.Background(), port, claudeRequest(`{"hook_event_name":"Stop","cwd":"/tmp/x"}`))
 	if err != nil || res != (Response{}) || !slices.Equal(port.calls, []string{"Open /tmp/x"}) {
 		t.Fatalf("outside a repository: %+v %v %q", res, err, port.calls)
 	}
-	if _, err := run(context.Background(), port, claude(`not json`)); err == nil ||
+	if _, err := run(context.Background(), port, claudeRequest(`not json`)); err == nil ||
 		!strings.Contains(err.Error(), "claude hook input") {
 		t.Fatalf("an input that is not JSON: %v", err)
 	}
@@ -246,7 +247,7 @@ func TestNothingToGovern(t *testing.T) {
 // The dir of the request wins over the cwd of the call.
 func TestDir(t *testing.T) {
 	port := &fakePort{}
-	req := claude(`{"hook_event_name":"Stop","cwd":"/tmp/x"}`)
+	req := claudeRequest(`{"hook_event_name":"Stop","cwd":"/tmp/x"}`)
 	req.Dir = "/repo"
 	if _, err := run(context.Background(), port, req); err != nil || port.calls[0] != "Open /repo" {
 		t.Fatalf("%v %q", err, port.calls)
@@ -277,7 +278,7 @@ func TestPortErrors(t *testing.T) {
 			rules:  []rule.Rule{{ID: "R-1", Description: "d", Deterministic: true, Check: "c.sh"}},
 			runErr: errors.New("exit status 1")}, 2, "- R-1 (c.sh): d"},
 	} {
-		res, err := run(context.Background(), c.port, claude(stop))
+		res, err := run(context.Background(), c.port, claudeRequest(stop))
 		if err != nil || res.Code != c.code || !strings.Contains(res.Stderr, c.wants) {
 			t.Errorf("%s: %+v %v", c.name, res, err)
 		}
@@ -285,12 +286,12 @@ func TestPortErrors(t *testing.T) {
 	// A file that cannot be read gives no context.
 	port := &fakePort{yaml: "version: 1\non:\n  prompt:\n    - action: { inject: { file: notes.md } }\n",
 		readErr: errors.New("boom")}
-	res, err := run(context.Background(), port, claude(`{"hook_event_name":"UserPromptSubmit","cwd":"/repo"}`))
+	res, err := run(context.Background(), port, claudeRequest(`{"hook_event_name":"UserPromptSubmit","cwd":"/repo"}`))
 	if err != nil || res.Stdout != "" || !slices.Contains(port.calls, "Read notes.md") {
 		t.Fatalf("unreadable context: %+v %v %q", res, err, port.calls)
 	}
 	port.readErr = nil
-	res, _ = run(context.Background(), port, claude(`{"hook_event_name":"UserPromptSubmit","cwd":"/repo"}`))
+	res, _ = run(context.Background(), port, claudeRequest(`{"hook_event_name":"UserPromptSubmit","cwd":"/repo"}`))
 	if !strings.Contains(res.Stdout, `"additionalContext":"Ticket: PLAT-1"`) {
 		t.Fatalf("context: %+v", res)
 	}
@@ -304,7 +305,7 @@ func TestRunsAPassingGroupOnce(t *testing.T) {
 			{ID: "A-1", Description: "d", Deterministic: true, Check: "t/a1_test.go"},
 			{ID: "A-2", Description: "d", Deterministic: true, Check: "t/a2_test.go"},
 		}}
-	res, err := run(context.Background(), port, claude(`{"hook_event_name":"Stop","cwd":"/repo"}`))
+	res, err := run(context.Background(), port, claudeRequest(`{"hook_event_name":"Stop","cwd":"/repo"}`))
 	if err != nil || res.Code != 0 {
 		t.Fatalf("got %+v %v", res, err)
 	}
@@ -323,18 +324,18 @@ func TestRunsAPassingGroupOnce(t *testing.T) {
 // problems may come from one, and only warns on a stop.
 func TestUnusableWorkflow(t *testing.T) {
 	port := &fakePort{yaml: "version: 2\n"}
-	res, err := run(context.Background(), port, claude(
+	res, err := run(context.Background(), port, claudeRequest(
 		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"ls"}}`))
 	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, "no las quites: ejecuta polix update") {
 		t.Fatalf("command: %+v %v", res, err)
 	}
-	res, err = run(context.Background(), port, claude(`{"hook_event_name":"Stop","cwd":"/repo"}`))
+	res, err = run(context.Background(), port, claudeRequest(`{"hook_event_name":"Stop","cwd":"/repo"}`))
 	if err != nil || res.Code != 0 || !strings.HasPrefix(res.Stderr, "polix: el workflow no es válido") {
 		t.Fatalf("stop: %+v %v", res, err)
 	}
 	// A workflow of the old vocabulary is told its new spelling, never to update polix to keep it.
 	port = &fakePort{yaml: "version: 1\non:\n  turn_stop:\n    - require: x\n"}
-	res, err = run(context.Background(), port, claude(
+	res, err = run(context.Background(), port, claudeRequest(
 		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"ls"}}`))
 	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, `unknown event "turn_stop": use stop`) ||
 		!strings.Contains(res.Stderr, `unknown key "require": use action: { block: <message> }`) ||
@@ -361,7 +362,7 @@ func TestComparesTrees(t *testing.T) {
 		"missing": {nil, errors.New("fatal: bad object old"), 2},
 	} {
 		port := &fakePort{yaml: yaml, state: reviewed, trees: c.trees, treeErr: c.err}
-		res, err := run(context.Background(), port, claude(commit))
+		res, err := run(context.Background(), port, claudeRequest(commit))
 		if err != nil || res.Code != c.code || !slices.Contains(port.calls, "TreeDiff old h") {
 			t.Errorf("%s: %+v %v %q", name, res, err, port.calls)
 		}
@@ -374,13 +375,119 @@ func TestMeasuresTheDiff(t *testing.T) {
 		"      action: { block: \"{changed_lines} lineas\" }\n"
 	commit := `{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git commit -m x"}}`
 	port := &fakePort{yaml: yaml}
-	res, err := run(context.Background(), port, claude(commit))
+	res, err := run(context.Background(), port, claudeRequest(commit))
 	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, "210 lineas") || !slices.Contains(port.calls, "Diff") {
 		t.Fatalf("measured: %+v %v %v", res, err, port.calls)
 	}
 	port = &fakePort{yaml: yaml, diffErr: errors.New("git roto")}
-	res, err = run(context.Background(), port, claude(commit))
+	res, err = run(context.Background(), port, claudeRequest(commit))
 	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, "? lineas") {
 		t.Fatalf("not measured: %+v %v", res, err)
+	}
+}
+
+// Parse and render go through the format of the agent: PostToolUseFailure gives context to Claude Code only.
+func TestFormats(t *testing.T) {
+	input := []byte(`{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"}}`)
+	for _, name := range []string{agent.Claude, agent.Codex} {
+		native, evs, err := formats[name].parse(input)
+		if err != nil || native != "PostToolUse" || len(evs) != 1 || evs[0].Agent != name {
+			t.Errorf("%s: %q %+v %v", name, native, evs, err)
+		}
+	}
+	ans := agent.Answer{}.Inform("x")
+	if out, _, _ := formats[agent.Claude].render("PostToolUseFailure", ans); out == "" {
+		t.Error("Claude Code reads context on PostToolUseFailure")
+	}
+	if out, _, _ := formats[agent.Codex].render("PostToolUseFailure", ans); out != "" {
+		t.Error("Codex does not read context on PostToolUseFailure")
+	}
+}
+
+// A block goes to stderr with exit 2, its contexts after the reasons; otherwise warnings go to stderr and the
+// contexts to the JSON of the events that take it.
+func TestContextEventsRender(t *testing.T) {
+	stdout, stderr, code := claudeContextEvents.render("PreToolUse", agent.Answer{}.Refuse("a").Refuse("b").Inform("c"))
+	if code != agent.ExitBlock || stdout != "" || stderr != "a\n\nb\n\nc\n" {
+		t.Fatalf("block: %q %q %d", stdout, stderr, code)
+	}
+	stdout, stderr, code = claudeContextEvents.render("PreToolUse", agent.Answer{}.Inform("x<y").Inform("z").Warn("w"))
+	want := `{"hookSpecificOutput":{"additionalContext":"x\u003cy\n\nz","hookEventName":"PreToolUse"}}` + "\n"
+	if code != agent.ExitOK || stdout != want || stderr != "polix: w\n" {
+		t.Fatalf("context: %q %q %d", stdout, stderr, code)
+	}
+	if stdout, _, _ := claudeContextEvents.render("Stop", agent.Answer{}.Inform("x")); stdout != "" {
+		t.Fatalf("Stop takes no context: %q", stdout)
+	}
+}
+
+// A commit is recognised after global options of git and inside a quoted command, so pre_commit cannot be
+// skipped by spelling it differently.
+func TestGitCommit(t *testing.T) {
+	cases := []struct {
+		command string
+		want    bool
+	}{
+		{"git commit -m x", true},
+		{"cd x && git commit -m x", true},
+		{"git -C . commit -m x", true},
+		{"git -C ../repo commit", true},
+		{"git -c user.name=a commit -m x", true},
+		{"git --no-pager commit", true},
+		{"git --git-dir .git --work-tree . commit", true},
+		{"git --git-dir=.git commit", true},
+		{`bash -c "git commit -m x"`, true},
+		{"sh -c 'git commit'", true},
+		{"git commit-tree HEAD^{tree}", false},
+		{"git log --grep commit", false},
+		{"git status", false},
+	}
+	for _, c := range cases {
+		if got := gitCommit.MatchString(c.command); got != c.want {
+			t.Errorf("gitCommit(%q) = %v, want %v", c.command, got, c.want)
+		}
+	}
+}
+
+// A relative path (apply_patch) is made absolute from the cwd of the call, so the protections that compare
+// absolute paths see it.
+func TestEditsRelativePath(t *testing.T) {
+	cwd := filepath.Join(t.TempDir(), "repo")
+	abs := filepath.Join(t.TempDir(), "file")
+	evs, err := hookInput{Cwd: cwd}.edits(agent.Codex, workflow.PreEdit, []string{".git/polix/log.jsonl", abs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(cwd, ".git", "polix", "log.jsonl"); evs[0].AbsPath != want {
+		t.Errorf("relative path: AbsPath = %q, want %q", evs[0].AbsPath, want)
+	}
+	if evs[1].AbsPath != abs {
+		t.Errorf("absolute path: AbsPath = %q", evs[1].AbsPath)
+	}
+	if got, _ := (hookInput{}).edits(agent.Codex, workflow.PreEdit, []string{"a.go"}); got[0].AbsPath != "a.go" {
+		t.Errorf("without a cwd the path stays as given: %q", got[0].AbsPath)
+	}
+}
+
+// A command about to run that commits is also a pre_commit; after it ran, it is not.
+func TestCommands(t *testing.T) {
+	command := "git commit -m x"
+	evs, err := hookInput{}.commands(agent.Claude, workflow.PreCommand, command, false)
+	if err != nil || len(evs) != 2 || evs[1].Name != workflow.PreCommit || evs[1].Command != command {
+		t.Fatalf("pre_command: %+v %v", evs, err)
+	}
+	if evs, err := (hookInput{}).commands(agent.Claude, workflow.PostCommand, command, false); err != nil ||
+		len(evs) != 1 {
+		t.Fatalf("post_command: %+v %v", evs, err)
+	}
+}
+
+// The exit code of a command is read from any of the names the agents use, 0 when it says none.
+func TestExitCode(t *testing.T) {
+	for raw, want := range map[string]int{`{"exit_code":3}`: 3, `{"exitCode":4}`: 4, `{"returncode":5}`: 5,
+		`{"stdout":"ok"}`: 0, `not json`: 0} {
+		if got := (hookInput{ToolResponse: json.RawMessage(raw)}).exitCode(); got != want {
+			t.Errorf("exitCode(%s) = %d, want %d", raw, got, want)
+		}
 	}
 }

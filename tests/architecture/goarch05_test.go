@@ -4,15 +4,33 @@ import (
 	"fmt"
 	"go/ast"
 	"go/types"
+	"maps"
 	"testing"
 )
 
 // GOARCH-5: the adapter implements the port of its own use case: Adapter of out.go has every method of Port of
-// in.go, declared or promoted from an embedded field. The checker decides it when the adapter and the port
-// resolve; else the methods declared in the out file are compared by name.
+// in.go, declared in any out file (out.go or a sibling out_<topic>.go) or promoted from an embedded field. The
+// checker decides it when the adapter and the port resolve; else the methods declared in the out files are
+// compared by name.
 func TestGOARCH5(t *testing.T) {
 	checkRule(t, checkAdapter,
 		"internal/app/order/cancel/out.go: Adapter does not implement Cancel of Port, declared nor promoted")
+	checkAccepts(t, checkAdapter, "internal/app/stock/take/")
+	t.Run("by name", func(t *testing.T) {
+		m := mustLoad(t, badRoot)
+		var take *useCase
+		for _, uc := range m.useCases() {
+			if uc.dir == "internal/app/stock/take" {
+				take = uc
+			}
+		}
+		if take == nil {
+			t.Fatal("testdata/bad has no use case internal/app/stock/take")
+		}
+		if have := adapterMethods(take); !have["Load"] {
+			t.Errorf("the method Load of a sibling of out.go is not found by name: %v", have)
+		}
+	})
 }
 
 func checkAdapter(m *module) []string {
@@ -39,7 +57,7 @@ func checkAdapter(m *module) []string {
 			}
 			continue
 		}
-		have := methods(adapterFile.ast, adapter)
+		have := adapterMethods(uc)
 		for _, f := range iface.Methods.List {
 			for _, name := range f.Names {
 				if !have[name.Name] {
@@ -89,6 +107,15 @@ func invalid(t types.Type) bool {
 	}
 	b, ok := t.(*types.Basic)
 	return ok && b.Kind() == types.Invalid
+}
+
+// adapterMethods returns the names of the methods of Adapter declared in the out files of uc.
+func adapterMethods(uc *useCase) map[string]bool {
+	out := map[string]bool{}
+	for _, f := range uc.all[kindOut] {
+		maps.Copy(out, methods(f.ast, "Adapter"))
+	}
+	return out
 }
 
 // methods returns the names of the methods of the type name declared in f.

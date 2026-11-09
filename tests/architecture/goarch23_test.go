@@ -15,9 +15,10 @@ var reservedNames = []string{"Command", "Request", "Response", "Port", "Adapter"
 // domain type, whatever their package.
 var reservedSuffixes = []string{"Output", "Request", "Response", "Port", "Adapter"}
 
-// GOARCH-23: every use case has the same shape. Its logic exports only the function Decide and the type Output;
-// Decide takes domain values (types of the domain of any noun, or predeclared types, also as slices, maps and
-// pointers) and returns Output and nothing else; and in.go uses of the logic only those two names. The names
+// GOARCH-23: every use case has the same shape. Its logic exports only the function Decide and the type Output,
+// in logic.go, and a sibling logic_<topic>.go exports no name; Decide takes domain values (types of the domain of
+// any noun, or predeclared types, also as slices, maps and pointers) and returns Output and nothing else; and the
+// in files use of the logic files only those two names. The names
 // reserved to the use cases (Command, Request, Response, Port, Adapter, Decide, Output, and any *Output,
 // *Request, *Response, *Port or *Adapter) are never declared by a domain nor a helper, and are never a domain
 // type. A domain package that is not in the module cannot be checked and its types are taken as domain.
@@ -31,7 +32,10 @@ func TestGOARCH23(t *testing.T) {
 		"Decide takes stock.StockPort, which is not a domain type",
 		"place/in.go: the entry uses Input of the logic: only Decide and Output",
 		"internal/app/stock/stock.go:18: declares StockPort, a name reserved to the use cases",
-		"internal/app/order/place/pricing/pricing.go:12: declares Output, a name reserved to the use cases")
+		"internal/app/order/place/pricing/pricing.go:12: declares Output, a name reserved to the use cases",
+		"internal/app/stock/count/logic_audit.go:6: exports Threshold: the logic exports only Decide and Output, in "+
+			"logic.go, and a sibling of logic.go exports no name")
+	checkAccepts(t, checkLogicShape, "internal/app/stock/take/")
 }
 
 func checkLogicShape(m *module) []string {
@@ -44,19 +48,27 @@ func checkLogicShape(m *module) []string {
 		if logic == nil {
 			continue // GOARCH-3
 		}
-		for _, d := range logic.ast.Decls {
-			for _, id := range topLevelNames(d) {
-				if id.IsExported() && !allowed[id.Name] {
-					out = append(out, fmt.Sprintf("%s: exports %s: the logic exports %s", m.pos(logic, id), id.Name, only))
+		for _, f := range uc.all[kindLogic] {
+			for _, d := range f.ast.Decls {
+				for _, id := range topLevelNames(d) {
+					switch {
+					case !id.IsExported():
+					case f.sibling():
+						out = append(out, fmt.Sprintf("%s: exports %s: the logic exports %s, in logic.go, and a sibling "+
+							"of logic.go exports no name", m.pos(f, id), id.Name, only))
+					case !allowed[id.Name]:
+						out = append(out, fmt.Sprintf("%s: exports %s: the logic exports %s", m.pos(f, id), id.Name, only))
+					}
 				}
 			}
 		}
 		if fn := funcDecl(logic.ast, "Decide"); fn != nil {
 			out = append(out, logicSignature(m, logic, fn, domain)...)
 		}
-		if in := uc.files[kindIn]; in != nil {
-			for _, r := range m.localRefs(in, symbols([]*goFile{in, logic})) {
-				if r.decl == logic && !allowed[r.name] {
+		syms := symbols(append(append([]*goFile{}, uc.all[kindIn]...), uc.all[kindLogic]...))
+		for _, in := range uc.all[kindIn] {
+			for _, r := range m.localRefs(in, syms) {
+				if r.decl.kind == kindLogic && !allowed[r.name] {
 					out = append(out, fmt.Sprintf("%s: the entry uses %s of the logic: %s", in.rel, r.name, only))
 				}
 			}

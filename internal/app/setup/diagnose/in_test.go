@@ -61,14 +61,14 @@ func (f *fakePort) ResolveBase(_ context.Context, _ string, _ []string) error {
 func (f *fakePort) WriteState(_ context.Context, gitDir string) (string, error) {
 	return gitDir + "/state", nil
 }
-func (f *fakePort) ReadFiles(_ context.Context, _ []string) (map[string][]byte, map[string]error) {
-	s := setup.Setup{Home: "/h", Version: "0.2.0"}
-	return map[string][]byte{s.PluginManifest(): []byte(`{"name": "polix", "version": "0.2.0"}`)}, nil
-}
-func (f *fakePort) Plugin(_ context.Context) (map[string][]byte, error) { return nil, nil }
-func (f *fakePort) ClaudePlugins(_ context.Context) ([]byte, error) {
-	f.note("ClaudePlugins")
-	return nil, setup.ErrNoCLI
+func (f *fakePort) ClaudeHooks(_ context.Context, _ []string) map[string]setup.HooksFile { return nil }
+func (f *fakePort) CodexHooks(_ context.Context, _ []string) map[string]setup.HooksFile  { return nil }
+func (f *fakePort) CodexEnabled(_ context.Context, _ string) bool                        { return false }
+func (f *fakePort) ReadManifest(_ context.Context, _ string) (string, bool)              { return "0.2.0", true }
+func (f *fakePort) Plugin(_ context.Context) (map[string][]byte, error)                  { return nil, nil }
+func (f *fakePort) ClaudePlugin(_ context.Context) (bool, bool, string, error) {
+	f.note("ClaudePlugin")
+	return false, false, "", setup.ErrNoCLI
 }
 
 func TestShell(t *testing.T) {
@@ -76,7 +76,7 @@ func TestShell(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	res, err := run(context.Background(), port, Request{Version: "0.2.0", Now: now})
 	if err != nil || !res.Failed || port.saved.Latest != "0.3.0" ||
-		strings.Join(port.calls, " ") != "Latest LoadWorkflow ClaudePlugins" {
+		strings.Join(port.calls, " ") != "Latest LoadWorkflow ClaudePlugin" {
 		t.Fatalf("%+v %v %v %+v", res, err, port.calls, port.saved)
 	}
 	// The hook asks neither the releases nor Claude Code, and outside a repository nothing of one is read.
@@ -100,8 +100,9 @@ func TestShell(t *testing.T) {
 }
 
 func TestPrint(t *testing.T) {
+	fine := setup.Finding{Level: setup.LevelOK, Area: "git", Message: "fine"}
 	res := Response{Hook: true,
-		Findings: append(setup.Found(setup.LevelOK, "git", "fine"), setup.Found(setup.LevelFail, "hooks", "Stop does not run")...)}
+		Findings: []setup.Finding{fine, {Level: setup.LevelFail, Area: "hooks", Message: "Stop does not run"}}}
 	var b strings.Builder
 	res.print(&b)
 	if !strings.Contains(b.String(), "cuéntaselos al usuario") || !strings.Contains(b.String(), "- [fail] hooks: Stop does not run") ||
@@ -109,7 +110,7 @@ func TestPrint(t *testing.T) {
 		t.Fatal(b.String())
 	}
 	b.Reset()
-	res.Findings = setup.Found(setup.LevelOK, "git", "fine")
+	res.Findings = []setup.Finding{fine}
 	if res.print(&b); b.String() != "" {
 		t.Fatal("a healthy hook says nothing")
 	}

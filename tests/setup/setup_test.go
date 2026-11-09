@@ -1,6 +1,7 @@
 // Package setup tests the commands of setup end to end, composed as cmd/polix composes them: install, uninstall,
 // doctor and the hidden __refresh, on a machine of their own (internal/platform/testenv) with the fake CLIs of the
-// agents. The tests of each use case stay in its package, which never imports another use case.
+// agents. The tests of each use case stay in its package, which never imports another use case but the load use
+// cases, to build their loaders.
 package setup
 
 import (
@@ -10,19 +11,25 @@ import (
 	"strings"
 	"testing"
 
+	ruleload "github.com/mlophez/polix-ai/internal/app/rule/load"
 	"github.com/mlophez/polix-ai/internal/app/setup"
 	setupdiagnose "github.com/mlophez/polix-ai/internal/app/setup/diagnose"
 	setupinstall "github.com/mlophez/polix-ai/internal/app/setup/install"
 	setuprefresh "github.com/mlophez/polix-ai/internal/app/setup/refresh"
 	setupuninstall "github.com/mlophez/polix-ai/internal/app/setup/uninstall"
+	versionload "github.com/mlophez/polix-ai/internal/app/version/load"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
+	"github.com/mlophez/polix-ai/internal/platform/agentconf"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
 	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
-// runSetup runs the commands of setup as cmd/polix composes them, with their exit codes.
+// runSetup runs the commands of setup as cmd/polix composes them, with their exit codes, and the loaders built
+// once for the run as cmd/polix builds them.
 func runSetup(args ...string) (int, string, string) {
 	root := cli.Root("polix", "short", "long", "")
-	root.AddCommand(setupinstall.Command(), setupuninstall.Command(), setuprefresh.Command(), setupdiagnose.Command())
+	root.AddCommand(setupinstall.Command(), setupuninstall.Command(), setuprefresh.Command(),
+		setupdiagnose.Command(ruleload.Command(), versionload.Command(), workflowload.Command()))
 	var out, errb bytes.Buffer
 	code := cli.Run(root, args, bytes.NewReader(nil), &out, &errb)
 	return code, out.String(), errb.String()
@@ -57,8 +64,9 @@ func TestInstall(t *testing.T) {
 	if code, _, stderr := runSetup("install", "--agent", "cursor"); code != 1 || !strings.Contains(stderr, `polix: unknown agent "cursor" (claude, codex)`) {
 		t.Fatalf("unknown agent: %d %s", code, stderr)
 	}
+	polix := func(command string) bool { return setup.HookHandler{Command: command}.Polix() }
 	if code, _, _ := runSetup("uninstall", "--yes", "--dir", r); code != 0 ||
-		setup.Registered([]byte(testenv.Read(t, filepath.Join(r, ".claude", "settings.json")))) {
+		agentconf.Registers([]byte(testenv.Read(t, filepath.Join(r, ".claude", "settings.json"))), polix) {
 		t.Fatal("uninstall removes the hooks of the repository")
 	}
 	if _, err := os.Stat(filepath.Join(r, ".codex", "hooks.json")); err == nil {

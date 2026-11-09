@@ -46,34 +46,23 @@ func TestFolderValid(t *testing.T) {
 	}
 }
 
-// polix.yaml places the folders with rules.path, plans.path and reports.path, and reports a bad one by its key.
-func TestParseLayout(t *testing.T) {
-	data := "version: 1\nrules:\n  path: docs/rules\nplans: { path: docs/plans }\nreports: { path: docs/reports }\n"
-	w, err := Parse([]byte(data), "dev")
-	if err != nil {
-		t.Fatal(err)
+// The problems of the folders of a workflow name their key: rules.path, plans.path and reports.path.
+func TestWorkflowLayoutProblems(t *testing.T) {
+	cases := map[string]Workflow{
+		`rules.path "/etc" must be relative`:        {Version: 1, Rules: Rules{Path: "/etc"}},
+		`plans.path "../x" must be below the root`:  {Version: 1, Plans: Folder{Path: "../x"}},
+		`reports.path "*" must be a folder`:         {Version: 1, Reports: Folder{Path: "*"}},
+		`unknown key "dir" in plans (path)`:         {Version: 1, Plans: Folder{Keys: []string{"dir"}}},
+		`unknown key "folder" in rules (path, run)`: {Version: 1, Rules: Rules{Keys: []string{"folder"}}},
 	}
-	if w.RulesPath() != "docs/rules" || w.PlansPath() != "docs/plans" || w.ReportsPath() != "docs/reports" {
-		t.Fatalf("%q %q %q", w.RulesPath(), w.PlansPath(), w.ReportsPath())
-	}
-	if !w.Guidance.Layout {
-		t.Fatal("the layout is injected unless guidance.layout is false")
-	}
-	cases := map[string]string{
-		"version: 1\nrules: { path: /etc }\n":       `rules.path "/etc" must be relative`,
-		"version: 1\nplans: { path: ../x }\n":       `plans.path "../x" must be below the root`,
-		"version: 1\nreports: { path: \"*\" }\n":    `reports.path "*" must be a folder`,
-		"version: 1\nplans: { dir: x }\n":           `unknown key "dir" in plans (path)`,
-		"version: 1\nrules: { folder: x }\n":        `unknown key "folder" in rules (path, run)`,
-		"version: 1\nguidance: { layout: false }\n": "",
-	}
-	for data, want := range cases {
-		w, err := Parse([]byte(data), "dev")
-		switch {
-		case want == "" && (err != nil || w.Guidance.Layout):
-			t.Errorf("%q: %v, layout %v", data, err, w.Guidance.Layout)
-		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
-			t.Errorf("%q: got %v, want %q", data, err, want)
+	for want, w := range cases {
+		if err := w.Valid(); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: got %v", want, err)
 		}
+	}
+	w := Workflow{Version: 1, Rules: Rules{Path: "docs/rules"}, Plans: Folder{Path: "docs/plans"},
+		Reports: Folder{Path: "docs/reports"}}
+	if err := w.Valid(); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -24,19 +24,30 @@ type Output struct {
 func Decide(running string, found bool, wfErr error, rulesPath string, rules []rule.Rule, invalid []string,
 	rulesErr error, missing map[string]bool, baseErr error) Output {
 	out := Output{Found: found, Rules: len(rules), RulesPath: rulesPath}
-	problems, newer := setup.WorkflowProblems(wfErr)
+	s := setup.Setup{Version: running}
+	if err := s.Valid(); err != nil {
+		out.Problems = []string{err.Error()}
+		return out
+	}
+	i := setup.Inspection{Setup: s, Found: found, WorkflowErr: wfErr, Rules: rules, Invalid: invalid,
+		RulesErr: rulesErr, Missing: missing, BaseErr: baseErr}
+	if err := i.Valid(); err != nil {
+		out.Problems = []string{err.Error()}
+		return out
+	}
+	problems, newer := i.WorkflowProblems()
 	if rulesErr != nil {
 		problems = append(problems, rulesErr.Error())
 	} else {
-		problems = append(problems, setup.RuleProblems(rules, invalid, missing)...)
+		problems = append(problems, i.RuleProblems()...)
 	}
 	if len(problems) > 0 {
 		out.Problems = problems
 		if newer {
-			out.Hint = setup.NewerHint(running)
+			out.Hint = i.NewerHint()
 		}
 		return out
 	}
-	out.Warning = setup.BaseWarning(rules, baseErr)
+	out.Warning = i.BaseWarning()
 	return out
 }

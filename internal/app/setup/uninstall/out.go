@@ -13,6 +13,7 @@ import (
 
 	"charm.land/huh/v2"
 
+	"github.com/mlophez/polix-ai/internal/platform/agentconf"
 	"github.com/mlophez/polix-ai/internal/platform/file"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 	"github.com/mlophez/polix-ai/internal/platform/proc"
@@ -59,11 +60,11 @@ func (a Adapter) Confirm(_ context.Context, summary string) error {
 func (a Adapter) UnregisterPlugin(ctx context.Context, s setup.Setup, agent string) ([]setup.Change, error) {
 	if agent == setup.Codex {
 		config, _, _ := file.Read(s.CodexConfigFile())
-		if _, err := exec.LookPath("codex"); err == nil && setup.CodexEnabled(config) {
+		if _, err := exec.LookPath("codex"); err == nil && agentconf.CodexEnabled(config, setup.PluginID) {
 			_, _ = a.run(ctx, "codex", "plugin", "marketplace", "remove", setup.Name)
 		}
 		return a.editFile(s.CodexConfigFile(), func(data []byte, existed bool) ([]byte, string, error) {
-			data, action := setup.CodexPlugin(data, existed, false)
+			data, action := agentconf.CodexPlugin(data, existed, setup.PluginID, false)
 			return data, action, nil
 		})
 	}
@@ -78,14 +79,17 @@ func (a Adapter) UnregisterPlugin(ctx context.Context, s setup.Setup, agent stri
 		return nil, err
 	}
 	if outcome == "ok" {
-		return setup.Changes("unregistered", setup.PluginID+" in Claude Code")
+		return setup.Changes{}.Add("unregistered", setup.PluginID+" in Claude Code")
 	}
 	return nil, nil
 }
 
-// UnregisterHooks removes the hooks of polix from path, and the file when polix was all it held.
+// UnregisterHooks removes the hooks of polix from path (agentconf.MergeHooks with none to write), and the file
+// when polix was all it held.
 func (a Adapter) UnregisterHooks(_ context.Context, path string) ([]setup.Change, error) {
-	return a.editFile(path, setup.UnregisterHooks)
+	return a.editFile(path, func(data []byte, existed bool) ([]byte, string, error) {
+		return agentconf.MergeHooks(data, existed, nil, setup.HookEvents, a.polix)
+	})
 }
 
 // RemovePlugin removes the local marketplace, and ~/.polix when nothing else is left in it.
@@ -97,7 +101,7 @@ func (a Adapter) RemovePlugin(_ context.Context, dir string) ([]setup.Change, er
 		return nil, err
 	}
 	_ = os.Remove(filepath.Dir(dir))
-	return setup.Changes("removed", dir)
+	return setup.Changes{}.Add("removed", dir)
 }
 
 // editFile reads path, asks edit for its new content and what that does to it, and carries it out: nothing,
@@ -121,13 +125,19 @@ func (a Adapter) editFile(path string, edit func([]byte, bool) ([]byte, string, 
 	if err != nil {
 		return nil, err
 	}
-	return setup.Changes(action, path)
+	return setup.Changes{}.Add(action, path)
 }
 
-// claude runs a command of the CLI of Claude Code with --json and reads its answer (setup.ClaudeAnswer).
+// claude runs a command of the CLI of Claude Code with --json and reads its answer (agentconf.ClaudeAnswer).
 func (a Adapter) claude(ctx context.Context, tolerated []string, args ...string) (string, string, string, error) {
 	out, err := a.run(ctx, "claude", args...)
-	return setup.ClaudeAnswer(args, out, err, tolerated)
+	return agentconf.ClaudeAnswer(args, out, err, tolerated)
+}
+
+// polix reports whether a hook command is one polix registers (setup.HookHandler.Polix).
+func (a Adapter) polix(command string) bool {
+	h := setup.HookHandler{Command: command}
+	return h.Valid() == nil && h.Polix()
 }
 
 // run runs the CLI of an agent within a minute (proc.Stdout).

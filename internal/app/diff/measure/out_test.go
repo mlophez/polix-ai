@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/diff"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 )
 
@@ -48,7 +49,7 @@ func adapterOf(t *testing.T) (Adapter, func(rel, content string)) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Adapter{Repo: repo}, write
+	return Adapter{Repo: repo, Workflow: workflowload.Command()}, write
 }
 
 // The adapter loads the weights and measures the uncommitted diff and a commit.

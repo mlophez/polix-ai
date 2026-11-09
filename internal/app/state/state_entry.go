@@ -62,7 +62,7 @@ var hashed = []string{OutcomePassed, OutcomeBlocked}
 // Valid tells why the entry is not valid to be appended: it has no kind or a negative line, it carries the fact or
 // the rule of the lines an older polix wrote, or it is observed without a known outcome, or without the hash its
 // outcome is about. A kind this polix does not know is accepted,
-// as a log may hold lines of a newer polix. The lines read from the log are kept whatever they hold (see Parse).
+// as a log may hold lines of a newer polix. The lines read from the log are kept whatever they hold (see Load).
 func (e Entry) Valid() error {
 	var errs []error
 	if e.Kind == "" {

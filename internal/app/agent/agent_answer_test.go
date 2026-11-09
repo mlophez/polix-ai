@@ -34,20 +34,3 @@ func TestAnswerValid(t *testing.T) {
 		t.Fatal("Valid")
 	}
 }
-
-// A block goes to stderr with exit 2, its contexts after the reasons; otherwise warnings go to stderr and the
-// contexts to the JSON of the events that take it.
-func TestAnswerRender(t *testing.T) {
-	stdout, stderr, code := Answer{}.Refuse("a").Refuse("b").Inform("c").render("PreToolUse", claudeContextEvents)
-	if code != ExitBlock || stdout != "" || stderr != "a\n\nb\n\nc\n" {
-		t.Fatalf("block: %q %q %d", stdout, stderr, code)
-	}
-	stdout, stderr, code = Answer{}.Inform("x<y").Inform("z").Warn("w").render("PreToolUse", claudeContextEvents)
-	want := `{"hookSpecificOutput":{"additionalContext":"x\u003cy\n\nz","hookEventName":"PreToolUse"}}` + "\n"
-	if code != ExitOK || stdout != want || stderr != "polix: w\n" {
-		t.Fatalf("context: %q %q %d", stdout, stderr, code)
-	}
-	if stdout, _, _ := (Answer{}).Inform("x").render("Stop", claudeContextEvents); stdout != "" {
-		t.Fatalf("Stop takes no context: %q", stdout)
-	}
-}

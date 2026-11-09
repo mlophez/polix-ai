@@ -73,18 +73,43 @@ type Port interface {
 	ResolveBase(ctx context.Context, root string, candidates []string) error
 	// WriteState checks that the folder of the state, below gitDir, can be written, and returns it.
 	WriteState(ctx context.Context, gitDir string) (string, error)
-	// ReadFiles returns the content of the files of paths that exist, and why the others that exist cannot be read.
-	ReadFiles(ctx context.Context, paths []string) (map[string][]byte, map[string]error)
+	// ClaudeHooks returns the settings of Claude Code of paths that exist, decoded: their hooks, or why they cannot
+	// be read or are not JSON, an empty file included.
+	ClaudeHooks(ctx context.Context, paths []string) map[string]setup.HooksFile
+	// CodexHooks returns the hooks files of Codex of paths that exist, decoded: their hooks, or why they cannot be
+	// read or are not JSON; an empty file has no hooks.
+	CodexHooks(ctx context.Context, paths []string) map[string]setup.HooksFile
+	// CodexEnabled reports whether the configuration of Codex at path enables the plugin polix.
+	CodexEnabled(ctx context.Context, path string) bool
+	// ReadManifest returns the version of the manifest of the plugin at path, and whether it is the plugin polix:
+	// false when it does not exist, cannot be read or is another one.
+	ReadManifest(ctx context.Context, path string) (string, bool)
 	// Plugin returns the files of the plugin embedded in the binary, by path below polix/.
 	Plugin(ctx context.Context) (map[string][]byte, error)
-	// ClaudePlugins returns what `claude plugin list --json` printed; setup.ErrNoCLI without the CLI.
-	ClaudePlugins(ctx context.Context) ([]byte, error)
+	// ClaudePlugin asks `claude plugin list --json` whether the plugin polix is installed for the user, whether it
+	// is enabled, and the folder Claude Code reads it from; setup.ErrNoCLI without the CLI.
+	ClaudePlugin(ctx context.Context) (bool, bool, string, error)
+}
+
+// repository is what the shell reads through the port about the repository, inside one with git.
+type repository struct {
+	wf       workflow.Workflow
+	found    bool
+	wfErr    error
+	rules    []rule.Rule
+	invalid  []string
+	rulesErr error
+	missing  map[string]bool
+	runnable map[string]error
+	baseErr  error
+	stateDir string
+	stateErr error
 }
 
 // Command is the command `polix doctor`, the entry of the use case DiagnoseSetup: it turns the flags
-// into a Request, injects the adapter as the port, runs the shell and serializes the
-// Response to the console.
-func Command() *cobra.Command {
+// into a Request, injects the adapter with the loaders rules, cache and loadWorkflow as the port, runs the shell and
+// serializes the Response to the console.
+func Command(rules rule.Load, cache version.Load, loadWorkflow workflow.Load) *cobra.Command {
 	var req Request
 	c := &cobra.Command{
 		Use:   "doctor",
@@ -95,7 +120,8 @@ func Command() *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			req.Version, req.Now = build.Current(), time.Now()
-			res, err := run(c.Context(), Adapter{OS: runtime.GOOS, Look: exec.LookPath}, req)
+			res, err := run(c.Context(), Adapter{OS: runtime.GOOS, Look: exec.LookPath, Rules: rules, Cache: cache,
+				Workflow: loadWorkflow}, req)
 			if err != nil {
 				return err
 			}
@@ -114,75 +140,100 @@ func Command() *cobra.Command {
 
 // run is the shell, from request to response: it reads through the port everything doctor looks at (the
 // latest release only for a release build without --hook nor --offline, saving what it saw; inside a repository
-// its workflow, rules, checks, base and state; Claude Code only without --hook and with the plugin of this binary), calls the logic once and builds
-// the response.
+// its workflow, rules, checks, base and state; the hooks files and the configuration of the agents, decoded; the
+// plugin; Claude Code only without --hook and with the plugin of this binary), calls the logic once and builds the
+// response.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	home := port.Home(ctx)
 	exe, exeErr := port.Executable(ctx)
-	cache := port.LoadCache(ctx)
-	latest, latestErr := cache.Latest, error(nil)
-	running, versionErr := version.Parse(req.Version)
-	if exeErr == nil && !req.Hook && !req.Offline && versionErr == nil && running.IsRelease() {
-		asked, err := port.Latest(ctx)
-		latestErr = err
-		if err == nil {
-			latest = asked
-			// The time of the check is only saved when this binary is the latest (Cache.Saw).
-			_ = port.SaveCache(ctx, cache.Saw(req.Now, req.Version, asked))
-		}
-	}
+	latest, latestErr := releases(ctx, port, req, exeErr)
 	path, pathErr := port.LookPath(ctx, "polix")
 	_, gitErr := port.LookPath(ctx, "git")
 	root, gitDir, repoErr := port.OpenRepo(ctx, req.Dir)
-	var wf workflow.Workflow
-	var found bool
-	var wfErr, rulesErr, baseErr, stateErr error
-	var rules []rule.Rule
-	var invalid []string
-	var stateDir string
-	missing, runnable := map[string]bool{}, map[string]error{}
+	var repo repository
 	if gitErr == nil && repoErr == nil {
-		wf, found, wfErr = port.LoadWorkflow(ctx, root, req.Version)
-		rules, invalid, rulesErr = port.LoadRules(ctx, root, wf.RulesPath())
-		for _, r := range rules {
-			if r.HasCheck() {
-				missing[r.Check] = port.Missing(ctx, root, r.Check)
-				runnable[r.Check] = port.Runnable(ctx, root, r.Check)
-			}
-		}
-		baseErr = port.ResolveBase(ctx, root, wf.BaseBranches())
-		stateDir, stateErr = port.WriteState(ctx, gitDir)
+		repo = inspectRepository(ctx, port, req, root, gitDir)
 	}
 	s := setup.Setup{Home: home, Root: root, Agents: []string{setup.Claude, setup.Codex}, Version: req.Version}
 	if err := s.Valid(); err != nil {
 		return Response{}, err
 	}
-	paths := append(s.ClaudeSettingsFiles(), s.CodexHooksFiles()...)
-	files, fileErrs := port.ReadFiles(ctx, append(paths, s.CodexConfigFile(), s.PluginManifest()))
-	embedded, err := port.Plugin(ctx)
+	claudeHooks, codexHooks := port.ClaudeHooks(ctx, s.ClaudeSettingsFiles()), port.CodexHooks(ctx, s.CodexHooksFiles())
+	codexEnabled := port.CodexEnabled(ctx, s.CodexConfigFile())
+	plugin, err := readPlugin(ctx, port, req, s)
 	if err != nil {
 		return Response{}, err
 	}
-	var claude []byte
-	var claudeErr error
-	plugin := setup.Plugin{Manifest: files[s.PluginManifest()], Embedded: embedded, Version: req.Version}
-	if err := plugin.Valid(); err != nil {
-		return Response{}, err
-	}
-	if !req.Hook && s.Home != "" && plugin.Current() {
-		claude, claudeErr = port.ClaudePlugins(ctx)
-	}
+	installed, enabled, folder, claudeErr := askClaude(ctx, port, req, s, plugin)
 	i := setup.Inspection{Setup: s, Exe: exe, ExeErr: exeErr, Latest: latest, LatestErr: latestErr, Path: path,
-		PathErr: pathErr, SamePath: port.SameFile(ctx, path, exe), GitErr: gitErr, RepoErr: repoErr, Workflow: wf,
-		Found: found, WorkflowErr: wfErr, Rules: rules, Invalid: invalid, RulesErr: rulesErr, Missing: missing,
-		Runnable: runnable, BaseErr: baseErr, Files: files, FileErrs: fileErrs, Embedded: embedded, Claude: claude,
-		ClaudeErr: claudeErr, SameFolder: port.SameFile(ctx, setup.ClaudeFolder(claude), s.PluginDir()),
-		StateDir: stateDir, StateErr: stateErr}
+		PathErr: pathErr, SamePath: port.SameFile(ctx, path, exe), GitErr: gitErr, RepoErr: repoErr,
+		Workflow: repo.wf, Found: repo.found, WorkflowErr: repo.wfErr, Rules: repo.rules, Invalid: repo.invalid,
+		RulesErr: repo.rulesErr, Missing: repo.missing, Runnable: repo.runnable, BaseErr: repo.baseErr,
+		ClaudeHooks: claudeHooks, CodexHooks: codexHooks, CodexEnabled: codexEnabled, Plugin: plugin,
+		ClaudeInstalled: installed, ClaudeEnabled: enabled, ClaudeFolder: folder, ClaudeErr: claudeErr,
+		SameFolder: port.SameFile(ctx, folder, s.PluginDir()), StateDir: repo.stateDir, StateErr: repo.stateErr}
 	if err := i.Valid(); err != nil {
 		return Response{}, err
 	}
 	out := Decide(i, req.Hook)
 	return Response{Hook: req.Hook, Findings: out.Findings, Failed: out.Failed}, nil
+}
+
+// releases returns the latest release, known from the cache, and asked to the releases only by a release build
+// that found itself, without --hook nor --offline: then what it saw is saved, and the error of asking returned.
+func releases(ctx context.Context, port Port, req Request, exeErr error) (string, error) {
+	cache := port.LoadCache(ctx)
+	running, versionErr := versionText(req.Version).parse()
+	if exeErr == nil && !req.Hook && !req.Offline && versionErr == nil && running.IsRelease() {
+		asked, err := port.Latest(ctx)
+		if err != nil {
+			return cache.Latest, err
+		}
+		// The time of the check is only saved when this binary is the latest (Cache.Saw).
+		_ = port.SaveCache(ctx, cache.Saw(req.Now, req.Version, asked))
+		return asked, nil
+	}
+	return cache.Latest, nil
+}
+
+// inspectRepository reads the repository of root: its workflow, its rules, whether each check exists and can run,
+// whether a base branch exists, and whether the state below gitDir can be written.
+func inspectRepository(ctx context.Context, port Port, req Request, root, gitDir string) repository {
+	r := repository{missing: map[string]bool{}, runnable: map[string]error{}}
+	r.wf, r.found, r.wfErr = port.LoadWorkflow(ctx, root, req.Version)
+	r.rules, r.invalid, r.rulesErr = port.LoadRules(ctx, root, r.wf.RulesPath())
+	for _, rl := range r.rules {
+		if rl.HasCheck() {
+			r.missing[rl.Check] = port.Missing(ctx, root, rl.Check)
+			r.runnable[rl.Check] = port.Runnable(ctx, root, rl.Check)
+		}
+	}
+	r.baseErr = port.ResolveBase(ctx, root, r.wf.BaseBranches())
+	r.stateDir, r.stateErr = port.WriteState(ctx, gitDir)
+	return r
+}
+
+// readPlugin returns the plugin embedded in the binary against the one written in the local marketplace of s.
+func readPlugin(ctx context.Context, port Port, req Request, s setup.Setup) (setup.Plugin, error) {
+	embedded, err := port.Plugin(ctx)
+	if err != nil {
+		return setup.Plugin{}, err
+	}
+	manifest, written := port.ReadManifest(ctx, s.PluginManifest())
+	p := setup.Plugin{Written: written, Manifest: manifest, Embedded: embedded, Version: req.Version}
+	if err := p.Valid(); err != nil {
+		return setup.Plugin{}, err
+	}
+	return p, nil
+}
+
+// askClaude asks Claude Code for the plugin polix (installed, enabled, the folder it reads it from), only without
+// --hook, with a home, and when the plugin written is the one of this binary.
+func askClaude(ctx context.Context, port Port, req Request, s setup.Setup, p setup.Plugin) (bool, bool, string, error) {
+	if req.Hook || s.Home == "" || !p.Current() {
+		return false, false, "", nil
+	}
+	return port.ClaudePlugin(ctx)
 }
 
 // print serializes the response to stdout: one line per finding; with --hook only the problems, in a paragraph

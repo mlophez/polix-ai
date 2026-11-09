@@ -3,6 +3,7 @@ package uninstall
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/setup"
@@ -40,5 +41,18 @@ func TestShell(t *testing.T) {
 	res, err = run(context.Background(), port, Request{Version: "1", User: true})
 	if err == nil || len(res.Changes) != 1 || len(port.calls) != 1 {
 		t.Fatalf("the first error stops it: %+v %v %v", res, err, port.calls)
+	}
+}
+
+func TestParseAgents(t *testing.T) {
+	req := Request{Version: "1"}
+	if err := req.parseAgents([]string{" Claude", "codex", "claude"}); err != nil ||
+		!slices.Equal(req.Agents, []string{setup.Claude, setup.Codex}) {
+		t.Fatalf("%v %v", req.Agents, err)
+	}
+	req = Request{Version: "1"}
+	if err := req.parseAgents([]string{"claude", "cursor"}); err == nil || err.Error() != `unknown agent "cursor" (claude, codex)` ||
+		req.Agents != nil {
+		t.Fatalf("unknown agent: %v", err)
 	}
 }

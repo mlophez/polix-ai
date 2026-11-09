@@ -13,6 +13,9 @@ type Change struct {
 	Action string // one of Actions
 }
 
+// Changes are the changes of a run of install, uninstall or a refresh, in the order they happened.
+type Changes []Change
+
 // ErrCancelled is the error of a person that did not confirm an install or an uninstall.
 var ErrCancelled = errors.New("cancelled")
 
@@ -36,9 +39,10 @@ func (c Change) Todo() bool { return c.Action == "todo" }
 // Removal reports whether the change took something away.
 func (c Change) Removal() bool { return c.Action == "removed" || c.Action == "unregistered" }
 
-// Changes returns the change of each path with action, validated.
-func Changes(action string, paths ...string) ([]Change, error) {
-	var out []Change
+// Add returns a copy of cs followed by the change of each path with action, validated; nil when there is none.
+func (cs Changes) Add(action string, paths ...string) (Changes, error) {
+	var out Changes
+	out = append(out, cs...)
 	for _, p := range paths {
 		ch := Change{Path: p, Action: action}
 		if err := ch.Valid(); err != nil {
@@ -49,18 +53,18 @@ func Changes(action string, paths ...string) ([]Change, error) {
 	return out, nil
 }
 
-// Synced returns the changes of a folder synced to the files of the plugin: created, updated and removed paths.
-func Synced(created, updated, removed []string) ([]Change, error) {
-	var out []Change
+// Synced returns a copy of cs followed by the changes of a folder synced to the files of the plugin: created, updated and
+// removed paths.
+func (cs Changes) Synced(created, updated, removed []string) (Changes, error) {
+	out := cs
 	for _, c := range []struct {
 		action string
 		paths  []string
 	}{{"created", created}, {"updated", updated}, {"removed", removed}} {
-		ch, err := Changes(c.action, c.paths...)
-		if err != nil {
+		var err error
+		if out, err = out.Add(c.action, c.paths...); err != nil {
 			return nil, err
 		}
-		out = append(out, ch...)
 	}
 	return out, nil
 }

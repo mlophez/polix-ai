@@ -11,7 +11,6 @@ import (
 
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
-	"github.com/mlophez/polix-ai/internal/platform/file"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 	"github.com/mlophez/polix-ai/internal/platform/proc"
 )
@@ -19,8 +18,10 @@ import (
 // Adapter implements Port on the real disk, git and processes of a repository. The entry fills
 // it and passes it as the port; there is no constructor.
 type Adapter struct {
-	Repo *git.Repo // the repository whose rules are checked
-	Log  io.Writer // where RunCheck reports each invocation, its rules, outcome and duration; nil reports nothing
+	Repo     *git.Repo     // the repository whose rules are checked
+	Log      io.Writer     // where RunCheck reports each invocation, its rules, outcome and duration; nil reports nothing
+	Rules    rule.Load     // the loader of the rules (internal/app/rule/load), which cmd/polix builds once
+	Workflow workflow.Load // the loader of polix.yaml (internal/app/workflow/load), which cmd/polix builds once too
 }
 
 // timeout bounds one check, within the deadline of the caller.
@@ -29,30 +30,28 @@ const timeout = 5 * time.Minute
 // logIDs is how many ids of the rules of an invocation the log names before it only counts them.
 const logIDs = 5
 
-// LoadRules reads the rules from the yaml files of the folder dir (rule.ParseFiles), without retired.yaml, ordered by
-// id. Without the folder there are no rules.
-func (a Adapter) LoadRules(_ context.Context, dir string) ([]rule.Rule, error) {
-	files, err := file.ReadDir(filepath.Join(a.Repo.Root, filepath.FromSlash(dir)), ".yaml")
-	if err != nil {
-		return nil, err
+// LoadRules loads the rules of the folder dir of the repository through the loader of the rules, without
+// retired.yaml, ordered by id, and stops where a strict reading does (rule.Loaded.Strict): at the first invalid rule
+// of the files in the order of their names, or at a file that cannot be read or is not yaml. Without the folder
+// there are no rules.
+func (a Adapter) LoadRules(ctx context.Context, dir string) ([]rule.Rule, error) {
+	loaded := a.Rules(ctx, a.Repo.Root, dir)
+	if loaded.Strict != nil {
+		return nil, loaded.Strict
 	}
-	return rule.ParseFiles(dir, files)
+	return loaded.Rules, nil
 }
 
-// LoadWorkflow reads polix.yaml with the domain of workflow, as a use case of workflow would break the vertical
-// slices. Without polix.yaml it is the default workflow; a polix.yaml that cannot be read, cannot be parsed or
-// requires a newer polix is an error, never a silent default. The problems of a workflow that parses (Invalid)
-// are not errors here: the shell stops on those of its runners, and polix config check reports the rest.
-func (a Adapter) LoadWorkflow(_ context.Context, running string) (workflow.Workflow, error) {
-	data, _, err := file.Read(filepath.Join(a.Repo.Root, workflow.File))
-	if err != nil {
-		return workflow.Workflow{}, err
+// LoadWorkflow loads polix.yaml of the repository through the loader of polix.yaml. Without polix.yaml it is the
+// default workflow; a polix.yaml that cannot be read, cannot be parsed or requires a newer polix is an error, never
+// a silent default. The problems of a workflow that parses (Invalid) are not errors here: the shell stops on those
+// of its runners, and polix config check reports the rest.
+func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, error) {
+	loaded := a.Workflow(ctx, a.Repo.Root, running)
+	if _, invalid := errors.AsType[workflow.Invalid](loaded.Err); loaded.Err != nil && !invalid {
+		return workflow.Workflow{}, loaded.Err
 	}
-	wf, err := workflow.Parse(data, running)
-	if _, invalid := errors.AsType[workflow.Invalid](err); err != nil && !invalid {
-		return workflow.Workflow{}, err
-	}
-	return wf, nil
+	return loaded.Workflow, nil
 }
 
 // Changed asks git for the files changed against the first of candidates that exists, locally or on origin. When

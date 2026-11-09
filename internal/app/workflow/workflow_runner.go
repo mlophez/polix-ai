@@ -41,6 +41,15 @@ type Invocation struct {
 	Checks []int
 }
 
+// ruleCheck is a check given to Workflow.CheckCommands: the path of the check, as given, and the id of its rule.
+type ruleCheck struct {
+	file string
+	id   string
+}
+
+// ruleChecks are the checks given to Workflow.CheckCommands, in their order.
+type ruleChecks []ruleCheck
+
 // RunnerPlaceholders are the placeholders the argv of a runner may use: the singular ones, then the plural ones.
 var RunnerPlaceholders = []string{"file", "dir", "id", "name", "files", "dirs", "names"}
 
@@ -107,15 +116,17 @@ func (w Workflow) CheckCommands(files, ids []string) []Invocation {
 	var argvs [][]string
 	var groups [][]int
 	keys := map[string]int{}
+	checks := make(ruleChecks, len(files))
 	for i, f := range files {
-		check := runnerCheck(f)
+		checks[i] = ruleCheck{file: f, id: ids[i]}
+		check := checks[i].clean()
 		at := slices.IndexFunc(w.Rules.Run, func(r Runner) bool { return glob.Path(r.Glob, check) })
 		if at < 0 {
 			argvs, groups = append(argvs, nil), append(groups, []int{i})
 			continue
 		}
-		repl := strings.NewReplacer("{file}", check, "{dir}", runnerDir(check), "{id}", ids[i],
-			"{name}", runnerName(ids[i]))
+		repl := strings.NewReplacer("{file}", check, "{dir}", checks[i].dir(), "{id}", ids[i],
+			"{name}", checks[i].name())
 		argv := make([]string, len(w.Rules.Run[at].Argv))
 		for k, a := range w.Rules.Run[at].Argv {
 			argv[k] = repl.Replace(a)
@@ -129,8 +140,8 @@ func (w Workflow) CheckCommands(files, ids []string) []Invocation {
 		argvs, groups = append(argvs, argv), append(groups, []int{i})
 	}
 	out := make([]Invocation, 0, len(groups))
-	for g, checks := range groups {
-		inv := Invocation{Argv: runnerPlurals(argvs[g], checks, files, ids), Checks: checks}
+	for g, positions := range groups {
+		inv := Invocation{Argv: checks.plurals(argvs[g], positions), Checks: positions}
 		if err := inv.Valid(); err != nil {
 			continue // never happens: every group has its checks and a runner when it has several
 		}
@@ -139,20 +150,20 @@ func (w Workflow) CheckCommands(files, ids []string) []Invocation {
 	return out
 }
 
-// runnerPlurals expands the plural placeholders of argv with the checks at positions: {names} joined with |,
-// {files} and {dirs} into one argument per distinct value, in order. A nil argv stays nil.
-func runnerPlurals(argv []string, positions []int, files, ids []string) []string {
+// plurals expands the plural placeholders of argv with the checks at positions: {names} joined with |, {files} and
+// {dirs} into one argument per distinct value, in order. A nil argv stays nil.
+func (cs ruleChecks) plurals(argv []string, positions []int) []string {
 	if argv == nil {
 		return nil
 	}
-	var names, checks, dirs []string
+	var names, files, dirs []string
 	for _, p := range positions {
-		check := runnerCheck(files[p])
-		names = append(names, runnerName(ids[p]))
-		if !slices.Contains(checks, check) {
-			checks = append(checks, check)
+		check := cs[p].clean()
+		names = append(names, cs[p].name())
+		if !slices.Contains(files, check) {
+			files = append(files, check)
 		}
-		if d := runnerDir(check); !slices.Contains(dirs, d) {
+		if d := cs[p].dir(); !slices.Contains(dirs, d) {
 			dirs = append(dirs, d)
 		}
 	}
@@ -160,7 +171,7 @@ func runnerPlurals(argv []string, positions []int, files, ids []string) []string
 	for _, a := range argv {
 		switch a {
 		case "{files}":
-			out = append(out, checks...)
+			out = append(out, files...)
 		case "{dirs}":
 			out = append(out, dirs...)
 		default:
@@ -170,14 +181,14 @@ func runnerPlurals(argv []string, positions []int, files, ids []string) []string
 	return out
 }
 
-// runnerCheck cleans the path of a check: slashes, no ./ prefix.
-func runnerCheck(check string) string {
-	return strings.TrimPrefix(path.Clean(strings.ReplaceAll(check, `\`, "/")), "./")
+// clean is the path of the check cleaned: slashes, no ./ prefix.
+func (c ruleCheck) clean() string {
+	return strings.TrimPrefix(path.Clean(strings.ReplaceAll(c.file, `\`, "/")), "./")
 }
 
-// runnerDir is the folder of a clean check as {dir} gives it: ./<folder>, ./ at the root, absolute as it is.
-func runnerDir(check string) string {
-	dir := path.Dir(check)
+// dir is the folder of the clean check as {dir} gives it: ./<folder>, ./ at the root, absolute as it is.
+func (c ruleCheck) dir() string {
+	dir := path.Dir(c.clean())
 	switch {
 	case dir == ".":
 		return "./"
@@ -187,19 +198,19 @@ func runnerDir(check string) string {
 	return dir
 }
 
-// runnerName is the id with only its letters and digits, as {name} gives it.
-func runnerName(id string) string {
-	return strings.Map(func(c rune) rune {
-		if unicode.IsLetter(c) || unicode.IsDigit(c) {
-			return c
+// name is the id of the rule with only its letters and digits, as {name} gives it.
+func (c ruleCheck) name() string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
 		}
 		return -1
-	}, id)
+	}, c.id)
 }
 
 func (v *validator) rules(r Rules) {
 	v.unknownKeys(0, "rules", r.Keys, []string{"path", "run"})
-	if p := layoutProblem(r.Path); p != "" {
+	if p := folderPath(r.Path).problem(); p != "" {
 		v.add(0, "rules.path %q %s", r.Path, p)
 	}
 	for _, run := range r.Run {
@@ -217,10 +228,10 @@ func (v *validator) runner(r Runner) {
 	for _, a := range r.Argv {
 		for _, m := range placeholder.FindAllStringSubmatch(a, -1) {
 			switch {
-			case !contains(RunnerPlaceholders, m[1]):
+			case !slices.Contains(RunnerPlaceholders, m[1]):
 				v.add(r.Line, "rules.run %q: unknown placeholder {%s} (%s)", r.Glob, m[1],
 					strings.Join(RunnerPlaceholders, ", "))
-			case contains(runnerWhole, m[1]) && a != m[0]:
+			case slices.Contains(runnerWhole, m[1]) && a != m[0]:
 				v.add(r.Line, "rules.run %q: {%s} must be a whole argument, not part of %q", r.Glob, m[1], a)
 			}
 		}

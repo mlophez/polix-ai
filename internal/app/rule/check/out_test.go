@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/rule"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 	"github.com/mlophez/polix-ai/internal/platform/proc"
 )
@@ -56,70 +58,81 @@ func adapterOf(t *testing.T, files map[string]string) Adapter {
 	return Adapter{Repo: repo}
 }
 
-// Rules load from a root whose name a glob would read as a pattern, ordered by id and without the retired ones.
-func TestAdapterLoadRulesFromGlobLikeRoot(t *testing.T) {
-	name := "proj[1]*?"
-	if runtime.GOOS == "windows" {
-		name = "proj[1]" // * and ? are not allowed in names on Windows
+// loaderOf is a loader of the rules that answers loaded, as the one of internal/app/rule/load that cmd/polix builds
+// would for a folder, and records the root and the folder of each call.
+func loaderOf(loaded rule.Loaded, asked *[]string) rule.Load {
+	return func(_ context.Context, root, dir string) rule.Loaded {
+		*asked = append(*asked, root+" "+dir)
+		return loaded
 	}
-	root := filepath.Join(t.TempDir(), name)
-	write(t, root, map[string]string{
-		"ai/rules/b.yaml":              "rules:\n  - id: B-1\n    description: b\n",
-		"ai/rules/a.yaml":              "rules:\n  - id: A-1\n    description: a\n",
-		"ai/rules/" + rule.RetiredFile: "rules:\n  - id: OLD-1\n    description: old\n",
-		"ai/rules/notes.md":            "not a rule",
-		"ai/rules/sub/nested.yaml":     "rules:\n  - id: N-1\n    description: n\n",
-	})
-	a := Adapter{Repo: &git.Repo{Root: root}}
+}
+
+// Rules load through the loader, from the root of the repository and the folder asked, ordered by id; the reading
+// of the files is tested in internal/app/rule/load.
+func TestAdapterLoadRules(t *testing.T) {
+	var asked []string
+	rules := []rule.Rule{{ID: "A-1", Description: "a", File: "ai/rules/a.yaml"}, {ID: "B-1", Description: "b"}}
+	a := Adapter{Repo: &git.Repo{Root: "/repo"}, Rules: loaderOf(rule.Loaded{Rules: rules, Exists: true}, &asked)}
 	all, err := a.LoadRules(context.Background(), "ai/rules")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != 2 || all[0].ID != "A-1" || all[1].ID != "B-1" || all[0].File != "ai/rules/a.yaml" {
-		t.Fatalf("LoadRules = %+v", all)
+	if len(all) != 2 || all[0].ID != "A-1" || all[1].ID != "B-1" || !slices.Equal(asked, []string{"/repo ai/rules"}) {
+		t.Fatalf("LoadRules = %+v, asked %v", all, asked)
 	}
 }
 
 func TestAdapterLoadRulesWithoutFolder(t *testing.T) {
-	a := Adapter{Repo: &git.Repo{Root: t.TempDir()}}
+	var asked []string
+	a := Adapter{Repo: &git.Repo{Root: t.TempDir()}, Rules: loaderOf(rule.Loaded{}, &asked)}
 	if all, err := a.LoadRules(context.Background(), "ai/rules"); err != nil || len(all) != 0 {
 		t.Fatalf("no folder, no rules: %v %v", all, err)
 	}
 }
 
+// An invalid rule, or a file that cannot be read, stops the strict reading of CheckRule, with its file.
 func TestAdapterLoadRulesInvalid(t *testing.T) {
-	root := t.TempDir()
-	write(t, root, map[string]string{"governance/rules/bad.yaml": "rules:\n  - id: X-1\n"})
-	a := Adapter{Repo: &git.Repo{Root: root}}
-	_, err := a.LoadRules(context.Background(), "governance/rules")
-	if err == nil || !strings.Contains(err.Error(), "governance/rules/bad.yaml") {
-		t.Fatalf("got %v, want the error of the file", err)
+	var asked []string
+	strict := errors.New("governance/rules/bad.yaml: rule X-1 has no description")
+	loaded := rule.Loaded{Rules: []rule.Rule{{ID: "X-1", File: "governance/rules/bad.yaml"}}, Exists: true,
+		Problems: []string{"governance/rules/bad.yaml X-1: no description"}, Strict: strict}
+	a := Adapter{Repo: &git.Repo{Root: t.TempDir()}, Rules: loaderOf(loaded, &asked)}
+	all, err := a.LoadRules(context.Background(), "governance/rules")
+	if err == nil || !strings.Contains(err.Error(), "governance/rules/bad.yaml") || all != nil {
+		t.Fatalf("got %v %v, want the error of the file", all, err)
 	}
+}
+
+// workflowOn is the adapter on the folder root with a new loader of polix.yaml, as cmd/polix builds it: the loader
+// reads polix.yaml once, so a test that rewrites it takes a new one.
+func workflowOn(root string) Adapter {
+	return Adapter{Repo: &git.Repo{Root: root}, Workflow: workflowload.Command()}
 }
 
 func TestAdapterLoadWorkflow(t *testing.T) {
 	root := t.TempDir()
-	a := Adapter{Repo: &git.Repo{Root: root}}
-	wf, err := a.LoadWorkflow(context.Background(), "dev")
+	wf, err := workflowOn(root).LoadWorkflow(context.Background(), "dev")
 	if err != nil || !slices.Equal(wf.BaseBranches(), []string{"main"}) {
 		t.Fatalf("without polix.yaml, the default workflow: %+v %v", wf, err)
 	}
 	write(t, root, map[string]string{"polix.yaml": "version: 1\nbase_branch: develop\nrules:\n  run:\n" +
 		"    \"*_test.go\": [go, test, \"{dir}\"]\n"})
-	wf, err = a.LoadWorkflow(context.Background(), "dev")
+	wf, err = workflowOn(root).LoadWorkflow(context.Background(), "dev")
 	if err != nil || !slices.Equal(wf.BaseBranches(), []string{"develop"}) || len(wf.Rules.Run) != 1 {
 		t.Fatalf("got %+v %v", wf, err)
 	}
 	write(t, root, map[string]string{"polix.yaml": "version: 1\nbase_branch: develop\non:\n  nope: []\n"})
-	if wf, err = a.LoadWorkflow(context.Background(), "dev"); err != nil || wf.BaseBranches()[0] != "develop" {
+	if wf, err = workflowOn(root).LoadWorkflow(context.Background(), "dev"); err != nil ||
+		wf.BaseBranches()[0] != "develop" {
 		t.Fatalf("the problems of a workflow that parses are left to polix config check: %+v %v", wf, err)
 	}
 	write(t, root, map[string]string{"polix.yaml": "version: [\n"})
-	if _, err := a.LoadWorkflow(context.Background(), "dev"); err == nil || !strings.Contains(err.Error(), "polix.yaml") {
+	if _, err := workflowOn(root).LoadWorkflow(context.Background(), "dev"); err == nil ||
+		!strings.Contains(err.Error(), "polix.yaml") {
 		t.Fatalf("a broken polix.yaml stops: %v", err)
 	}
 	write(t, root, map[string]string{"polix.yaml": "version: 1\nrequires: 9.0.0\n"})
-	if _, err := a.LoadWorkflow(context.Background(), "1.0.0"); err == nil {
+	if _, err := workflowOn(root).LoadWorkflow(context.Background(), "1.0.0"); err == nil {
 		t.Fatal("a polix.yaml that requires a newer polix is read")
 	}
 }

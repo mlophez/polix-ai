@@ -9,11 +9,16 @@ import (
 	"testing"
 )
 
+// portCallers says who may call the port and the adapter, for the message of a call from anywhere else.
+const portCallers = "only the functions of the in files but the entry Command, and the methods of the adapter, " +
+	"use the port and the adapter"
+
 // GOARCH-32, the part of GOARCH-20 a check can decide: in.go declares the shell run, of type
 // func(context.Context, Port, Request) (Response, error); outside the tests, the shell is the only function or
 // method of its use case package that calls the logic Decide, from one call site, in a function declaration or in
-// the value of a package variable; and it is the only one that calls methods of the port or of the adapter,
-// declared or promoted, apart from the methods of the adapter itself, which never call the logic.
+// the value of a package variable. The methods of the port or of the adapter, declared or promoted, are called
+// only from the functions and methods of the in files (in.go and its siblings in_<topic>.go) other than the entry
+// Command, and from the methods of the adapter itself, which never call the logic.
 func TestGOARCH32(t *testing.T) {
 	checkRule(t, checkShellShape,
 		"internal/app/order/place/in.go:17: the shell run is not func(ctx context.Context, port Port, req Request) "+
@@ -23,10 +28,11 @@ func TestGOARCH32(t *testing.T) {
 		"place/logic.go:62: twice calls the logic Decide: only the shell run calls it",
 		"cancel/out.go:16: Adapter.Refund calls the logic Decide: only the shell run calls it",
 		"cancel/in.go:41: again calls the logic Decide: only the shell run calls it",
-		"cancel/in.go:26: Command calls Adapter.Refund: only the shell run uses the port and the adapter",
-		"count/in.go:51: load calls Port.Load: only the shell run uses the port and the adapter",
-		"count/in.go:54: closeAll calls Port.Close: only the shell run uses the port and the adapter",
+		"cancel/in.go:26: Command calls Adapter.Refund: "+portCallers,
+		"cancel/out_receipt.go:10: receipt.refund calls Adapter.Refund: "+portCallers,
+		"count/logic_audit.go:11: audit calls Port.Close: "+portCallers,
 		"count/in.go:36: the shell run calls the logic Decide 2 times, not once")
+	checkAccepts(t, checkShellShape, "internal/app/stock/take/", "count/in.go:51:", "count/in.go:54:")
 }
 
 func checkShellShape(m *module) []string {
@@ -71,8 +77,9 @@ func checkShellShape(m *module) []string {
 						out = append(out, fmt.Sprintf("%s: %s calls the logic %s: only the shell %s calls it",
 							m.pos(f, d), who, c, lc))
 					}
-					if receiver(d) != "Adapter" {
-						out = append(out, portCalls(m, info, f, d.Body, who, portTypes, lc)...)
+					entry := d.Recv == nil && d.Name.Name == "Command"
+					if receiver(d) != "Adapter" && (f.kind != kindIn || entry) {
+						out = append(out, portCalls(m, info, f, d.Body, who, portTypes, portCallers)...)
 					}
 				case *ast.GenDecl:
 					if d.Tok != token.VAR {
@@ -86,7 +93,7 @@ func checkShellShape(m *module) []string {
 									m.pos(f, value), v.Names[min(i, len(v.Names)-1)].Name, c, lc))
 							}
 							out = append(out, portCalls(m, info, f, value, v.Names[min(i, len(v.Names)-1)].Name, portTypes,
-								lc)...)
+								portCallers)...)
 						}
 					}
 				}
@@ -141,9 +148,9 @@ func logicCalls(info *types.Info, n ast.Node, name string) int {
 }
 
 // portCalls returns the calls under n, in who, to methods of the types of portTypes, folder.Name, declared or
-// promoted through an embedded field.
+// promoted through an embedded field, each with why it is not allowed.
 func portCalls(m *module, info *types.Info, f *goFile, n ast.Node, who string, portTypes map[string]bool,
-	shell string) []string {
+	why string) []string {
 	var out []string
 	ast.Inspect(n, func(n ast.Node) bool {
 		sel, ok := n.(*ast.SelectorExpr)
@@ -163,8 +170,8 @@ func portCalls(m *module, info *types.Info, f *goFile, n ast.Node, who string, p
 			return true
 		}
 		if portTypes[m.moduleDir(named.Obj().Pkg().Path())+"."+named.Obj().Name()] {
-			out = append(out, fmt.Sprintf("%s: %s calls %s.%s: only the shell %s uses the port and the adapter",
-				m.pos(f, sel), who, named.Obj().Name(), sel.Sel.Name, shell))
+			out = append(out, fmt.Sprintf("%s: %s calls %s.%s: %s", m.pos(f, sel), who, named.Obj().Name(),
+				sel.Sel.Name, why))
 		}
 		return true
 	})

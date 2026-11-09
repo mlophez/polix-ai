@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/mlophez/polix-ai/internal/app/setup"
 
@@ -22,7 +24,7 @@ import (
 type Request struct {
 	User    bool     // only the plugin of the user, not the hooks of the repository
 	Dir     string   // any folder of the repository whose hooks to remove
-	Agents  []string // the agents asked, parsed (ParseAgents); empty for both
+	Agents  []string // the agents asked, parsed (parseAgents); empty for both
 	Quiet   bool     // only print what changed
 	Version string   // version of the running polix
 }
@@ -68,8 +70,7 @@ func Command() *cobra.Command {
 			"other setting and hook. The binary stays: delete it by hand.",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			var err error
-			if req.Agents, err = setup.ParseAgents(agents); err != nil {
+			if err := req.parseAgents(agents); err != nil {
 				return err
 			}
 			in, okIn := c.InOrStdin().(*os.File)
@@ -135,6 +136,24 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		}
 	}
 	return res, nil
+}
+
+// parseAgents reads the agents asked with --agent into the request: trimmed, in lower case and once each; an agent
+// the domain does not know (setup.Setup.Valid: neither Claude nor Codex) is an error.
+func (req *Request) parseAgents(asked []string) error {
+	var agents []string
+	for _, a := range asked {
+		a = strings.ToLower(strings.TrimSpace(a))
+		if !slices.Contains(agents, a) {
+			agents = append(agents, a)
+		}
+	}
+	s := setup.Setup{Agents: agents, Version: req.Version}
+	if err := s.Valid(); err != nil {
+		return err
+	}
+	req.Agents = agents
+	return nil
 }
 
 // print writes what changed to stdout, or that there was nothing to remove when the uninstall did not fail (err).

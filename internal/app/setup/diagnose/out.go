@@ -2,6 +2,7 @@ package diagnose
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/version"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	"github.com/mlophez/polix-ai/internal/platform/agentconf"
 	"github.com/mlophez/polix-ai/internal/platform/file"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 	"github.com/mlophez/polix-ai/internal/platform/github"
@@ -22,8 +24,28 @@ import (
 // Adapter implements Port on the real machine: disk, git, network and the CLI of Claude
 // Code. The entry fills it and passes it as the port; there is no constructor.
 type Adapter struct {
-	OS   string        // the system the checks run on (runtime.GOOS): on windows they need an interpreter
-	Look proc.LookFunc // how a program is found on the PATH (exec.LookPath)
+	OS       string        // the system the checks run on (runtime.GOOS): on windows they need an interpreter
+	Look     proc.LookFunc // how a program is found on the PATH (exec.LookPath)
+	Rules    rule.Load     // the loader of the rules (internal/app/rule/load), which cmd/polix builds once
+	Cache    version.Load  // the loader of the cache of polix update (internal/app/version/load), built once too
+	Workflow workflow.Load // the loader of polix.yaml (internal/app/workflow/load), built once too
+}
+
+// claudePluginJSON is one plugin of `claude plugin list --json`.
+type claudePluginJSON struct {
+	ID             string `json:"id"`
+	Scope          string `json:"scope"`
+	Enabled        bool   `json:"enabled"`
+	Version        string `json:"version"`
+	ReadFromFolder string `json:"readFromFolder"`
+}
+
+// cacheJSON is the shape of the file of the cache of polix update, with the fields of version.Cache in its order, so
+// one converts to it; LoadVersion (internal/app/version/load) decodes the same shape.
+type cacheJSON struct {
+	CheckedAt time.Time `json:"checked_at"`
+	Latest    string    `json:"latest"`
+	FailedAt  time.Time `json:"failed_at,omitzero"`
 }
 
 const (
@@ -46,23 +68,23 @@ func (a Adapter) Executable(_ context.Context) (string, error) {
 	return github.Executable()
 }
 
-// LoadCache reads the cache of polix update, empty when there is none or it cannot be read.
-func (a Adapter) LoadCache(_ context.Context) version.Cache {
+// LoadCache loads the cache of polix update through the loader of the cache, empty when there is none or it cannot
+// be read.
+func (a Adapter) LoadCache(ctx context.Context) version.Cache {
 	path, err := file.CacheFile("POLIX_CACHE_DIR", "polix", "update.json")
 	if err != nil {
 		return version.Cache{}
 	}
-	data, _, _ := file.Read(path)
-	return version.ParseCache(data)
+	return a.Cache(ctx, path).Cache
 }
 
-// SaveCache writes the cache of polix update.
+// SaveCache writes the cache of polix update, encoded with cacheJSON.
 func (a Adapter) SaveCache(_ context.Context, c version.Cache) error {
 	path, err := file.CacheFile("POLIX_CACHE_DIR", "polix", "update.json")
 	if err != nil {
 		return err
 	}
-	data, err := c.Encode()
+	data, err := json.Marshal(cacheJSON(c))
 	if err != nil {
 		return err
 	}
@@ -109,22 +131,18 @@ func (a Adapter) OpenRepo(ctx context.Context, dir string) (string, string, erro
 	return repo.Root, repo.GitDir, nil
 }
 
-// LoadWorkflow reads polix.yaml of root and parses it (setup.ParseWorkflow).
-func (a Adapter) LoadWorkflow(_ context.Context, root, running string) (workflow.Workflow, bool, error) {
-	data, existed, err := file.Read(filepath.Join(root, workflow.File))
-	if err != nil {
-		return workflow.Workflow{}, true, err
-	}
-	return setup.ParseWorkflow(data, existed, running)
+// LoadWorkflow loads polix.yaml of root through the loader of polix.yaml: the workflow, whether the file exists,
+// and the error of loading it, a workflow.Invalid with the workflow when it parses.
+func (a Adapter) LoadWorkflow(ctx context.Context, root, running string) (workflow.Workflow, bool, error) {
+	loaded := a.Workflow(ctx, root, running)
+	return loaded.Workflow, loaded.Exists, loaded.Err
 }
 
-// LoadRules reads the yaml files of the folder dir of root and parses them (rule.ParseFilesAll).
-func (a Adapter) LoadRules(_ context.Context, root, dir string) ([]rule.Rule, []string, error) {
-	files, err := file.ReadDir(filepath.Join(root, filepath.FromSlash(dir)), ".yaml")
-	if err != nil {
-		return nil, nil, err
-	}
-	return rule.ParseFilesAll(dir, files)
+// LoadRules loads the rules of the folder dir of root through the loader of the rules: every rule, the problems of
+// the invalid ones, and the error of a file that cannot be read or is not yaml.
+func (a Adapter) LoadRules(ctx context.Context, root, dir string) ([]rule.Rule, []string, error) {
+	loaded := a.Rules(ctx, root, dir)
+	return loaded.Rules, loaded.Problems, loaded.Err
 }
 
 // Missing reports whether the check does not exist below root.
@@ -173,19 +191,36 @@ func (a Adapter) WriteState(_ context.Context, gitDir string) (string, error) {
 	return dir, err
 }
 
-// ReadFiles reads the files of paths: the content of those that exist, and the error of those that cannot be read.
-func (a Adapter) ReadFiles(_ context.Context, paths []string) (map[string][]byte, map[string]error) {
-	files, errs := map[string][]byte{}, map[string]error{}
-	for _, p := range paths {
-		data, existed, err := file.Read(p)
-		switch {
-		case err != nil:
-			errs[p] = err
-		case existed:
-			files[p] = data
-		}
+// ClaudeHooks reads the settings of Claude Code of paths that exist (agentconf.ParseHooks): an empty one is not
+// JSON.
+func (a Adapter) ClaudeHooks(_ context.Context, paths []string) map[string]setup.HooksFile {
+	return a.hooksFiles(paths, agentconf.ParseHooks)
+}
+
+// CodexHooks reads the hooks files of Codex of paths that exist (agentconf.ReadHooks): an empty one has no hooks.
+func (a Adapter) CodexHooks(_ context.Context, paths []string) map[string]setup.HooksFile {
+	return a.hooksFiles(paths, agentconf.ReadHooks)
+}
+
+// CodexEnabled reads the configuration of Codex at path (agentconf.CodexEnabled); one that cannot be read enables
+// nothing.
+func (a Adapter) CodexEnabled(_ context.Context, path string) bool {
+	data, _, err := file.Read(path)
+	return err == nil && agentconf.CodexEnabled(data, setup.PluginID)
+}
+
+// ReadManifest reads the manifest of the plugin at path (agentconf.ReadManifest): its version, and whether it is
+// the plugin polix.
+func (a Adapter) ReadManifest(_ context.Context, path string) (string, bool) {
+	data, _, err := file.Read(path)
+	if err != nil {
+		return "", false
 	}
-	return files, errs
+	name, v, err := agentconf.ReadManifest(data)
+	if err != nil || name != setup.Name {
+		return "", false
+	}
+	return v, true
 }
 
 // Plugin reads the plugin embedded in the binary.
@@ -193,11 +228,76 @@ func (a Adapter) Plugin(_ context.Context) (map[string][]byte, error) {
 	return plugins.Files()
 }
 
-// ClaudePlugins runs `claude plugin list --json` within a minute; setup.ErrNoCLI without the CLI.
-func (a Adapter) ClaudePlugins(ctx context.Context) ([]byte, error) {
+// ClaudePlugin runs `claude plugin list --json` within a minute and reads, among the plugins it prints, polix for
+// the user; setup.ErrNoCLI without the CLI.
+func (a Adapter) ClaudePlugin(ctx context.Context) (bool, bool, string, error) {
 	if _, err := a.Look("claude"); err != nil {
-		return nil, setup.ErrNoCLI
+		return false, false, "", setup.ErrNoCLI
 	}
 	out, err := proc.Stdout(ctx, "", []string{"claude", "plugin", "list", "--json"}, cliTimeout)
-	return []byte(out), err
+	if err != nil {
+		return false, false, "", err
+	}
+	return a.claudePlugin([]byte(out))
+}
+
+// claudePlugin reads what `claude plugin list --json` printed: whether the plugin polix is installed for the user,
+// whether it is enabled, and the folder Claude Code reads it from.
+func (a Adapter) claudePlugin(list []byte) (bool, bool, string, error) {
+	var all []claudePluginJSON
+	if err := json.Unmarshal(list, &all); err != nil {
+		return false, false, "", fmt.Errorf("claude plugin list: %w", err)
+	}
+	for _, p := range all {
+		if p.ID == setup.PluginID && p.Scope == "user" {
+			return true, p.Enabled, p.ReadFromFolder, nil
+		}
+	}
+	return false, false, "", nil
+}
+
+// hooksFiles reads the hooks files of paths that exist and decodes them with decode: the groups of hooks that run
+// a command, or why the file cannot be read or decoded.
+func (a Adapter) hooksFiles(paths []string, decode func([]byte) (map[string][]agentconf.Group, error)) map[string]setup.HooksFile {
+	out := map[string]setup.HooksFile{}
+	for _, p := range paths {
+		data, existed, readErr := file.Read(p)
+		if readErr == nil && !existed {
+			continue
+		}
+		var hooks map[string][]setup.HookGroup
+		var err error
+		if readErr == nil {
+			var groups map[string][]agentconf.Group
+			groups, err = decode(data)
+			hooks = a.hookGroups(groups)
+		}
+		f := setup.HooksFile{Hooks: hooks, ReadErr: readErr, Err: err}
+		if f.Valid() == nil {
+			out[p] = f
+		}
+	}
+	return out
+}
+
+// hookGroups returns the groups of hooks of a file, by event, as the domain reads them: a handler without a
+// command (a hook of another type, such as a prompt) and a group left without handlers are left out.
+func (a Adapter) hookGroups(groups map[string][]agentconf.Group) map[string][]setup.HookGroup {
+	out := map[string][]setup.HookGroup{}
+	for ev, gs := range groups {
+		for _, g := range gs {
+			var handlers []setup.HookHandler
+			for _, h := range g.Handlers {
+				handler := setup.HookHandler{Command: h.Command, Timeout: h.Timeout}
+				if handler.Valid() == nil {
+					handlers = append(handlers, handler)
+				}
+			}
+			group := setup.HookGroup{Matcher: g.Matcher, Handlers: handlers}
+			if group.Valid() == nil {
+				out[ev] = append(out[ev], group)
+			}
+		}
+	}
+	return out
 }

@@ -2,32 +2,24 @@ package measure
 
 import (
 	"context"
-	"path/filepath"
 
 	"github.com/mlophez/polix-ai/internal/app/diff"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
-	"github.com/mlophez/polix-ai/internal/platform/file"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 )
 
 // Adapter implements Port on the disk and the git of a repository. The entry fills it; there is no constructor.
 type Adapter struct {
-	Repo *git.Repo // the repository whose change is measured
+	Repo     *git.Repo     // the repository whose change is measured
+	Workflow workflow.Load // the loader of polix.yaml (internal/app/workflow/load), which cmd/polix builds once
 }
 
-// LoadWorkflow reads polix.yaml: without the file, the default workflow, which has no weights; a file that cannot
-// be read, does not parse, is not valid or requires a newer polix is an error.
-func (a Adapter) LoadWorkflow(_ context.Context, running string) (workflow.Workflow, error) {
-	data, existed, err := file.Read(filepath.Join(a.Repo.Root, workflow.File))
-	if err != nil {
-		return workflow.Workflow{}, err
-	}
-	if !existed {
-		data = nil
-	} else if data == nil {
-		data = []byte{}
-	}
-	return workflow.Parse(data, running)
+// LoadWorkflow loads polix.yaml of the repository through the loader of polix.yaml: without the file, the default
+// workflow, which has no weights; a file that cannot be read, does not parse, is not valid or requires a newer polix
+// is an error, with the workflow of a file that parses.
+func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, error) {
+	loaded := a.Workflow(ctx, a.Repo.Root, running)
+	return loaded.Workflow, loaded.Err
 }
 
 // Diff reads the size of the change of each file not committed yet with git (Repo.Stats) and validates it.
