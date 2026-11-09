@@ -255,7 +255,8 @@ func nullDevice(target string, windows bool) bool {
 // `git` itself, with no option but -C, running `add` or `commit` (aliases, wrappers, assignments and any other
 // subcommand, which may run programs, are not placed). Each -C folder is a literal path, no `~`, and on Windows one
 // with its drive: not rooted without one (a Git Bash `/c/x`, or `\x`) nor relative to a drive (`C:x`). Each commit is placed in cwd (the root without one) after its -C options, joined
-// without cleaning, so a `..` after a symlink is resolved as git resolves it: through the link.
+// without cleaning, so a `..` after a symlink is resolved as git resolves it on that system (through the link on
+// Unix, before it on Windows).
 func CommitDirs(command, cwd, root string, windows bool) ([]string, bool) {
 	if !placeable(command) {
 		return nil, false

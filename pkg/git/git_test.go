@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -114,13 +115,15 @@ func TestForeign(t *testing.T) {
 			t.Errorf("Foreign(%s) = %v, want %v", folder, got, want)
 		}
 	}
-	// A `..` after a link into this repository is resolved through the link, as git resolves -C.
+	// A `..` after a link into this repository: Unix resolves it through the link, into this repository, where git
+	// -C would commit; Windows drops it before following the link, so there the folder is the other repository.
 	if err := os.Symlink(filepath.Join(dir, "sub"), filepath.Join(other, "link")); err != nil {
 		t.Skipf("no symlinks here: %v", err)
 	}
 	sep := string(filepath.Separator)
-	if through := other + sep + "link" + sep + ".."; r.Foreign(ctx, through) {
-		t.Errorf("Foreign(%s) = true through a link into this repository", through)
+	through := other + sep + "link" + sep + ".."
+	if got, want := r.Foreign(ctx, through), runtime.GOOS == "windows"; got != want {
+		t.Errorf("Foreign(%s) = %v, want %v", through, got, want)
 	}
 	// A repository whose objects and refs link into ours commits into ours: not foreign.
 	borrowed, _, _ := gitRepo(t)
