@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/setup"
+	"github.com/mlophez/polix-ai/internal/platform/agentconf"
 	"github.com/mlophez/polix-ai/internal/platform/file"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 	"github.com/mlophez/polix-ai/internal/platform/proc"
@@ -39,21 +40,42 @@ func (a Adapter) Plugin(_ context.Context) (map[string][]byte, error) {
 	return plugins.Files()
 }
 
-// ReadFiles reads the files of paths that exist and can be read.
-func (a Adapter) ReadFiles(_ context.Context, paths []string) map[string][]byte {
-	files := map[string][]byte{}
+// ReadManifest reads the manifest of the plugin at path (agentconf.ReadManifest): its version, and whether it is
+// the plugin polix.
+func (a Adapter) ReadManifest(_ context.Context, path string) (string, bool) {
+	data, _, err := file.Read(path)
+	if err != nil {
+		return "", false
+	}
+	name, v, err := agentconf.ReadManifest(data)
+	if err != nil || name != setup.Name {
+		return "", false
+	}
+	return v, true
+}
+
+// Registered reads the files of paths that exist and can be read, and tells which register a hook of polix
+// (agentconf.Registers).
+func (a Adapter) Registered(_ context.Context, paths []string) map[string]bool {
+	out := map[string]bool{}
 	for _, p := range paths {
 		if data, ok, err := file.Read(p); ok && err == nil {
-			files[p] = data
+			out[p] = agentconf.Registers(data, a.polix)
 		}
 	}
-	return files
+	return out
+}
+
+// MarketplaceFiles encodes the local marketplace of p (agentconf.Marketplace): the plugin of the binary with its
+// ManifestVersion in its manifests, and a marketplace manifest for each agent.
+func (a Adapter) MarketplaceFiles(_ context.Context, p setup.Plugin) (map[string][]byte, error) {
+	return agentconf.Marketplace(setup.Name, p.ManifestVersion(), p.Description(), p.Embedded)
 }
 
 // WritePlugin syncs dir to files (file.Sync).
 func (a Adapter) WritePlugin(_ context.Context, dir string, files map[string][]byte) ([]setup.Change, error) {
 	created, updated, removed, err := file.Sync(dir, files)
-	changes, cerr := setup.Synced(created, updated, removed)
+	changes, cerr := setup.Changes{}.Synced(created, updated, removed)
 	return changes, errors.Join(err, cerr)
 }
 
@@ -66,18 +88,19 @@ func (a Adapter) UpdatePlugin(ctx context.Context, s setup.Setup) {
 			cliTimeout)
 	}
 	config, _, _ := file.Read(s.CodexConfigFile())
-	if _, err := exec.LookPath("codex"); err == nil && setup.CodexEnabled(config) {
+	if _, err := exec.LookPath("codex"); err == nil && agentconf.CodexEnabled(config, setup.PluginID) {
 		_, _ = proc.Stdout(ctx, "", []string{"codex", "plugin", "marketplace", "upgrade", setup.Name}, cliTimeout)
 	}
 }
 
-// RegisterHooks rewrites the hooks of polix for agent in path.
-func (a Adapter) RegisterHooks(_ context.Context, path, agent string) ([]setup.Change, error) {
+// RegisterHooks rewrites hooks in place of the hooks of polix of path (agentconf.MergeHooks), adding the events the
+// file lacks in the order of setup.HookEvents.
+func (a Adapter) RegisterHooks(_ context.Context, path string, hooks map[string][]setup.HookGroup) ([]setup.Change, error) {
 	old, existed, err := file.Read(path)
 	if err != nil {
 		return nil, err
 	}
-	data, action, err := setup.RegisterHooks(old, existed, agent)
+	data, action, err := agentconf.MergeHooks(old, existed, a.groups(hooks), setup.HookEvents, a.polix)
 	switch {
 	case err != nil:
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -87,5 +110,26 @@ func (a Adapter) RegisterHooks(_ context.Context, path, agent string) ([]setup.C
 	if err := file.Write(path, data); err != nil {
 		return nil, err
 	}
-	return setup.Changes(action, path)
+	return setup.Changes{}.Add(action, path)
+}
+
+// groups returns the hooks of polix as the groups of a hooks file, by event.
+func (a Adapter) groups(hooks map[string][]setup.HookGroup) map[string][]agentconf.Group {
+	out := map[string][]agentconf.Group{}
+	for ev, groups := range hooks {
+		for _, g := range groups {
+			group := agentconf.Group{Matcher: g.Matcher}
+			for _, h := range g.Handlers {
+				group.Handlers = append(group.Handlers, agentconf.Handler{Command: h.Command, Timeout: h.Timeout})
+			}
+			out[ev] = append(out[ev], group)
+		}
+	}
+	return out
+}
+
+// polix reports whether a hook command is one polix registers (setup.HookHandler.Polix).
+func (a Adapter) polix(command string) bool {
+	h := setup.HookHandler{Command: command}
+	return h.Valid() == nil && h.Polix()
 }

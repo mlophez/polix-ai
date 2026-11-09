@@ -13,10 +13,10 @@ func (w Workflow) BaseBranches() []string {
 	return slices.Clone(w.Base)
 }
 
-// Bases returns the base asked (`--base`) when there is one, else the base branches of the workflow.
-func Bases(base string, branches []string) []string {
+// Bases returns the base asked (`--base`) when there is one, else the base branches of the workflow (BaseBranches).
+func (w Workflow) Bases(base string) []string {
 	if base != "" {
 		return []string{base}
 	}
-	return slices.Clone(branches)
+	return w.BaseBranches()
 }

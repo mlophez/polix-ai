@@ -20,19 +20,21 @@ polix doctor [--dir <dir>] [--hook] [--offline]
 
 ## Logic
 
-`Decide(i setup.Inspection, hook bool) Output` turns the `setup.Inspection` into findings (`setup.Finding`:
-level, area, message), in this order: the binary (version against the latest release, the polix of the PATH);
-without git or outside a repository only the plugin; else the workflow (`setup.WorkflowProblems`,
-`setup.NewerHint`, `setup.BaseWarning`), the rules (`setup.RuleProblems` and `setup.RunProblems`: a check that a
-runner of `rules.run` runs is never reported as not executable nor without interpreter), the hooks of Claude Code
-(every event, the matchers, the timeouts above the run budget, run once, the session start update), the plugin
-(`setup.PluginVersion` against `setup.ManifestVersion`, and without `--hook` `claude plugin list`), Codex, and the
-state.
+`Decide(i setup.Inspection, hook bool) Output` turns the `setup.Inspection`, whose files are already decoded,
+into findings (`setup.Finding`: level, area, message, each built by `found`), in this order: the binary (version
+against the latest release, the polix of the PATH); without git or outside a repository only the plugin; else the
+workflow (the methods `WorkflowProblems`, `NewerHint` and `BaseWarning` of `setup.Inspection`), the rules
+(`RuleProblems`, and `runProblems` of the logic: a check that a runner of `rules.run` runs is never reported as not
+executable nor without interpreter), the hooks of Claude Code (`logic_hooks.go`: the settings that cannot be read
+or are not JSON, every event, the matchers, the timeouts above the run budget, run once, the session start update,
+with `setup.HookHandler.Polix`, `Update` and `Legacy`), the plugin (the version of the manifest written,
+`setup.Plugin.Manifest`, against `setup.Plugin.ManifestVersion`, and without `--hook` what `claude plugin list`
+said), Codex, and the state.
 Codex is checked only when polix is registered for it, as `polix install --agent codex` leaves it: a Codex hooks
-file of the project or the user that runs polix (`setup.Registered`), or the plugin enabled in `~/.codex/config.toml`
-(`setup.CodexEnabled`); otherwise it has no finding. When it is registered, a hooks file that cannot be read or parsed
-fails, a plugin not enabled or hooks not registered warn, and else the OK line says the hooks are registered, that
-Codex runs them once trusted with `/hooks`, and that Codex support is not implemented and untested.
+file of the project or the user that runs polix, or the plugin enabled in `~/.codex/config.toml`
+(`CodexEnabled` of the inspection); otherwise it has no finding. When it is registered, a hooks file that cannot be
+read or parsed fails, a plugin not enabled or hooks not registered warn, and else the OK line says the hooks are
+registered, that Codex runs them once trusted with `/hooks`, and that Codex support is not implemented and untested.
 
 ## Response
 
@@ -41,16 +43,28 @@ on a failure; with `--hook` it prints only the problems, in a paragraph in Spani
 
 ## Port
 
-`Port`, implemented by `Adapter{OS: runtime.GOOS, Look: exec.LookPath}`:
+`Port`, implemented by `Adapter{OS: runtime.GOOS, Look: exec.LookPath, Rules: rules, Cache: cache, Workflow:
+loadWorkflow}`, with the loaders of the rules (`internal/app/rule/load`), of the cache (`internal/app/version/load`)
+and of polix.yaml (`internal/app/workflow/load`) that `cmd/polix` builds once and passes to `Command`:
 
 - `Home`, `Executable`, `LookPath` (symlinks resolved) and `SameFile`.
-- `LoadCache`, `SaveCache` and `Latest`: the cache of `polix update` and the releases (`POLIX_RELEASES_URL`),
-  within 5 seconds.
-- `OpenRepo`, `LoadWorkflow`, `LoadRules`, `Missing`, `Runnable` (a check that exists but is not executable; on Windows, without its interpreter),
-  `ResolveBase` and `WriteState`.
-- `ReadFiles`: the settings and hooks files, the configuration of Codex and the manifest of the plugin.
+- `LoadCache`, `SaveCache` and `Latest`: the cache of `polix update`, loaded through the loader of the cache and
+  saved with the unexported type `cacheJSON` of `out.go`, the shape the loader decodes, and the releases
+  (`POLIX_RELEASES_URL`), within 5 seconds.
+- `OpenRepo`, `LoadWorkflow` (through the loader of polix.yaml: the workflow, whether it exists and the error of
+  loading it), `LoadRules` (through the loader of the rules: every rule, the problems of the invalid ones and the
+  error of a file that cannot be read), `Missing`, `Runnable` (a check that exists but is not
+  executable; on Windows, without its interpreter), `ResolveBase` and `WriteState`.
+- `ClaudeHooks` and `CodexHooks`: the settings of Claude Code and the hooks files of Codex that exist, decoded
+  (`agentconf.ParseHooks`, for which an empty file is not JSON, and `agentconf.ReadHooks`, for which it has no
+  hooks) into `setup.HooksFile`: the groups of hooks that run a command, or why the file cannot be read or is not
+  JSON.
+- `CodexEnabled`: whether `~/.codex/config.toml` enables the plugin (`agentconf.CodexEnabled`).
+- `ReadManifest`: the version of the manifest of the plugin in the marketplace, and whether it is the plugin polix
+  (`agentconf.ReadManifest`).
 - `Plugin`: the plugin embedded in the binary.
-- `ClaudePlugins`: `claude plugin list --json`, `setup.ErrNoCLI` without the CLI.
+- `ClaudePlugin`: `claude plugin list --json`, read by the decoding type of the adapter: whether polix is installed
+  for the user, enabled, and the folder it is read from; `setup.ErrNoCLI` without the CLI.
 
 ## Errors
 
@@ -58,10 +72,12 @@ Every problem is a finding; only a broken embedded plugin is an error of the she
 
 ## Flow
 
-1. `Command` injects `Adapter{}`.
-2. The shell reads the binary, the latest release (only a release build without `--hook` nor `--offline`, saving
-   it with `Cache.Saw`), the PATH, the repository and its facts, the files (among them the Codex hooks files and
-   `~/.codex/config.toml`, from which the logic decides whether polix is registered for Codex), the plugin and
-   Claude Code, into an `setup.Inspection`.
+1. `Command` injects the `Adapter`, with the loaders of the rules, of the cache and of polix.yaml it was given.
+2. The shell reads the binary, the latest release (`releases`: only a release build without `--hook` nor
+   `--offline`, saving it with `Cache.Saw`; the method `parse` of the unexported type `versionText` of
+   `in_version.go` translates the version of the request into a `version.Version`, validated with the domain, to
+   tell a release build), the PATH, the repository and its facts (`inspectRepository`), the
+   hooks files of both agents and `~/.codex/config.toml`, decoded (from which the logic decides whether polix is
+   registered for Codex), the plugin (`readPlugin`) and Claude Code (`askClaude`), into a `setup.Inspection`.
 3. `Decide` decides the findings.
 4. The command prints the response and sets the exit code.

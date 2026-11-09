@@ -54,7 +54,7 @@ func TestResultTailBoundsTheOutput(t *testing.T) {
 }
 
 func TestFailed(t *testing.T) {
-	got := Failed([]Result{{Rule: goRule}, {Rule: goRule, Err: errors.New("exit status 1")}})
+	got := Results{{Rule: goRule}, {Rule: goRule, Err: errors.New("exit status 1")}}.Failed()
 	if len(got) != 1 || got[0].Err == nil {
 		t.Fatalf("got %+v", got)
 	}

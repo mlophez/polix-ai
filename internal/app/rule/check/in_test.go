@@ -10,7 +10,9 @@ import (
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/rule"
+	ruleload "github.com/mlophez/polix-ai/internal/app/rule/load"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
 )
 
@@ -218,11 +220,12 @@ func TestFlags(t *testing.T) {
 	}
 }
 
-// runCommand runs the command `check` over args with its ui on buffers and returns the exit code and output.
+// runCommand runs the command `check` over args with its ui on buffers and returns the exit code and output. It
+// builds the loaders of the rules and of polix.yaml as cmd/polix does, once per run.
 func runCommand(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := cli.Run(Command(), args, nil, &stdout, &stderr)
+	code := cli.Run(Command(ruleload.Command(), workflowload.Command()), args, nil, &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
 }
 

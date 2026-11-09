@@ -34,8 +34,9 @@ type Port interface {
 	LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, bool, error)
 }
 
-// Command is the command `polix graph`, the entry of the use case GraphWorkflow.
-func Command() *cobra.Command {
+// Command is the command `polix graph`, the entry of the use case GraphWorkflow. It reads polix.yaml through
+// loadWorkflow, the loader of polix.yaml (internal/app/workflow/load), which cmd/polix builds once.
+func Command(loadWorkflow workflow.Load) *cobra.Command {
 	req := Request{Version: build.Current()}
 	c := &cobra.Command{
 		Use:   "graph",
@@ -46,7 +47,7 @@ func Command() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := run(c.Context(), Adapter{Repo: repo}, req)
+			res, err := run(c.Context(), Adapter{Repo: repo, Workflow: loadWorkflow}, req)
 			if err != nil {
 				return err
 			}

@@ -10,10 +10,11 @@ import (
 )
 
 // GOARCH-37: the shell decides nothing: every condition of an if, for or switch in the shell run and in the
-// unexported functions of in.go is made of fields of the request, errors (err != nil, errors.Is, errors.As),
-// fields or methods of values of the domain or of the output, and len of them, compared only with nil or a zero
-// literal and combined with !, && and ||; the arguments of an accepted call are operands too. The entry Command
-// and the methods are left out. An operand whose type the checker could not resolve is accepted.
+// unexported functions of the in files (in.go and its siblings in_<topic>.go) is made of fields of the request,
+// errors (err != nil, errors.Is, errors.As), fields or methods of values of the domain or of the output, and len
+// of them, compared only with nil or a zero literal and combined with !, && and ||; the arguments of an accepted
+// call are operands too. The entry Command and the methods are left out. An operand whose type the checker could
+// not resolve is accepted.
 func TestGOARCH37(t *testing.T) {
 	checkRule(t, checkShellDecidesNothing,
 		"count/in.go:37: run decides: the condition `len(req.Shop) > 3` uses `len(req.Shop) > 3`",
@@ -21,24 +22,28 @@ func TestGOARCH37(t *testing.T) {
 		"count/in.go:58: pick decides: the condition `n % 2 == 0` uses `n % 2`",
 		"count/in.go:61: pick decides: the condition `stock.Limit` uses `stock.Limit`",
 		"count/in.go:64: pick decides: a type switch",
-		"count/in.go:44: run decides: the condition `l.Rename(\"x\").Valid() != nil` uses `\"x\"`")
+		"count/in.go:44: run decides: the condition `l.Rename(\"x\").Valid() != nil` uses `\"x\"`",
+		"count/in_scan.go:14: sum decides: the condition `n > 1` uses `n > 1`")
+	checkAccepts(t, checkShellDecidesNothing, "internal/app/stock/take/")
 }
 
 func checkShellDecidesNothing(m *module) []string {
 	info := m.typed()
 	var out []string
 	for _, uc := range m.useCases() {
-		in := uc.files[kindIn]
-		if in == nil {
+		if uc.files[kindIn] == nil {
 			continue // GOARCH-3
 		}
-		for _, d := range in.ast.Decls {
-			fn, ok := d.(*ast.FuncDecl)
-			if !ok || fn.Recv != nil || fn.Body == nil || fn.Name.Name == "Command" {
-				continue
+		for _, in := range uc.all[kindIn] {
+			for _, d := range in.ast.Decls {
+				fn, ok := d.(*ast.FuncDecl)
+				if !ok || fn.Recv != nil || fn.Body == nil || fn.Name.Name == "Command" {
+					continue
+				}
+				s := &shellConds{m: m, info: info, f: in, fn: fn, output: uc.dir + ".Output",
+					request: uc.dir + ".Request"}
+				out = append(out, s.check()...)
 			}
-			s := &shellConds{m: m, info: info, f: in, fn: fn, output: uc.dir + ".Output", request: uc.dir + ".Request"}
-			out = append(out, s.check()...)
 		}
 	}
 	return out

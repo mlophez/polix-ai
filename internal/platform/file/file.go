@@ -80,6 +80,16 @@ func Write(path string, data []byte) error {
 // Sync makes dir hold exactly files (paths relative to it, with slashes): it writes the ones that differ and
 // removes the rest, with the folders they leave empty. It returns the paths created, updated and removed, in order.
 func Sync(dir string, files map[string][]byte) (created, updated, removed []string, err error) {
+	if created, updated, err = writeChanged(dir, files); err != nil {
+		return created, updated, nil, err
+	}
+	removed, err = removeStale(dir, staleFiles(dir, files))
+	return created, updated, removed, err
+}
+
+// writeChanged writes the files whose content differs from the one in dir, by name, and returns the paths it
+// created and updated until the first failure.
+func writeChanged(dir string, files map[string][]byte) (created, updated []string, err error) {
 	names := make([]string, 0, len(files))
 	for rel := range files {
 		names = append(names, rel)
@@ -92,7 +102,7 @@ func Sync(dir string, files map[string][]byte) (created, updated, removed []stri
 			continue
 		}
 		if err := Write(p, files[rel]); err != nil {
-			return created, updated, removed, err
+			return created, updated, err
 		}
 		if existed {
 			updated = append(updated, p)
@@ -100,6 +110,11 @@ func Sync(dir string, files map[string][]byte) (created, updated, removed []stri
 			created = append(created, p)
 		}
 	}
+	return created, updated, nil
+}
+
+// staleFiles returns the paths of the files under dir that files does not hold, in the order of the walk.
+func staleFiles(dir string, files map[string][]byte) []string {
 	var stale []string
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -111,18 +126,30 @@ func Sync(dir string, files map[string][]byte) (created, updated, removed []stri
 		}
 		return nil
 	})
+	return stale
+}
+
+// removeStale removes the stale files and the folders under dir they leave empty, and returns the paths it
+// removed until the first failure.
+func removeStale(dir string, stale []string) ([]string, error) {
+	var removed []string
 	for _, p := range stale {
 		if err := os.Remove(p); err != nil {
-			return created, updated, removed, err
+			return removed, err
 		}
 		removed = append(removed, p)
-		for d := filepath.Dir(p); d != dir && strings.HasPrefix(d, dir); d = filepath.Dir(d) {
-			if os.Remove(d) != nil {
-				break
-			}
+		removeEmptyParents(dir, p)
+	}
+	return removed, nil
+}
+
+// removeEmptyParents removes the folders of p up to dir, dir excluded, while they are empty.
+func removeEmptyParents(dir, p string) {
+	for d := filepath.Dir(p); d != dir && strings.HasPrefix(d, dir); d = filepath.Dir(d) {
+		if os.Remove(d) != nil {
+			break
 		}
 	}
-	return created, updated, removed, nil
 }
 
 // Exists reports whether path exists.

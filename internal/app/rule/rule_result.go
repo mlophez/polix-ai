@@ -23,6 +23,9 @@ type Outcome struct {
 	Err    error
 }
 
+// Results are the results of the checks of several rules, in their order.
+type Results []Result
+
 const (
 	// TailLines is how many lines of the output of a check Tail keeps, the last ones.
 	TailLines = 15
@@ -59,9 +62,9 @@ func (r Result) Tail() string {
 }
 
 // Failed returns the results whose check failed, in their order.
-func Failed(results []Result) []Result {
+func (rs Results) Failed() []Result {
 	var out []Result
-	for _, r := range results {
+	for _, r := range rs {
 		if !r.Passed() {
 			out = append(out, r)
 		}

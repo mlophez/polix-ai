@@ -15,17 +15,18 @@ var logicPlugin = map[string][]byte{
 
 func TestDecide(t *testing.T) {
 	s := setup.Setup{Home: "/h", Root: "/r", Agents: []string{setup.Claude, setup.Codex}, Version: "1.2.3"}
-	claude, _, _ := setup.RegisterHooks(nil, false, setup.Claude)
-	out := Decide(s, map[string][]byte{s.HooksFile(setup.Claude): claude}, logicPlugin)
+	none := setup.Plugin{Embedded: logicPlugin, Version: "1.2.3"}
+	out := Decide(s, none, map[string]bool{s.HooksFile(setup.Claude): true, s.HooksFile(setup.Codex): false})
 	if out.Plugin || !slices.Equal(out.Hooks, []string{setup.Claude}) {
 		t.Fatalf("no plugin installed, only the hooks registered: %+v", out)
 	}
-	out = Decide(s, map[string][]byte{s.PluginManifest(): []byte(`{"name": "polix", "version": "1"}`)}, logicPlugin)
-	if !out.Plugin || out.Files == nil || out.Hooks != nil {
+	written := setup.Plugin{Written: true, Manifest: "1", Embedded: logicPlugin, Version: "1.2.3"}
+	out = Decide(s, written, nil)
+	if !out.Plugin || out.Marketplace.Embedded == nil || out.Hooks != nil {
 		t.Fatalf("the plugin installed: %+v", out)
 	}
 	noRepo := setup.Setup{Home: "/h", Agents: []string{setup.Claude}, Version: "1"}
-	if out := Decide(noRepo, map[string][]byte{noRepo.HooksFile(setup.Claude): claude}, logicPlugin); out.Hooks != nil {
+	if out := Decide(noRepo, none, map[string]bool{noRepo.HooksFile(setup.Claude): true}); out.Hooks != nil {
 		t.Fatal("no hooks without a repository")
 	}
 }

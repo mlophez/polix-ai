@@ -1,7 +1,7 @@
 // Package workflow is the domain of polix.yaml: for each neutral event, an ordered list of entries, each with
 // optional `when` and `unless` conditions and an action with one verb (run, inject or block), plus the variables,
 // the base branches, the protected files, the forbidden commands, the loop guard and the runners of the checks of
-// the rules. The other shortcuts of the section guardrails are expanded into entries when the file is parsed.
+// the rules. The other shortcuts of the section guardrails are expanded into entries when the file is loaded.
 //
 //	version: 1
 //	vars:
@@ -15,11 +15,13 @@
 //
 // The vocabulary is closed: Valid rejects unknown events, conditions, verbs and keys, so a typo never turns into
 // a rule that silently stops applying, and a name of the old vocabulary is reported with its new spelling.
-// Reading the file is the job of the adapters: Parse takes its bytes.
+// Reading and decoding the file is the job of the use case LoadWorkflow (internal/app/workflow/load), whose loader
+// (Load) every use case that reads polix.yaml gets from cmd/polix; the domain validates what it decodes.
 package workflow
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"sort"
@@ -138,41 +140,6 @@ var conditionEvents = map[string][]string{
 // run only reaches the AI as context.
 var Informed = []string{Start, PostEdit, PostCommand}
 
-// renamedEvents maps the events of the old vocabulary to their new name.
-var renamedEvents = map[string]string{"session_start": Start, "turn_stop": Stop}
-
-// renamed holds, per place of the file, the names of the old vocabulary and the hint of their new spelling, which
-// the validator, or Parse for a top-level key (place "top"), appends to the problem of the unknown name.
-var renamed = map[string]map[string]string{
-	"top": {
-		"protected":       "use guardrails.protected_files",
-		"base":            "use base_branch",
-		"max_stop_blocks": "use max_stop_retries",
-	},
-	"key": {
-		"if":      "use when",
-		"why":     "remove it, or keep the text as a YAML comment",
-		"mode":    "remove it: a warning is an action: { inject: ... }, a failing run on post_edit or post_command already reaches the AI as context, and audit has no replacement",
-		"deny":    "use action: { block: <message> }",
-		"require": "use action: { block: <message> }",
-		"allow":   "write the exception as a not in when, or in unless",
-		"run":     "move it into action: { run: ... }",
-		"context": "use action: { inject: ... }",
-		"record":  "remove it: polix observes the end of a subagent by itself, so use finished: <subagent> in when or unless; next to a run, a run that passed is not run again on the same content",
-	},
-	"action":    {"deny": "use block", "require": "use block", "context": "use inject"},
-	"condition": {"done": "use finished: <subagent>, which holds once that subagent ended on the same files; for the fact of a run, remove it: a run that passed is not run again on the same content"},
-}
-
-// oldActions are the keys of the old vocabulary that were the action of an entry: an entry that has one is told
-// how to rewrite it, not that it has no action.
-var oldActions = []string{"deny", "require", "allow", "run", "context", "record"}
-
-// renamedProblem finds, in a problem of the validator or of Parse, the unknown name it reports with its new
-// spelling: the place (key, event or condition), the name and, for a key of the action, " in action". A top-level
-// key is reported as a key.
-var renamedProblem = regexp.MustCompile(`unknown (key|event|condition) "([^"]*)"( in action)?: `)
-
 // placeholder finds the {name} placeholders of a string.
 var placeholder = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
@@ -194,8 +161,28 @@ func (w Workflow) Problems() []string {
 	return v.byLine()
 }
 
-// workflow reports the problems of the workflow w.
+// workflow reports the problems of the workflow w: its settings and guardrails, its variables, its events, its
+// layout and its weights.
 func (v *validator) workflow(w Workflow) {
+	v.settings(w)
+	for _, name := range slices.Sorted(maps.Keys(w.Vars)) {
+		v.variable(name, w.Vars[name])
+	}
+	v.events(w)
+	v.rules(w.Rules)
+	v.folder("plans", w.Plans)
+	v.folder("reports", w.Reports)
+	v.guidance(w.Guidance)
+	for _, wt := range w.Weights {
+		if err := wt.Valid(); err != nil {
+			v.add(0, "risk.weights: %v", err)
+		}
+	}
+}
+
+// settings reports the problems of the settings of the workflow w and of its protections: the version, the polix it
+// requires, the loop guard, the base branches, the protected files and the forbidden commands.
+func (v *validator) settings(w Workflow) {
 	if w.Version != 1 {
 		v.add(0, "version must be 1, got %d", w.Version)
 	}
@@ -220,42 +207,25 @@ func (v *validator) workflow(w Workflow) {
 			v.add(f.Line, "%v", err)
 		}
 	}
-	names := make([]string, 0, len(w.Vars))
-	for name := range w.Vars {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		v.variable(name, w.Vars[name])
-	}
-	events := make([]string, 0, len(w.On))
-	for ev := range w.On {
-		events = append(events, ev)
-	}
-	sort.Strings(events)
-	for _, ev := range events {
+}
+
+// events reports the problems of the events of the workflow w, in the order of their names: an unknown event, and
+// the entries of each known one. The entries of a renamed event are checked as those of its new name, so every hint
+// comes at once.
+func (v *validator) events(w Workflow) {
+	for _, ev := range slices.Sorted(maps.Keys(w.On)) {
 		known := ev
-		if !contains(Events, ev) {
+		if !slices.Contains(Events, ev) {
 			renamedTo, ok := renamedEvents[ev]
 			if !ok {
 				v.add(w.EventLines[ev], "unknown event %q (events: %s)", ev, strings.Join(Events, ", "))
 				continue
 			}
-			// The entries of a renamed event are checked as those of its new name, so every hint comes at once.
 			v.add(w.EventLines[ev], "unknown event %q: use %s", ev, renamedTo)
 			known = renamedTo
 		}
 		for _, e := range w.On[ev] {
 			v.entry(known, e)
-		}
-	}
-	v.rules(w.Rules)
-	v.folder("plans", w.Plans)
-	v.folder("reports", w.Reports)
-	v.guidance(w.Guidance)
-	for _, wt := range w.Weights {
-		if err := wt.Valid(); err != nil {
-			v.add(0, "risk.weights: %v", err)
 		}
 	}
 }
@@ -266,8 +236,8 @@ func (w Workflow) ObservedSubagents() []string {
 	var out []string
 	for _, entries := range w.On {
 		for _, e := range entries {
-			out = appendFinished(out, e.When)
-			out = appendFinished(out, e.Unless)
+			out = e.When.appendFinished(out)
+			out = e.Unless.appendFinished(out)
 		}
 	}
 	sort.Strings(out)
@@ -336,7 +306,7 @@ func (v *validator) byLine() []string {
 // unknownKeys reports the keys of a map that are not in allowed.
 func (v *validator) unknownKeys(line int, what string, keys, allowed []string) {
 	for _, k := range keys {
-		if !contains(allowed, k) {
+		if !slices.Contains(allowed, k) {
 			v.add(line, "unknown key %q in %s (%s)", k, what, strings.Join(allowed, ", "))
 		}
 	}
@@ -349,7 +319,7 @@ func (v *validator) placeholders(line int, s string) {
 		return
 	}
 	for _, m := range placeholder.FindAllStringSubmatch(s, -1) {
-		if name := m[1]; !contains(Builtins, name) {
+		if name := m[1]; !slices.Contains(Builtins, name) {
 			if _, ok := v.w.Vars[name]; !ok {
 				v.add(line, "unknown placeholder {%s} (built in: %s; or a variable of vars)", name, strings.Join(Builtins, ", "))
 			}
@@ -365,7 +335,7 @@ func (v *validator) variable(name string, def Var) {
 	}
 	v.unknownKeys(0, label, def.Keys, []string{"branch"})
 	switch {
-	case contains(Builtins, name):
+	case slices.Contains(Builtins, name):
 		v.add(0, "%s: the name is a built-in placeholder (%s)", label, strings.Join(Builtins, ", "))
 	case def.Branch == "":
 		v.add(0, "%s needs branch", label)
@@ -374,47 +344,4 @@ func (v *validator) variable(name string, def Var) {
 			v.add(0, "%s: %v", label, err)
 		}
 	}
-}
-
-// Renamed reports whether a problem of the workflow (one line of Problems) is about a name of the old vocabulary,
-// reported with its new spelling: it is a name this polix knows it replaced, never an option of a newer polix.
-func Renamed(problem string) bool {
-	m := renamedProblem.FindStringSubmatch(problem)
-	if m == nil {
-		return false
-	}
-	place, name, inAction := m[1], m[2], m[3] != ""
-	switch {
-	case place == "event":
-		_, ok := renamedEvents[name]
-		return ok
-	case place == "key" && inAction:
-		_, ok := renamed["action"][name]
-		return ok
-	case place == "key":
-		_, entry := renamed["key"][name]
-		_, top := renamed["top"][name]
-		return entry || top
-	default:
-		_, ok := renamed[place][name]
-		return ok
-	}
-}
-
-func contains(list []string, s string) bool { return slices.Contains(list, s) }
-
-// appendFinished appends to out the subagent types the `finished` of c names, in c and the maps nested in it.
-func appendFinished(out []string, c Cond) []string {
-	for k, val := range c {
-		switch k {
-		case "finished":
-			names, _ := Strings(val)
-			out = append(out, names...)
-		case "not", "any":
-			if nested, ok := Nested(val); ok {
-				out = appendFinished(out, nested)
-			}
-		}
-	}
-	return out
 }

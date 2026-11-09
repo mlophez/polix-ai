@@ -47,10 +47,10 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	return Response{Count: Decide(stock.StockPort{}) + Decide(stock.StockPort{})}, nil
 }
 
-// load uses the port out of the shell (GOARCH-32).
+// load uses the port from a function of the in files, which GOARCH-32 admits.
 func load(ctx context.Context, port Port) { _, _ = port.Load(ctx, nil) }
 
-// closeAll uses a method of the port promoted through an embedded field (GOARCH-32).
+// closeAll uses a method of the port promoted through an embedded field, from the in files (GOARCH-32 admits it).
 func closeAll(b box) { _ = b.Close() }
 
 // pick decides with arithmetic, a constant of the domain and a type switch (GOARCH-37).

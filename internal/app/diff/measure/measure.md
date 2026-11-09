@@ -62,8 +62,10 @@ with 0.
 
 `Port`, declared in `in.go` and implemented by `Adapter` in `out.go`:
 
-- `LoadWorkflow`: reads polix.yaml with `workflow.Parse`; without the file, the default workflow, which has no
-  weights. A file that cannot be read, does not parse, is not valid or requires a newer polix is an error.
+- `LoadWorkflow`: loads polix.yaml through the field `Workflow` of the adapter, the loader of `LoadWorkflow`
+  (`internal/app/workflow/load`) that `cmd/polix` builds once and passes to `Command`; without the file, the
+  default workflow, which has no weights. A file that cannot be read, does not parse, is not valid or requires a
+  newer polix is an error.
 - `Diff`: the size of the change of each file not committed yet (`git.Repo.Stats` against HEAD, untracked files
   read whole), as a validated `diff.Diff`.
 - `CommitDiff`: the size of the change of each file the commit introduced (`git.Repo.CommitStats`: against its
@@ -83,7 +85,7 @@ The use case fails, printing the error and exiting with 1, when:
 ## Flow
 
 1. `Command` rejects an empty `--commit`, opens the repository, turns the flags into a `Request` and injects
-   `Adapter{Repo: repo}` as the `Port`.
+   `Adapter{Repo: repo, Workflow: loadWorkflow}`, with the loader of polix.yaml it was given, as the `Port`.
 2. The shell loads the workflow through the port, for its weights.
 3. It reads the diff through the port: `CommitDiff` when the request has a revision, else `Diff`.
 4. `Decide` measures it: `Output`.

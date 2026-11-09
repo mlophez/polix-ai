@@ -1,6 +1,7 @@
-// Package hook is the domain of a hook call of an agent: the events it carries, the evaluation of the workflow
-// for each of them, step by step, the protections that come before the workflow, the conditions of its entries
-// and the heuristic of the commands that write files.
+// Package hook is the domain of a hook call of an agent: the events it carries and the evaluation of the workflow
+// for each of them, step by step, with the facts of the repository it learns and the outcomes of the steps that
+// act. The protections, the conditions of the entries and the heuristic of the commands that write files are the
+// engine of the use case AnswerHook (internal/app/hook/answer), their only user.
 //
 // It measures and never judges: conditions are questions about the repository, the event and the log of what polix
 // observed; judging the code is the job of the reviewer subagent.

@@ -4,25 +4,19 @@ import "testing"
 
 func TestVersionCompare(t *testing.T) {
 	cases := []struct {
-		a, b string
+		a, b Version
 		want int
 	}{
-		{"0.2.0", "0.2.0", 0},
-		{"v0.2.0", "0.2.0", 0},
-		{"0.2.0", "0.10.0", -1},
-		{"1.0.0", "0.99.99", 1},
-		{"0.2.0-rc1", "0.2.0", -1},
-		{"0.2.0", "0.2.0-rc1", 1},
-		{"0.2.0-rc1", "0.2.0-rc2", -1},
-		{"0.2.0-rc2", "0.2.0-rc1", 1},
+		{Version{Minor: 2}, Version{Minor: 2}, 0},
+		{Version{Minor: 2}, Version{Minor: 10}, -1},
+		{Version{Major: 1}, Version{Minor: 99, Patch: 99}, 1},
+		{Version{Minor: 2, Pre: "rc1"}, Version{Minor: 2}, -1},
+		{Version{Minor: 2}, Version{Minor: 2, Pre: "rc1"}, 1},
+		{Version{Minor: 2, Pre: "rc1"}, Version{Minor: 2, Pre: "rc2"}, -1},
+		{Version{Minor: 2, Pre: "rc2"}, Version{Minor: 2, Pre: "rc1"}, 1},
 	}
 	for _, c := range cases {
-		a, errA := Parse(c.a)
-		b, errB := Parse(c.b)
-		if errA != nil || errB != nil {
-			t.Fatalf("Parse(%q), Parse(%q): %v, %v", c.a, c.b, errA, errB)
-		}
-		if got := a.Compare(b); got != c.want {
+		if got := c.a.Compare(c.b); got != c.want {
 			t.Errorf("%s.Compare(%s) = %d, want %d", c.a, c.b, got, c.want)
 		}
 	}

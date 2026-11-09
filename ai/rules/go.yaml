@@ -9,6 +9,19 @@ rules:
   - id: GO-3
     description: >-
       A finding of the linter that is intended is silenced on its own line with `//nolint:<linter> // <reason>`,
-      never by disabling the linter or excluding the file in .golangci.yml.
+      never by disabling the linter or excluding the file in .golangci.yml. The only exception is the exclusion of
+      the _test.go files from the limits of size and complexity of GO-4 (gocyclo, gocognit and the rule
+      file-length-limit of revive), in linters.exclusions.rules of .golangci.yml.
     scope: ["*.go", ".golangci.yml"]
     deterministic: false
+
+  - id: GO-4
+    description: >-
+      A function that is not in a _test.go file has a cyclomatic complexity of at most 15 and a cognitive
+      complexity of at most 20, and a Go file that is not a _test.go has at most 400 lines, every physical line
+      counted. Past that, the code splits into unexported functions or methods named after their steps, or into
+      sibling files along GOARCH-1, never a //nolint nor an exclusion. gocyclo, gocognit and the rule
+      file-length-limit of revive decide it, enabled in .golangci.yml; the tests are left out (GO-3).
+    scope: ["*.go", ".golangci.yml"]
+    deterministic: true
+    check: tests/architecture/go04_test.go

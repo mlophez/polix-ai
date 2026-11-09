@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/version"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
 )
 
@@ -283,9 +284,13 @@ func TestRefreshAndDoctorFail(t *testing.T) {
 	}
 }
 
+// noCache is the loader of the cache of these tests: the cache folder of each test is empty, so it loads an empty
+// cache, as the loader of internal/app/version/load would.
+func noCache(context.Context, string) version.Loaded { return version.Loaded{} }
+
 // The update runs these flags of the command; the hooks of every release run polix update --hook.
 func TestCommandFlags(t *testing.T) {
-	c := Command()
+	c := Command(noCache, workflowload.Command())
 	for _, name := range []string{"check", "version", "hook"} {
 		if c.Flags().Lookup(name) == nil {
 			t.Errorf("polix update has no --%s", name)
@@ -297,7 +302,7 @@ func TestCommandFlags(t *testing.T) {
 // the exit code and the output.
 func runCommand(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
-	c := Command()
+	c := Command(noCache, workflowload.Command())
 	var stdout, stderr bytes.Buffer
 	c.SetOut(&stdout)
 	c.SetErr(&stderr)

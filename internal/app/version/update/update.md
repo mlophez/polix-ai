@@ -36,14 +36,18 @@ latest release and the error of asking it. In order:
 
 1. Disabled: with `--hook` nothing; else the failure `updates are disabled by POLIX_NO_UPDATE`.
 2. With `--hook` and not due: nothing to do, the plugin is refreshed.
-3. Without `--version`: a failure to ask the latest release is the failure; a development build only reports the
-   latest release with `--check`, and else fails asking for `--version`; a binary that is the latest or a later one
-   is up to date (said only without `--hook`).
-4. `--check` with `--version`: the version is newer, the same or older than this binary (a downgrade), or this is a
-   development build.
-5. `--check`: the binary can be updated to the latest release.
-6. Else `Install` the target, telling `polix updated from <running> to <target> (<exe>)`, or with `--hook`
-   `polix se ha actualizado de <running> a <target>.`; with the latest release, `Remember` it as checked.
+3. Without `--version` (`towardLatest`): a failure to ask the latest release is the failure; a development build
+   only reports the latest release with `--check`, and else fails asking for `--version`; a binary that is the
+   latest or a later one is up to date (said only without `--hook`).
+4. `--check` with `--version` (`compared`): the version is newer, the same or older than this binary (a
+   downgrade), or this is a development build.
+5. `--check` (`installing`): the binary can be updated to the latest release.
+6. Else (`installing`) `Install` the target, telling `polix updated from <running> to <target> (<exe>)`, or with
+   `--hook` `polix se ha actualizado de <running> a <target>.`; with the latest release, `Remember` it as checked.
+
+The versions are text, compared with `semver.Compare` and `semver.IsRelease` of `internal/platform/semver`: versions
+like `1.2.3`, `v1.2.3` or `1.2.3-rc1`, where a missing number counts as 0, a pre-release is lower than its release
+and a development build (`dev`) is no release.
 
 `Refresh` is set when the plugin must be refreshed: without `--check`, unless the update fails. The policy on
 failures is part of the output: `RecordFailure` (with `--hook`, a failure of asking the latest release or of the
@@ -55,14 +59,13 @@ The domain decides the rest:
 
 - `version.Cache.ShouldCheck`: the hook of a release build asks once every `version.CheckEvery` (an hour), at once
   when the cache knows a newer release or the workflow is rejected in a way a newer polix may fix
-  (`version.NeedsNewer`: it requires a newer polix, names something unknown or has a later version of the schema),
-  and never within `version.RetryAfter` (15 minutes) of a failed update; a development build never asks.
+  (`version.Problems.NeedsNewer`: it requires a newer polix, names something unknown or has a later version of the
+  schema), and never within `version.RetryAfter` (15 minutes) of a failed update; a development build never asks.
 - `version.Cache.Saw`: a latest release seen counts as a check only when this binary is that release or a later
   one, so a check that leaves it behind (`--check`, a failed download) is repeated.
 - `version.Cache.Fail`: the time of a failed update of the hook.
-- `version.Parse`, `version.Released` and `version.Compare`: versions like `1.2.3`, `v1.2.3` or `1.2.3-rc1`,
-  compared with the semantics of `internal/platform/semver` (a missing number counts as 0, a pre-release is lower
-  than its release).
+
+The cache compares its versions with the same semantics of `internal/platform/semver`.
 
 ## Response
 
@@ -85,9 +88,13 @@ doctor and its failure (`polix doctor: <failure>`). With `--hook` the lines are 
 - `Executable`: the real path of the running binary; it also removes `<exe>.old`, which a previous update on
   Windows moved aside.
 - `LoadCache` and `SaveCache`: `update.json` in `POLIX_CACHE_DIR`, else `<user cache dir>/polix`; a cache that
-  cannot be read is empty.
-- `WorkflowRejected`: why this binary rejects the polix.yaml of the repository of the working folder; nil outside a
-  repository or without polix.yaml.
+  cannot be read is empty. `LoadCache` loads it through the field `Cache` of the adapter, the loader of
+  `LoadVersion` (`internal/app/version/load`) that `cmd/polix` builds once and passes to `Command`; `SaveCache`
+  encodes it with the unexported type `cacheJSON` of `out.go` (`checked_at`, `latest` and `failed_at` when an
+  update failed), the shape `LoadVersion` decodes.
+- `WorkflowRejected`: why this binary rejects the polix.yaml of the repository of the working folder, loaded
+  through the field `Workflow` of the adapter, the loader of `LoadWorkflow` (`internal/app/workflow/load`) that
+  `cmd/polix` builds once and passes to `Command`; nil outside a repository or without polix.yaml.
 - `Latest`: the tag of the latest release, from the redirect of `<releases>/latest`, within 5 seconds for the hook
   and 2 minutes for a person.
 - `Install`: checks that the folder of the binary can be written, downloads `polix_<os>_<arch>` (`.exe` on
@@ -109,14 +116,15 @@ Every error goes to the response; with `--hook` none of them makes the command f
 
 ## Flow
 
-1. `Command` turns the flags and `POLIX_NO_UPDATE` into a `Request` and injects `Adapter{Dir: ".", Hook: hook}` as
-   the `Port`.
+1. `Command` turns the flags and `POLIX_NO_UPDATE` into a `Request` and injects
+   `Adapter{Dir: ".", Hook: hook, Cache: cache, Workflow: loadWorkflow}`, with the loaders of the cache and of
+   polix.yaml it was given, as the `Port`.
 2. The shell reads the binary and the cache and, with `--hook`, the workflow; when the update goes on without
-   `--version` (with `--hook`, only when `version.Cache.ShouldCheck`), it asks the latest release and saves what it
-   saw (`version.Cache.Saw`), or with `--hook` the failure (`version.Cache.Fail`).
+   `--version` (with `--hook`, only when `version.Cache.ShouldCheck`), `askLatest` asks the latest release and
+   saves what it saw (`version.Cache.Saw`), or with `--hook` the failure (`version.Cache.Fail`).
 3. `Decide` decides what to do and tell: `Output`.
-4. The shell carries out the output: it installs the target, recording a failure of the hook or, with the latest
-   release, the check; refreshes the plugin with the binary at the path, the new one when it was replaced; and
-   with `--hook` runs its doctor.
+4. The shell carries out the output: `install` installs the target, recording a failure of the hook or, with the
+   latest release, the check; the shell refreshes the plugin with the binary at the path, the new one when it was
+   replaced; and with `--hook` `doctor` runs its doctor.
 5. The shell builds the response.
 6. `Command` serializes the response to the console and sets the exit code.

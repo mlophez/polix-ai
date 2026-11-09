@@ -1,8 +1,6 @@
 package setup
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -26,22 +24,14 @@ type HookHandler struct {
 	Timeout float64
 }
 
-// hookGroup and hookHandler are the JSON format of the hooks of Claude Code and Codex: by event, groups with a
-// matcher, each with its handlers. They decode the hooks a file holds and write the ones polix registers.
-type hookGroup struct {
-	Matcher string        `json:"matcher,omitempty"`
-	Hooks   []hookHandler `json:"hooks"`
-}
-
-type hookHandler struct {
-	Type    string  `json:"type"`
-	Command string  `json:"command"`
-	Timeout float64 `json:"timeout,omitempty"`
-}
-
-// hooksFileJSON is the part of a settings file of Claude Code, or a hooks file of Codex, that holds the hooks.
-type hooksFileJSON struct {
-	Hooks map[string][]hookGroup `json:"hooks"`
+// HooksFile is a hooks file of an agent that exists, as polix doctor read it: its groups of hooks by event, or
+// why it cannot be read or is not a hooks file. A handler without a command (a hook of another type, such as a
+// prompt) and a group left without handlers are not hooks polix reads, and are left out. It is built with a
+// literal followed by Valid.
+type HooksFile struct {
+	Hooks   map[string][]HookGroup // the groups of hooks of each event
+	ReadErr error                  // why the file cannot be read
+	Err     error                  // why its content is not a hooks file: not JSON, or its hooks not an object
 }
 
 const (
@@ -63,8 +53,8 @@ const UpdateCommand = "polix update --hook"
 // legacyCommands are the commands earlier builds registered, recognized so install replaces them.
 var legacyCommands = []string{"polix update --hook; polix doctor --hook"}
 
-// hookEvents are the events polix registers, in lifecycle order: the order new events are added to a file.
-var hookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+// HookEvents are the events polix registers, in lifecycle order: the order new events are added to a file.
+var HookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
 	"SubagentStop", "Stop"}
 
 // ClaudeHookEvents are the events polix needs in Claude Code, in lifecycle order, with the tools the matcher of
@@ -103,106 +93,72 @@ func (h HookHandler) Valid() error {
 	return nil
 }
 
-// hooks returns the hooks polix registers for an agent, by event.
-func hooks(agent string) map[string][]hookGroup {
-	call := hookHandler{Type: "command", Command: "polix hook " + agent, Timeout: HookTimeout}
-	one := func(matcher string) []hookGroup { return []hookGroup{{Matcher: matcher, Hooks: []hookHandler{call}}} }
+// Valid reports why f is not a hooks file as read: one that cannot be read or is not a hooks file holds no hooks,
+// and every group it holds is valid.
+func (f HooksFile) Valid() error {
+	if (f.ReadErr != nil || f.Err != nil) && len(f.Hooks) > 0 {
+		return errors.New("a hooks file that cannot be read holds no hooks")
+	}
+	for _, groups := range f.Hooks {
+		for _, g := range groups {
+			if err := g.Valid(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// Hooks returns the hooks polix registers for agent, by event: `polix hook <agent>` on every event, on the tools
+// polix governs (every tool on Codex, which names its tools differently), and the session start command of
+// UpdateCommand on startup.
+func (s Setup) Hooks(agent string) map[string][]HookGroup {
+	call := HookHandler{Command: "polix hook " + agent, Timeout: HookTimeout}
+	update := HookHandler{Command: UpdateCommand, Timeout: updateTimeout}
+	if call.Valid() != nil || update.Valid() != nil {
+		return nil
+	}
 	tools := claudeTools
 	if agent == Codex {
 		tools = "" // Codex names its tools differently (shell, apply_patch...): polix reads every call
 	}
-	out := map[string][]hookGroup{
-		"SessionStart": append(one(""), hookGroup{Matcher: "startup",
-			Hooks: []hookHandler{{Type: "command", Command: UpdateCommand, Timeout: updateTimeout}}}),
-		"UserPromptSubmit": one(""),
-		"PreToolUse":       one(tools),
-		"PostToolUse":      one(tools),
-		"SubagentStop":     one(""),
-		"Stop":             one(""),
+	out := map[string][]HookGroup{
+		"SessionStart":     append(call.Alone(""), update.Alone("startup")...),
+		"UserPromptSubmit": call.Alone(""),
+		"PreToolUse":       call.Alone(tools),
+		"PostToolUse":      call.Alone(tools),
+		"SubagentStop":     call.Alone(""),
+		"Stop":             call.Alone(""),
 	}
 	if agent == Claude {
 		// A failed command reaches post_command with its exit code; the adapter ignores failed edits.
-		out["PostToolUseFailure"] = one(tools)
+		out["PostToolUseFailure"] = call.Alone(tools)
 	}
 	return out
 }
 
-// IsPolixCommand reports whether a hook command is one polix registers.
-func IsPolixCommand(command string) bool {
-	c := strings.TrimSpace(command)
-	return strings.HasPrefix(c, "polix hook ") || IsUpdateCommand(c)
+// Alone returns the group of hooks that runs h alone on the tools of matcher.
+func (h HookHandler) Alone(matcher string) []HookGroup {
+	g := HookGroup{Matcher: matcher, Handlers: []HookHandler{h}}
+	if g.Valid() != nil {
+		return nil
+	}
+	return []HookGroup{g}
 }
 
-// IsUpdateCommand reports whether a hook command is the session start command of polix, of this release, of an
-// earlier one or of a later one that adds flags: install replaces it instead of adding a second update next to it.
-func IsUpdateCommand(command string) bool {
-	c := strings.TrimSpace(command)
+// Polix reports whether the command of h is one polix registers.
+func (h HookHandler) Polix() bool {
+	return strings.HasPrefix(strings.TrimSpace(h.Command), "polix hook ") || h.Update()
+}
+
+// Update reports whether the command of h is the session start command of polix, of this release, of an earlier
+// one or of a later one that adds flags: install replaces it instead of adding a second update next to it.
+func (h HookHandler) Update() bool {
+	c := strings.TrimSpace(h.Command)
 	return c == UpdateCommand || strings.HasPrefix(c, UpdateCommand+" ") || strings.HasPrefix(c, UpdateCommand+";")
 }
 
-// IsLegacyCommand reports whether a hook command is one an earlier build registered and install now replaces.
-func IsLegacyCommand(command string) bool {
-	return slices.Contains(legacyCommands, strings.TrimSpace(command))
-}
-
-// readHooks returns the hooks of a settings file of Claude Code or a hooks file of Codex, by event; an empty
-// file has none.
-func readHooks(data []byte) (map[string][]hookGroup, error) {
-	var doc hooksFileJSON
-	if len(bytes.TrimSpace(data)) > 0 {
-		if err := json.Unmarshal(data, &doc); err != nil {
-			return nil, err
-		}
-	}
-	return doc.Hooks, nil
-}
-
-// ParseHooks returns the groups of hooks of a settings file of Claude Code, by event, or the error of the JSON
-// decoder when its content is not JSON, an empty content included. A handler without a command (a hook of another
-// type, such as a prompt) and a group left without handlers are not hooks polix reads, and are left out.
-func ParseHooks(data []byte) (map[string][]HookGroup, error) {
-	var doc hooksFileJSON
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, err
-	}
-	out := map[string][]HookGroup{}
-	for ev, groups := range doc.Hooks {
-		for _, g := range groups {
-			var handlers []HookHandler
-			for _, h := range g.Hooks {
-				handler := HookHandler{Command: h.Command, Timeout: h.Timeout}
-				if err := handler.Valid(); err != nil {
-					continue
-				}
-				handlers = append(handlers, handler)
-			}
-			group := HookGroup{Matcher: g.Matcher, Handlers: handlers}
-			if err := group.Valid(); err != nil {
-				continue
-			}
-			out[ev] = append(out[ev], group)
-		}
-	}
-	return out, nil
-}
-
-// HooksError returns why the content of a hooks file cannot be read as one, or nil.
-func HooksError(data []byte) error {
-	_, err := readHooks(data)
-	return err
-}
-
-// Registered reports whether the content of a hooks file registers any hook of polix.
-func Registered(data []byte) bool {
-	h, _ := readHooks(data)
-	for _, groups := range h {
-		for _, g := range groups {
-			for _, c := range g.Hooks {
-				if IsPolixCommand(c.Command) {
-					return true
-				}
-			}
-		}
-	}
-	return false
+// Legacy reports whether the command of h is one an earlier build registered and install now replaces.
+func (h HookHandler) Legacy() bool {
+	return slices.Contains(legacyCommands, strings.TrimSpace(h.Command))
 }

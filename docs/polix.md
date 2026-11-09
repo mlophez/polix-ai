@@ -198,14 +198,15 @@ The Justfile recipes use `sh`: on Windows, run them from Git Bash.
 
 The use case `AnswerHook`, `internal/app/hook/answer` (layout in `docs/architecture.md`) answers it:
 
-1. The agent (`internal/app/agent`, Claude Code; its Codex adapter is not implemented, see
-   [Known limits](#known-limits)) turns the JSON of stdin into neutral events.
+1. The entry of the use case turns the JSON of stdin into neutral events (`internal/app/agent`) through the format
+   of the agent, `claude` (Claude Code) or `codex` (Codex support is not implemented, see
+   [Known limits](#known-limits)).
    An edit becomes one `pre_edit` or `post_edit` per path; a `git commit` in a command also produces
    `pre_commit`.
-2. The logic of the hook (`internal/app/hook`) applies the [protections](#protections): the built-in protection of the
+2. The logic of AnswerHook (`internal/app/hook/answer`) applies the [protections](#protections): the built-in protection of the
    state, then `guardrails.protected_files` and `guardrails.forbidden_commands`; then the entries of the event in
    order.
-3. The agent answers: exit 2 with the reasons on stderr to block, or exit 0 with
+3. The format of the agent renders the answer: exit 2 with the reasons on stderr to block, or exit 0 with
    `hookSpecificOutput.additionalContext` on stdout to inject context.
 
 Edits outside the repository (scratchpad, memory, another repository) and of files git ignores are not part of
@@ -379,7 +380,8 @@ without exceptions (see [Protections](#protections)):
   the reason is the `reason` of the first matching item, or `This command is forbidden by polix.yaml: a person
   must run it.`, followed by the line.
 
-The other three are only sugar: `workflow.Parse` expands each one into entries of `on`, so the hook,
+The other three are only sugar: the loading of polix.yaml (`internal/app/workflow/load`, through
+`workflow.Guardrails.Expand`) expands each one into entries of `on`, so the hook,
 `polix graph`, the repeat rules and the loop guard see them as any entry.
 
 - `protected_branches: [<name>, ...]`: a regular entry on `pre_commit` with `branch`, the anchored regular

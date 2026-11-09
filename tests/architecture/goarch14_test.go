@@ -11,13 +11,15 @@ var docSections = []string{"Trigger", "Request", "Logic", "Response", "Port", "E
 
 // GOARCH-14, the part a check can decide: each use case has its document <verb>.md in its folder, titled with
 // the name of the use case, # <Verb><Noun>, and with every section once, in order; a heading inside a fenced code
-// block is not a section. That it says what the code does is GOARCH-21.
+// block is not a section. A load use case has the same document, whose Trigger names main instead of a command.
+// That it says what the code does is GOARCH-21.
 func TestGOARCH14(t *testing.T) {
 	checkRule(t, checkDocument, "internal/app/order/cancel: use case CancelOrder has no document cancel.md",
 		"internal/app/order/place/place.md: no section ## Port",
 		"internal/app/stock/count/count.md: does not start with # CountStock",
 		"internal/app/stock/count/count.md: section ## Port out of order",
 		"internal/app/stock/count/count.md: section ## Errors appears twice")
+	checkAccepts(t, checkDocument, "internal/app/stock/load")
 }
 
 func checkDocument(m *module) []string {

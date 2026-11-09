@@ -23,6 +23,10 @@ linters:
     - usestdlibvars
     # A //nolint must name the linter and say why, and must still silence something.
     - nolintlint
+    # The limits of complexity of GO-4 (see settings.gocyclo and settings.gocognit); its limit of the length of a
+    # file is the rule file-length-limit of revive.
+    - gocyclo
+    - gocognit
   settings:
     importas:
       # A use case is imported as <noun><verb> (internal/app/rule/check as rulecheck): one pattern covers every use
@@ -77,10 +81,10 @@ linters:
               desc: &logs >-
                 GOARCH-41: the domain and the logic do not log; they return what happened and the shell reports it
             - { pkg: log/slog$, desc: *logs }
-        # GOARCH-41: the logic of a use case imports what the domain does, and never context. GOARCH-4 reads this
-        # list to check the helpers that the logic imports.
+        # GOARCH-41: the logic files of a use case, logic.go and its siblings logic_<topic>.go, import what the domain
+        # does, and never context. GOARCH-4 reads this list to check the helpers that the logic imports.
         GOARCH-41-logic:
-          files: ["**/internal/app/*/*/logic.go"]
+          files: ["**/internal/app/*/*/logic.go", "**/internal/app/*/*/logic_*.go", "!$test"]
           allow: *goarch41-allow
           deny:
             - pkg: context$
@@ -114,9 +118,33 @@ linters:
     nolintlint:
       require-specific: true
       require-explanation: true
+    # GO-4: the limits of size and complexity of the code. gocyclo and gocognit report a function strictly above
+    # min-complexity: a cyclomatic complexity above 15, a cognitive complexity above 20. Code past them splits into
+    # unexported functions or sibling files, never a //nolint.
+    gocyclo:
+      min-complexity: 15
+    gocognit:
+      min-complexity: 20
+    revive:
+      # The default rules of revive stay on; setting a rule would otherwise turn them off.
+      enable-default-rules: true
+      rules:
+        # GO-4: a Go file has at most 400 lines, every physical line counted; past that, part of it moves to a
+        # sibling file.
+        - name: file-length-limit
+          arguments:
+            - max: 400
   exclusions:
     # The usual unchecked errors: Close of a deferred cleanup, os.Remove of a temporary file, fmt.Print...
     presets: [std-error-handling]
+    rules:
+      # GO-4: the limits of size and complexity leave the tests out, the only exception of GO-3. A table of cases or
+      # a test that walks a scenario reads better whole than split.
+      - path: _test\.go$
+        linters: [gocyclo, gocognit]
+      - path: _test\.go$
+        linters: [revive]
+        text: file-length-limit
 formatters:
   enable: [gofmt, goimports]
   settings:

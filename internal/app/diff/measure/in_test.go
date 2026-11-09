@@ -10,6 +10,7 @@ import (
 
 	"github.com/mlophez/polix-ai/internal/app/diff"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 )
 
 // fakePort answers the port of MeasureDiff from memory and records the calls.
@@ -114,7 +115,7 @@ func TestShellErrors(t *testing.T) {
 
 // An empty --commit given explicitly is rejected before the shell runs.
 func TestCommandRejectsEmptyCommit(t *testing.T) {
-	c := Command()
+	c := Command(workflowload.Command())
 	c.SetArgs([]string{"--commit", ""})
 	c.SetOut(&bytes.Buffer{})
 	c.SetErr(&bytes.Buffer{})

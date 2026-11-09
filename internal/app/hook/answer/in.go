@@ -4,9 +4,13 @@ package answer
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
+	"regexp"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -87,11 +91,48 @@ type Port interface {
 	Append(ctx context.Context, e state.Entry) error
 }
 
+// format is the format of the hooks of one agent, the transport the entry reads and writes: claude in
+// in_claude.go and codex in in_codex.go. Every format is pure, bytes in and bytes out.
+type format interface {
+	// parse turns the input of a hook call into the native name of its event, needed to answer, and the events
+	// polix evaluates: none when the call is not relevant, such as a Read. The paths of the edits are not located
+	// in the repository yet: agent.Event.Locate does it.
+	parse(input []byte) (native string, events []agent.Event, err error)
+	// render turns an answer into what the agent expects for its native event: the text of stdout and stderr and
+	// the exit code.
+	render(native string, ans agent.Answer) (stdout, stderr string, code int)
+}
+
+// hookInput is the part of the input of a hook both agents share.
+type hookInput struct {
+	HookEventName string          `json:"hook_event_name"`
+	SessionID     string          `json:"session_id"`
+	Cwd           string          `json:"cwd"`
+	ToolName      string          `json:"tool_name"`
+	ToolInput     map[string]any  `json:"tool_input"`
+	ToolResponse  json.RawMessage `json:"tool_response"`
+	Prompt        string          `json:"prompt"`
+	AgentType     string          `json:"agent_type"`
+}
+
+// contextEvents are the native events of an agent whose JSON output can add context to the session.
+type contextEvents map[string]bool
+
+// formats are the formats of the agents, by the name of the agent.
+var formats = map[string]format{agent.Claude: claude{}, agent.Codex: codex{}}
+
+// gitCommit recognises a git commit anywhere in a command line (`cd x && git commit -m ...`), after global
+// options of git, those with a separate value included (`git -C dir commit`, `git -c k=v commit`), and inside a
+// quoted command (`bash -c "git commit ..."`). It errs on the side of a gate: the text of a commit inside quotes
+// also counts.
+var gitCommit = regexp.MustCompile(`(^|[;&|(\s'"])git(\s+(-[cC]|--git-dir|--work-tree|--namespace|--config-env)\s+\S+|\s+-\S+)*\s+commit(\s|$|['"])`)
+
 // Command is the command `polix hook <claude|codex>`, the entry of the use case AnswerHook: it turns
-// the argument, the flag and stdin into a Request, injects the adapter as the port, runs the shell and
-// writes the Response as the agent expects it. Its failure policy: an unknown agent exits with 1; an
-// input that cannot be read or parsed lets the action go on, with the error on stderr.
-func Command() *cobra.Command {
+// the argument, the flag and stdin into a Request, injects the adapter with the loaders rules, loadWorkflow and
+// loadState as the port, runs the shell and writes the Response as the agent expects it. Its failure policy: an
+// unknown agent exits with 1; an input that cannot be read or parsed lets the action go on, with the error on
+// stderr.
+func Command(rules rule.Load, loadWorkflow workflow.Load, loadState state.Load) *cobra.Command {
 	req := Request{Version: build.Current(), System: runtime.GOOS}
 	c := &cobra.Command{
 		Use:   "hook <claude|codex>",
@@ -115,7 +156,7 @@ func Command() *cobra.Command {
 				return nil
 			}
 			req.Input = input
-			res, err := run(c.Context(), &Adapter{}, req)
+			res, err := run(c.Context(), &Adapter{Rules: rules, Workflow: loadWorkflow, State: loadState}, req)
 			if err != nil {
 				fmt.Fprintln(stderr, "polix hook:", err)
 				return nil
@@ -132,15 +173,16 @@ func Command() *cobra.Command {
 // run is the shell, from request to response: it parses the input with the format of the agent, opens the
 // repository and loads the workflow through the port, and for each event locates its path and loops: it asks the
 // logic for the next step, carries it out through the port and feeds the result back to the evaluation, until
-// there is none; then it merges the answers of the events and renders them for the agent. Outside a repository,
-// or without events, it lets everything through. It only sequences; the decisions are in the logic and the
-// domain.
+// there is none; then it merges the answers of the events and renders them with the format of the agent. Outside a
+// repository, or without events, it lets everything through. It only sequences; the decisions are in the logic and
+// the domain.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	ag := agent.Agent{Name: req.Agent}
 	if err := ag.Valid(); err != nil {
 		return Response{}, err
 	}
-	native, events, err := ag.Parse(req.Input)
+	f := formats[ag.Name]
+	native, events, err := f.parse(req.Input)
 	if err != nil {
 		return Response{}, err
 	}
@@ -156,67 +198,198 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		return Response{}, nil //nolint:nilerr // outside a repository there is nothing to govern
 	}
 	wf, present, problem := port.LoadWorkflow(ctx, req.Version)
-	invalid := hook.Unusable(problem, req.Version)
 	var facts hook.Facts
 	var answer agent.Answer
 	for _, e := range h.Events {
 		if e.Edits() {
 			e = e.Locate(port.Locate(ctx, e.AbsPath, e.Cwd))
 		}
-		ev := hook.Evaluation{Workflow: wf, Present: present, Invalid: invalid, Root: root, GitDir: gitDir,
+		ev := hook.Evaluation{Workflow: wf, Present: present, Invalid: problem, Root: root, GitDir: gitDir,
 			System: req.System, Event: e, Facts: facts}
 		if err := ev.Valid(); err != nil {
 			return Response{}, err
 		}
+		ev = ev.Running(req.Version)
 		var out Output
 		for {
 			out = Decide(ev)
-			s := out.Step
-			switch {
-			case s.None():
-			case s.Branch:
-				ev = ev.KnowBranch(port.Branch(ctx))
-			case s.Hash:
-				hash, err := port.Hash(ctx)
-				ev = ev.KnowHash(s.Epoch, hash, err)
-			case s.Compare != "":
-				paths, err := port.TreeDiff(ctx, s.Compare, s.Tree)
-				ev = ev.KnowTreeDiff(s.Compare, s.Tree, paths, err)
-			case s.Changed:
-				ev = ev.KnowChanged(port.Changed(ctx))
-			case s.Diff:
-				ev = ev.KnowDiff(port.Diff(ctx))
-			case s.Files:
-				ev = ev.KnowFiles(port.Files(ctx))
-			case s.Rules:
-				ev = ev.KnowRules(port.LoadRules(ctx, wf.RulesPath()))
-			case s.State:
-				ev = ev.KnowState(port.LoadState(ctx))
-			case s.Ignored != "":
-				ev = ev.KnowIgnored(s.Ignored, port.Ignored(ctx, s.Ignored))
-			case s.Real != nil:
-				ev = ev.KnowReal(s.Real, port.Real(ctx, s.Real))
-			case s.Foreign != "":
-				ev = ev.KnowForeign(s.Foreign, port.Foreign(ctx, s.Foreign))
-			case s.Contains != nil:
-				ev = ev.KnowFound(s.Epoch, s.Contains, s.Text, port.Contains(ctx, s.Contains, s.Text))
-			case s.Read != "":
-				data, err := port.Read(ctx, s.Read)
-				ev = ev.KnowContent(s.Epoch, s.Read, data, err)
-			case s.Run != nil:
-				ev = ev.Note(port.Run(ctx, s.Run))
-			case s.Check != nil:
-				ev = ev.Note(port.RunCheck(ctx, *s.Check))
-			case s.Append != nil:
-				ev = ev.Note("", port.Append(ctx, *s.Append))
-			}
-			if s.None() {
+			if out.Step.None() {
 				break
 			}
+			ev = carry(ctx, port, ev, out.Step)
 		}
 		answer = answer.Merge(out.Answer)
 		facts = out.Facts
 	}
-	stdout, stderr, code := ag.Render(h.Native, answer)
+	stdout, stderr, code := f.render(h.Native, answer)
 	return Response{Stdout: stdout, Stderr: stderr, Code: code}, nil
+}
+
+// carry carries out the step s of the evaluation ev through the port and feeds its result back to the
+// evaluation: the fact it asks for, or, for a step that acts, its outcome (act).
+func carry(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook.Evaluation {
+	switch {
+	case s.Branch:
+		return ev.KnowBranch(port.Branch(ctx))
+	case s.Hash:
+		hash, err := port.Hash(ctx)
+		return ev.KnowHash(s.Epoch, hash, err)
+	case s.Compare != "":
+		paths, err := port.TreeDiff(ctx, s.Compare, s.Tree)
+		return ev.KnowTreeDiff(s.Compare, s.Tree, paths, err)
+	case s.Changed:
+		return ev.KnowChanged(port.Changed(ctx))
+	case s.Diff:
+		return ev.KnowDiff(port.Diff(ctx))
+	case s.Files:
+		return ev.KnowFiles(port.Files(ctx))
+	case s.Rules:
+		return ev.KnowRules(port.LoadRules(ctx, ev.Workflow.RulesPath()))
+	case s.State:
+		return ev.KnowState(port.LoadState(ctx))
+	case s.Ignored != "":
+		return ev.KnowIgnored(s.Ignored, port.Ignored(ctx, s.Ignored))
+	case s.Real != nil:
+		return ev.KnowReal(s.Real, port.Real(ctx, s.Real))
+	case s.Foreign != "":
+		return ev.KnowForeign(s.Foreign, port.Foreign(ctx, s.Foreign))
+	case s.Contains != nil:
+		return ev.KnowFound(s.Epoch, s.Contains, s.Text, port.Contains(ctx, s.Contains, s.Text))
+	case s.Read != "":
+		data, err := port.Read(ctx, s.Read)
+		return ev.KnowContent(s.Epoch, s.Read, data, err)
+	}
+	return act(ctx, port, ev, s)
+}
+
+// act carries out the step s that acts, a run, a check or an append to the log, through the port and notes its
+// outcome in the evaluation ev.
+func act(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook.Evaluation {
+	switch {
+	case s.Run != nil:
+		return ev.Note(port.Run(ctx, s.Run))
+	case s.Check != nil:
+		return ev.Note(port.RunCheck(ctx, *s.Check))
+	case s.Append != nil:
+		return ev.Note("", port.Append(ctx, *s.Append))
+	}
+	return ev
+}
+
+// actor is the subagent type when the call comes from a subagent, the main session otherwise.
+func (in hookInput) actor() string {
+	if in.AgentType != "" {
+		return in.AgentType
+	}
+	return agent.ActorSession
+}
+
+// str returns the text of the input of the tool under key, "" when it has none.
+func (in hookInput) str(key string) string {
+	s, _ := in.ToolInput[key].(string)
+	return s
+}
+
+// exitCode reads the exit code of a command from the tool response, 0 when it does not say.
+func (in hookInput) exitCode() int {
+	var resp map[string]any
+	if json.Unmarshal(in.ToolResponse, &resp) != nil {
+		return 0
+	}
+	for _, k := range []string{"exit_code", "exitCode", "returncode"} {
+		if n, ok := resp[k].(float64); ok {
+			return int(n)
+		}
+	}
+	return 0
+}
+
+// event returns the event name of the agent ag for the input, with abs, the path of an edit, and with command and
+// code, a command line and its exit code; the error tells why it is not valid. The stop of a turn (stop) is
+// always of the main session: a subagent stops with subagent_stop.
+func (in hookInput) event(ag, name, abs, command string, code int) (agent.Event, error) {
+	actor := in.actor()
+	if name == workflow.Stop {
+		actor = agent.ActorSession
+	}
+	ev := agent.Event{Name: name, Agent: ag, Session: in.SessionID, Actor: actor, AbsPath: abs, Command: command,
+		ExitCode: code, Prompt: in.Prompt, Cwd: in.Cwd}
+	return ev, ev.Valid()
+}
+
+// single returns the one event name of the agent ag for an input that is neither an edit nor a command.
+func (in hookInput) single(ag, name string) ([]agent.Event, error) {
+	ev, err := in.event(ag, name, "", "", 0)
+	if err != nil {
+		return nil, err
+	}
+	return []agent.Event{ev}, nil
+}
+
+// edits returns one event name of the agent ag per edited path. A relative path (apply_patch gives them) is taken
+// from the cwd of the call, so AbsPath is absolute whenever the cwd is known.
+func (in hookInput) edits(ag, name string, paths []string) ([]agent.Event, error) {
+	var events []agent.Event
+	for _, p := range paths {
+		if !filepath.IsAbs(p) && in.Cwd != "" {
+			p = filepath.Join(in.Cwd, p)
+		}
+		ev, err := in.event(ag, name, p, "", 0)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, ev)
+	}
+	return events, nil
+}
+
+// commands returns the event name of the agent ag of the command line command: after it ran (post_command), with
+// the exit code of its response, 1 when the agent says it failed without one; about to run (pre_command), plus
+// pre_commit when it commits.
+func (in hookInput) commands(ag, name, command string, failed bool) ([]agent.Event, error) {
+	code := 0
+	if name == workflow.PostCommand {
+		code = in.exitCode()
+		if failed && code == 0 {
+			code = 1
+		}
+	}
+	names := []string{name}
+	if name == workflow.PreCommand && gitCommit.MatchString(command) {
+		names = append(names, workflow.PreCommit)
+	}
+	var events []agent.Event
+	for _, n := range names {
+		ev, err := in.event(ag, n, "", command, code)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, ev)
+	}
+	return events, nil
+}
+
+// render writes a block as exit 2 with the reasons on stderr, its contexts after them; otherwise the warnings go
+// to stderr and the contexts to the JSON both agents read, on the native events of ce.
+func (ce contextEvents) render(native string, a agent.Answer) (stdout, stderr string, code int) {
+	if a.Block {
+		msg := strings.Join(a.Reasons, "\n\n")
+		if len(a.Contexts) > 0 {
+			msg += "\n\n" + strings.Join(a.Contexts, "\n\n")
+		}
+		return "", msg + "\n", agent.ExitBlock
+	}
+	var errb strings.Builder
+	for _, w := range a.Warnings {
+		errb.WriteString("polix: " + w + "\n")
+	}
+	if len(a.Contexts) > 0 && ce[native] {
+		out := map[string]any{"hookSpecificOutput": map[string]any{
+			"hookEventName":     native,
+			"additionalContext": strings.Join(a.Contexts, "\n\n"),
+		}}
+		data, _ := json.Marshal(out)
+		stdout = string(data) + "\n"
+	}
+	return stdout, errb.String(), agent.ExitOK
 }

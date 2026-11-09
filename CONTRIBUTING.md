@@ -63,9 +63,10 @@ In a session, the workflow of `polix.yaml`:
 
 - [docs/architecture.md](docs/architecture.md): the layout of the Go code, `internal/app/<noun>/<verb>/` and
   `internal/platform/<lib>/`, where each command is a use case package with an entry, a pure logic and an adapter.
-  Its rules are GOARCH-1 to GOARCH-43 of `ai/rules/architecture.yaml`, and the deterministic ones are checked by
+  Its rules are GOARCH-1 to GOARCH-44 of `ai/rules/architecture.yaml`, and the deterministic ones are checked by
   the tests of `tests/architecture/`, which run golangci-lint for the import lists of depguard (GOARCH-41 to
-  GOARCH-43).
+  GOARCH-43) and for the limits of size and complexity of GO-4 of `ai/rules/go.yaml` (gocyclo, gocognit and the
+  rule `file-length-limit` of revive).
 - [docs/polix.md](docs/polix.md): how polix behaves, its commands and its known limits.
 - [docs/reference.md](docs/reference.md): every key, event, condition and verb of `polix.yaml`.
 - [docs/use-cases.md](docs/use-cases.md): recipes of `polix.yaml`.

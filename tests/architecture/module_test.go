@@ -79,7 +79,8 @@ type sourceImporter struct {
 // useCase holds the files of one use case folder, internal/app/<noun>/<verb>/, by kind.
 type useCase struct {
 	dir, noun, verb string
-	files           map[kind]*goFile
+	files           map[kind]*goFile   // the main file of each kind: in.go, logic.go and out.go
+	all             map[kind][]*goFile // every file of each kind: its main file first, then its siblings by name
 }
 
 // ref is a use of a top-level name declared in another file of the same package.
@@ -107,9 +108,9 @@ const (
 const (
 	kindUnknown kind = iota // a file its folder does not admit
 	kindDomain              // <noun>.go or <noun>_*.go of a domain
-	kindIn                  // in.go of a use case
-	kindLogic               // logic.go of a use case
-	kindOut                 // out.go of a use case
+	kindIn                  // in.go of a use case, or a sibling in_<topic>.go
+	kindLogic               // logic.go of a use case, or a sibling logic_<topic>.go
+	kindOut                 // out.go of a use case, or a sibling out_<topic>.go
 	kindHelper              // <helper>.go or <helper>_*.go of a helper
 	kindLibrary             // any Go file of a library
 	kindCmd                 // any Go file of cmd/
@@ -122,7 +123,8 @@ var root = flag.String("root", "../..", "root of the module whose architecture i
 // loaded caches the parsed modules by root, shared by the tests of every rule.
 var loaded sync.Map
 
-// useCaseFiles are the files of a use case, from input to output (GOARCH-1, GOARCH-3).
+// useCaseFiles are the main files of a use case, from input to output (GOARCH-1, GOARCH-3); each may have
+// siblings of its kind, <stem>_<topic>.go.
 var useCaseFiles = []struct {
 	name string
 	kind kind
@@ -154,6 +156,21 @@ func checkRule(t *testing.T, check func(*module) []string, want ...string) {
 		for _, w := range want {
 			if !strings.Contains(got, w) {
 				t.Errorf("no violation mentions %q; found:\n%s", w, got)
+			}
+		}
+	})
+}
+
+// checkAccepts runs check on testdata/bad, where no violation may mention a string of good: the good cases that
+// the rule admits.
+func checkAccepts(t *testing.T, check func(*module) []string, good ...string) {
+	t.Helper()
+	t.Run("accepts", func(t *testing.T) {
+		for _, v := range check(mustLoad(t, badRoot)) {
+			for _, g := range good {
+				if strings.Contains(v, g) {
+					t.Errorf("a good case is reported: %s", v)
+				}
 			}
 		}
 	})
@@ -284,7 +301,8 @@ func placeOf(dir string) place {
 }
 
 // classify tells what the file name of a folder at is (GOARCH-1): a test at any level; a domain file <noun>.go or
-// <noun>_*.go; in.go, logic.go or out.go of a use case; a helper file <helper>.go or <helper>_*.go; any file of a
+// <noun>_*.go; in.go, logic.go or out.go of a use case, or one of their siblings in_<topic>.go, logic_<topic>.go
+// and out_<topic>.go, of the kind of its main file; a helper file <helper>.go or <helper>_*.go; any file of a
 // library or of cmd/. Anything else is unknown.
 func classify(at place, name string) kind {
 	if strings.HasSuffix(name, "_test.go") {
@@ -298,7 +316,7 @@ func classify(at place, name string) kind {
 		}
 	case levelUseCase:
 		for _, f := range useCaseFiles {
-			if name == f.name {
+			if name == f.name || siblingOf(stem, f.name) {
 				return f.kind
 			}
 		}
@@ -312,6 +330,28 @@ func classify(at place, name string) kind {
 		return kindCmd
 	}
 	return kindUnknown
+}
+
+// siblingOf reports whether stem, a file name without .go, is a sibling <main>_<topic> of the main file of a use
+// case main (in.go), with a topic that is not empty.
+func siblingOf(stem, main string) bool {
+	topic, ok := strings.CutPrefix(stem, strings.TrimSuffix(main, ".go")+"_")
+	return ok && topic != ""
+}
+
+// sibling reports whether f is a sibling of a main file of its use case: in_<topic>.go, logic_<topic>.go or
+// out_<topic>.go.
+func (f *goFile) sibling() bool {
+	switch f.kind {
+	case kindIn, kindLogic, kindOut:
+		for _, u := range useCaseFiles {
+			if f.name == u.name {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // name is the name of the use case, <Verb><Noun> (CheckRule), the title of its document.
@@ -355,19 +395,27 @@ func (m *module) compiled() map[string][]*goFile {
 	return out
 }
 
-// useCases returns the use cases of the module, one per folder internal/app/<noun>/<verb>/, with their files.
+// useCases returns the use cases of the module, one per folder internal/app/<noun>/<verb>/, with their files: the
+// main file of each kind, and every file of each kind, the main one first and then its siblings by name.
 func (m *module) useCases() []*useCase {
 	byDir := map[string]*useCase{}
 	var out []*useCase
 	for _, dir := range m.dirs {
 		if at := placeOf(dir); at.level == levelUseCase {
-			uc := &useCase{dir: dir, noun: at.noun, verb: at.verb, files: map[kind]*goFile{}}
+			uc := &useCase{dir: dir, noun: at.noun, verb: at.verb, files: map[kind]*goFile{},
+				all: map[kind][]*goFile{}}
 			byDir[dir] = uc
 			out = append(out, uc)
 		}
 	}
+	// The files come in the lexical order of the walk, where in.go sorts before in_<topic>.go ('.' < '_').
 	for _, f := range m.sources() {
-		if uc, ok := byDir[f.dir]; ok && f.kind != kindUnknown {
+		uc, ok := byDir[f.dir]
+		if !ok || f.kind == kindUnknown {
+			continue
+		}
+		uc.all[f.kind] = append(uc.all[f.kind], f)
+		if !f.sibling() {
 			uc.files[f.kind] = f
 		}
 	}

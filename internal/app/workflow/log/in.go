@@ -54,8 +54,9 @@ type Port interface {
 	ReadLog(ctx context.Context) (state.State, error)
 }
 
-// Command is the command `polix log`, the entry of the use case LogWorkflow.
-func Command() *cobra.Command {
+// Command is the command `polix log`, the entry of the use case LogWorkflow: it injects the adapter with the loader
+// of the log loadState as the port.
+func Command(loadState state.Load) *cobra.Command {
 	var req Request
 	c := &cobra.Command{
 		Use:   "log",
@@ -68,7 +69,7 @@ func Command() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := run(c.Context(), Adapter{Repo: repo}, req)
+			res, err := run(c.Context(), Adapter{Repo: repo, State: loadState}, req)
 			if err != nil {
 				return err
 			}

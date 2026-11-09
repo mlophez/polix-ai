@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,8 +20,18 @@ import (
 // Adapter implements Port on the real disk, network and processes. The entry fills it
 // and passes it as the port; there is no constructor.
 type Adapter struct {
-	Dir  string // the working folder, whose repository holds the workflow and where refresh and doctor run
-	Hook bool   // the session start hook: the latest release is asked with a short timeout
+	Dir      string        // the working folder, whose repository holds the workflow and where refresh and doctor run
+	Hook     bool          // the session start hook: the latest release is asked with a short timeout
+	Cache    version.Load  // the loader of the cache (internal/app/version/load), which cmd/polix builds once
+	Workflow workflow.Load // the loader of polix.yaml (internal/app/workflow/load), which cmd/polix builds once too
+}
+
+// cacheJSON is the shape of the file of the cache, with the fields of version.Cache in its order, so one converts to
+// it; LoadVersion (internal/app/version/load) decodes the same shape.
+type cacheJSON struct {
+	CheckedAt time.Time `json:"checked_at"`
+	Latest    string    `json:"latest"`
+	FailedAt  time.Time `json:"failed_at,omitzero"`
 }
 
 const (
@@ -47,20 +58,16 @@ func (a Adapter) Executable(_ context.Context) (string, error) {
 	return exe, nil
 }
 
-// LoadCache reads the cache, empty when there is none or it cannot be read.
-func (a Adapter) LoadCache(_ context.Context) version.Cache {
+// LoadCache loads the cache through the loader of the cache, empty when there is none or it cannot be read.
+func (a Adapter) LoadCache(ctx context.Context) version.Cache {
 	file, err := a.cacheFile()
 	if err != nil {
 		return version.Cache{}
 	}
-	data, err := os.ReadFile(file)
-	if err != nil {
-		return version.Cache{}
-	}
-	return version.ParseCache(data)
+	return a.Cache(ctx, file).Cache
 }
 
-// SaveCache writes the cache, creating its folder.
+// SaveCache writes the cache, encoded with cacheJSON, creating its folder.
 func (a Adapter) SaveCache(_ context.Context, c version.Cache) error {
 	file, err := a.cacheFile()
 	if err != nil {
@@ -69,27 +76,22 @@ func (a Adapter) SaveCache(_ context.Context, c version.Cache) error {
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		return err
 	}
-	data, err := c.Encode()
+	data, err := json.Marshal(cacheJSON(c))
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(file, data, 0o644)
 }
 
-// WorkflowRejected reads the polix.yaml of the repository of the working folder for the polix of version running
-// and returns why it rejects it: it cannot be read, it is not valid or it requires a newer polix. Outside a
-// repository, or without polix.yaml, there is nothing to reject.
+// WorkflowRejected loads the polix.yaml of the repository of the working folder for the polix of version running,
+// through the loader of polix.yaml, and returns why it rejects it: it cannot be read, it is not valid or it requires
+// a newer polix. Outside a repository, or without polix.yaml, there is nothing to reject.
 func (a Adapter) WorkflowRejected(ctx context.Context, running string) error {
 	repo, err := git.Open(ctx, a.Dir)
 	if err != nil {
 		return nil //nolint:nilerr // outside a repository there is no workflow to reject
 	}
-	data, existed, err := file.Read(filepath.Join(repo.Root, workflow.File))
-	if err != nil || !existed {
-		return err
-	}
-	_, err = workflow.Parse(data, running)
-	return err
+	return a.Workflow(ctx, repo.Root, running).Err
 }
 
 // Latest asks the releases page for the latest release, within the timeout of the hook or of a person.

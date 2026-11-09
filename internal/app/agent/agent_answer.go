@@ -1,10 +1,8 @@
 package agent
 
 import (
-	"encoding/json"
 	"errors"
 	"slices"
-	"strings"
 )
 
 // Answer is the answer of polix to one or more events.
@@ -14,6 +12,9 @@ type Answer struct {
 	Contexts []string // text to inject into the session
 	Warnings []string // messages for the user that do not block
 }
+
+// texts is a list of the texts of an answer, kept without repeating one.
+type texts []string
 
 // Valid tells why the answer cannot be given: a block needs a reason.
 func (a Answer) Valid() error {
@@ -46,40 +47,15 @@ func (a Answer) Warn(warning string) Answer {
 // several paths, a command and its commit) often give the same message.
 func (a Answer) Merge(o Answer) Answer {
 	a.Block = a.Block || o.Block
-	a.Reasons = appendNew(a.Reasons, o.Reasons)
-	a.Contexts = appendNew(a.Contexts, o.Contexts)
-	a.Warnings = appendNew(a.Warnings, o.Warnings)
+	a.Reasons = texts(a.Reasons).with(o.Reasons)
+	a.Contexts = texts(a.Contexts).with(o.Contexts)
+	a.Warnings = texts(a.Warnings).with(o.Warnings)
 	return a
 }
 
-// render writes a block as exit 2 with the reasons on stderr, and the contexts as the JSON both agents read on
-// the events of contextEvents.
-func (a Answer) render(native string, contextEvents map[string]bool) (stdout, stderr string, code int) {
-	if a.Block {
-		msg := strings.Join(a.Reasons, "\n\n")
-		if len(a.Contexts) > 0 {
-			msg += "\n\n" + strings.Join(a.Contexts, "\n\n")
-		}
-		return "", msg + "\n", ExitBlock
-	}
-	var errb strings.Builder
-	for _, w := range a.Warnings {
-		errb.WriteString("polix: " + w + "\n")
-	}
-	if len(a.Contexts) > 0 && contextEvents[native] {
-		out := map[string]any{"hookSpecificOutput": map[string]any{
-			"hookEventName":     native,
-			"additionalContext": strings.Join(a.Contexts, "\n\n"),
-		}}
-		data, _ := json.Marshal(out)
-		stdout = string(data) + "\n"
-	}
-	return stdout, errb.String(), ExitOK
-}
-
-// appendNew appends to a copy of list the texts of more it does not hold yet.
-func appendNew(list, more []string) []string {
-	list = slices.Clone(list)
+// with returns a copy of the list with the texts of more it does not hold yet appended.
+func (t texts) with(more []string) []string {
+	list := slices.Clone([]string(t))
 	for _, s := range more {
 		if !slices.Contains(list, s) {
 			list = append(list, s)

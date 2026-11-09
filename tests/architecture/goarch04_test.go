@@ -27,9 +27,10 @@ var forbiddenTime = map[string]bool{
 // GOARCH-4: the domain and the logic are pure: no clock, no fmt.Print*, print nor println, no goroutines, no panic
 // and no state of the package: a variable is a table built once in its declaration (literals, regexp.MustCompile,
 // other tables) and never assigned, indexed-assigned nor appended to afterwards, a blank one, or a sentinel error
-// Err* = errors.New or fmt.Errorf. The logic uses no name declared in in.go nor out.go, and a helper the logic
-// imports is as pure as the logic: the same checks, and only the imports that the list GOARCH-41-logic of
-// .golangci.yml allows. The imports of the domain and the logic themselves are GOARCH-41, which depguard decides.
+// Err* = errors.New or fmt.Errorf. The logic files, logic.go and its siblings logic_<topic>.go, use no name
+// declared in the in files nor the out files, and a helper the logic imports is as pure as the logic: the same
+// checks, and only the imports that the list GOARCH-41-logic of .golangci.yml allows. The imports of the domain
+// and the logic themselves are GOARCH-41, which depguard decides.
 func TestGOARCH4(t *testing.T) {
 	t.Run("no state", sentinelErrorsAndTablesAreNoState)
 	checkRule(t, checkPure,
@@ -41,7 +42,10 @@ func TestGOARCH4(t *testing.T) {
 		"internal/app/order/place/pricing/pricing.go:7: imports os, out of the list GOARCH-41-logic: a helper "+
 			"the logic internal/app/order/place/logic.go imports",
 		"internal/app/order/place/pricing/pricing.go:17: calls time.Now, which reads the clock: a helper the logic "+
-			"internal/app/order/place/logic.go imports")
+			"internal/app/order/place/logic.go imports",
+		"internal/app/stock/count/logic_audit.go:12: calls time.Now, which reads the clock",
+		"internal/app/stock/count/logic_audit.go:10: the logic uses box, of in.go")
+	checkAccepts(t, checkPure, "internal/app/stock/take/")
 }
 
 func checkPure(m *module) []string {
@@ -78,9 +82,9 @@ func pure(m *module, f *goFile) []string {
 	return append(out, packageState(m, f)...)
 }
 
-// logicHelpers checks the helpers of its use case that the logic file logic imports: each of their files is pure
-// and imports only what list, the list GOARCH-41-logic of depguard, allows. listModule is the module path its
-// entries name.
+// logicHelpers checks the helpers of its use case that the logic file logic, main or sibling, imports: each of
+// their files is pure and imports only what list, the list GOARCH-41-logic of depguard, allows. listModule is the
+// module path its entries name.
 func logicHelpers(m *module, logic *goFile, list depguardList, listModule string) []string {
 	var out []string
 	for _, s := range logic.ast.Imports {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/mlophez/polix-ai/internal/app/version"
+	"github.com/mlophez/polix-ai/internal/platform/semver"
 )
 
 // Output is the decision of the logic of UpdateVersion, which the shell carries out through the
@@ -47,7 +48,9 @@ func (o Output) RefreshAfter(err error) bool {
 	return o.Refresh && o.RefreshAfterFailure && !errors.Is(err, version.ErrReplace)
 }
 
-// decision is the decision of Decide but for its policy on failures.
+// decision is the decision of Decide but for its policy on failures. The versions are text, compared with the
+// semantics of internal/platform/semver: a development build ("dev") is not a release, and a missing number counts
+// as 0.
 func decision(running, want, exe string, check, hook, disabled, due bool, latest string,
 	failed error) Output {
 	switch {
@@ -58,41 +61,61 @@ func decision(running, want, exe string, check, hook, disabled, due bool, latest
 	case hook && !due:
 		return Output{Refresh: !check}
 	}
-	// A failure leaves the plugin to the session start hook, which refreshes the one already installed anyway.
-	refreshFailed := !check && hook
 	target := want
 	if want == "" {
-		switch {
-		case failed != nil:
-			return Output{Failure: failed.Error(), Refresh: refreshFailed}
-		case !version.Released(running) && check:
-			return Output{
-				Message: fmt.Sprintf("polix %s is a development build; the latest release is %s", running, latest)}
-		case !version.Released(running):
-			return Output{Failure: fmt.Sprintf("polix %s is a development build: run polix update "+
-				"--version %s to replace it", running, latest), Refresh: refreshFailed}
-		case version.Compare(running, latest) >= 0 && hook:
-			return Output{Refresh: !check}
-		case version.Compare(running, latest) >= 0:
-			return Output{Message: fmt.Sprintf("polix %s is up to date", running), Refresh: !check}
+		if out, done := towardLatest(running, latest, check, hook, failed); done {
+			return out
 		}
 		target = latest
 	}
 	if check && want != "" {
-		switch c := version.Compare(want, running); {
-		case !version.Released(running):
-			return Output{Message: fmt.Sprintf("polix %s is a development build: run polix update "+
-				"--version %s to install %s", running, want, want)}
-		case c > 0:
-			return Output{Message: fmt.Sprintf("polix %s is newer than this binary (%s): run polix "+
-				"update --version %s", want, running, want)}
-		case c == 0:
-			return Output{Message: fmt.Sprintf("polix %s is already this binary", want)}
-		default:
-			return Output{Message: fmt.Sprintf("polix %s is older than this binary (%s): installing "+
-				"it would be a downgrade", want, running)}
-		}
+		return compared(running, want)
 	}
+	return installing(running, target, exe, check, hook, want == "")
+}
+
+// towardLatest decides an update to the latest release, latest, asked with the error failed: whether it ends
+// before installing, and then how; else the update goes on to install latest.
+func towardLatest(running, latest string, check, hook bool, failed error) (Output, bool) {
+	// A failure leaves the plugin to the session start hook, which refreshes the one already installed anyway.
+	refreshFailed := !check && hook
+	switch {
+	case failed != nil:
+		return Output{Failure: failed.Error(), Refresh: refreshFailed}, true
+	case !semver.IsRelease(running) && check:
+		return Output{
+			Message: fmt.Sprintf("polix %s is a development build; the latest release is %s", running, latest)}, true
+	case !semver.IsRelease(running):
+		return Output{Failure: fmt.Sprintf("polix %s is a development build: run polix update "+
+			"--version %s to replace it", running, latest), Refresh: refreshFailed}, true
+	case semver.Compare(running, latest) >= 0 && hook:
+		return Output{Refresh: !check}, true
+	case semver.Compare(running, latest) >= 0:
+		return Output{Message: fmt.Sprintf("polix %s is up to date", running), Refresh: !check}, true
+	}
+	return Output{}, false
+}
+
+// compared tells, with --check, how the version want compares to the running one, without installing it.
+func compared(running, want string) Output {
+	switch c := semver.Compare(want, running); {
+	case !semver.IsRelease(running):
+		return Output{Message: fmt.Sprintf("polix %s is a development build: run polix update "+
+			"--version %s to install %s", running, want, want)}
+	case c > 0:
+		return Output{Message: fmt.Sprintf("polix %s is newer than this binary (%s): run polix "+
+			"update --version %s", want, running, want)}
+	case c == 0:
+		return Output{Message: fmt.Sprintf("polix %s is already this binary", want)}
+	default:
+		return Output{Message: fmt.Sprintf("polix %s is older than this binary (%s): installing "+
+			"it would be a downgrade", want, running)}
+	}
+}
+
+// installing decides to install target over the running binary at exe, or with --check only tells that it can; the
+// latest release installed is remembered as the latest checked.
+func installing(running, target, exe string, check, hook, latest bool) Output {
 	if check {
 		return Output{Message: fmt.Sprintf("polix %s can be updated to %s: run polix update", running,
 			target)}
@@ -101,5 +124,5 @@ func decision(running, want, exe string, check, hook, disabled, due bool, latest
 	if hook {
 		installed = fmt.Sprintf("polix se ha actualizado de %s a %s.", running, target)
 	}
-	return Output{Install: target, Installed: installed, Remember: want == "", Refresh: true}
+	return Output{Install: target, Installed: installed, Remember: latest, Refresh: true}
 }

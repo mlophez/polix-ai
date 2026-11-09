@@ -99,21 +99,10 @@ func TestEvaluationKnowTreeDiff(t *testing.T) {
 	}
 }
 
-// The next event starts after the runs of this one, with the log as it left it.
-func TestFactsCarry(t *testing.T) {
-	s := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeStarted}}}
-	f := Facts{HasState: true, StateAt: 3}.Carry(2, s)
-	if f.Epoch != 2 || len(f.State.Entries) != 1 || f.StateAt != 0 {
-		t.Fatalf("%+v", f)
-	}
-	if g := (Facts{}).Carry(1, s); len(g.State.Entries) != 0 {
-		t.Fatal("a log not read stays unread")
-	}
-}
-
 // The problems of a workflow hint an update only when a newer polix may know them; TooOld stays itself.
-func TestUnusable(t *testing.T) {
-	if Unusable(nil, "dev") != nil {
+func TestEvaluationRunning(t *testing.T) {
+	unusable := func(err error, running string) error { return Evaluation{Invalid: err}.Running(running).Invalid }
+	if unusable(nil, "dev") != nil {
 		t.Fatal("no error")
 	}
 	for problem, hint := range map[string]bool{
@@ -126,7 +115,7 @@ func TestUnusable(t *testing.T) {
 		"polix.yaml:4: unknown condition \"done\": use finished: <subagent>\npolix.yaml:5: unknown key \"x\" (when, unless, action)": true,
 		"polix.yaml:4: unknown key \"context\" in action: use inject":                                                                false,
 	} {
-		err := Unusable(errors.New(problem), "0.1.0")
+		err := unusable(errors.New(problem), "0.1.0")
 		if got := strings.Contains(err.Error(), "no las quites: ejecuta polix update"); got != hint {
 			t.Errorf("%s: hint %v", problem, got)
 		}
@@ -135,14 +124,33 @@ func TestUnusable(t *testing.T) {
 		}
 	}
 	// The problems of a polix.yaml in the old vocabulary, as the workflow reports them, never hint an update.
-	_, err := workflow.Parse([]byte("version: 1\non:\n  turn_stop:\n    - if: { done: x }\n      action: { deny: x }\n"+
-		"    - context: x\n"), "dev")
-	if err == nil || strings.Contains(Unusable(err, "0.1.0").Error(), "no las quites") {
+	// version: 1
+	// on:
+	//   turn_stop:
+	//     - if: { done: x }
+	//       action: { deny: x }
+	//     - context: x
+	oldVocabulary := workflow.Workflow{Version: 1, EventLines: map[string]int{"turn_stop": 3},
+		On: map[string][]workflow.Entry{"turn_stop": {
+			{Line: 4, Keys: []string{"if", "action"}, OldIf: workflow.Cond{"done": "x"},
+				Action: workflow.Action{Keys: []string{"deny"}}},
+			{Line: 6, Keys: []string{"context"}},
+		}}}
+	err := oldVocabulary.Valid()
+	if err == nil || strings.Contains(unusable(err, "0.1.0").Error(), "no las quites") {
 		t.Fatalf("the old vocabulary hints an update: %v", err)
 	}
 	old := workflow.TooOld{Requires: "0.2.0", Running: "0.1.0"}
 	var got workflow.TooOld
-	if err := Unusable(old, "0.1.0"); !errors.As(err, &got) || strings.Contains(err.Error(), "no las quites") {
+	if err := unusable(old, "0.1.0"); !errors.As(err, &got) || strings.Contains(err.Error(), "no las quites") {
 		t.Fatalf("TooOld: %v", err)
+	}
+}
+
+// The file names of macOS and Windows ignore case.
+func TestEvaluationFold(t *testing.T) {
+	fold := func(goos string) bool { return Evaluation{System: goos}.Fold() }
+	if !fold("darwin") || !fold("windows") || fold("linux") {
+		t.Fatal("Fold")
 	}
 }

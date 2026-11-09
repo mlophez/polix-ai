@@ -57,8 +57,10 @@ prints the flowchart to stdout and exits with 0; without polix.yaml it fails wit
 
 `Port`, declared in `in.go` and implemented by `Adapter` in `out.go`:
 
-- `LoadWorkflow`: reads polix.yaml and tells whether it exists; without it, the default workflow. The problems of
-  a workflow that parses (`workflow.Invalid`) are not an error: the workflow is drawn as it is.
+- `LoadWorkflow`: loads polix.yaml through the field `Workflow` of the adapter, the loader of `LoadWorkflow`
+  (`internal/app/workflow/load`) that `cmd/polix` builds once and passes to `Command`, and tells whether it exists;
+  without it, the default workflow. The problems of a workflow that parses (`workflow.Invalid`) are not an error:
+  the workflow is drawn as it is.
 
 ## Errors
 
@@ -71,7 +73,8 @@ The use case fails, printing the error and exiting with 1, when:
 
 ## Flow
 
-1. `Command` turns the flags into a `Request` and injects `Adapter{Repo: repo}` as the `Port`.
+1. `Command` turns the flags into a `Request` and injects `Adapter{Repo: repo, Workflow: loadWorkflow}`, with the
+   loader of polix.yaml it was given, as the `Port`.
 2. The shell loads the workflow through the port.
 3. `Decide` draws it: `Output`.
 4. The shell builds the response from the output.

@@ -6,6 +6,7 @@ package version
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 )
 
@@ -20,6 +21,9 @@ type Version struct {
 // ErrReplace marks an update whose binary could not take the place of the running one: after it, another process
 // may have updated the binary, so this one must not refresh the plugin with its own.
 var ErrReplace = errors.New("cannot replace the binary")
+
+// prePattern matches a pre-release.
+var prePattern = regexp.MustCompile(`^[0-9A-Za-z.]+$`)
 
 // Valid tells why v is not a version: a negative number, or a pre-release with other characters than letters,
 // digits and dots.

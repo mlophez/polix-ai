@@ -1,40 +1,14 @@
 package workflow
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
 )
 
-// shortcutsFile uses every shortcut, with regular entries written in on, on the events they share.
-const shortcutsFile = `version: 1
-guardrails:
-  protected_files:
-    - .env
-    - "ai/rules/**"
-  forbidden_commands:
-    - pattern: "rm -rf /*"
-    - pattern: "git push --force*"
-      reason: "Force pushes rewrite the history of others."
-    - pattern: "terraform apply*"
-  protected_branches: [main, "release/*"]
-  format_on_edit:
-    - run: "gofmt -w {path}"
-      path: "*.go"
-    - run: [prettier, --write, "{path}"]
-      message: "Format failed"
-  run_before_done:
-    - run: "go test ./..."
-      changed: ["*.go", go.mod]
-    - run: just lint
-on:
-  pre_command:
-    - action: { block: "regular" }
-  pre_commit:
-    - action: { block: "regular commit" }
-`
+// The decoding of polix.yaml and its cases, the files that use every shortcut included, are tested in
+// internal/app/workflow/load; these tests build the section as written.
 
 // shortcutsSummary describes an entry for the tests: its origin, line, conditions and action.
 func shortcutsSummary(e Entry) string {
@@ -48,170 +22,123 @@ func shortcutsSummary(e Entry) string {
 	return fmt.Sprintf("%s line=%d when=%v %s", e.From, e.Line, e.When, action)
 }
 
-// AC6, AC7, AC8, AC9: protected_branches, format_on_edit and run_before_done expand into the entries, events,
-// conditions, messages, lines and origin of the decisions, before the entries written in on; AC16:
-// protected_files and forbidden_commands expand into no entry, and the workflow holds them as its protections, in
-// file order and with the line of each forbidden command.
-func TestShortcutsExpand(t *testing.T) {
-	w, err := Parse([]byte(shortcutsFile), "dev")
-	if err != nil {
-		t.Fatal(err)
+// protected_branches, format_on_edit and run_before_done expand into entries before those written in on, in file
+// order and with the line of their item; an empty name or an item with problems expands into nothing, and without
+// them on stays as it is.
+func TestGuardrailsExpand(t *testing.T) {
+	written := map[string][]Entry{PreCommit: {{Action: Action{Block: &Block{Message: "regular"}}, Line: 25}}}
+	g := Guardrails{
+		ProtectedBranches: []GuardrailItem{{Text: "", Line: 10}, {Text: "main", Line: 11}, {Text: "release/*", Line: 12}},
+		FormatOnEdit: []GuardrailCheck{{Run: []string{"gofmt", "-w", "{path}"}, Scope: "*.go", Line: 13},
+			{Run: []string{"x"}, Line: 14, Problems: []string{"guardrails.format_on_edit: message must be a text"}},
+			{Run: []string{"prettier"}, Message: "Format failed", Line: 15}},
+		RunBeforeDone: []GuardrailCheck{{Run: []string{"go", "test", "./..."}, Scope: []any{"*.go"}, Line: 18}},
 	}
 	want := map[string][]string{
-		PreCommand: {
-			` line=23 when=map[] block "regular"`,
-		},
 		PreCommit: {
 			`guardrails.protected_branches line=11 when=map[branch:^(?:main|release/.*)$] block "{branch} is protected in polix.yaml: create a branch for this change and commit there."`,
-			` line=25 when=map[] block "regular commit"`,
+			` line=25 when=map[] block "regular"`,
 		},
 		PostEdit: {
 			`guardrails.format_on_edit line=13 when=map[path:*.go] run ["gofmt" "-w" "{path}"] ""`,
-			`guardrails.format_on_edit line=15 when=map[] run ["prettier" "--write" "{path}"] "Format failed"`,
+			`guardrails.format_on_edit line=15 when=map[] run ["prettier"] "Format failed"`,
 		},
-		Stop: {
-			`guardrails.run_before_done line=18 when=map[changed:[*.go go.mod]] run ["go" "test" "./..."] ""`,
-			`guardrails.run_before_done line=20 when=map[] run ["just" "lint"] ""`,
-		},
+		Stop: {`guardrails.run_before_done line=18 when=map[changed:[*.go]] run ["go" "test" "./..."] ""`},
 	}
-	if len(w.On) != len(want) {
-		t.Fatalf("events: %v", w.On)
+	on := g.Expand(written)
+	if len(on) != len(want) || len(written[PreCommit]) != 1 {
+		t.Fatalf("events: %v; written %v", on, written)
 	}
 	for ev, entries := range want {
-		got := make([]string, len(w.On[ev]))
-		for i, e := range w.On[ev] {
+		got := make([]string, len(on[ev]))
+		for i, e := range on[ev] {
 			got[i] = shortcutsSummary(e)
 		}
 		if strings.Join(got, "\n") != strings.Join(entries, "\n") {
 			t.Errorf("%s:\n%s\nwant:\n%s", ev, strings.Join(got, "\n"), strings.Join(entries, "\n"))
 		}
 	}
-	if !slices.Equal(w.ProtectedFiles, []string{".env", "ai/rules/**"}) {
-		t.Errorf("protected files: %q", w.ProtectedFiles)
-	}
-	forbidden := []ForbiddenCommand{{Pattern: "rm -rf /*", Line: 7},
-		{Pattern: "git push --force*", Reason: "Force pushes rewrite the history of others.", Line: 8},
-		{Pattern: "terraform apply*", Line: 10}}
-	if !slices.Equal(w.ForbiddenCommands, forbidden) {
-		t.Errorf("forbidden commands: %+v", w.ForbiddenCommands)
+	if got := (Guardrails{}).Expand(written); len(got) != 1 || len(got[PreCommit]) != 1 {
+		t.Fatalf("no shortcuts: %v", got)
 	}
 }
 
-// Without shortcuts the entries written in on stay as they are, and a file without on nor shortcuts has no events
-// nor protections.
-func TestShortcutsWrittenOnly(t *testing.T) {
-	w, err := Parse([]byte("version: 1\non:\n  pre_edit:\n    - action: { block: a }\n    - action: { block: b }\n"),
-		"dev")
-	if err != nil || len(w.On[PreEdit]) != 2 || w.On[PreEdit][0].Action.Block.Message != "a" {
-		t.Fatalf("%v %+v", err, w.On)
+// protected_files and forbidden_commands are protections: the globs that are not empty and the items without
+// problems, in file order.
+func TestGuardrailsProtections(t *testing.T) {
+	g := Guardrails{
+		ProtectedFiles: []GuardrailItem{{Text: ".env", Line: 3}, {Text: " ", Line: 4}, {Text: "ai/rules/**", Line: 5}},
+		ForbiddenCommands: []GuardrailForbidden{{Pattern: "rm -rf /*", Line: 7},
+			{Pattern: "a", Line: 8, Problems: []string{"guardrails.forbidden_commands: reason must be a text"}},
+			{Pattern: "git push --force*", Reason: "Force pushes rewrite the history of others.", Line: 9}},
 	}
-	w, err = Parse([]byte("version: 1\nguardrails:\n  protected_files:\n"), "dev")
-	if err != nil || w.On != nil || w.ProtectedFiles != nil || w.ForbiddenCommands != nil {
-		t.Fatalf("an empty shortcut: %v %+v", err, w)
+	if got := g.Protected(); !slices.Equal(got, []string{".env", "ai/rules/**"}) {
+		t.Errorf("protected files: %q", got)
+	}
+	want := []ForbiddenCommand{{Pattern: "rm -rf /*", Line: 7},
+		{Pattern: "git push --force*", Reason: "Force pushes rewrite the history of others.", Line: 9}}
+	if got := g.Forbidden(); !slices.Equal(got, want) {
+		t.Errorf("forbidden commands: %+v", got)
+	}
+	if (Guardrails{}).Protected() != nil || (Guardrails{}).Forbidden() != nil {
+		t.Fatal("no protections")
+	}
+}
+
+// The problems of the items come at their lines with those of the workflow, in the order of the file; without them
+// there are none, whatever the workflow.
+func TestGuardrailsProblems(t *testing.T) {
+	g := Guardrails{
+		ProtectedFiles:    []GuardrailItem{{Text: "", Line: 3}},
+		ForbiddenCommands: []GuardrailForbidden{{Line: 7, Problems: []string{"guardrails.forbidden_commands: an item needs a pattern"}}},
+		ProtectedBranches: []GuardrailItem{{Text: "main", Line: 8}, {Text: "", Line: 9}},
+		RunBeforeDone:     []GuardrailCheck{{Line: 5, Problems: []string{"guardrails.run_before_done: an item needs run"}}},
+	}
+	w := Workflow{Version: 2, On: map[string][]Entry{PreEdit: {{Line: 6, Keys: []string{"blok"}}}}}
+	want := []string{
+		"polix.yaml: version must be 1, got 2",
+		"polix.yaml:3: guardrails.protected_files: a path glob cannot be empty",
+		"polix.yaml:5: guardrails.run_before_done: an item needs run",
+		`polix.yaml:6: unknown key "blok" (when, unless, action)`,
+		"polix.yaml:6: the entry needs an action with one of run, inject, block",
+		"polix.yaml:7: guardrails.forbidden_commands: an item needs a pattern",
+		"polix.yaml:9: guardrails.protected_branches: a branch name cannot be empty",
+	}
+	if got := g.Problems(w); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if got := (Guardrails{ProtectedFiles: []GuardrailItem{{Text: ".env", Line: 3}}}).Problems(w); got != nil {
+		t.Fatalf("no problems of the shortcuts: %q", got)
+	}
+}
+
+// An item is valid without problems: a text that is not empty, a pattern, a command to run.
+func TestGuardrailsValid(t *testing.T) {
+	valid := Guardrails{ProtectedFiles: []GuardrailItem{{Text: ".env", Line: 3}},
+		ForbiddenCommands: []GuardrailForbidden{{Pattern: "rm -rf /*", Line: 4}},
+		FormatOnEdit:      []GuardrailCheck{{Run: []string{"gofmt"}, Line: 5}}}
+	if err := valid.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	for name, g := range map[string]Guardrails{
+		"empty glob":     {ProtectedFiles: []GuardrailItem{{Text: " ", Line: 3}}},
+		"empty branch":   {ProtectedBranches: []GuardrailItem{{Line: 3}}},
+		"no pattern":     {ForbiddenCommands: []GuardrailForbidden{{Line: 4}}},
+		"item problems":  {ForbiddenCommands: []GuardrailForbidden{{Pattern: "a", Problems: []string{"x"}}}},
+		"no run":         {RunBeforeDone: []GuardrailCheck{{Line: 5}}},
+		"check problems": {FormatOnEdit: []GuardrailCheck{{Run: []string{"x"}, Problems: []string{"x"}}}},
+	} {
+		if g.Valid() == nil {
+			t.Errorf("%s: valid", name)
+		}
 	}
 }
 
 // The name of a protected branch is literal but for `*`, which matches any text, and the expression is anchored.
 func TestShortcutsBranchExpr(t *testing.T) {
-	if got := branchExpr([]any{"main", "release/*", "v1.0"}); got != `^(?:main|release/.*|v1\.0)$` {
-		t.Fatal(got)
-	}
-}
-
-// AC15: each problem of a value is reported at the line of its item, with the rest of the problems of the file, and
-// an item with problems expands into nothing.
-func TestShortcutsProblems(t *testing.T) {
-	cases := map[string]string{
-		"empty glob": "version: 1\nguardrails:\n  protected_files:\n    - \"\"\n    - .env\n" +
-			"  forbidden_commands:\n    - { pattern: \"\" }\n",
-		"empty branch":      "version: 1\nguardrails:\n  protected_branches:\n    - main\n    - \"\"\n",
-		"no pattern":        "version: 1\nguardrails:\n  forbidden_commands:\n    - reason: x\n",
-		"pattern not text":  "version: 1\nguardrails:\n  forbidden_commands:\n    - pattern: [a]\n",
-		"reason not text":   "version: 1\nguardrails:\n  forbidden_commands:\n    - { pattern: a, reason: { x: y } }\n",
-		"unknown item key":  "version: 1\nguardrails:\n  forbidden_commands:\n    - { pattern: a, why: x }\n",
-		"repeated item key": "version: 1\nguardrails:\n  forbidden_commands:\n    - pattern: a\n      pattern: b\n",
-		"no run":            "version: 1\nguardrails:\n  format_on_edit:\n    - path: \"*.go\"\n",
-		"empty run":         "version: 1\nguardrails:\n  run_before_done:\n    - run: \"\"\n",
-		"run a map":         "version: 1\nguardrails:\n  run_before_done:\n    - run: { command: x }\n",
-		"message not text":  "version: 1\nguardrails:\n  format_on_edit:\n    - { run: x, message: [a] }\n",
-		"unknown check key": "version: 1\nguardrails:\n  format_on_edit:\n    - { run: x, changed: \"*.go\" }\n",
-		"bad scope":         "version: 1\nguardrails:\n  run_before_done:\n    - { run: x, changed: { a: b } }\n",
-		"bad placeholder":   "version: 1\nguardrails:\n  run_before_done:\n    - { run: x, message: \"{kye}\" }\n",
-	}
-	want := map[string]string{
-		"empty glob": "polix.yaml:4: guardrails.protected_files: a path glob cannot be empty\n" +
-			"polix.yaml:7: guardrails.forbidden_commands: an item needs a pattern",
-		"empty branch":      "polix.yaml:5: guardrails.protected_branches: a branch name cannot be empty",
-		"no pattern":        "polix.yaml:4: guardrails.forbidden_commands: an item needs a pattern",
-		"pattern not text":  "polix.yaml:4: guardrails.forbidden_commands: pattern must be a text",
-		"reason not text":   "polix.yaml:4: guardrails.forbidden_commands: reason must be a text",
-		"unknown item key":  `polix.yaml:4: unknown key "why" in guardrails.forbidden_commands (pattern, reason)`,
-		"repeated item key": `polix.yaml:4: guardrails.forbidden_commands: key "pattern" already defined at line 4`,
-		"no run":            "polix.yaml:4: guardrails.format_on_edit: an item needs run",
-		"empty run":         "polix.yaml:4: guardrails.run_before_done: an item needs run",
-		"run a map":         "polix.yaml:4: guardrails.run_before_done: run takes a command, as a string or a list of arguments",
-		"message not text":  "polix.yaml:4: guardrails.format_on_edit: message must be a text",
-		"unknown check key": `polix.yaml:4: unknown key "changed" in guardrails.format_on_edit (run, path, message)`,
-		"bad scope":         "polix.yaml:4: changed: expected a string or a list of strings, got map[a:b]",
-		"bad placeholder":   "polix.yaml:4: unknown placeholder {kye} (built in:",
-	}
-	for name, src := range cases {
-		t.Run(name, func(t *testing.T) {
-			w, err := Parse([]byte(src), "dev")
-			var invalid Invalid
-			if !errors.As(err, &invalid) || !strings.HasPrefix(err.Error(), want[name]) {
-				t.Fatalf("got %v, want %s", err, want[name])
-			}
-			if strings.Contains(err.Error(), "run needs exactly one") {
-				t.Fatalf("a problem of an item is reported twice: %v", err)
-			}
-			// The problem of a value of the item keeps it out of the entries and the protections; the problem of a
-			// condition or a message is one of the entry it expands into.
-			var line int
-			if _, err := fmt.Sscanf(want[name], "polix.yaml:%d:", &line); err != nil {
-				t.Fatal(err)
-			}
-			expanded := false
-			for _, entries := range w.On {
-				for _, e := range entries {
-					expanded = expanded || e.Line == line
-				}
-			}
-			for _, f := range w.ForbiddenCommands {
-				expanded = expanded || f.Line == line
-			}
-			if entryProblem := name == "bad scope" || name == "bad placeholder"; expanded != entryProblem {
-				t.Fatalf("the item at line %d expanded: %v, %+v", line, expanded, w.On)
-			}
-		})
-	}
-	// The problems of the shortcuts come in the order of the file with those of the workflow.
-	_, err := Parse([]byte("version: 2\nguardrails:\n  protected_files: [\"\"]\non:\n  pre_edit:\n"+
-		"    - action: { blok: x }\n"), "dev")
-	if err == nil || !strings.HasPrefix(err.Error(), "polix.yaml: version must be 1, got 2\n"+
-		"polix.yaml:3: guardrails.protected_files: a path glob cannot be empty\npolix.yaml:6: ") {
-		t.Fatalf("order: %v", err)
-	}
-}
-
-// AC15: a shortcut in another form than its own fails the parse at its line with the form it takes, never with an
-// error of yaml.
-func TestShortcutsForms(t *testing.T) {
-	cases := map[string]string{
-		"version: 1\nguardrails:\n  protected_files: .env\n":                      `polix.yaml: line 3: guardrails.protected_files takes a list of path globs, as [".env", "secrets/**"]`,
-		"version: 1\nguardrails:\n  protected_files: [[a]]\n":                     `polix.yaml: line 3: guardrails.protected_files takes a list of path globs, as [".env", "secrets/**"]`,
-		"version: 1\nguardrails:\n  protected_branches: main\n":                   `polix.yaml: line 3: guardrails.protected_branches takes a list of branch names, as [main, "release/*"]`,
-		"version: 1\nguardrails:\n  forbidden_commands:\n    - \"rm -rf /*\"\n":   `polix.yaml: line 4: an item of guardrails.forbidden_commands must be a map, as { pattern: "git push --force*", reason: "..." }`,
-		"version: 1\nguardrails:\n  forbidden_commands: { pattern: x }\n":         `polix.yaml: line 3: guardrails.forbidden_commands takes a list of maps, each as { pattern: "git push --force*", reason: "..." }`,
-		"version: 1\nguardrails:\n  format_on_edit:\n    - \"gofmt -w {path}\"\n": `polix.yaml: line 4: an item of guardrails.format_on_edit must be a map, as { run: "gofmt -w {path}", path: "*.go" }`,
-		"version: 1\nguardrails:\n  run_before_done:\n    - \"go test ./...\"\n":  `polix.yaml: line 4: an item of guardrails.run_before_done must be a map, as { run: "go test ./...", changed: "*.go" }`,
-		"version: 1\nguardrails:\n  protected_files: []\n  protected_files: []\n": `polix.yaml: line 4: mapping key "protected_files" already defined at line 3`,
-	}
-	for src, want := range cases {
-		_, err := Parse([]byte(src), "dev")
-		var invalid Invalid
-		if err == nil || errors.As(err, &invalid) || err.Error() != want {
-			t.Errorf("%q:\ngot  %v\nwant %s", src, err, want)
-		}
+	g := Guardrails{ProtectedBranches: []GuardrailItem{{Text: "main", Line: 3}, {Text: "release/*", Line: 4},
+		{Text: "v1.0", Line: 5}}}
+	if got, line := g.branchExpr(); got != `^(?:main|release/.*|v1\.0)$` || line != 3 {
+		t.Fatal(got, line)
 	}
 }

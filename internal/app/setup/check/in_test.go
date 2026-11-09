@@ -10,7 +10,9 @@ import (
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/rule"
+	ruleload "github.com/mlophez/polix-ai/internal/app/rule/load"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
 	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
@@ -58,10 +60,10 @@ func TestShell(t *testing.T) {
 
 // runCommand runs the command of polix config check on dir through a root of internal/platform/cli, so the exit
 // codes are those of internal/platform/cli.Run; the command sits at the root here, not below config as in
-// cmd/polix.
+// cmd/polix. It builds the loaders of the rules and of polix.yaml as cmd/polix does, once per run.
 func runCommand(dir string) (int, string, string) {
 	root := cli.Root("polix", "short", "long", "")
-	root.AddCommand(Command())
+	root.AddCommand(Command(ruleload.Command(), workflowload.Command()))
 	var out, errb bytes.Buffer
 	code := cli.Run(root, []string{"check", "--dir", dir}, nil, &out, &errb)
 	return code, out.String(), errb.String()

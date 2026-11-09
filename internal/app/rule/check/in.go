@@ -58,9 +58,9 @@ type Port interface {
 }
 
 // Command is the command `polix rules check`, the entry of the use case CheckRule: it turns the flags
-// into a Request and validates them, injects the adapter as the port, runs the shell and serializes the
-// Response to the console.
-func Command() *cobra.Command {
+// into a Request and validates them, injects the adapter with the loaders rules and loadWorkflow as the port, runs
+// the shell and serializes the Response to the console.
+func Command(rules rule.Load, loadWorkflow workflow.Load) *cobra.Command {
 	req := Request{Version: build.Current()}
 	c := &cobra.Command{
 		Use:   "check",
@@ -76,7 +76,8 @@ func Command() *cobra.Command {
 			var res Response
 			repo, err := git.Open(c.Context(), req.Dir)
 			if err == nil {
-				res, err = run(c.Context(), Adapter{Repo: repo, Log: c.ErrOrStderr()}, req)
+				res, err = run(c.Context(), Adapter{Repo: repo, Log: c.ErrOrStderr(), Rules: rules,
+					Workflow: loadWorkflow}, req)
 			}
 			if err != nil {
 				return err
@@ -108,25 +109,13 @@ func flags(req Request) error {
 // each run it asks for through the port and gives the logic its outcome, and builds the
 // response. It only sequences; the decisions are in the logic and the domain.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
-	wf, err := port.LoadWorkflow(ctx, req.Version)
+	wf, rules, err := load(ctx, port, req)
 	if err != nil {
 		return Response{}, err
-	}
-	if err := wf.Rules.Valid(); err != nil {
-		return Response{}, err
-	}
-	rules, err := port.LoadRules(ctx, wf.RulesPath())
-	if err != nil {
-		return Response{}, err
-	}
-	for _, r := range rules {
-		if err := r.Valid(); err != nil {
-			return Response{}, err
-		}
 	}
 	var changed []string
 	if req.OnlyChanged {
-		if changed, err = port.Changed(ctx, workflow.Bases(req.Base, wf.BaseBranches())); err != nil {
+		if changed, err = port.Changed(ctx, wf.Bases(req.Base)); err != nil {
 			return Response{}, err
 		}
 	}
@@ -134,12 +123,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	for {
 		out := Decide(rules, wf, req.OnlyChanged, changed, outcomes)
 		if out.Next == nil {
-			for _, res := range out.Results {
-				if err := res.Valid(); err != nil {
-					return Response{}, err
-				}
-			}
-			return response(out.Results), nil
+			return response(out.Results)
 		}
 		text, err := port.RunCheck(ctx, *out.Next)
 		o := rule.Outcome{Output: text, Err: err}
@@ -150,10 +134,37 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	}
 }
 
-// response turns the results of carrying out the output into the response the caller sees.
-func response(results []rule.Result) Response {
+// load reads through the port the workflow of polix.yaml, whose runners of rules.run must be valid, and the rules
+// of its folder of rules, every one valid; the error tells which cannot be read or is not valid.
+func load(ctx context.Context, port Port, req Request) (workflow.Workflow, []rule.Rule, error) {
+	wf, err := port.LoadWorkflow(ctx, req.Version)
+	if err != nil {
+		return workflow.Workflow{}, nil, err
+	}
+	if err := wf.Rules.Valid(); err != nil {
+		return workflow.Workflow{}, nil, err
+	}
+	rules, err := port.LoadRules(ctx, wf.RulesPath())
+	if err != nil {
+		return workflow.Workflow{}, nil, err
+	}
+	for _, r := range rules {
+		if err := r.Valid(); err != nil {
+			return workflow.Workflow{}, nil, err
+		}
+	}
+	return wf, rules, nil
+}
+
+// response turns the results of carrying out the output, each valid, into the response the caller sees.
+func response(results []rule.Result) (Response, error) {
+	for _, res := range results {
+		if err := res.Valid(); err != nil {
+			return Response{}, err
+		}
+	}
 	res := Response{Ran: len(results)}
-	for _, f := range rule.Failed(results) {
+	for _, f := range rule.Results(results).Failed() {
 		res.Failed = append(res.Failed, Failed{
 			ID:          f.Rule.ID,
 			Check:       f.Rule.Check,
@@ -161,7 +172,7 @@ func response(results []rule.Result) Response {
 			Output:      f.Tail(),
 		})
 	}
-	return res
+	return res, nil
 }
 
 // print serializes the response to the console: each failure to stderr, and the summary to stdout, as a failure

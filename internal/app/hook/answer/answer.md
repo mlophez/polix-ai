@@ -20,12 +20,21 @@ It is the entry point of the hooks of Claude Code; the polix plugin registers it
 
 `Request`, filled by the command:
 
-- `Agent`, from the argument, checked to be `claude` or `codex` before the shell runs.
+- `Agent`, from the argument, checked to be `claude` or `codex` (`agent.Agent.Valid`) before the shell runs; it
+  chooses the format of the hooks of the agent.
 - `Dir`, from `--dir`.
-- `Input`, the bytes of stdin as the agent wrote them.
+- `Input`, the bytes of stdin as the agent wrote them, in the format of the agent.
 - `Version`, the version of the running polix (`build.Current`), which polix.yaml may require.
 - `System`, the system polix runs on (`runtime.GOOS`): on macOS and Windows file names ignore case, and on
   Windows `NUL` is the null device.
+
+The formats of the agents are the transport of the entry, not domain: the in files declare the unexported
+interface `format`, with `parse`, which turns the input into the native name of the event and the neutral
+`agent.Event`s (one `pre_edit` or `post_edit` per edited path, made absolute from the `cwd` of the call; a
+`pre_command` whose line runs a `git commit` also gives `pre_commit`), and `render`, which turns an
+`agent.Answer` into stdout, stderr and the exit code for the native event. It has one implementation per agent:
+`claude` in `in_claude.go` and `codex` in `in_codex.go`, which share the fields of the input both agents write and
+the rendering of an answer, in `in.go`.
 
 ## Logic
 
@@ -42,13 +51,36 @@ outcome from the journal, in order, and the first one the journal lacks is the n
 is that step; when it is none, `Output.Answer` is the answer to the event and `Output.Facts`
 what the next event of the call starts from.
 
+`Decide` is a router: it builds the pass of the event (`pass`), and `route`, a `switch` on the name of the event in
+`logic.go`, gives the family that answers it, a method of `pass` in a file of its own. Each family reads top-down,
+holds only what its events do and calls the engine as a library:
+
+- `session` (`logic_session.go`), for `start` and `prompt`: the session context and the `started` line of `start`
+  (rules 4 and 6), and the discard of the once-only injects of a refused `prompt` (rule 6).
+- `edit` (`logic_edit.go`), for `pre_edit` and `post_edit`: the protections of an edit (rule 1), the edits an
+  unusable workflow lets through (rule 2) and the skip of the edits outside the change (rule 3).
+- `command` (`logic_command.go`), for `pre_command`, `post_command` and `pre_commit`: the protections of a command
+  (rule 1), the commands of polix an unusable workflow lets through (rule 2) and the commits outside the change of a
+  `pre_commit` (rule 3).
+- `stop` (`logic_stop.go`), for `stop` and `subagent_stop`: the loop guard of `max_stop_retries` (rule 10) and the
+  `finished` line of `subagent_stop` (rule 9).
+
+The engine is the rest, in the `logic_<topic>.go` files, and has no `if` on the name of an event: the step machinery
+and the readers of the facts (`logic_facts.go`), the protections (`logic_protect.go`), the walk of the entries and
+their verbs (`logic_entries.go`, `logic_run.go`, `logic_inject.go`), the conditions and the placeholders
+(`logic_condition.go`, `logic_placeholder.go`), the parsing of command lines, what they write and where their commits
+land (`logic_cmdline.go`, `logic_writes.go`, `logic_commit.go`), and the log (`logic_log.go`). What differs per event
+reaches it as fields of the pass: `informed`, set by `Decide` for the events of `workflow.Informed`, turns a failing
+`run` into context; `always`, set by `session` on `start`, makes every inject act every time; and `loop`, set by
+`stop`, sends every block through the loop guard.
+
 A `hook.Step` asks for one of: the branch, the content hash (of an epoch), the paths that differ between the tree of an
 observed line and the current one (`Compare` and `Tree`, kept in the facts per pair of trees), the changed files,
 the diff (`Diff`: the
 added and deleted lines of each file not committed yet, the same files as the changed ones), the files, the rules, the
 log, whether git ignores a path, the real paths of some paths, the content of a file (of an epoch), or acts: runs
 a command, runs the checks of one or several rules (`rule.Run`, with the argv of its runner of `rules.run`) or
-appends an entry to the log. A check step may decide several rules: the runs come from `rule.Plan`, and a failed
+appends an entry to the log. A check step may decide several rules: the runs come from `rule.Rules.Plan`, and a failed
 shared run is rerun once per rule (`rule.Run.Settle`), each rerun a step of its own, so the block names only the
 rules whose own run fails. The epoch is the number of runs carried out before: any run may rewrite files, so the hash and the files
 read after it are those of a new epoch, read again.
@@ -60,25 +92,25 @@ The rules it follows, as before this use case:
    an invalid one, nobody edits the state of polix (`<git-dir>/polix`, by its real path, without case where file
    names ignore it) nor runs a command that may write and names it, logged as `builtin`. With a valid polix.yaml, no actor, the
    main session included, writes a path of `guardrails.protected_files` (`workflow.Workflow.ProtectedFiles`, matched
-   with `hook.AnyPathFold`), also when git ignores it but never on an edit outside the repository, by an edit, a
+   with `anyPathFold`), also when git ignores it but never on an edit outside the repository, by an edit, a
    redirection or a program that writes the files it names (`rm`, `mv`, `cp`, `sed -i`...), its folders and
-   wildcards included (`hook.Writes`): the reason names the path (`<path> is protected in polix.yaml: only a person
+   wildcards included (`lineWrites`): the reason names the path (`<path> is protected in polix.yaml: only a person
    changes it.`) or the protected glob a folder or a wildcard holds (`<folder> holds <glob>, protected in
    polix.yaml: ...`), and it is logged as `guardrails.protected_files`. Reading a protected path passes. Nor does any
    actor run a command of `guardrails.forbidden_commands` (`workflow.Workflow.ForbiddenCommands`, the first in file
-   order whose pattern matches any command of the line, `hook.Forbidden`) on `pre_command` or `pre_commit`: the reason
-   is its `reason`, or `hook.ReasonForbidden`, followed by the line, and it is logged as `guardrails.forbidden_commands`
+   order whose pattern matches any command of the line, `forbidden`) on `pre_command` or `pre_commit`: the reason
+   is its `reason`, or `reasonForbidden`, followed by the line, and it is logged as `guardrails.forbidden_commands`
    with the line of its item.
 2. A workflow that cannot be used (it cannot be read or parsed, has problems or requires a newer polix) blocks
    edits and commands with its problems, logged as `invalid`, except an edit outside the change, an edit of
    polix.yaml by the main session (not when it requires a newer polix) and the commands that only check the
    workflow or update polix; any other event only warns, so a stop is never blocked. Problems that may come from a
-   newer polix hint to run `polix update` (`hook.Unusable`); a name of the old vocabulary, reported with its new
-   spelling, does not.
+   newer polix hint to run `polix update` (`hook.Evaluation.Running`, which the shell asks); a name of the old
+   vocabulary, reported with its new spelling, does not.
 3. Without polix.yaml, for an edit outside the repository or of a file git ignores, and for a `pre_commit` whose
    commits all happen in another repository (`git -C ../other commit`), only the protections apply: the
    entries govern the change, what a commit may hold, so a build output, a local `.env` or a commit in another
-   repository never fires them. The check is a strict allowlist: `hook.CommitDirs` places the line only when every
+   repository never fires them. The check is a strict allowlist: `commitDirs` places the line only when every
    command of it is `git [-C dir]... add|commit` and bash expands nothing in it (`placeable`); each commit folder is
    the cwd after its -C options joined without cleaning, so its real path and `hook.Step.Foreign` resolve a `..` after a
    link as git does. The hook skips only when every folder is outside the root, symlinks resolved, and inside
@@ -92,7 +124,7 @@ The rules it follows, as before this use case:
    `plans.path` and `reports.path`; nothing when every switch is off.
 5. The entries of the event run in order: one runs when every condition of `when` holds
    and, with `unless`, not every condition of `unless` holds, and carries out the verb of its action
-   (`workflow.Action.Verb`). The condition `path` ignores case where file names ignore it (`hook.AnyPathFold`), as the
+   (`workflow.Action.Verb`). The condition `path` ignores case where file names ignore it (`anyPathFold`), as the
    protection of the state and `writes` do. `block`
    blocks with its message; `run` runs a command or the checks of the rules (`changed`, or a path), and a failure,
    its `message`, a blank line and the output, blocks the event or, on `start`, `post_edit` and
@@ -169,13 +201,14 @@ The rules it follows, as before this use case:
     the call warns once: `polix no puede medir el diff (<cause>): changed_lines, changed_files y risk_score se cumplen`.
 13. The placeholders `{changed_lines}`, `{changed_files}` and `{risk_score}` of every string of an entry expand to
     the measures over the `changed` of its `when`, else the whole diff, or to `?` when it cannot be measured
-    (`hook.Measures`).
+    (`measureValues`).
 
-The domain decides the rest: `agent.Agent.Parse` and `Render` (the formats of the agents), `agent.Answer.Merge`,
-`hook.Writes`, `hook.NamesState`, `hook.Within`, `hook.AnyPathFold`, `hook.Forbidden`, `hook.Expand`, `hook.Measures`,
-`hook.Measure`, `diff.Diff`, `hook.Vars`, `hook.MatchingCommands`,
-`state.State` (`Observed`, `Latest`, `Index`) with `state.Query`, `workflow.Workflow.ObservedSubagents` and
-`InjectsOnce`, `rule.Matching`, `rule.Result.Tail`, `rule.Plan` and `rule.Run.Settle`.
+The engine holds the protections and the heuristics of the command lines (`lineWrites`, `namesState`, `within`,
+`anyPathFold`, `forbidden`, `matchingCommands`, `commitDirs`), the placeholders (`expandPlaceholders`,
+`measureValues`, `branchVars`) and the measures (`measureHolds`). The domain decides the rest: `agent.Answer.Merge`,
+`diff.Diff`, `state.State` (`Observed`, `Latest`, `Index`) with `state.Query`, `workflow.Workflow.ObservedSubagents`
+and `InjectsOnce`, `rule.Rules` (`Matching` and `Plan`), `rule.Results.Failed`, `rule.Result.Tail` and
+`rule.Run.Settle`.
 
 ## Response
 
@@ -187,11 +220,13 @@ take it; `Stderr`, the reasons and contexts of a block, else one `polix: <warnin
 ## Port
 
 `Port`, declared in `in.go` and implemented by `Adapter` in
-`out.go`:
+`out.go` and, for the log, `out_log.go`:
 
 - `Open`: opens the repository that contains the folder through `internal/platform/git` and starts the budget of
   10 minutes of every run of the call together.
-- `LoadWorkflow`: reads polix.yaml with `workflow.Parse`: whether it exists, and its error as data.
+- `LoadWorkflow`: loads polix.yaml of the root through the field `Workflow` of the adapter, the loader of
+  `LoadWorkflow` (`internal/app/workflow/load`) that `cmd/polix` builds once and passes to `Command`: whether it
+  exists, and its error as data; without it, no workflow.
 - `Locate`: turns the path of an edit into one relative to the root, symlinks resolved.
 - `Branch`, `Hash`, `Changed`, `Files` and `Ignored`: the facts of git; `Changed` and `Files` read a failure as no
   files and, like `Branch` and `Ignored`, run detached from the cancellation of the caller.
@@ -201,8 +236,13 @@ take it; `Stderr`, the reasons and contexts of a block, else one `polix: <warnin
   files read whole), as a validated `diff.Diff`; a failure of git or an invalid diff is its error, kept in the
   facts as a warning. Like `Changed`, it runs detached from the cancellation of the caller.
 - `LoadRules`: the rules of the folder it is given (`Workflow.RulesPath`: `rules.path`, `ai/rules/` by default),
-  `retired.yaml` left out, ordered by id.
-- `LoadState`: the log through `internal/platform/jsonl`, the lines over `state.MaxLine` skipped and counted.
+  `retired.yaml` left out, ordered by id, invalid ones included, or the error of a file that cannot be read or is
+  not yaml (`rule.Loaded.Err`), through the field `Rules` of the adapter, the loader of `LoadRule`
+  (`internal/app/rule/load`) that `cmd/polix` builds once and passes to `Command`.
+- `LoadState`: the log through the field `State` of the adapter, the loader of `LoadState`
+  (`internal/app/state/load`) that `cmd/polix` builds once and passes to `Command`, which `polix log` shares: read
+  through `internal/platform/jsonl`, the lines over `state.MaxLine` skipped and counted, every line that decodes
+  kept; a log that cannot be read is its error.
 - `Real`: the real path of each path.
 - `Foreign`: whether a folder is inside an existing git repository other than this one (`git.Repo.Foreign`: its git
   common directory, objects and refs are each another file than ours by `os.SameFile`, so a linked worktree of this
@@ -217,14 +257,17 @@ take it; `Stderr`, the reasons and contexts of a block, else one `polix: <warnin
   program is `bash`, `sh`, `python`, `python3` or `py` runs the program of that name the PATH finds (an active
   virtualenv wins), unless it is an alias of the Store or, for `bash` and `sh`, the bash of WSL in the Windows folder;
   then the interpreter of its kind (`proc.Command`), with the arguments of the runner kept.
-- `Append`: appends an entry to the log, stamped with the time (RFC 3339), its reason cut to `state.MaxReason`.
+- `Append`: appends an entry to the log, stamped with the time (RFC 3339), encoded as one line by the unexported
+  method `encodeLine` with the encoding type `logLine` of `out_log.go`, its reason cut to `state.MaxReason`: the
+  shape `LoadState` decodes.
 
 ## Errors
 
 The failure policy of the hook, so a broken polix never traps the agent:
 
 - An unknown agent exits with 1.
-- An input that cannot be read or parsed prints `polix hook: <error>` and lets the action go on (exit 0).
+- An input that cannot be read, or that the format of the agent cannot parse (`claude hook input: <cause>`,
+  `codex hook input: <cause>`), prints `polix hook: <error>` and lets the action go on (exit 0).
 - Outside a git repository, or without events (a `Read`), everything goes through.
 - A workflow that cannot be used is data of the answer (Logic, rule 2), never an error.
 - The errors of the steps are data too: an unknown hash warns, a diff that cannot be measured warns and makes the
@@ -236,17 +279,20 @@ The failure policy of the hook, so a broken polix never traps the agent:
 
 ## Flow
 
-1. `Command` checks the agent, reads stdin into a `Request` and injects an empty
-   `Adapter` as the `Port`.
-2. `run` (shell) parses the input with the format of the agent into a `hook.Hook`; without events it answers
-   nothing.
+1. `Command` checks the agent, reads stdin into a `Request` and injects an `Adapter` with the loaders of the rules,
+   of polix.yaml and of the log it was given (`Adapter{Rules: rules, Workflow: loadWorkflow, State: loadState}`) as
+   the `Port`.
+2. `run` (shell) chooses the `format` of the agent of the request (`claude` or `codex`) and parses the input with
+   it into a `hook.Hook`; without events it answers nothing.
 3. It opens the repository from `hook.Hook.Folder` and loads the workflow through the port; outside a repository it
    answers nothing.
 4. For each event, it locates the path of an edit through the port and builds its `hook.Evaluation` with the facts the
-   previous event left; then it loops from one call site: it asks `Decide` for the next step, carries it out
-   through the port and feeds the result back to the evaluation (`Know*` for a fact, `Note` for an outcome), until
-   the step is none. Each pass walks the protections, whether git ignores an edited path or where the commits of a
-   `pre_commit` land, and the entries, in that order (Logic, rules 1 to 5).
-5. It merges the answers of the events (`agent.Answer.Merge`) and renders them for the agent
-   (`agent.Agent.Render`) into the `Response`.
+   previous event left, its problems told for the running polix (`hook.Evaluation.Running`); then it loops from one
+   call site: it asks `Decide` for the next step, carries it out through the port and feeds the result back to the
+   evaluation (`Know*` for a fact, `Note` for an outcome), until the step is none; the unexported functions `carry`
+   (the facts) and `act` (the steps that act) of `in.go` carry out each step. Each pass routes the event to its
+   family, which walks its protections, whether git ignores an edited path or where the commits of a `pre_commit`
+   land, and the entries, in that order (Logic, rules 1 to 5).
+5. It merges the answers of the events (`agent.Answer.Merge`) and renders them with the `format` of the agent
+   into the `Response`.
 6. `Command` writes stdout and stderr and exits with the code.

@@ -6,6 +6,7 @@
 package rule
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -22,6 +23,25 @@ type Rule struct {
 	File          string // file it was read from, relative to the root
 }
 
+// Load loads the rules of the folder of rules dir (relative to root, with slashes) of the repository at root. It is
+// the loader of the use case LoadRule (internal/app/rule/load), which cmd/polix builds once and passes to every use
+// case that reads the rules. It never fails: what stops the reading is data of its result.
+type Load func(ctx context.Context, root, dir string) Loaded
+
+// Loaded is what Load read from a folder of rules: the yaml files of the folder but RetiredFile, in the order of
+// their names. Each use case decides what an absent folder, an invalid rule or a file that cannot be read means to
+// it: it takes every rule with the problems of the invalid ones, or stops at Err, or stops at Strict.
+type Loaded struct {
+	Rules    []Rule   // every rule of the folder, invalid ones included, ordered by id, stably; none with Err
+	Exists   bool     // whether the folder exists
+	Problems []string // why each invalid rule is not valid, in the words of polix config check, in file order
+	Err      error    // why a file of the folder cannot be read or is not yaml, the first by name; nil when none
+	Strict   error    // where a reading that admits no invalid rule stops: Err, or an invalid rule of an earlier file
+}
+
+// RetiredFile holds retired rules: they keep their id but never apply.
+const RetiredFile = "retired.yaml"
+
 // Valid reports why the rule is not a rule: it needs an id and a description, only a deterministic rule may
 // name a check, and the check is relative to the root.
 func (r Rule) Valid() error {
@@ -32,14 +52,15 @@ func (r Rule) Valid() error {
 		return fmt.Errorf("rule %s has no description", r.ID)
 	case r.Check != "" && !r.Deterministic:
 		return fmt.Errorf("rule %s names a check but is not deterministic", r.ID)
-	case absolute(r.Check):
+	case r.absoluteCheck():
 		return fmt.Errorf("rule %s names the check %s by an absolute path, not relative to the root", r.ID, r.Check)
 	}
 	return nil
 }
 
-// absolute reports whether p is an absolute path on any system: /x, \x or a drive letter (C:).
-func absolute(p string) bool {
+// absoluteCheck reports whether the check of r is an absolute path on any system: /x, \x or a drive letter (C:).
+func (r Rule) absoluteCheck() bool {
+	p := r.Check
 	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) {
 		return true
 	}
@@ -48,3 +69,24 @@ func absolute(p string) bool {
 
 // HasCheck reports whether a file decides the rule.
 func (r Rule) HasCheck() bool { return r.Deterministic && r.Check != "" }
+
+// Valid reports why l is not what a folder of rules loads: rules or problems with the error that stops the reading,
+// that error without a strict reading that stops too, or rules without the folder.
+func (l Loaded) Valid() error {
+	switch {
+	case l.Err != nil && (len(l.Rules) > 0 || len(l.Problems) > 0):
+		return fmt.Errorf("rules loaded from a folder that cannot be read: %w", l.Err)
+	case l.Err != nil && l.Strict == nil:
+		return fmt.Errorf("a strict reading of the rules goes past the error that stops them: %w", l.Err)
+	case !l.Exists && len(l.Rules) > 0:
+		return errors.New("rules loaded without their folder")
+	}
+	return nil
+}
+
+// Fail returns l failed with err: no rules nor problems, and err stops every reading of the folder.
+func (l Loaded) Fail(err error) Loaded {
+	failed := l
+	failed.Rules, failed.Problems, failed.Err, failed.Strict = nil, nil, err, err
+	return failed
+}

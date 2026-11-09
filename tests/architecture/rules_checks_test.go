@@ -13,26 +13,41 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestRulesChecks guards the link between the rules and their tests: each deterministic rule of
-// ai/rules/architecture.yaml with a check names a file that exists and declares func Test<name>, where <name> is
-// the id without separators (GOARCH-4 is TestGOARCH4), the test the runner of rules.run in polix.yaml runs.
+// ruleCheck is a rule of a file of ai/rules/, with what TestRulesChecks reads of it.
+type ruleCheck struct {
+	ID            string `yaml:"id"`
+	Deterministic bool   `yaml:"deterministic"`
+	Check         string `yaml:"check"`
+}
+
+// TestRulesChecks guards the link between the rules and their tests: each deterministic rule with a check of every
+// file of ai/rules/ but retired.yaml, whose rules never apply, names a file that exists and declares func
+// Test<name>, where <name> is the id without separators (GOARCH-4 is TestGOARCH4, GO-4 is TestGO4), the test the
+// runner of rules.run in polix.yaml runs.
 func TestRulesChecks(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(*root, "ai", "rules", "architecture.yaml"))
+	files, err := filepath.Glob(filepath.Join(*root, "ai", "rules", "*.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var doc struct {
-		Rules []struct {
-			ID            string `yaml:"id"`
-			Deterministic bool   `yaml:"deterministic"`
-			Check         string `yaml:"check"`
-		} `yaml:"rules"`
-	}
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		t.Fatal(err)
+	var rules []ruleCheck
+	for _, file := range files {
+		if filepath.Base(file) == "retired.yaml" {
+			continue
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc struct {
+			Rules []ruleCheck `yaml:"rules"`
+		}
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			t.Fatalf("%s: %v", filepath.Base(file), err)
+		}
+		rules = append(rules, doc.Rules...)
 	}
 	checked := 0
-	for _, r := range doc.Rules {
+	for _, r := range rules {
 		if !r.Deterministic || r.Check == "" {
 			continue
 		}

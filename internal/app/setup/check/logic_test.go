@@ -27,16 +27,18 @@ func TestDecideProblems(t *testing.T) {
 	if len(out.Problems) != 1 || out.Hint != "" {
 		t.Fatalf("%+v", out)
 	}
+	if out := Decide("", true, nil, "ai/rules", nil, nil, nil, nil, nil); len(out.Problems) != 1 {
+		t.Fatalf("without the running version: %+v", out)
+	}
 }
 
 // AC3: a top-level key renamed by this polix is reported with its new spelling, never as an option of a newer one.
 func TestDecideRenamedKey(t *testing.T) {
-	for _, src := range []string{"version: 1\nbase: trunk\n", "version: 1\nmax_stop_blocks: 2\n",
-		"version: 1\nprotected: [.env]\n"} {
-		_, err := workflow.Parse([]byte(src), "0.1.0")
+	for _, key := range []string{"base", "max_stop_blocks", "protected"} {
+		err := workflow.UnknownKey{Key: key, Line: 2}
 		out := Decide("0.1.0", true, err, "ai/rules", nil, nil, nil, nil, nil)
 		if len(out.Problems) != 1 || !strings.Contains(out.Problems[0], ": use ") || out.Hint != "" {
-			t.Errorf("%q: %+v", src, out)
+			t.Errorf("%q: %+v", key, out)
 		}
 	}
 }

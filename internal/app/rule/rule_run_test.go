@@ -55,7 +55,7 @@ func TestRunValid(t *testing.T) {
 func TestPlan(t *testing.T) {
 	rules := append(archRules(33), Rule{ID: "P", Description: "prose"}, Rule{ID: "S", Description: "d",
 		Deterministic: true, Check: "scripts/s.sh"})
-	runs := Plan(rules, flow("go", "test", "{dir}", "-run", "^Test({names})$"))
+	runs := Rules(rules).Plan(flow("go", "test", "{dir}", "-run", "^Test({names})$"))
 	if len(runs) != 2 || len(runs[0].Rules) != 33 || ruleIDs(runs[0].Rules) != ruleIDs(archRules(33)) {
 		t.Fatalf("got %d runs: %+v", len(runs), runs)
 	}
@@ -70,7 +70,7 @@ func TestPlan(t *testing.T) {
 func TestRunSettle(t *testing.T) {
 	batch := flow("go", "test", "{dir}", "-run", "^Test({names})$")
 	rules := archRules(2)
-	shared := Plan(rules, batch)[0]
+	shared := Rules(rules).Plan(batch)[0]
 	fail := Outcome{Output: "boom", Err: errors.New("exit status 1")}
 
 	results, reruns := shared.Settle(Outcome{Output: "ok"}, batch)
@@ -78,7 +78,7 @@ func TestRunSettle(t *testing.T) {
 		t.Fatalf("a passed shared run: %+v %+v", results, reruns)
 	}
 
-	results, reruns = Plan(rules[:1], batch)[0].Settle(fail, batch)
+	results, reruns = Rules(rules[:1]).Plan(batch)[0].Settle(fail, batch)
 	if len(results) != 1 || results[0].Passed() || len(reruns) != 0 {
 		t.Fatalf("a failed single run: %+v %+v", results, reruns)
 	}
@@ -90,7 +90,7 @@ func TestRunSettle(t *testing.T) {
 	}
 
 	all := flow("go", "test", "./...")
-	results, reruns = Plan(rules, all)[0].Settle(fail, all)
+	results, reruns = Rules(rules).Plan(all)[0].Settle(fail, all)
 	if len(results) != 2 || len(reruns) != 0 || results[0].Passed() || results[1].Output != "boom" {
 		t.Fatalf("a failed shared run without placeholders: %+v %+v", results, reruns)
 	}

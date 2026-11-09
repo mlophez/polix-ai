@@ -22,16 +22,6 @@ func TestSetupValid(t *testing.T) {
 	}
 }
 
-func TestParseAgents(t *testing.T) {
-	got, err := ParseAgents([]string{" Claude", "codex", "claude"})
-	if err != nil || !slices.Equal(got, []string{Claude, Codex}) {
-		t.Fatalf("%v %v", got, err)
-	}
-	if _, err := ParseAgents([]string{"cursor"}); err == nil || err.Error() != `unknown agent "cursor" (claude, codex)` {
-		t.Fatalf("unknown agent: %v", err)
-	}
-}
-
 func TestSetupPaths(t *testing.T) {
 	s := Setup{Home: "/h", Root: "/r", Agents: []string{Claude}, Version: "1"}
 	for got, want := range map[string]string{
@@ -57,14 +47,13 @@ func TestSetupPaths(t *testing.T) {
 // The other settings of Claude Code that register polix too are duplicates; the one of the repository is not.
 func TestDuplicates(t *testing.T) {
 	s := Setup{Home: "/h", Root: "/r", Agents: []string{Claude}, Version: "1"}
-	hooks, _, _ := RegisterHooks(nil, false, Claude)
 	user := filepath.FromSlash("/h/.claude/settings.json")
-	files := map[string][]byte{s.HooksFile(Claude): hooks, user: hooks}
-	if got := s.Duplicates(files); !slices.Equal(got, []string{user}) {
+	registered := map[string]bool{s.HooksFile(Claude): true, user: true}
+	if got := s.Duplicates(registered); !slices.Equal(got, []string{user}) {
 		t.Fatalf("duplicates: %v", got)
 	}
 	codexOnly := Setup{Home: "/h", Root: "/r", Agents: []string{Codex}, Version: "1"}
-	if got := codexOnly.Duplicates(files); got != nil {
+	if got := codexOnly.Duplicates(registered); got != nil {
 		t.Fatalf("only for Claude Code: %v", got)
 	}
 }

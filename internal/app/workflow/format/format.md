@@ -25,12 +25,13 @@ polix config fmt [--check] [--dir <dir>]
 port: `data`, the content of polix.yaml, and `found`, whether it exists; and `check`, from the request.
 
 1. Without polix.yaml there is nothing to format: `Missing`.
-2. It formats the data with `workflow.Format` of the domain (`workflow_format.go`), which only needs YAML: a
-   workflow with problems is formatted as well. When it fails, its error is the `Problem` and nothing is written.
+2. It formats the data with `formatData` of its logic (`logic_order.go`), which only needs YAML: a workflow with
+   problems is formatted as well. When it fails, its error is the `Problem` and nothing is written.
 3. `Changed` tells whether the formatted data differs from the data read. With a change and without `check`,
    `Write` holds the formatted data; else it is nil and nothing is written.
 
-`workflow.Format` lays polix.yaml out with `internal/platform/yamlfmt`:
+`formatData` lays polix.yaml out with `internal/platform/yamlfmt`, in the order of the keys that `order` gives from the
+vocabulary of the domain:
 
 - Two spaces of indentation, sequences indented below their key, flow collections on one line (`{ a: b }`,
   `[a, b]`), quoted scalars and block scalars (`|`, `>`) as in the source, one space before a line comment, the

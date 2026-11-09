@@ -7,6 +7,8 @@ of the lists match.
 
 - `internal/app/order/order.go`: a domain that imports `os` and the library `git` (GOARCH-41-domain).
 - `internal/app/order/place/logic.go`: a logic that imports `context` (GOARCH-41-logic).
+- `internal/app/order/place/logic_disk.go`: a sibling of the logic that imports `os` (GOARCH-41-logic), and its
+  test `logic_disk_test.go`, which imports `os` too and no list reports.
 - `internal/platform/util/util.go`: a library that imports `internal/app/` (GOARCH-42).
 - `cmd/order/main.go`: a file that is not a test and imports `internal/platform/testenv` (GOARCH-43).
 - `internal/app/order/order_test.go`: a test that imports `os` and `testenv`, which no list reports.

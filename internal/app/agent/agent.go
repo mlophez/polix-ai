@@ -1,6 +1,6 @@
-// Package agent is the domain of the agents polix answers: the formats of the hooks of Claude Code and Codex,
-// the neutral event a hook call turns into and the answer polix gives back. It is the only code that knows which
-// agent is behind a call; every format is pure, bytes in and bytes out.
+// Package agent is the domain of the agents polix answers: Claude Code and Codex, the neutral event a hook call
+// turns into and the answer polix gives back. The formats of the hooks of each agent, which turn their input into
+// events and an answer into their output, are translations: they live in the entry of AnswerHook.
 package agent
 
 import "fmt"
@@ -30,24 +30,4 @@ func (a Agent) Valid() error {
 		return nil
 	}
 	return fmt.Errorf("unknown agent %q (claude, codex)", a.Name)
-}
-
-// Parse turns the input of a hook call into the events polix evaluates (none when the call is not relevant, such
-// as a Read) and returns the native name of the event, needed to answer. The paths of the edits are not located in
-// the repository yet: Event.Locate does it.
-func (a Agent) Parse(input []byte) (native string, events []Event, err error) {
-	if a.Name == Codex {
-		return parseCodex(input)
-	}
-	return parseClaude(input)
-}
-
-// Render turns an answer into what the agent expects for its native event: the text of stdout and stderr and the
-// exit code.
-func (a Agent) Render(native string, ans Answer) (stdout, stderr string, code int) {
-	events := claudeContextEvents
-	if a.Name == Codex {
-		events = codexContextEvents
-	}
-	return ans.render(native, events)
 }

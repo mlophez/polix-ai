@@ -5,6 +5,7 @@ package jsonl
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"io"
 	"io/fs"
@@ -61,13 +62,7 @@ func readLines(r io.Reader, limit int, fn func(line []byte, tooLong bool)) error
 	tooLong := false
 	for {
 		chunk, err := br.ReadSlice('\n')
-		if !tooLong {
-			if len(buf)+len(chunk) > limit+1 {
-				tooLong, buf = true, buf[:0]
-			} else {
-				buf = append(buf, chunk...)
-			}
-		}
+		buf, tooLong = gather(buf, chunk, tooLong, limit)
 		if errors.Is(err, bufio.ErrBufferFull) {
 			continue
 		}
@@ -75,15 +70,23 @@ func readLines(r io.Reader, limit int, fn func(line []byte, tooLong bool)) error
 			return err
 		}
 		if tooLong || len(buf) > 0 {
-			line := buf
-			if n := len(line); n > 0 && line[n-1] == '\n' {
-				line = line[:n-1]
-			}
-			fn(line, tooLong)
+			fn(bytes.TrimSuffix(buf, []byte("\n")), tooLong)
 		}
 		buf, tooLong = buf[:0], false
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 	}
+}
+
+// gather adds chunk to the line read so far in buf, and reports whether the line is over limit: once it is,
+// buf stays empty and the rest of the line is discarded as it is read.
+func gather(buf, chunk []byte, tooLong bool, limit int) ([]byte, bool) {
+	if tooLong {
+		return buf, true
+	}
+	if len(buf)+len(chunk) > limit+1 {
+		return buf[:0], true
+	}
+	return append(buf, chunk...), false
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mlophez/polix-ai/internal/app/version"
+	"github.com/mlophez/polix-ai/internal/app/workflow"
 	"github.com/mlophez/polix-ai/internal/platform/build"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
 )
@@ -68,9 +69,9 @@ type Port interface {
 }
 
 // Command is the command `polix update`, the entry of the use case UpdateVersion: it turns the flags
-// and POLIX_NO_UPDATE into an Request and validates them, injects the adapter as the port, runs the
-// shell and serializes the Response to the console.
-func Command() *cobra.Command {
+// and POLIX_NO_UPDATE into an Request and validates them, injects the adapter with the loaders cache and
+// loadWorkflow as the port, runs the shell and serializes the Response to the console.
+func Command(cache version.Load, loadWorkflow workflow.Load) *cobra.Command {
 	var req Request
 	c := &cobra.Command{
 		Use:   "update",
@@ -90,7 +91,7 @@ func Command() *cobra.Command {
 			req.Want = strings.TrimPrefix(req.Want, "v")
 			req.NoUpdate = os.Getenv("POLIX_NO_UPDATE") != ""
 			req.Version, req.Now = build.Current(), time.Now()
-			res, err := run(c.Context(), Adapter{Dir: ".", Hook: req.Hook}, req)
+			res, err := run(c.Context(), Adapter{Dir: ".", Hook: req.Hook, Cache: cache, Workflow: loadWorkflow}, req)
 			if err != nil {
 				cli.NewUI(c.ErrOrStderr()).Fail("polix update: %v", err)
 				return cli.Exit(1)
@@ -126,38 +127,15 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	if req.Hook && !req.NoUpdate {
 		rejected = port.WorkflowRejected(ctx, req.Version)
 	}
-	// due is taken before Saw changes the cache; the condition asks the domain again, since GOARCH-37 lets a
-	// condition of the shell name only the request, errors and the domain, never a local bool.
+	// due is taken before Saw changes the cache.
 	due := cache.ShouldCheck(req.Now, req.Version, rejected)
-	var latest string
-	if !req.NoUpdate && req.Want == "" && (!req.Hook || cache.ShouldCheck(req.Now, req.Version, rejected)) {
-		latest, err = port.Latest(ctx)
-		if err == nil {
-			cache = cache.Saw(req.Now, req.Version, latest)
-			_ = port.SaveCache(ctx, cache) // failing to write the cache only means asking again
-		}
-	}
+	cache, latest, err := askLatest(ctx, port, req, cache, rejected)
 	out := Decide(req.Version, req.Want, exe, req.Check, req.Hook, req.NoUpdate, due, latest, err)
 	if out.Record(err) {
 		_ = port.SaveCache(ctx, cache.Fail(req.Now))
 	}
 	res.Failure, res.Message = out.Failure, out.Message
-	var installErr error
-	if out.Install != "" {
-		installErr = port.Install(ctx, exe, out.Install)
-		if installErr != nil {
-			res.Failure = installErr.Error()
-		}
-		if out.Record(installErr) {
-			_ = port.SaveCache(ctx, cache.Fail(req.Now))
-		}
-		if installErr == nil {
-			res.Message = out.Installed
-		}
-		if installErr == nil && out.Remember {
-			_ = port.SaveCache(ctx, cache.Saw(req.Now, out.Install, out.Install))
-		}
-	}
+	res, installErr := install(ctx, port, req, out, exe, cache, res)
 	if out.RefreshAfter(installErr) {
 		res.RefreshOut, res.RefreshErr, err = port.Refresh(ctx, exe, req.Hook)
 		if err != nil {
@@ -167,12 +145,62 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	// The doctor of the hook is the one of the binary the update left: the hooks of an event run in parallel, and
 	// doctor must see the binary the update left.
 	if req.Hook {
-		res.DoctorOut, res.DoctorErr, err = port.Doctor(ctx, exe)
-		if err != nil {
-			res.DoctorFailure = err.Error()
-		}
+		res = doctor(ctx, port, exe, res)
 	}
 	return res, nil
+}
+
+// askLatest asks the latest release through the port when the update goes on for it: without POLIX_NO_UPDATE nor
+// --version, and with --hook only when the cache is due (the condition asks the domain, since GOARCH-37 lets a
+// condition of the shell name only the request, errors and the domain, never a local bool). What it saw is saved
+// in the cache, and failing to write it only means asking again. It returns the cache, the latest release and the
+// error of asking it.
+func askLatest(ctx context.Context, port Port, req Request, cache version.Cache,
+	rejected error) (version.Cache, string, error) {
+	if !req.NoUpdate && req.Want == "" && (!req.Hook || cache.ShouldCheck(req.Now, req.Version, rejected)) {
+		latest, err := port.Latest(ctx)
+		if err == nil {
+			cache = cache.Saw(req.Now, req.Version, latest)
+			_ = port.SaveCache(ctx, cache)
+		}
+		return cache, latest, err
+	}
+	return cache, "", nil
+}
+
+// install installs through the port the release the output names, if any, over the binary at exe, and notes in
+// res its failure or what it tells. The cache records a failure, or the release installed when it is the latest.
+// It returns res and the error of the install, nil without one.
+func install(ctx context.Context, port Port, req Request, out Output, exe string, cache version.Cache,
+	res Response) (Response, error) {
+	if out.Install == "" {
+		return res, nil
+	}
+	err := port.Install(ctx, exe, out.Install)
+	if err != nil {
+		res.Failure = err.Error()
+	}
+	if out.Record(err) {
+		_ = port.SaveCache(ctx, cache.Fail(req.Now))
+	}
+	if err == nil {
+		res.Message = out.Installed
+	}
+	if err == nil && out.Remember {
+		_ = port.SaveCache(ctx, cache.Saw(req.Now, out.Install, out.Install))
+	}
+	return res, err
+}
+
+// doctor runs doctor --hook through the port with the binary at exe and notes in res what it printed and its
+// failure.
+func doctor(ctx context.Context, port Port, exe string, res Response) Response {
+	var err error
+	res.DoctorOut, res.DoctorErr, err = port.Doctor(ctx, exe)
+	if err != nil {
+		res.DoctorFailure = err.Error()
+	}
+	return res
 }
 
 // print serializes the response to the console in the order things happened: the outcome of the update, what the

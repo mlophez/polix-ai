@@ -37,10 +37,10 @@ func (r Run) Valid() error {
 
 // Plan turns the rules into the runs that decide them through the runners of wf (Workflow.CheckCommands): the
 // rules with a check, in order, grouped as their runners group them. Rules without a check have nothing to run.
-func Plan(rules []Rule, wf workflow.Workflow) []Run {
+func (rs Rules) Plan(wf workflow.Workflow) []Run {
 	var with []Rule
 	var files, ids []string
-	for _, rl := range rules {
+	for _, rl := range rs {
 		if rl.HasCheck() {
 			with = append(with, rl)
 			files, ids = append(files, rl.Check), append(ids, rl.ID)

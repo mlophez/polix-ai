@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/version"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 	"github.com/mlophez/polix-ai/internal/platform/github"
 )
 
@@ -158,10 +159,18 @@ func TestAdapterLatestFails(t *testing.T) {
 	}
 }
 
+// The cache is update.json in POLIX_CACHE_DIR: SaveCache writes it, and LoadCache loads it through the loader of the
+// cache, which reads and decodes it in internal/app/version/load and answers here what it is given.
 func TestAdapterCache(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("POLIX_CACHE_DIR", filepath.Join(dir, "polix"))
-	a := Adapter{}
+	file := filepath.Join(dir, "polix", "update.json")
+	var asked []string
+	var loaded version.Loaded
+	a := Adapter{Cache: func(_ context.Context, path string) version.Loaded {
+		asked = append(asked, path)
+		return loaded
+	}}
 	if c := a.LoadCache(context.Background()); c != (version.Cache{}) {
 		t.Fatalf("empty cache: %+v", c)
 	}
@@ -169,17 +178,26 @@ func TestAdapterCache(t *testing.T) {
 	if err := a.SaveCache(context.Background(), version.Cache{CheckedAt: now, Latest: "0.2.0"}); err != nil {
 		t.Fatal(err)
 	}
+	if want := fmt.Sprintf(`{"checked_at":%q,"latest":"0.2.0"}`, now.Format(time.RFC3339)); content(t, file) != want {
+		t.Fatalf("the cache is update.json in POLIX_CACHE_DIR, without a failure: %s, want %s", content(t, file), want)
+	}
+	if err := a.SaveCache(context.Background(), version.Cache{CheckedAt: now, Latest: "0.2.0"}.Fail(now)); err != nil {
+		t.Fatal(err)
+	}
+	stamp := now.Format(time.RFC3339)
+	if want := fmt.Sprintf(`{"checked_at":%q,"latest":"0.2.0","failed_at":%q}`, stamp, stamp); content(t, file) != want {
+		t.Fatalf("the failure is kept: %s, want %s", content(t, file), want)
+	}
+	loaded = version.Loaded{Cache: version.Cache{CheckedAt: now, Latest: "0.2.0"}, Exists: true}
 	if c := a.LoadCache(context.Background()); c.Latest != "0.2.0" || !c.CheckedAt.Equal(now) {
 		t.Fatalf("cache: %+v", c)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "polix", "update.json")); err != nil {
-		t.Fatalf("the cache is update.json in POLIX_CACHE_DIR: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "polix", "update.json"), []byte("{"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	loaded = version.Loaded{Exists: true, Err: errors.New("unexpected end of JSON input")}
 	if c := a.LoadCache(context.Background()); c != (version.Cache{}) {
 		t.Fatalf("a broken cache is empty: %+v", c)
+	}
+	if len(asked) != 3 || asked[0] != file || asked[2] != file {
+		t.Fatalf("the loader is asked for update.json in POLIX_CACHE_DIR: %v", asked)
 	}
 }
 
@@ -199,7 +217,7 @@ func TestAdapterWorkflowRejected(t *testing.T) {
 	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	a := Adapter{Dir: sub}
+	a := Adapter{Dir: sub, Workflow: workflowload.Command()}
 	if err := a.WorkflowRejected(ctx, "0.1.0"); err != nil {
 		t.Fatalf("without polix.yaml: %v", err)
 	}
@@ -214,8 +232,9 @@ func TestAdapterWorkflowRejected(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(repo, "polix.yaml"), []byte(src), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		a.Workflow = workflowload.Command() // the loader reads polix.yaml once: a new one reads it again
 		err := a.WorkflowRejected(ctx, "0.1.0")
-		if got := err != nil && version.NeedsNewer(err.Error()); got != ahead {
+		if got := err != nil && version.Problems(err.Error()).NeedsNewer(); got != ahead {
 			t.Errorf("polix.yaml %q: rejected %v, ahead %v, want %v", src, err, got, ahead)
 		}
 	}

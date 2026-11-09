@@ -3,7 +3,6 @@ package answer
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -13,18 +12,20 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
-	"github.com/mlophez/polix-ai/internal/platform/file"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 	"github.com/mlophez/polix-ai/internal/platform/glob"
-	"github.com/mlophez/polix-ai/internal/platform/jsonl"
 	"github.com/mlophez/polix-ai/internal/platform/proc"
 )
 
 // Adapter implements Port on the real disk, git and processes of a repository. The entry
-// passes an empty one as the port; Open fills it with the repository and the deadline of the call.
+// passes one with the loaders of the rules, of polix.yaml and of the log as the port; Open fills it with the
+// repository and the deadline of the call.
 type Adapter struct {
-	Repo     *git.Repo // the repository of the call, once open
-	Deadline time.Time // end of the budget of every run of the call together, once open
+	Repo     *git.Repo     // the repository of the call, once open
+	Deadline time.Time     // end of the budget of every run of the call together, once open
+	Rules    rule.Load     // the loader of the rules (internal/app/rule/load), which cmd/polix builds once
+	Workflow workflow.Load // the loader of polix.yaml (internal/app/workflow/load), which cmd/polix builds once too
+	State    state.Load    // the loader of the log (internal/app/state/load), which cmd/polix builds once too
 }
 
 // checkTimeout bounds the check of one rule, within the budget of the call.
@@ -41,21 +42,15 @@ func (a *Adapter) Open(ctx context.Context, dir string) (string, string, error) 
 	return repo.Root, repo.GitDir, nil
 }
 
-// LoadWorkflow reads polix.yaml with the domain of workflow. Without the file there is no workflow and no error;
-// a file that cannot be read, cannot be parsed, has problems or requires a newer polix exists, with its error.
-func (a *Adapter) LoadWorkflow(_ context.Context, running string) (workflow.Workflow, bool, error) {
-	data, existed, err := file.Read(filepath.Join(a.Repo.Root, filepath.FromSlash(workflow.File)))
-	if err != nil {
-		return workflow.Workflow{}, true, err
-	}
-	if !existed {
+// LoadWorkflow loads polix.yaml of the repository through the loader of polix.yaml. Without the file there is no
+// workflow and no error; a file that cannot be read, cannot be parsed, has problems or requires a newer polix
+// exists, with its error.
+func (a *Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, bool, error) {
+	loaded := a.Workflow(ctx, a.Repo.Root, running)
+	if !loaded.Exists {
 		return workflow.Workflow{}, false, nil
 	}
-	if data == nil {
-		data = []byte{}
-	}
-	wf, err := workflow.Parse(data, running)
-	return wf, true, err
+	return loaded.Workflow, true, loaded.Err
 }
 
 // Locate turns a path given by the agent from cwd into one relative to the root, symlinks resolved.
@@ -113,25 +108,12 @@ func (a *Adapter) Files(ctx context.Context) []string {
 	return files
 }
 
-// LoadRules reads the rules from the yaml files of the folder dir (rule.ParseFilesAll), without retired.yaml,
-// ordered by id, invalid ones included. Without the folder there are no rules.
-func (a *Adapter) LoadRules(_ context.Context, dir string) ([]rule.Rule, error) {
-	files, err := file.ReadDir(filepath.Join(a.Repo.Root, filepath.FromSlash(dir)), ".yaml")
-	if err != nil {
-		return nil, err
-	}
-	rules, _, err := rule.ParseFilesAll(dir, files)
-	return rules, err
-}
-
-// LoadState reads the log through internal/platform/jsonl: the lines over state.MaxLine are skipped and counted. A
-// log that does not exist is empty; one that cannot be read is an error.
-func (a *Adapter) LoadState(_ context.Context) (state.State, error) {
-	lines, skipped, err := jsonl.Read(a.logPath(), state.MaxLine)
-	if err != nil {
-		return state.State{}, err
-	}
-	return state.Parse(lines, skipped)
+// LoadRules loads the rules of the folder dir of the repository through the loader of the rules: every rule but
+// those of retired.yaml, ordered by id, invalid ones included, or the error of a file that cannot be read or is not
+// yaml. Without the folder there are no rules.
+func (a *Adapter) LoadRules(ctx context.Context, dir string) ([]rule.Rule, error) {
+	loaded := a.Rules(ctx, a.Repo.Root, dir)
+	return loaded.Rules, loaded.Err
 }
 
 // Ignored reports whether git ignores the path.
@@ -178,30 +160,6 @@ func (a *Adapter) RunCheck(ctx context.Context, run rule.Run) (string, error) {
 		check = filepath.Join(a.Repo.Root, filepath.FromSlash(run.Rules[0].Check))
 	}
 	return proc.RunCheck(ctx, a.Repo.Root, run.Argv, check, checkTimeout)
-}
-
-// Append writes e as one line at the end of the log, stamped with the time when it has none.
-func (a *Adapter) Append(_ context.Context, e state.Entry) error {
-	at := e.At
-	if at == "" {
-		at = time.Now().Format(time.RFC3339)
-	}
-	stamped := state.Entry{At: at, Kind: e.Kind, Agent: e.Agent, Session: e.Session, Event: e.Event, Actor: e.Actor,
-		Branch: e.Branch, Hash: e.Hash, Rule: e.Rule, Action: e.Action, Line: e.Line, Key: e.Key,
-		Outcome: e.Outcome, Reason: e.Reason}
-	if err := stamped.Valid(); err != nil {
-		return err
-	}
-	line, err := state.EncodeLine(stamped)
-	if err != nil {
-		return fmt.Errorf("log entry: %w", err)
-	}
-	return jsonl.Append(a.logPath(), line)
-}
-
-// logPath is the path of the log of the repository.
-func (a *Adapter) logPath() string {
-	return filepath.Join(a.Repo.GitDir, state.DirName, state.LogName)
 }
 
 // Contains reports whether a file git does not ignore, matching one of the patterns, holds text; a file that

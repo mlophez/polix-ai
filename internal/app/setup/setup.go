@@ -12,8 +12,8 @@
 // setting and hook of the file, whose order is kept. Codex skips new or changed hooks until the user trusts them
 // with /hooks.
 //
-// Everything here is pure, bytes in and bytes out: reading and writing the files, and running the CLIs of the
-// agents, is the job of the adapters.
+// Everything here is pure and speaks in domain values: reading, decoding and writing the files, and running the
+// CLIs of the agents, is the job of the adapters (with internal/platform/agentconf for the formats of the agents).
 package setup
 
 import (
@@ -56,22 +56,6 @@ func (s Setup) Valid() error {
 		return errors.New("a setup needs the version of polix")
 	}
 	return nil
-}
-
-// ParseAgents reads the agents asked with --agent: trimmed, in lower case and once each; an agent other than
-// Claude or Codex is an error.
-func ParseAgents(asked []string) ([]string, error) {
-	var out []string
-	for _, a := range asked {
-		a = strings.ToLower(strings.TrimSpace(a))
-		if a != Claude && a != Codex {
-			return nil, fmt.Errorf("unknown agent %q (claude, codex)", a)
-		}
-		if !slices.Contains(out, a) {
-			out = append(out, a)
-		}
-	}
-	return out, nil
 }
 
 // For reports whether the setup includes agent.
@@ -124,34 +108,20 @@ func (s Setup) CodexHooksFiles() []string {
 	return []string{s.HooksFile(Codex), filepath.Join(s.Home, ".codex", "hooks.json")}
 }
 
-// Duplicates returns the settings of Claude Code, among files (path to content), other than the one of the
-// repository that also register the hooks of polix: Claude Code merges the settings and would run each hook
-// twice. Only a setup of Claude Code in a repository has them.
-func (s Setup) Duplicates(files map[string][]byte) []string {
+// Duplicates returns the settings of Claude Code, among the files that register the hooks of polix (registered,
+// by path), other than the one of the repository: Claude Code merges the settings and would run each hook twice.
+// Only a setup of Claude Code in a repository has them.
+func (s Setup) Duplicates(registered map[string]bool) []string {
 	if !s.For(Claude) || s.Root == "" {
 		return nil
 	}
 	var out []string
 	for _, f := range s.ClaudeSettingsFiles() {
-		if data, ok := files[f]; ok && f != s.HooksFile(Claude) && Registered(data) {
+		if registered[f] && f != s.HooksFile(Claude) {
 			out = append(out, f)
 		}
 	}
 	return out
-}
-
-// quote quotes a path for a command shown to the user when it holds a space.
-func quote(p string) string {
-	if strings.ContainsAny(p, " \t") {
-		return `"` + p + `"`
-	}
-	return p
-}
-
-// oneLine is the first line of a message.
-func oneLine(s string) string {
-	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
-	return s
 }
 
 // Summary tells what install (verb write) or uninstall (verb remove) is about to do, for the person to confirm.

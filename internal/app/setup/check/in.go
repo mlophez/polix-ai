@@ -51,9 +51,9 @@ type Port interface {
 }
 
 // Command is the command `polix config check`, a subcommand of `polix config` and the entry of the use
-// case CheckSetup: it turns the flags into a Request, injects the adapter as the port, runs the shell and
-// serializes the Response to the console.
-func Command() *cobra.Command {
+// case CheckSetup: it turns the flags into a Request, injects the adapter with the loaders rules and loadWorkflow as
+// the port, runs the shell and serializes the Response to the console.
+func Command(rules rule.Load, loadWorkflow workflow.Load) *cobra.Command {
 	req := Request{Version: build.Current()}
 	c := &cobra.Command{
 		Use:   "check",
@@ -66,7 +66,7 @@ func Command() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := run(c.Context(), Adapter{Repo: repo}, req)
+			res, err := run(c.Context(), Adapter{Repo: repo, Rules: rules, Workflow: loadWorkflow}, req)
 			if err != nil {
 				return err
 			}

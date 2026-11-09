@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/state"
+	stateload "github.com/mlophez/polix-ai/internal/app/state/load"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 )
@@ -45,7 +46,7 @@ func newRepo(t *testing.T, files map[string]string) *git.Repo {
 func runCommand(t *testing.T, repo *git.Repo, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	root := cli.Root("polix", "", "", "")
-	root.AddCommand(Command())
+	root.AddCommand(Command(stateload.Command()))
 	var out, errb bytes.Buffer
 	code = cli.Run(root, append(args, "--dir", repo.Root), strings.NewReader(""), &out, &errb)
 	return code, out.String(), errb.String()
@@ -56,14 +57,14 @@ const file = ".git/" + state.DirName + "/" + state.LogName
 
 func TestAdapterReadLog(t *testing.T) {
 	ctx := context.Background()
-	st, err := Adapter{Repo: newRepo(t, nil)}.ReadLog(ctx)
+	st, err := Adapter{Repo: newRepo(t, nil), State: stateload.Command()}.ReadLog(ctx)
 	if err != nil || len(st.Entries) != 0 || st.Skipped != 0 {
 		t.Fatalf("without log: %+v %v", st, err)
 	}
 	log := `{"at":"t1","kind":"fact","fact":"reviewed"}` + "\nnot json\n" +
 		`{"kind":"decision","reason":"` + strings.Repeat("x", 5*1024*1024) + "\"}\n" +
 		`{"at":"t2","kind":"stop_block"}` + "\n"
-	st, err = Adapter{Repo: newRepo(t, map[string]string{file: log})}.ReadLog(ctx)
+	st, err = Adapter{Repo: newRepo(t, map[string]string{file: log}), State: stateload.Command()}.ReadLog(ctx)
 	if err != nil || len(st.Entries) != 2 || st.Skipped != 1 || st.Entries[1].At != "t2" ||
 		st.Entries[0].Fact != "reviewed" {
 		t.Fatalf("log: %+v %v", st, err)
