@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-// GOARCH-5: the adapter implements the port of its own use case: <Verb><Noun>Adapter has every method of
-// <Verb><Noun>Port, declared or promoted from an embedded field. The checker decides it when the adapter and the
-// port resolve; else the methods declared in the out file are compared by name.
+// GOARCH-5: the adapter implements the port of its own use case: Adapter of out.go has every method of Port of
+// in.go, declared or promoted from an embedded field. The checker decides it when the adapter and the port
+// resolve; else the methods declared in the out file are compared by name.
 func TestGOARCH5(t *testing.T) {
 	checkRule(t, checkAdapter,
-		"CancelOrderAdapter does not implement Cancel of CancelOrderPort, declared nor promoted")
+		"internal/app/order/cancel/out.go: Adapter does not implement Cancel of Port, declared nor promoted")
 }
 
 func checkAdapter(m *module) []string {
@@ -23,7 +23,7 @@ func checkAdapter(m *module) []string {
 		if in == nil || adapterFile == nil {
 			continue // GOARCH-3
 		}
-		port, adapter := camel(uc.stem)+"Port", camel(uc.stem)+"Adapter"
+		port, adapter := "Port", "Adapter"
 		spec, adapterSpec := typeSpec(in.ast, port), typeSpec(adapterFile.ast, adapter)
 		if spec == nil || adapterSpec == nil {
 			continue // GOARCH-11

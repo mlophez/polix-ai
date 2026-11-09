@@ -7,10 +7,11 @@ import (
 	"testing"
 )
 
-// GOARCH-25: an exported struct of internal/ has only exported fields: the structs that go from one part to another
-// (domain, Request, Response, Output, Adapter) are open to read. Unexported structs, details of one file, are free.
+// GOARCH-25: an exported struct of internal/app/ has only exported fields: the structs that go from one part to
+// another (domain, Request, Response, Output, Adapter) are open to read. Unexported structs, details of one file,
+// are free.
 func TestGOARCH25(t *testing.T) {
-	checkRule(t, checkExportedFields, "internal/order/order_line.go:6: Line has the unexported field price")
+	checkRule(t, checkExportedFields, "internal/app/order/order_line.go:6: Line has the unexported field price")
 }
 
 func checkExportedFields(m *module) []string {

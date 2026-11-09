@@ -2,44 +2,66 @@ package architecture
 
 import (
 	"fmt"
+	"path"
+	"strings"
 	"testing"
 )
 
-// GOARCH-9: the domain uses only domain: the domain files of its own package and, of another package of internal/,
-// only the names its domain files declare; pkg/ and the packages outside the module are free (GOARCH-4 limits
-// them). A package of internal/ that is not in the module cannot be checked and is left out.
+// GOARCH-9: the direction of every import follows from the depth. A use case imports the domains of any noun and
+// its own helpers; it never imports another use case. A domain imports only other domains, never a use case nor a
+// helper. A helper is imported only by the files of its use case package, tests included. Only cmd/ and tests/
+// import a use case. The files of the tests count as their package; internal/platform/ is GOARCH-42.
 func TestGOARCH9(t *testing.T) {
-	checkRule(t, checkDomainUsesDomain, "the domain uses placeOrderLimit, of place_order_logic.go",
-		"uses stock.CountStock, which is not domain of internal/stock")
+	checkRule(t, checkDirection,
+		"internal/app/cart/cart_rebate.go:5: the domain internal/app/cart imports the use case "+
+			"internal/app/order/place: only cmd/ and tests/ import a use case",
+		"internal/app/cart/cart_rebate.go:6: the domain internal/app/cart imports the helper "+
+			"internal/app/order/place/pricing: only the files of its use case internal/app/order/place import it",
+		"the use case internal/app/order/cancel imports the use case internal/app/order/place",
+		"the use case internal/app/order/cancel imports the use case internal/app/stock/count",
+		"the use case internal/app/order/cancel imports the helper internal/app/order/place/pricing",
+		"the helper internal/app/order/place/tax imports the helper internal/app/order/place/pricing",
+		"internal/app/stock/stock_test.go:4: the domain internal/app/stock imports the use case "+
+			"internal/app/order/cancel")
 }
 
-func checkDomainUsesDomain(m *module) []string {
+func checkDirection(m *module) []string {
 	var out []string
-	domain := m.domainSymbols()
-	for _, files := range m.packages() {
-		syms := symbols(files)
-		for _, f := range files {
-			if f.kind != kindDomain {
+	for _, f := range m.files {
+		if f.place.level == levelLibrary || f.place.level == levelPlatform {
+			continue // GOARCH-42
+		}
+		for _, s := range f.ast.Imports {
+			dir := m.moduleDir(strings.Trim(s.Path.Value, `"`))
+			if dir == "" || dir == f.dir {
 				continue
 			}
-			for _, r := range m.localRefs(f, syms) {
-				if r.decl.kind != kindDomain {
-					out = append(out, fmt.Sprintf("%s: the domain uses %s, of %s", m.pos(f, r.node), r.name, r.decl.name))
+			switch placeOf(dir).level {
+			case levelUseCase:
+				if f.place.level != levelCmd {
+					out = append(out, fmt.Sprintf("%s: %s imports the use case %s: only cmd/ and tests/ import a use case",
+						m.pos(f, s), who(f), dir))
+				}
+			case levelHelper:
+				if owner := path.Dir(dir); f.dir != owner {
+					out = append(out, fmt.Sprintf("%s: %s imports the helper %s: only the files of its use case %s "+
+						"import it", m.pos(f, s), who(f), dir, owner))
 				}
 			}
-			out = append(out, foreignNonDomain(m, f, domain)...)
 		}
 	}
 	return out
 }
 
-// foreignNonDomain returns the uses in f of names of other packages of the module that are not their domain.
-func foreignNonDomain(m *module, f *goFile, domain map[string]map[string]bool) []string {
-	var out []string
-	for _, r := range m.packageRefs(f) {
-		if names, ok := domain[r.dir]; ok && !names[r.name] {
-			out = append(out, fmt.Sprintf("%s: uses %s.%s, which is not domain of %s", m.pos(f, r.node), r.pkg, r.name, r.dir))
-		}
+// who names the package of f by the kind of its folder: the domain internal/app/rule.
+func who(f *goFile) string {
+	switch f.place.level {
+	case levelDomain:
+		return "the domain " + f.dir
+	case levelUseCase:
+		return "the use case " + f.dir
+	case levelHelper:
+		return "the helper " + f.dir
 	}
-	return out
+	return f.dir
 }

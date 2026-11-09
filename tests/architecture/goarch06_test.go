@@ -16,7 +16,7 @@ func TestGOARCH6(t *testing.T) {
 func checkCmdOnlyWires(m *module) []string {
 	var out []string
 	for _, f := range m.files {
-		if f.top != "cmd" {
+		if f.place.level != levelCmd {
 			continue
 		}
 		if f.kind == kindTest {

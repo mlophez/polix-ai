@@ -15,8 +15,8 @@ import (
 // the methods of another domain struct that holds a T. The tests are left out.
 func TestGOARCH28(t *testing.T) {
 	checkRule(t, checkChangeThroughMethods,
-		"order_line.go: Relabel assigns the field SKU of order.Line outside its methods",
-		"cancel_order_in.go: CancelOrderCommand assigns the field SKU of order.Line outside its methods",
+		"internal/app/order/order_line.go: Relabel assigns the field SKU of order.Line outside its methods",
+		"internal/app/order/cancel/in.go: Command assigns the field SKU of order.Line outside its methods",
 		"Note.Fix assigns the field SKU of order.Line outside its methods",
 		"Note.Fix assigns the field price of order.Line outside its methods",
 		"Pack.Tag assigns the field Tags of order.Line outside its methods",
@@ -112,7 +112,7 @@ func fieldPath(e ast.Expr) []*ast.SelectorExpr {
 	}
 }
 
-// shortType renders folder.Name (internal/order.Line) as order.Line.
+// shortType renders folder.Name (internal/app/order.Line) as order.Line.
 func shortType(key string) string {
 	dir, name, _ := strings.Cut(key, ".")
 	return path.Base(dir) + "." + name

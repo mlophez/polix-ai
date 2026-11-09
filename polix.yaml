@@ -14,9 +14,9 @@ risk:
   weights:
     "*_test.go": 0.5
     "tests/**": 0.5
-    "internal/hook/**": 3
-    "internal/state/**": 3
-    "pkg/git/**": 2
+    "internal/app/hook/**": 3
+    "internal/app/state/**": 3
+    "internal/platform/git/**": 2
 
 guardrails:
   # Only a person changes the instructions of the repository.
@@ -46,8 +46,8 @@ on:
     # A large or risky Go change needs a review of polix:reviewer before the main session commits it. Subagents are
     # left out: a command of theirs that only quotes a git commit (a probe of the reviewer) counts as a commit too.
     - when:
-        actor: session
         changed: ["*.go", "go.mod", "go.sum"]
+        actor: session
         any:
           changed_lines: 150
           changed_files: 5
@@ -58,8 +58,8 @@ on:
 
     # Remind once per content to update README.md and docs/ when the behaviour changes.
     - when:
-        actor: session
         changed: ["*.go", "go.mod", "plugins/**", "examples/**", "polix.yaml", "install.sh", "install.ps1", "scripts/**"]
+        actor: session
       action:
         block:
           message: "Before committing, check whether this change affects README.md or docs/ and update them. If it does not affect them, commit again."

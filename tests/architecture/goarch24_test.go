@@ -8,16 +8,16 @@ import (
 	"testing"
 )
 
-// GOARCH-24: the out file holds only the adapter of its use case: the public struct <Verb><Noun>Adapter, its
-// methods and unexported constants; no function, not even a constructor. The exported methods of the adapter are
-// the methods of the port and no other; what they need goes in unexported methods of the adapter, or in pkg/ when
-// it is shared.
+// GOARCH-24: out.go holds only the adapter of its use case: the public struct Adapter, its methods and unexported
+// constants; no function, not even a constructor. The exported methods of the adapter are the methods of the port
+// and no other; what they need goes in unexported methods of the adapter, in a helper of the use case, or in
+// internal/platform/ when it is shared.
 func TestGOARCH24(t *testing.T) {
 	checkRule(t, checkOutHoldsAdapter,
-		"internal/order/place_order_out.go:4: PlaceOrderAdapter is a map[string]string, not a struct",
-		"declares the function NewPlaceOrderAdapter: the out file holds only the adapter PlaceOrderAdapter",
-		"CancelOrderAdapter exports Refund, which is not a method of CancelOrderPort",
-		"declares the function connect: the out file holds only the adapter CancelOrderAdapter",
+		"internal/app/order/place/out.go:4: Adapter is a map[string]string, not a struct",
+		"internal/app/order/place/out.go:7: declares the function NewAdapter: out.go holds only the struct Adapter",
+		"internal/app/order/cancel/out.go:16: Adapter exports Refund, which is not a method of Port",
+		"internal/app/order/cancel/out.go:19: declares the function connect",
 		"declares the exported constant Timeout",
 		"declares the variable cache",
 		"declares the type options")
@@ -30,9 +30,9 @@ func checkOutHoldsAdapter(m *module) []string {
 		if f == nil {
 			continue // GOARCH-3
 		}
-		adapter := camel(uc.stem) + "Adapter"
-		only := fmt.Sprintf("the out file holds only the adapter %s, its methods and unexported constants, "+
-			"without constructor", adapter)
+		const adapter = "Adapter"
+		only := fmt.Sprintf("out.go holds only the struct %s, its methods and unexported constants, without "+
+			"constructor", adapter)
 		port := portMethods(uc)
 		for _, d := range f.ast.Decls {
 			switch d := d.(type) {
@@ -44,8 +44,8 @@ func checkOutHoldsAdapter(m *module) []string {
 					out = append(out, fmt.Sprintf("%s: declares the method %s of %s: %s", m.pos(f, d), d.Name.Name, recv,
 						only))
 				case recv == adapter && d.Name.IsExported() && port != nil && !port[d.Name.Name]:
-					out = append(out, fmt.Sprintf("%s: %s exports %s, which is not a method of %sPort", m.pos(f, d),
-						adapter, d.Name.Name, camel(uc.stem)))
+					out = append(out, fmt.Sprintf("%s: %s exports %s, which is not a method of Port", m.pos(f, d),
+						adapter, d.Name.Name))
 				}
 			case *ast.GenDecl:
 				out = append(out, outGenDecl(m, f, d, adapter, only)...)
@@ -87,7 +87,7 @@ func portMethods(uc *useCase) map[string]bool {
 	if in == nil {
 		return nil
 	}
-	spec := typeSpec(in.ast, camel(uc.stem)+"Port")
+	spec := typeSpec(in.ast, "Port")
 	if spec == nil {
 		return nil
 	}

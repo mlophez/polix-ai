@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// GOARCH-39: no dot import in internal/, pkg/ nor cmd/: every name of another package is written with its
+// GOARCH-39: no dot import in internal/ nor cmd/: every name of another package is written with its
 // qualifier.
 func TestGOARCH39(t *testing.T) {
-	checkRule(t, checkNoDotImport, "internal/order/order.go:5: dot imports strings")
+	checkRule(t, checkNoDotImport, "internal/app/order/order.go:5: dot imports strings")
 }
 
 func checkNoDotImport(m *module) []string {

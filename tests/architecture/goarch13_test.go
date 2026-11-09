@@ -10,7 +10,7 @@ import (
 // GOARCH-13: in every file the types come first, right after the imports, before constants, variables and
 // functions.
 func TestGOARCH13(t *testing.T) {
-	checkRule(t, checkTypesFirst, "internal/order/order.go: type Item after constants, variables or functions")
+	checkRule(t, checkTypesFirst, "internal/app/order/order.go: type Item after constants, variables or functions")
 }
 
 func checkTypesFirst(m *module) []string {

@@ -8,13 +8,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mlophez/polix-ai/internal/diff"
-	"github.com/mlophez/polix-ai/internal/hook"
-	"github.com/mlophez/polix-ai/internal/rule"
-	"github.com/mlophez/polix-ai/internal/setup"
-	"github.com/mlophez/polix-ai/internal/version"
-	"github.com/mlophez/polix-ai/internal/workflow"
-	"github.com/mlophez/polix-ai/pkg/cli"
+	diffmeasure "github.com/mlophez/polix-ai/internal/app/diff/measure"
+	hookanswer "github.com/mlophez/polix-ai/internal/app/hook/answer"
+	rulecheck "github.com/mlophez/polix-ai/internal/app/rule/check"
+	setupcheck "github.com/mlophez/polix-ai/internal/app/setup/check"
+	setupdiagnose "github.com/mlophez/polix-ai/internal/app/setup/diagnose"
+	setupinstall "github.com/mlophez/polix-ai/internal/app/setup/install"
+	setuprefresh "github.com/mlophez/polix-ai/internal/app/setup/refresh"
+	setupuninstall "github.com/mlophez/polix-ai/internal/app/setup/uninstall"
+	versionshow "github.com/mlophez/polix-ai/internal/app/version/show"
+	versionupdate "github.com/mlophez/polix-ai/internal/app/version/update"
+	workflowformat "github.com/mlophez/polix-ai/internal/app/workflow/format"
+	workflowgraph "github.com/mlophez/polix-ai/internal/app/workflow/graph"
+	workflowlog "github.com/mlophez/polix-ai/internal/app/workflow/log"
+	"github.com/mlophez/polix-ai/internal/platform/cli"
 )
 
 func main() {
@@ -35,30 +42,28 @@ func main() {
 	root.AddGroup(&cobra.Group{ID: "repo", Title: "Repository"}, &cobra.Group{ID: "machine", Title: "Machine"},
 		&cobra.Group{ID: "agent", Title: "Agents"})
 	config := &cobra.Command{Use: "config", Short: "Validate and format polix.yaml", Args: cobra.NoArgs, GroupID: "repo"}
-	config.AddCommand(setup.CheckSetupCommand(), workflow.FormatWorkflowCommand())
+	config.AddCommand(setupcheck.Command(), workflowformat.Command())
 	root.AddCommand(config)
-	for _, c := range []*cobra.Command{setup.InstallSetupCommand(), setup.UninstallSetupCommand(),
-		setup.DiagnoseSetupCommand()} {
+	for _, c := range []*cobra.Command{setupinstall.Command(), setupuninstall.Command(), setupdiagnose.Command()} {
 		c.GroupID = "machine"
 		root.AddCommand(c)
 	}
-	root.AddCommand(setup.RefreshSetupCommand())
-	for _, c := range []*cobra.Command{workflow.GraphWorkflowCommand(), workflow.LogWorkflowCommand(),
-		diff.MeasureDiffCommand()} {
+	root.AddCommand(setuprefresh.Command())
+	for _, c := range []*cobra.Command{workflowgraph.Command(), workflowlog.Command(), diffmeasure.Command()} {
 		c.GroupID = "repo"
 		root.AddCommand(c)
 	}
-	for _, c := range []*cobra.Command{version.UpdateVersionCommand(), version.ShowVersionCommand()} {
+	for _, c := range []*cobra.Command{versionupdate.Command(), versionshow.Command()} {
 		c.GroupID = "machine"
 		root.AddCommand(c)
 	}
 
-	answer := hook.AnswerHookCommand()
+	answer := hookanswer.Command()
 	answer.GroupID = "agent"
 	root.AddCommand(answer)
 
 	rules := &cobra.Command{Use: "rules", Short: "Work with the rules of rules.path (ai/rules/)", Args: cobra.NoArgs, GroupID: "repo"}
-	rules.AddCommand(rule.CheckRuleCommand())
+	rules.AddCommand(rulecheck.Command())
 	root.AddCommand(rules)
 
 	os.Exit(cli.Run(root, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))

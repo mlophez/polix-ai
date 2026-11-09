@@ -1,0 +1,123 @@
+// Package check is the use case CheckSetup, the command `polix config check`: it validates the workflow and the
+// rules of a repository and prints every problem.
+package check
+
+import (
+	"context"
+	"io"
+
+	"github.com/spf13/cobra"
+
+	"github.com/mlophez/polix-ai/internal/app/rule"
+	"github.com/mlophez/polix-ai/internal/app/workflow"
+	"github.com/mlophez/polix-ai/internal/platform/build"
+	"github.com/mlophez/polix-ai/internal/platform/cli"
+	"github.com/mlophez/polix-ai/internal/platform/git"
+)
+
+// Request is what the caller asks of the use case CheckSetup, whatever the transport: the command fills
+// it from its flags.
+type Request struct {
+	Dir     string // any folder of the repository
+	Version string // version of the running polix, which polix.yaml may require
+}
+
+// Response is what the use case CheckSetup gives back to the caller, in the shape of the transport: the
+// command serializes it to the console.
+type Response struct {
+	Problems  []string // every problem of polix.yaml and of the rules
+	Hint      string   // the hint that the problems may come from a newer polix; empty for none
+	Warning   string   // the warning that rules check --changed would fail; empty for none
+	Found     bool     // whether polix.yaml exists
+	Rules     int      // how many rules the folder of rules holds
+	RulesPath string   // the folder of the rules, relative to the root
+}
+
+// Port is what the shell of CheckSetup needs from the outside: the workflow, the rules, their checks and
+// the base branches of the repository. It speaks in domain values, and every method takes the context of the
+// caller.
+type Port interface {
+	// LoadWorkflow returns the workflow of polix.yaml for the polix of version running and whether the file exists:
+	// the default workflow without it. The error tells why it cannot be read or parsed, or is a workflow.Invalid
+	// with the problems of a workflow that parses, returned with it.
+	LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, bool, error)
+	// LoadRules returns every rule of the folder dir, relative to the root, retired ones excluded, ordered by id,
+	// and the problems of the invalid ones; the error tells why a file cannot be read or parsed.
+	LoadRules(ctx context.Context, dir string) ([]rule.Rule, []string, error)
+	// Missing reports whether the file of a check, relative to the root, does not exist.
+	Missing(ctx context.Context, check string) bool
+	// ResolveBase returns why none of candidates exists as a branch, locally or on origin; nil when one does.
+	ResolveBase(ctx context.Context, candidates []string) error
+}
+
+// Command is the command `polix config check`, a subcommand of `polix config` and the entry of the use
+// case CheckSetup: it turns the flags into a Request, injects the adapter as the port, runs the shell and
+// serializes the Response to the console.
+func Command() *cobra.Command {
+	req := Request{Version: build.Current()}
+	c := &cobra.Command{
+		Use:   "check",
+		Short: "Validate polix.yaml and the rules",
+		Long: "Validate the workflow and the rules and print every problem: unknown events, conditions, actions and " +
+			"keys, undefined variables and conditions on events where they never hold.",
+		Args: cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			repo, err := git.Open(c.Context(), req.Dir)
+			if err != nil {
+				return err
+			}
+			res, err := run(c.Context(), Adapter{Repo: repo}, req)
+			if err != nil {
+				return err
+			}
+			return cli.Exit(res.print(c.OutOrStdout(), c.ErrOrStderr()))
+		},
+	}
+	cli.DirFlag(c, &req.Dir, ".")
+	return c
+}
+
+// run is the shell, from request to response: it reads through the port the workflow, the rules, whether
+// each check exists and whether a base branch exists, calls the logic once and builds the response.
+//
+//nolint:unparam // every shell returns (response, error), as docs/architecture.md says, even when it cannot fail
+func run(ctx context.Context, port Port, req Request) (Response, error) {
+	wf, found, wfErr := port.LoadWorkflow(ctx, req.Version)
+	rulesPath := wf.RulesPath()
+	rules, invalid, rulesErr := port.LoadRules(ctx, rulesPath)
+	missing := map[string]bool{}
+	for _, r := range rules {
+		if r.HasCheck() {
+			missing[r.Check] = port.Missing(ctx, r.Check)
+		}
+	}
+	baseErr := port.ResolveBase(ctx, wf.BaseBranches())
+	out := Decide(req.Version, found, wfErr, rulesPath, rules, invalid, rulesErr, missing, baseErr)
+	return Response(out), nil
+}
+
+// print serializes the response to the console and returns the exit code: every problem to stderr, with the hint
+// of a newer polix, and 1; else the warning to stderr, the summary to stdout and 0.
+func (res Response) print(stdout, stderr io.Writer) int {
+	if len(res.Problems) > 0 {
+		u := cli.NewUI(stderr)
+		for _, p := range res.Problems {
+			u.Fail("%s", p)
+		}
+		if res.Hint != "" {
+			u.Warn("%s", res.Hint)
+		}
+		return 1
+	}
+	if res.Warning != "" {
+		cli.NewUI(stderr).Warn("%s", res.Warning)
+	}
+	u := cli.NewUI(stdout)
+	if !res.Found {
+		u.Line("%s no %s (only the built-in protections apply) and %d rules of %s/", cli.OKText("ok:"), workflow.File,
+			res.Rules, res.RulesPath)
+		return 0
+	}
+	u.Line("%s %s and %d rules of %s/", cli.OKText("ok:"), workflow.File, res.Rules, res.RulesPath)
+	return 0
+}
