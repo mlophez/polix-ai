@@ -152,6 +152,5 @@ Plan progress:
 - **Plan**: the path of the plan file.
 - **Overview**: the `Overview` section of the plan, verbatim.
 - **Decisions**: the assumptions taken for unanswered questions, or "none".
-- **Next steps**: adjust the plan, implement it (with `polix:builder` subagents, at once for the tasks whose
-  `Depends on:` allows it), or review the result with `/polix:review`.
+- **Next steps**: adjust the plan, or implement, review and check it with `/polix:build <plan>`.
 - **Pending**: open blockers and stale or missing docs, or "none".

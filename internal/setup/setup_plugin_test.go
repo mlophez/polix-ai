@@ -35,7 +35,7 @@ func embedded(t *testing.T) map[string][]byte {
 
 func TestPluginNames(t *testing.T) {
 	e := embedded(t)
-	if got := strings.Join(PluginSkills(e), " "); got != "add-rule audit doctor init plan review workflow" {
+	if got := strings.Join(PluginSkills(e), " "); got != "add-rule audit build doctor init plan review workflow" {
 		t.Fatalf("skills: %s", got)
 	}
 	want := "auditor builder reviewer rules-author rules-reviewer workflow-author"
