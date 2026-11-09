@@ -31,21 +31,9 @@ func (r *Repo) Stats(ctx context.Context, ref string) ([]Stat, error) {
 		ref = "HEAD"
 	}
 	stats := map[string]Stat{}
-	var whole []string
-	if _, err := r.git(ctx, "rev-parse", "--verify", "--quiet", "HEAD"); err == nil {
-		out, err := r.paths(ctx, "diff", "--numstat", "-z", "--no-renames", ref)
-		if err != nil {
-			return nil, err
-		}
-		if err := addNumstat(stats, out); err != nil {
-			return nil, err
-		}
-	} else {
-		out, err := r.paths(ctx, "ls-files", "-z")
-		if err != nil {
-			return nil, err
-		}
-		whole = append(whole, splitPaths(out)...)
+	whole, err := r.tracked(ctx, ref, stats)
+	if err != nil {
+		return nil, err
 	}
 	out, err := r.paths(ctx, "ls-files", "-z", "--others", "--exclude-standard")
 	if err != nil {
@@ -62,6 +50,23 @@ func (r *Repo) Stats(ctx context.Context, ref string) ([]Stat, error) {
 		}
 	}
 	return sortStats(stats), nil
+}
+
+// tracked adds to stats the size of the change of each tracked file against ref, from git diff --numstat, and
+// returns the files to read whole instead: every tracked file of a repository without commits.
+func (r *Repo) tracked(ctx context.Context, ref string, stats map[string]Stat) ([]string, error) {
+	if _, err := r.git(ctx, "rev-parse", "--verify", "--quiet", "HEAD"); err != nil {
+		out, err := r.paths(ctx, "ls-files", "-z")
+		if err != nil {
+			return nil, err
+		}
+		return splitPaths(out), nil
+	}
+	out, err := r.paths(ctx, "diff", "--numstat", "-z", "--no-renames", ref)
+	if err != nil {
+		return nil, err
+	}
+	return nil, addNumstat(stats, out)
 }
 
 // CommitStats returns the size of the change of each file that the commit rev introduced, sorted by path: its

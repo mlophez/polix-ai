@@ -158,6 +158,7 @@ func (p *printer) items(n *yaml.Node) []*yaml.Node {
 		}
 	case yaml.SequenceNode:
 		items = append(items, n.Content...)
+	default:
 	}
 	return items
 }

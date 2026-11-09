@@ -48,7 +48,7 @@ func (a Adapter) LoadRules(ctx context.Context, dir string) ([]rule.Rule, error)
 // of its runners, and polix config check reports the rest.
 func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, error) {
 	loaded := a.Workflow(ctx, a.Repo.Root, running)
-	if _, invalid := errors.AsType[workflow.Invalid](loaded.Err); loaded.Err != nil && !invalid {
+	if _, invalid := errors.AsType[workflow.InvalidError](loaded.Err); loaded.Err != nil && !invalid {
 		return workflow.Workflow{}, loaded.Err
 	}
 	return loaded.Workflow, nil

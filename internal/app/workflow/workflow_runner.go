@@ -61,7 +61,7 @@ func (r Rules) Valid() error {
 	v := &validator{}
 	v.rules(r)
 	if len(v.problems) > 0 {
-		return Invalid(v.problems)
+		return InvalidError(v.problems)
 	}
 	return nil
 }
@@ -72,7 +72,7 @@ func (r Runner) Valid() error {
 	v := &validator{}
 	v.runner(r)
 	if len(v.problems) > 0 {
-		return Invalid(v.problems)
+		return InvalidError(v.problems)
 	}
 	return nil
 }

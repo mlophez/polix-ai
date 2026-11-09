@@ -26,7 +26,7 @@ func walk(rules []rule.Rule, wf workflow.Workflow, onlyChanged bool, changed []s
 	var runs []rule.Run
 	var outcomes []rule.Outcome
 	for {
-		out := Decide(rules, wf, onlyChanged, changed, outcomes)
+		out := Decide(rules, wf, rule.Selection{OnlyChanged: onlyChanged, Changed: changed}, outcomes)
 		if out.Next == nil {
 			return runs, out
 		}
@@ -122,11 +122,11 @@ var batchFlow = workflow.Workflow{Rules: workflow.Rules{Run: []workflow.Runner{
 }}}
 
 func TestDecideBatchAsksForTheSharedRun(t *testing.T) {
-	out := Decide(archRules(), batchFlow, false, nil, nil)
+	out := Decide(archRules(), batchFlow, rule.Selection{}, nil)
 	if out.Next == nil || len(out.Next.Rules) != 3 || out.Results != nil {
 		t.Fatalf("got %+v", out)
 	}
-	out = Decide(archRules(), batchFlow, false, nil, []rule.Outcome{{Output: "ok"}})
+	out = Decide(archRules(), batchFlow, rule.Selection{}, []rule.Outcome{{Output: "ok"}})
 	if out.Next != nil || len(out.Results) != 3 || len(rule.Results(out.Results).Failed()) != 0 {
 		t.Fatalf("a passing shared run passes every rule: %+v", out)
 	}
@@ -134,11 +134,11 @@ func TestDecideBatchAsksForTheSharedRun(t *testing.T) {
 
 func TestDecideBatchRerunsAFailedGroup(t *testing.T) {
 	fail := rule.Outcome{Output: "boom", Err: errors.New("exit status 1")}
-	out := Decide(archRules(), batchFlow, false, nil, []rule.Outcome{fail})
+	out := Decide(archRules(), batchFlow, rule.Selection{}, []rule.Outcome{fail})
 	if out.Next == nil || len(out.Next.Rules) != 1 || out.Next.Rules[0].ID != "A-1" {
 		t.Fatalf("a failed shared run asks for the first rerun: %+v", out)
 	}
-	out = Decide(archRules(), batchFlow, false, nil, []rule.Outcome{fail, {Output: "ok"}, fail, {Output: "ok"}})
+	out = Decide(archRules(), batchFlow, rule.Selection{}, []rule.Outcome{fail, {Output: "ok"}, fail, {Output: "ok"}})
 	if out.Next != nil || len(out.Results) != 3 {
 		t.Fatalf("got %+v", out)
 	}

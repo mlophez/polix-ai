@@ -44,28 +44,25 @@ func (f *fakePort) SameFile(_ context.Context, a, b string) bool { return a == b
 func (f *fakePort) OpenRepo(_ context.Context, _ string) (string, string, error) {
 	return "/r", "/r/gitdir", f.repoErr
 }
-func (f *fakePort) LoadWorkflow(_ context.Context, _, _ string) (workflow.Workflow, bool, error) {
+func (f *fakePort) LoadWorkflow(_ context.Context, _, _ string) (workflow.Workflow, bool, error, error) {
 	f.note("LoadWorkflow")
-	return workflow.Workflow{}, true, nil
+	return workflow.Workflow{}, true, nil, nil
 }
-func (f *fakePort) LoadRules(_ context.Context, _, _ string) ([]rule.Rule, []string, error) {
-	return []rule.Rule{{ID: "A-1", Description: "d", Deterministic: true, Check: "a.sh", File: "f"}}, nil, nil
-}
-func (f *fakePort) Missing(_ context.Context, _, _ string) bool { return false }
-func (f *fakePort) Runnable(_ context.Context, _, check string) error {
-	return errors.New("check " + check + " is not executable (chmod +x)")
-}
-func (f *fakePort) ResolveBase(_ context.Context, _ string, _ []string) error {
-	return nil
+func (f *fakePort) LoadRules(_ context.Context, _, _ string) (rule.Loaded, map[string]bool, map[string]error) {
+	loaded := rule.Loaded{Rules: []rule.Rule{{ID: "A-1", Description: "d", Deterministic: true, Check: "a.sh", File: "f"}}}
+	return loaded, map[string]bool{"a.sh": false},
+		map[string]error{"a.sh": errors.New("check a.sh is not executable (chmod +x)")}
 }
 func (f *fakePort) WriteState(_ context.Context, gitDir string) (string, error) {
 	return gitDir + "/state", nil
 }
-func (f *fakePort) ClaudeHooks(_ context.Context, _ []string) map[string]setup.HooksFile { return nil }
-func (f *fakePort) CodexHooks(_ context.Context, _ []string) map[string]setup.HooksFile  { return nil }
-func (f *fakePort) CodexEnabled(_ context.Context, _ string) bool                        { return false }
-func (f *fakePort) ReadManifest(_ context.Context, _ string) (string, bool)              { return "0.2.0", true }
-func (f *fakePort) Plugin(_ context.Context) (map[string][]byte, error)                  { return nil, nil }
+func (f *fakePort) HooksFiles(_ context.Context, _ string, _ []string) map[string]setup.HooksFile {
+	return nil
+}
+func (f *fakePort) CodexEnabled(_ context.Context, _ string) bool { return false }
+func (f *fakePort) Plugin(_ context.Context, _ string) (map[string][]byte, string, bool, error) {
+	return nil, "0.2.0", true, nil
+}
 func (f *fakePort) ClaudePlugin(_ context.Context) (bool, bool, string, error) {
 	f.note("ClaudePlugin")
 	return false, false, "", setup.ErrNoCLI

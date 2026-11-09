@@ -61,7 +61,7 @@ func TestInjectsOnce(t *testing.T) {
 func TestValidJoinsProblems(t *testing.T) {
 	w := Workflow{Version: 2, MaxStopRetries: -1}
 	err := w.Valid()
-	var invalid Invalid
+	var invalid InvalidError
 	if !errors.As(err, &invalid) || len(invalid) != 2 || err.Error() != strings.Join(w.Problems(), "\n") {
 		t.Fatalf("Valid: %v", err)
 	}

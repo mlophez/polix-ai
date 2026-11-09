@@ -122,6 +122,12 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		res.Failure = err.Error()
 		return res, nil //nolint:nilerr // every failure goes to the response: the session start hook never fails
 	}
+	u := version.Update{Running: req.Version, Want: req.Want, Exe: exe, Check: req.Check, Hook: req.Hook,
+		Disabled: req.NoUpdate}
+	if err := u.Valid(); err != nil {
+		res.Failure = err.Error()
+		return res, nil //nolint:nilerr // every failure goes to the response: the session start hook never fails
+	}
 	cache := port.LoadCache(ctx)
 	var rejected error
 	if req.Hook && !req.NoUpdate {
@@ -130,7 +136,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	// due is taken before Saw changes the cache.
 	due := cache.ShouldCheck(req.Now, req.Version, rejected)
 	cache, latest, err := askLatest(ctx, port, req, cache, rejected)
-	out := Decide(req.Version, req.Want, exe, req.Check, req.Hook, req.NoUpdate, due, latest, err)
+	out := Decide(u, due, latest, err)
 	if out.Record(err) {
 		_ = port.SaveCache(ctx, cache.Fail(req.Now))
 	}

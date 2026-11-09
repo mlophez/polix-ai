@@ -35,9 +35,10 @@ Domain entities:
 
 - [ ] 1. No anemic entities: every exported struct of a domain has at least one method besides `Valid`.
       Check: an AST test that counts the methods per type.
-- [ ] 2. The domain knows no format: the domain files never import `encoding/json`, `gopkg.in/yaml.v3` nor
+- [x] 2. The domain knows no format: the domain files never import `encoding/json`, `gopkg.in/yaml.v3` nor
       `encoding/xml`.
       Check: add them to the deny list of GOARCH-41-domain in depguard.
+      Done: `encoding/json` and `encoding/xml` denied to the domain and the logic, yaml out of their allow list.
 - [ ] 3. Typed vocabulary: the closed values of a domain (events, verbs, outcomes) are constants of a named type,
       never loose strings.
       Check: report comparisons of a string field of the domain with a literal outside the domain.
@@ -51,9 +52,11 @@ Use cases:
 
 - [ ] 6. Small port: at most N methods per `Port` (for example 8); AnswerHook has about 17 today.
       Check: count the methods of the interface.
-- [ ] 7. Short `Decide`: at most 4 parameters; more become a domain value.
+- [x] 7. Short `Decide`: at most 4 parameters; more become a domain value.
       UpdateVersion passes 9 today.
       Check: an AST test on the signature.
+      Done: GOARCH-45, with `version.Update`, `rule.Selection`, `setup.Setup.Defaulted` and the inspection of
+      `setup/check` built by its shell.
 - [ ] 8. `Output` is only data: its fields are domain or predeclared types, never functions nor interfaces, as
       GOARCH-33 asks of the port.
       Check: an AST test on the fields.
@@ -145,26 +148,29 @@ with the code already clean, as the plan of limits does.
 Architecture and design:
 
 - [ ] `interfacebloat` (max 8 to 10 methods per interface): rule 6, the small port, for free; tune `max`.
-- [ ] `exhaustive`: every `switch` on a typed enum lists all its values or has a `default`.
+      Enabled as a ratchet at `max: 19`, the port of AnswerHook; the one of DiagnoseSetup went from 20 to 15 by
+      merging methods. Lowering it further needs both redesigned, which GOARCH-12 and GOARCH-33 do not let split
+      nor embed.
+- [x] `exhaustive`: every `switch` on a typed enum lists all its values or has a `default`.
       It pairs with rule 3 (typed vocabulary): a new event or verb fails every switch that forgets it, such as
       the router of AnswerHook.
 - [ ] `wrapcheck`: an error from another package is wrapped before it is returned.
       It enforces what `docs/architecture.md` asks of the adapters (wrap with what failed); configure it to ignore
       the domain and the shells, which return errors unchanged.
-- [ ] `errname` and `err113`: sentinel errors are named `Err*`, error types `*Error`, and no error is built with
+- [ ] `errname` (enabled) and `err113` (not yet): sentinel errors are named `Err*`, error types `*Error`, and no error is built with
       `errors.New` at the point of return without a sentinel; rule 4 for free.
-- [ ] `recvcheck`: one type uses the same kind of receiver in all its methods; it backs GOARCH-27 (value
+- [x] `recvcheck`: one type uses the same kind of receiver in all its methods; it backs GOARCH-27 (value
       receivers in the domain) and catches mixed receivers elsewhere.
-- [ ] `inamedparam`: the parameters of an interface method are named, so a port reads as a contract.
-- [ ] `iface`: no two identical interfaces and no interface declared but unused.
+- [x] `inamedparam`: the parameters of an interface method are named, so a port reads as a contract.
+- [x] `iface`: no two identical interfaces and no interface declared but unused.
 - [ ] `funcorder`: constructors and exported methods first; it complements GOARCH-13 (types first).
 - [ ] `containedctx` and `contextcheck`: no `context.Context` in a struct, and a function that receives a context
       passes it on; it protects the context of the ports and adapters.
-- [ ] `gochecknoinits`: no `init`; GOARCH-44 for the domain, this for the whole module.
+- [x] `gochecknoinits`: no `init`; GOARCH-44 for the domain, this for the whole module.
 
 Refactoring and complexity:
 
-- [ ] `nestif` (min 4): deep nesting, which gocognit counts only in part.
+- [x] `nestif` (min 4): deep nesting, which gocognit counts only in part.
 - [ ] `maintidx`: a maintainability index per function that mixes complexity, volume and lines.
 - [ ] `cyclop` with `package-average`: the average complexity of a package, which catches a package of many
       medium functions that gocyclo lets through.
@@ -174,13 +180,13 @@ Refactoring and complexity:
       rangeValCopy, hugeParam...).
 - [ ] `nakedret` and `nonamedreturns`: no bare returns in long functions; decide whether named results stay
       allowed (GOARCH-37 and the ports use some today).
-- [ ] `forcetypeassert`: every type assertion checks its `ok`; `workflow.Cond` as a map relies on them.
+- [x] `forcetypeassert`: every type assertion checks its `ok`; `workflow.Cond` as a map relies on them.
 
 Safety and hygiene:
 
 - [ ] `gosec`: polix runs commands and writes files from hooks; review G204 (command with variables) and G304
       (file path from input) and silence each intended finding with its reason (GO-3).
-- [ ] `errchkjson`: errors of `json.Marshal` are checked, now that the formats live in the in and out files.
+- [x] `errchkjson`: errors of `json.Marshal` are checked, now that the formats live in the in and out files.
 - [ ] `misspell` and `dupword`: typos and repeated words in comments and in the texts polix prints.
 - [ ] `prealloc`, `predeclared`: small performance and a name that shadows a builtin.
 

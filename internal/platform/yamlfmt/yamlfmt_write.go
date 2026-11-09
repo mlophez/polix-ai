@@ -165,8 +165,9 @@ func (p *printer) inline(n *yaml.Node) string {
 			parts = append(parts, p.inline(c))
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
+	default:
+		return p.scalar(n)
 	}
-	return p.scalar(n)
 }
 
 // scalar writes the scalar n in its style: a plain one as its value (nothing for an empty null), a quoted one as its

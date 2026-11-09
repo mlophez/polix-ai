@@ -108,7 +108,11 @@ func (res Response) print(stdout, stderr io.Writer, raw bool) {
 	}
 	for _, e := range res.Entries {
 		if raw {
-			line, _ := json.Marshal(e)
+			line, err := json.Marshal(e)
+			if err != nil {
+				fmt.Fprintln(stderr, "polix:", err)
+				continue
+			}
 			fmt.Fprintln(stdout, string(line))
 			continue
 		}

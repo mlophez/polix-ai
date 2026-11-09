@@ -30,9 +30,10 @@ polix update [--check] [--version <version>] [--hook]
 
 ## Logic
 
-`Decide(running, want, exe string, check, hook, disabled, due bool, latest string, failed error) Output` decides
-what the update does and what it tells, from the request, the path of the binary, whether the hook checks now, the
-latest release and the error of asking it. In order:
+`Decide(u version.Update, due bool, latest string, failed error) Output` decides what the update does and what it
+tells, from the update asked (`version.Update`: the running version, the version wanted, the path of the binary and
+the flags `--check`, `--hook` and `POLIX_NO_UPDATE`, which the shell builds and validates), whether the hook checks
+now, the latest release and the error of asking it. In order:
 
 1. Disabled: with `--hook` nothing; else the failure `updates are disabled by POLIX_NO_UPDATE`.
 2. With `--hook` and not due: nothing to do, the plugin is refreshed.
@@ -119,7 +120,8 @@ Every error goes to the response; with `--hook` none of them makes the command f
 1. `Command` turns the flags and `POLIX_NO_UPDATE` into a `Request` and injects
    `Adapter{Dir: ".", Hook: hook, Cache: cache, Workflow: loadWorkflow}`, with the loaders of the cache and of
    polix.yaml it was given, as the `Port`.
-2. The shell reads the binary and the cache and, with `--hook`, the workflow; when the update goes on without
+2. The shell reads the binary, builds the `version.Update` asked (one that is not valid is the failure of the
+   response) and reads the cache and, with `--hook`, the workflow; when the update goes on without
    `--version` (with `--hook`, only when `version.Cache.ShouldCheck`), `askLatest` asks the latest release and
    saves what it saw (`version.Cache.Saw`), or with `--hook` the failure (`version.Cache.Fail`).
 3. `Decide` decides what to do and tell: `Output`.

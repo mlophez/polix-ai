@@ -17,7 +17,7 @@ import (
 func validate(t *testing.T, src string) string {
 	t.Helper()
 	w, err := parse(t, src, "dev")
-	var invalid workflow.Invalid
+	var invalid workflow.InvalidError
 	if err != nil && !errors.As(err, &invalid) {
 		t.Fatalf("parse: %v", err)
 	}

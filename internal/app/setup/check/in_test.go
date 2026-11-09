@@ -58,6 +58,13 @@ func TestShell(t *testing.T) {
 	}
 }
 
+// Without the running version there is no setup to check: the shell fails instead of reporting.
+func TestShellWithoutVersion(t *testing.T) {
+	if _, err := run(context.Background(), &fakePort{found: true}, Request{}); err == nil {
+		t.Fatal("the shell runs without the running version")
+	}
+}
+
 // runCommand runs the command of polix config check on dir through a root of internal/platform/cli, so the exit
 // codes are those of internal/platform/cli.Run; the command sits at the root here, not below config as in
 // cmd/polix. It builds the loaders of the rules and of polix.yaml as cmd/polix does, once per run.

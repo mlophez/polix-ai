@@ -71,7 +71,7 @@ func TestAdapterLoadWorkflow(t *testing.T) {
 		t.Fatalf("invalid: %+v %v %v", wf, found, err)
 	}
 	repo = newRepo(t, map[string]string{workflow.File: "version: 1\nrequires: 0.2.0\n"})
-	var old workflow.TooOld
+	var old workflow.TooOldError
 	if _, _, err = adapter(repo).LoadWorkflow(ctx, "0.1.0"); !errors.As(err, &old) {
 		t.Fatalf("too old: %v", err)
 	}

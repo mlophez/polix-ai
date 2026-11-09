@@ -32,7 +32,7 @@ func (g Guidance) Valid() error {
 	v := &validator{}
 	v.guidance(g)
 	if len(v.problems) > 0 {
-		return Invalid(v.problems)
+		return InvalidError(v.problems)
 	}
 	return nil
 }

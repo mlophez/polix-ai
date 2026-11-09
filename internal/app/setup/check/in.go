@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mlophez/polix-ai/internal/app/rule"
+	"github.com/mlophez/polix-ai/internal/app/setup"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 	"github.com/mlophez/polix-ai/internal/platform/build"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
@@ -38,7 +39,7 @@ type Response struct {
 // caller.
 type Port interface {
 	// LoadWorkflow returns the workflow of polix.yaml for the polix of version running and whether the file exists:
-	// the default workflow without it. The error tells why it cannot be read or parsed, or is a workflow.Invalid
+	// the default workflow without it. The error tells why it cannot be read or parsed, or is a workflow.InvalidError
 	// with the problems of a workflow that parses, returned with it.
 	LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, bool, error)
 	// LoadRules returns every rule of the folder dir, relative to the root, retired ones excluded, ordered by id,
@@ -78,22 +79,27 @@ func Command(rules rule.Load, loadWorkflow workflow.Load) *cobra.Command {
 }
 
 // run is the shell, from request to response: it reads through the port the workflow, the rules, whether
-// each check exists and whether a base branch exists, calls the logic once and builds the response.
-//
-//nolint:unparam // every shell returns (response, error), as docs/architecture.md says, even when it cannot fail
+// each check exists and whether a base branch exists, builds the inspection of the setup of the running version,
+// calls the logic once and builds the response.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	wf, found, wfErr := port.LoadWorkflow(ctx, req.Version)
-	rulesPath := wf.RulesPath()
-	rules, invalid, rulesErr := port.LoadRules(ctx, rulesPath)
+	rules, invalid, rulesErr := port.LoadRules(ctx, wf.RulesPath())
 	missing := map[string]bool{}
 	for _, r := range rules {
 		if r.HasCheck() {
 			missing[r.Check] = port.Missing(ctx, r.Check)
 		}
 	}
-	baseErr := port.ResolveBase(ctx, wf.BaseBranches())
-	out := Decide(req.Version, found, wfErr, rulesPath, rules, invalid, rulesErr, missing, baseErr)
-	return Response(out), nil
+	s := setup.Setup{Version: req.Version}
+	if err := s.Valid(); err != nil {
+		return Response{}, err
+	}
+	i := setup.Inspection{Setup: s, Workflow: wf, Found: found, WorkflowErr: wfErr, Rules: rules, Invalid: invalid,
+		RulesErr: rulesErr, Missing: missing, BaseErr: port.ResolveBase(ctx, wf.BaseBranches())}
+	if err := i.Valid(); err != nil {
+		return Response{}, err
+	}
+	return Response(Decide(i)), nil
 }
 
 // print serializes the response to the console and returns the exit code: every problem to stderr, with the hint

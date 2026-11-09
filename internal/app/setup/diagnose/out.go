@@ -132,32 +132,38 @@ func (a Adapter) OpenRepo(ctx context.Context, dir string) (string, string, erro
 }
 
 // LoadWorkflow loads polix.yaml of root through the loader of polix.yaml: the workflow, whether the file exists,
-// and the error of loading it, a workflow.Invalid with the workflow when it parses.
-func (a Adapter) LoadWorkflow(ctx context.Context, root, running string) (workflow.Workflow, bool, error) {
+// and the error of loading it, a workflow.InvalidError with the workflow when it parses.
+// It asks git for the first of its base branches that exists, locally or on origin: baseErr tells why none does.
+func (a Adapter) LoadWorkflow(ctx context.Context, root, running string) (wf workflow.Workflow, found bool,
+	err, baseErr error) {
 	loaded := a.Workflow(ctx, root, running)
-	return loaded.Workflow, loaded.Exists, loaded.Err
+	return loaded.Workflow, loaded.Exists, loaded.Err, a.resolveBase(ctx, root, loaded.Workflow.BaseBranches())
 }
 
 // LoadRules loads the rules of the folder dir of root through the loader of the rules: every rule, the problems of
-// the invalid ones, and the error of a file that cannot be read or is not yaml.
-func (a Adapter) LoadRules(ctx context.Context, root, dir string) ([]rule.Rule, []string, error) {
-	loaded := a.Rules(ctx, root, dir)
-	return loaded.Rules, loaded.Problems, loaded.Err
+// the invalid ones, and the error of a file that cannot be read or is not yaml. For the check of each rule that has
+// one it tells whether its file is missing below root and why it cannot run.
+func (a Adapter) LoadRules(ctx context.Context, root, dir string) (loaded rule.Loaded, missing map[string]bool,
+	runnable map[string]error) {
+	loaded = a.Rules(ctx, root, dir)
+	missing, runnable = map[string]bool{}, map[string]error{}
+	for _, r := range loaded.Rules {
+		if r.HasCheck() {
+			missing[r.Check] = !file.Exists(filepath.Join(root, filepath.FromSlash(r.Check)))
+			runnable[r.Check] = a.runnable(root, r.Check)
+		}
+	}
+	return loaded, missing, runnable
 }
 
-// Missing reports whether the check does not exist below root.
-func (a Adapter) Missing(_ context.Context, root, check string) bool {
-	return !file.Exists(filepath.Join(root, filepath.FromSlash(check)))
-}
-
-// Runnable tells why a check that exists cannot run as a program: on Windows, where a shebang does nothing, when
-// its interpreter is not found; elsewhere, when it lacks the permission to execute. A missing check is left to
-// Missing.
-func (a Adapter) Runnable(_ context.Context, root, check string) error {
+// runnable tells why a check that exists cannot run as a program: on Windows, where a shebang does nothing, when
+// its interpreter is not found; elsewhere, when it lacks the permission to execute. A missing check is not its
+// business.
+func (a Adapter) runnable(root, check string) error {
 	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(check)))
 	switch {
 	case err != nil:
-		return nil //nolint:nilerr // a missing check is left to Missing
+		return nil //nolint:nilerr // a missing check is reported as missing
 	case a.OS == "windows":
 		_, err := proc.Interpreter(check, a.Look, proc.FileExists)
 		return err
@@ -167,8 +173,8 @@ func (a Adapter) Runnable(_ context.Context, root, check string) error {
 	return nil
 }
 
-// ResolveBase asks git for the first of candidates that exists, locally or on origin.
-func (a Adapter) ResolveBase(ctx context.Context, root string, candidates []string) error {
+// resolveBase asks git for the first of candidates that exists, locally or on origin.
+func (a Adapter) resolveBase(ctx context.Context, root string, candidates []string) error {
 	repo, err := git.Open(ctx, root)
 	if err != nil {
 		return err
@@ -191,15 +197,14 @@ func (a Adapter) WriteState(_ context.Context, gitDir string) (string, error) {
 	return dir, err
 }
 
-// ClaudeHooks reads the settings of Claude Code of paths that exist (agentconf.ParseHooks): an empty one is not
-// JSON.
-func (a Adapter) ClaudeHooks(_ context.Context, paths []string) map[string]setup.HooksFile {
+// HooksFiles reads the hooks files of agent of paths that exist: the hooks files of Codex with
+// agentconf.ReadHooks, for which an empty one has no hooks, and else the settings of Claude Code with
+// agentconf.ParseHooks, for which an empty one is not JSON.
+func (a Adapter) HooksFiles(_ context.Context, agent string, paths []string) map[string]setup.HooksFile {
+	if agent == setup.Codex {
+		return a.hooksFiles(paths, agentconf.ReadHooks)
+	}
 	return a.hooksFiles(paths, agentconf.ParseHooks)
-}
-
-// CodexHooks reads the hooks files of Codex of paths that exist (agentconf.ReadHooks): an empty one has no hooks.
-func (a Adapter) CodexHooks(_ context.Context, paths []string) map[string]setup.HooksFile {
-	return a.hooksFiles(paths, agentconf.ReadHooks)
 }
 
 // CodexEnabled reads the configuration of Codex at path (agentconf.CodexEnabled); one that cannot be read enables
@@ -209,9 +214,19 @@ func (a Adapter) CodexEnabled(_ context.Context, path string) bool {
 	return err == nil && agentconf.CodexEnabled(data, setup.PluginID)
 }
 
-// ReadManifest reads the manifest of the plugin at path (agentconf.ReadManifest): its version, and whether it is
+// Plugin reads the plugin embedded in the binary and the manifest of the one written at the path manifest.
+func (a Adapter) Plugin(_ context.Context, manifest string) (embedded map[string][]byte, version string,
+	written bool, err error) {
+	if embedded, err = plugins.Files(); err != nil {
+		return nil, "", false, err
+	}
+	version, written = a.readManifest(manifest)
+	return embedded, version, written, nil
+}
+
+// readManifest reads the manifest of the plugin at path (agentconf.ReadManifest): its version, and whether it is
 // the plugin polix.
-func (a Adapter) ReadManifest(_ context.Context, path string) (string, bool) {
+func (a Adapter) readManifest(path string) (string, bool) {
 	data, _, err := file.Read(path)
 	if err != nil {
 		return "", false
@@ -221,11 +236,6 @@ func (a Adapter) ReadManifest(_ context.Context, path string) (string, bool) {
 		return "", false
 	}
 	return v, true
-}
-
-// Plugin reads the plugin embedded in the binary.
-func (a Adapter) Plugin(_ context.Context) (map[string][]byte, error) {
-	return plugins.Files()
 }
 
 // ClaudePlugin runs `claude plugin list --json` within a minute and reads, among the plugins it prints, polix for

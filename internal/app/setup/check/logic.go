@@ -1,9 +1,6 @@
 package check
 
-import (
-	"github.com/mlophez/polix-ai/internal/app/rule"
-	"github.com/mlophez/polix-ai/internal/app/setup"
-)
+import "github.com/mlophez/polix-ai/internal/app/setup"
 
 // Output is the decision of the logic of CheckSetup: the problems of the workflow and the rules, or the
 // summary of a valid repository.
@@ -16,28 +13,17 @@ type Output struct {
 	RulesPath string   // the folder of the rules, relative to the root
 }
 
-// Decide decides what polix config check reports for the polix of version running: the problems of polix.yaml
-// (found tells whether it exists, wfErr why it cannot be loaded or is not valid) and of the rules of the folder
-// rulesPath (invalid, the problems of the invalid ones, rulesErr why they cannot be read, missing the checks that
-// do not exist), with the hint of a newer polix; or, when there are none, the warning when no base branch exists
-// (baseErr) and a deterministic rule has a check.
-func Decide(running string, found bool, wfErr error, rulesPath string, rules []rule.Rule, invalid []string,
-	rulesErr error, missing map[string]bool, baseErr error) Output {
-	out := Output{Found: found, Rules: len(rules), RulesPath: rulesPath}
-	s := setup.Setup{Version: running}
-	if err := s.Valid(); err != nil {
-		out.Problems = []string{err.Error()}
-		return out
-	}
-	i := setup.Inspection{Setup: s, Found: found, WorkflowErr: wfErr, Rules: rules, Invalid: invalid,
-		RulesErr: rulesErr, Missing: missing, BaseErr: baseErr}
-	if err := i.Valid(); err != nil {
-		out.Problems = []string{err.Error()}
-		return out
-	}
+// Decide decides what polix config check reports from the inspection i, the part of it about the workflow and the
+// rules, for the polix of the version of its setup: the problems of polix.yaml (Found tells whether it exists,
+// WorkflowErr why it cannot be loaded or is not valid) and of the rules of its folder of rules (Invalid, the problems
+// of the invalid ones, RulesErr why they cannot be read, Missing the checks that do not exist), with the hint of a
+// newer polix; or, when there are none, the warning when no base branch exists (BaseErr) and a deterministic rule
+// has a check.
+func Decide(i setup.Inspection) Output {
+	out := Output{Found: i.Found, Rules: len(i.Rules), RulesPath: i.Workflow.RulesPath()}
 	problems, newer := i.WorkflowProblems()
-	if rulesErr != nil {
-		problems = append(problems, rulesErr.Error())
+	if i.RulesErr != nil {
+		problems = append(problems, i.RulesErr.Error())
 	} else {
 		problems = append(problems, i.RuleProblems()...)
 	}

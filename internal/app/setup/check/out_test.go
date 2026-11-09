@@ -34,7 +34,7 @@ func TestAdapter(t *testing.T) {
 	}
 	testenv.Write(t, filepath.Join(dir, "polix.yaml"), "version: 2\n")
 	a.Workflow = workflowload.Command() // the loader reads polix.yaml once: a new one reads it again
-	if _, found, err := a.LoadWorkflow(ctx, "dev"); !found || !errors.As(err, new(workflow.Invalid)) {
+	if _, found, err := a.LoadWorkflow(ctx, "dev"); !found || !errors.As(err, new(workflow.InvalidError)) {
 		t.Fatal(found, err)
 	}
 	rules, invalid, err := a.LoadRules(ctx, "ai/rules")

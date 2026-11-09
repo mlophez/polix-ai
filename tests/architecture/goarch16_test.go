@@ -30,8 +30,8 @@ func checkRequestResponse(m *module) []string {
 		}
 		for _, d := range f.ast.Decls {
 			if g, ok := d.(*ast.GenDecl); ok && g.Tok == token.TYPE {
-				for _, s := range g.Specs {
-					if t := s.(*ast.TypeSpec); t.Name.IsExported() {
+				for _, t := range typeSpecs(g) {
+					if t.Name.IsExported() {
 						out = append(out, tags(m, f, t)...)
 					}
 				}

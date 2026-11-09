@@ -14,24 +14,25 @@ var logicPlugin = map[string][]byte{
 }
 
 func TestDecideAgents(t *testing.T) {
-	out := Decide("/h", "", nil, "1.2.3", logicPlugin)
+	out := Decide(setup.Setup{Home: "/h", Version: "1.2.3"}, logicPlugin)
 	if out.Failure != "" || !slices.Equal(out.Setup.Agents, []string{setup.Claude}) || out.HooksFiles != nil {
 		t.Fatalf("Claude Code by default: %+v", out)
 	}
-	out = Decide("/h", "/r", nil, "1.2.3", logicPlugin)
+	out = Decide(setup.Setup{Home: "/h", Root: "/r", Version: "1.2.3"}, logicPlugin)
 	if !slices.Equal(out.Setup.Agents, []string{setup.Claude}) || !slices.Equal(out.HooksFiles, []string{out.Setup.HooksFile(setup.Claude)}) ||
 		!slices.Equal(out.Skills, []string{"plan"}) || !slices.Equal(out.PluginAgents, []string{"reviewer"}) ||
 		out.Plugin.Embedded["polix/.claude-plugin/plugin.json"] == nil || out.Plugin.Version != "1.2.3" || out.Summary == "" {
 		t.Fatalf("Claude Code alone in a repository, never Codex by itself: %+v", out)
 	}
-	out = Decide("/h", "/r", []string{setup.Codex}, "1.2.3", logicPlugin)
+	out = Decide(setup.Setup{Home: "/h", Root: "/r", Agents: []string{setup.Codex}, Version: "1.2.3"}, logicPlugin)
 	if !slices.Equal(out.Setup.Agents, []string{setup.Codex}) || !slices.Equal(out.HooksFiles, []string{out.Setup.HooksFile(setup.Codex)}) {
 		t.Fatalf("Codex when asked: %+v", out)
 	}
-	if out := Decide("/h", "", []string{setup.Claude, setup.Codex}, "1.2.3", logicPlugin); !slices.Equal(out.Setup.Agents, []string{setup.Claude, setup.Codex}) {
+	both := setup.Setup{Home: "/h", Agents: []string{setup.Claude, setup.Codex}, Version: "1.2.3"}
+	if out := Decide(both, logicPlugin); !slices.Equal(out.Setup.Agents, []string{setup.Claude, setup.Codex}) {
 		t.Fatalf("the agents asked: %+v", out.Setup)
 	}
-	if out := Decide("/h", "", nil, "", logicPlugin); out.Failure == "" {
+	if out := Decide(setup.Setup{Home: "/h"}, logicPlugin); out.Failure == "" {
 		t.Fatal("a binary without version installs nothing")
 	}
 }

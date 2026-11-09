@@ -20,14 +20,13 @@ polix config check [--dir <dir>]
 
 ## Logic
 
-`Decide(running string, found bool, wfErr error, rulesPath string, rules []rule.Rule, invalid []string,
-rulesErr error, missing map[string]bool, baseErr error) Output` puts what it was given in a `setup.Inspection`, with
-a `setup.Setup` of the running version (an empty version is the only problem), and gathers the problems with the
-methods of `setup.Inspection` of `internal/app/setup/setup_problems.go`, which `polix doctor` shares:
+`Decide(i setup.Inspection) Output` takes what the shell observed, the part of a `setup.Inspection` about the
+workflow and the rules, with a `setup.Setup` of the running version, and gathers the problems with the methods of
+`setup.Inspection` of `internal/app/setup/setup_problems.go`, which `polix doctor` shares:
 
 1. `WorkflowProblems`: the error of loading polix.yaml is one problem, or each problem of a workflow that parses
-   (`workflow.Invalid`, the runners of `rules.run` included), with whether they may come from a newer polix
-   (`version.Problems.NeedsNewer`, never when the workflow requires one: `workflow.TooOld`).
+   (`workflow.InvalidError`, the runners of `rules.run` included), with whether they may come from a newer polix
+   (`version.Problems.NeedsNewer`, never when the workflow requires one: `workflow.TooOldError`).
 2. The error of reading the rules is one problem; else `RuleProblems`: every invalid rule (`rule.Loaded.Problems`,
    in the words `<file> <id>: no description`), every id repeated (`rule.Rules.Repeated`) and every check that does
    not exist.
@@ -49,7 +48,7 @@ problem to stderr and the hint as a warning, and exits with 1; else it prints th
 
 - `LoadWorkflow`: loads polix.yaml through the field `Workflow` of the adapter, the loader of `LoadWorkflow`
   (`internal/app/workflow/load`) that `cmd/polix` builds once and passes to `Command`; without it, the default
-  workflow and false; a workflow that parses with problems comes back with its `workflow.Invalid`.
+  workflow and false; a workflow that parses with problems comes back with its `workflow.InvalidError`.
 - `LoadRules`: loads the rules of the folder it is given (`rules.path` of the workflow, `ai/rules/` by default)
   through the field `Rules` of the adapter, the loader of `LoadRule` (`internal/app/rule/load`) that `cmd/polix`
   builds once and passes to `Command`: every rule but those of `retired.yaml`, ordered by id, with the problems of
@@ -61,12 +60,14 @@ problem to stderr and the hint as a warning, and exits with 1; else it prints th
 
 - Outside a repository the command fails with the error of git and exits with 1.
 - The errors of reading polix.yaml and the rules are problems of the output, never errors of the shell.
+- Without the version of the running polix there is no setup to inspect: the shell fails with the error of
+  `setup.Setup.Valid`. The command always gives it (`build.Current`).
 
 ## Flow
 
 1. `Command` opens the repository of `--dir` and injects `Adapter{Repo: repo, Rules: rules, Workflow:
    loadWorkflow}`, with the loaders of the rules and of polix.yaml it was given.
 2. The shell reads the workflow, then the rules of its `rules.path`, whether each check exists and whether a base
-   branch exists.
+   branch exists, and builds the `setup.Inspection` of it, validated.
 3. `Decide` decides the problems, the hint and the warning.
 4. The shell builds the response, and the command prints it and sets the exit code.

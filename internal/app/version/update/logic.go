@@ -25,15 +25,14 @@ type Output struct {
 	RefreshAfterFailure bool
 }
 
-// Decide decides what polix update does for the polix of version running at exe, asked for want (empty for the
-// latest release), with --check (only report) and --hook (the session start hook), and disabled by POLIX_NO_UPDATE.
-// due tells whether the hook checks now (version.Cache.ShouldCheck); latest is the latest release, asked when want
-// is empty and the update goes on, and failed the error of asking it.
-func Decide(running, want, exe string, check, hook, disabled, due bool, latest string,
-	failed error) Output {
-	out := decision(running, want, exe, check, hook, disabled, due, latest, failed)
-	out.RecordFailure = hook && !disabled
-	out.RefreshAfterFailure = hook && !check && !disabled
+// Decide decides what polix update does for the update u: the running polix and its binary, the version asked
+// (none for the latest release), with --check (only report) and --hook (the session start hook), and disabled by
+// POLIX_NO_UPDATE. due tells whether the hook checks now (version.Cache.ShouldCheck); latest is the latest release,
+// asked when no version is and the update goes on, and failed the error of asking it.
+func Decide(u version.Update, due bool, latest string, failed error) Output {
+	out := decision(u, due, latest, failed)
+	out.RecordFailure = u.Records()
+	out.RefreshAfterFailure = u.Hook && u.Installs()
 	return out
 }
 
@@ -51,47 +50,46 @@ func (o Output) RefreshAfter(err error) bool {
 // decision is the decision of Decide but for its policy on failures. The versions are text, compared with the
 // semantics of internal/platform/semver: a development build ("dev") is not a release, and a missing number counts
 // as 0.
-func decision(running, want, exe string, check, hook, disabled, due bool, latest string,
-	failed error) Output {
+func decision(u version.Update, due bool, latest string, failed error) Output {
 	switch {
-	case disabled && hook:
+	case u.Silent():
 		return Output{}
-	case disabled:
+	case u.Disabled:
 		return Output{Failure: "updates are disabled by POLIX_NO_UPDATE"}
-	case hook && !due:
-		return Output{Refresh: !check}
+	case u.Hook && !due:
+		return Output{Refresh: !u.Check}
 	}
-	target := want
-	if want == "" {
-		if out, done := towardLatest(running, latest, check, hook, failed); done {
-			return out
+	if !u.Latest() {
+		if u.Check {
+			return compared(u.Running, u.Want)
 		}
-		target = latest
+		return installing(u, u.Want)
 	}
-	if check && want != "" {
-		return compared(running, want)
+	if out, done := towardLatest(u, latest, failed); done {
+		return out
 	}
-	return installing(running, target, exe, check, hook, want == "")
+	return installing(u, latest)
 }
 
-// towardLatest decides an update to the latest release, latest, asked with the error failed: whether it ends
+// towardLatest decides the update u to the latest release, latest, asked with the error failed: whether it ends
 // before installing, and then how; else the update goes on to install latest.
-func towardLatest(running, latest string, check, hook bool, failed error) (Output, bool) {
+func towardLatest(u version.Update, latest string, failed error) (Output, bool) {
+	running := u.Running
 	// A failure leaves the plugin to the session start hook, which refreshes the one already installed anyway.
-	refreshFailed := !check && hook
+	refreshFailed := !u.Check && u.Hook
 	switch {
 	case failed != nil:
 		return Output{Failure: failed.Error(), Refresh: refreshFailed}, true
-	case !semver.IsRelease(running) && check:
+	case !semver.IsRelease(running) && u.Check:
 		return Output{
 			Message: fmt.Sprintf("polix %s is a development build; the latest release is %s", running, latest)}, true
 	case !semver.IsRelease(running):
 		return Output{Failure: fmt.Sprintf("polix %s is a development build: run polix update "+
 			"--version %s to replace it", running, latest), Refresh: refreshFailed}, true
-	case semver.Compare(running, latest) >= 0 && hook:
-		return Output{Refresh: !check}, true
+	case semver.Compare(running, latest) >= 0 && u.Hook:
+		return Output{Refresh: !u.Check}, true
 	case semver.Compare(running, latest) >= 0:
-		return Output{Message: fmt.Sprintf("polix %s is up to date", running), Refresh: !check}, true
+		return Output{Message: fmt.Sprintf("polix %s is up to date", running), Refresh: !u.Check}, true
 	}
 	return Output{}, false
 }
@@ -113,16 +111,15 @@ func compared(running, want string) Output {
 	}
 }
 
-// installing decides to install target over the running binary at exe, or with --check only tells that it can; the
-// latest release installed is remembered as the latest checked.
-func installing(running, target, exe string, check, hook, latest bool) Output {
-	if check {
-		return Output{Message: fmt.Sprintf("polix %s can be updated to %s: run polix update", running,
-			target)}
+// installing decides to install target over the running binary of the update u, or with --check only tells that it
+// can; the latest release installed is remembered as the latest checked.
+func installing(u version.Update, target string) Output {
+	if u.Check {
+		return Output{Message: fmt.Sprintf("polix %s can be updated to %s: run polix update", u.Running, target)}
 	}
-	installed := fmt.Sprintf("polix updated from %s to %s (%s)", running, target, exe)
-	if hook {
-		installed = fmt.Sprintf("polix se ha actualizado de %s a %s.", running, target)
+	installed := fmt.Sprintf("polix updated from %s to %s (%s)", u.Running, target, u.Exe)
+	if u.Hook {
+		installed = fmt.Sprintf("polix se ha actualizado de %s a %s.", u.Running, target)
 	}
-	return Output{Install: target, Installed: installed, Remember: latest, Refresh: true}
+	return Output{Install: target, Installed: installed, Remember: u.Latest(), Refresh: true}
 }

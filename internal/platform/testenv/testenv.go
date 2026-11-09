@@ -25,10 +25,10 @@ var (
 	// cacheDir is the cache folder of the user before any test changes HOME, where the fake CLI is built.
 	cacheDir, cacheDirErr = os.UserCacheDir()
 
-	// fakeOnce builds the fake CLI of the agents once per test binary, into fakeCLI or with the error fakeErr.
+	// fakeOnce builds the fake CLI of the agents once per test binary, into fakeCLI or with the error errFake.
 	fakeOnce sync.Once
 	fakeCLI  string
-	fakeErr  error
+	errFake  error
 )
 
 // Read returns the content of p, failing the test when it cannot be read.
@@ -63,9 +63,9 @@ func Machine(t *testing.T, claude, codex bool) string {
 	if goToolErr != nil {
 		t.Skip("the go tool is not on the PATH")
 	}
-	fakeOnce.Do(func() { fakeCLI, fakeErr = buildFakeCLI() })
-	if fakeErr != nil {
-		t.Fatal(fakeErr)
+	fakeOnce.Do(func() { fakeCLI, errFake = buildFakeCLI() })
+	if errFake != nil {
+		t.Fatal(errFake)
 	}
 	bin, st := t.TempDir(), t.TempDir()
 	path := bin

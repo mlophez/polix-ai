@@ -38,3 +38,21 @@ func TestRepeated(t *testing.T) {
 		t.Fatalf("no repeated id: %q", got)
 	}
 }
+
+func TestSelection(t *testing.T) {
+	rs := Rules{{ID: "A-1", Scope: []string{"*.go"}}, {ID: "B-1", Scope: []string{"docs/**"}}}
+	every := Selection{}
+	if err := every.Valid(); err != nil || len(every.Narrow(rs)) != 2 {
+		t.Fatalf("every rule: %v %v", err, every.Narrow(rs))
+	}
+	changed := Selection{OnlyChanged: true, Changed: []string{"main.go"}}
+	if got := changed.Narrow(rs); changed.Valid() != nil || len(got) != 1 || got[0].ID != "A-1" {
+		t.Fatalf("only the rules of the changed files: %v", got)
+	}
+	if none := (Selection{OnlyChanged: true}).Narrow(rs); len(none) != 0 {
+		t.Fatalf("nothing changed selects no rule: %v", none)
+	}
+	if (Selection{Changed: []string{"main.go"}}).Valid() == nil {
+		t.Fatal("changed files without OnlyChanged are valid")
+	}
+}

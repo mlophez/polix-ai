@@ -79,7 +79,9 @@ func (s *shellConds) check() []string {
 				conds = append(conds, x.Tag)
 			}
 			for _, c := range x.Body.List {
-				conds = append(conds, c.(*ast.CaseClause).List...)
+				if cc, ok := c.(*ast.CaseClause); ok {
+					conds = append(conds, cc.List...)
+				}
 			}
 		case *ast.TypeSwitchStmt:
 			out = append(out, fmt.Sprintf("%s: %s decides: a type switch", s.m.pos(s.f, x), s.fn.Name.Name))
@@ -123,8 +125,9 @@ func (s *shellConds) condition(e ast.Expr) ast.Expr {
 				}
 			}
 			return x
+		default:
+			return x
 		}
-		return x
 	}
 	return s.operand(e)
 }

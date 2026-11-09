@@ -25,8 +25,10 @@ each, every name validated by the domain, `setup.Setup.Valid`; empty for Claude 
 
 ## Logic
 
-`Decide(home, root string, asked []string, running string, embedded map[string][]byte) Output`
-decides the `setup.Setup` (the agents asked, else Claude Code alone: Codex is never added by itself), the
+`Decide(asked setup.Setup, embedded map[string][]byte) Output` takes the setup as asked, which the shell builds and
+validates (the home, the root, the agents of the request and the running version), and
+decides the `setup.Setup` (the agents asked, else Claude Code alone, `Setup.Defaulted`: Codex is never added by
+itself), the
 `setup.Plugin` of the binary to write to the local marketplace, the `Summary` to confirm, the skills and agents of
 the plugin (`Plugin.Skills`, `Plugin.Agents`) and the hooks files; a refusal is its `Failure`.
 
@@ -61,14 +63,15 @@ untested; and it warns on stderr about the other settings of Claude Code that al
 
 ## Errors
 
-The error of the home, of the plugin and of the files of the marketplace stop the install before it asks; the
+The error of the home, of the plugin, of a setup that is not valid (an unknown agent, no running version) and of
+the files of the marketplace stop the install before it asks; the
 errors of the agents are joined, so one agent that fails does not keep the hooks of the other from being
 registered. A person that does not confirm makes it exit with 1 without a message.
 
 ## Flow
 
 1. `Command` parses the agents (`parseAgents`), injects `Adapter{Ask: ask}`.
-2. The shell reads the home, the repository unless `--user`, and the plugin.
+2. The shell reads the home, the repository unless `--user`, and the plugin, and builds the setup asked.
 3. `Decide` decides the setup (Claude Code alone unless agents are asked) and the plugin; the shell asks the port
    for the files of the marketplace, then for confirmation.
 4. The shell writes the plugin, registers it and the hooks with each agent, then asks the PATH and the duplicates

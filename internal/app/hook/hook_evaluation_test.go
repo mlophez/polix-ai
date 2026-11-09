@@ -99,7 +99,7 @@ func TestEvaluationKnowTreeDiff(t *testing.T) {
 	}
 }
 
-// The problems of a workflow hint an update only when a newer polix may know them; TooOld stays itself.
+// The problems of a workflow hint an update only when a newer polix may know them; TooOldError stays itself.
 func TestEvaluationRunning(t *testing.T) {
 	unusable := func(err error, running string) error { return Evaluation{Invalid: err}.Running(running).Invalid }
 	if unusable(nil, "dev") != nil {
@@ -140,10 +140,10 @@ func TestEvaluationRunning(t *testing.T) {
 	if err == nil || strings.Contains(unusable(err, "0.1.0").Error(), "no las quites") {
 		t.Fatalf("the old vocabulary hints an update: %v", err)
 	}
-	old := workflow.TooOld{Requires: "0.2.0", Running: "0.1.0"}
-	var got workflow.TooOld
+	old := workflow.TooOldError{Requires: "0.2.0", Running: "0.1.0"}
+	var got workflow.TooOldError
 	if err := unusable(old, "0.1.0"); !errors.As(err, &got) || strings.Contains(err.Error(), "no las quites") {
-		t.Fatalf("TooOld: %v", err)
+		t.Fatalf("TooOldError: %v", err)
 	}
 }
 

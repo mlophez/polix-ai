@@ -26,13 +26,13 @@ func TestDecideKeepsTheError(t *testing.T) {
 		!errors.Is(got.Err, boom) || got.Workflow.Version != 0 {
 		t.Fatalf("broken: %+v", got)
 	}
-	old := workflow.TooOld{Requires: "0.3.0", Running: "0.2.0"}
+	old := workflow.TooOldError{Requires: "0.3.0", Running: "0.2.0"}
 	if got := Decide(workflow.Workflow{}, workflow.Guardrails{}, true, old).Loaded; !errors.As(got.Err, &old) {
 		t.Fatalf("too old: %+v", got)
 	}
 	wf := workflow.Workflow{Version: 2, MaxStopRetries: 3}
 	got := Decide(wf, workflow.Guardrails{}, true, wf.Valid()).Loaded
-	if _, ok := errors.AsType[workflow.Invalid](got.Err); !ok || got.Workflow.Version != 2 ||
+	if _, ok := errors.AsType[workflow.InvalidError](got.Err); !ok || got.Workflow.Version != 2 ||
 		got.Err.Error() != "polix.yaml: version must be 1, got 2" {
 		t.Fatalf("invalid: %+v", got)
 	}
@@ -50,7 +50,7 @@ func TestDecideMergesTheProblemsOfTheShortcuts(t *testing.T) {
 	got := Decide(wf, guardrails, true, wf.Valid()).Loaded
 	want := "polix.yaml: version must be 1, got 2\npolix.yaml:3: guardrails.protected_files: a path glob cannot be empty\n" +
 		"polix.yaml:6: "
-	if _, ok := errors.AsType[workflow.Invalid](got.Err); !ok || !strings.HasPrefix(got.Err.Error(), want) {
+	if _, ok := errors.AsType[workflow.InvalidError](got.Err); !ok || !strings.HasPrefix(got.Err.Error(), want) {
 		t.Fatalf("got %v", got.Err)
 	}
 }

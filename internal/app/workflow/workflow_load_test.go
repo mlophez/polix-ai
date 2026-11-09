@@ -41,17 +41,17 @@ func TestLoadedFail(t *testing.T) {
 	}
 }
 
-// TooOld names both versions and asks for an update.
+// TooOldError names both versions and asks for an update.
 func TestTooOld(t *testing.T) {
-	old := TooOld{Requires: "0.3.0", Running: "0.2.1"}
+	old := TooOldError{Requires: "0.3.0", Running: "0.2.1"}
 	if err := old.Valid(); err != nil {
 		t.Fatal(err)
 	}
 	if old.Error() != "polix.yaml requires polix 0.3.0 or newer and this is 0.2.1: run polix update" {
 		t.Fatalf("message: %v", old)
 	}
-	if (TooOld{Requires: "0.3.0"}).Valid() == nil {
-		t.Fatal("a TooOld without the running version is valid")
+	if (TooOldError{Requires: "0.3.0"}).Valid() == nil {
+		t.Fatal("a TooOldError without the running version is valid")
 	}
 }
 
@@ -63,7 +63,7 @@ func TestUnknownKey(t *testing.T) {
 		"protected": `polix.yaml:2: unknown key "protected": use guardrails.protected_files`,
 		"":          `polix.yaml:2: unknown key ""`,
 	} {
-		e := UnknownKey{Key: key, Line: 2}
+		e := UnknownKeyError{Key: key, Line: 2}
 		if err := e.Valid(); err != nil || e.Error() != want {
 			t.Errorf("%q: %v %q", key, err, e.Error())
 		}
@@ -71,7 +71,7 @@ func TestUnknownKey(t *testing.T) {
 			t.Errorf("%q: renamed %v", key, !renamed)
 		}
 	}
-	if (UnknownKey{Key: "x"}).Valid() == nil {
+	if (UnknownKeyError{Key: "x"}).Valid() == nil {
 		t.Fatal("an unknown key without its line is valid")
 	}
 }

@@ -22,6 +22,17 @@ func TestSetupValid(t *testing.T) {
 	}
 }
 
+func TestDefaulted(t *testing.T) {
+	none := Setup{Version: "1"}
+	if got := none.Defaulted(Claude); !slices.Equal(got.Agents, []string{Claude}) || none.Agents != nil {
+		t.Fatalf("no agent asked takes the default, in a copy: %+v %+v", got, none)
+	}
+	asked := Setup{Agents: []string{Codex}, Version: "1"}
+	if got := asked.Defaulted(Claude); !slices.Equal(got.Agents, []string{Codex}) {
+		t.Fatalf("the agents asked stay: %+v", got)
+	}
+}
+
 func TestSetupPaths(t *testing.T) {
 	s := Setup{Home: "/h", Root: "/r", Agents: []string{Claude}, Version: "1"}
 	for got, want := range map[string]string{

@@ -11,17 +11,17 @@ import (
 )
 
 // WorkflowProblems returns the problems of loading polix.yaml, from the error of loading it (WorkflowErr): one
-// per problem of a workflow that parses (workflow.Invalid), else the error itself; and whether they may come from
-// a newer polix than this one, which never holds when the workflow requires one (workflow.TooOld says so).
+// per problem of a workflow that parses (workflow.InvalidError), else the error itself; and whether they may come from
+// a newer polix than this one, which never holds when the workflow requires one (workflow.TooOldError says so).
 func (i Inspection) WorkflowProblems() ([]string, bool) {
 	if i.WorkflowErr == nil {
 		return nil, false
 	}
 	problems := []string{i.WorkflowErr.Error()}
-	if invalid, ok := errors.AsType[workflow.Invalid](i.WorkflowErr); ok {
+	if invalid, ok := errors.AsType[workflow.InvalidError](i.WorkflowErr); ok {
 		problems = invalid
 	}
-	_, old := errors.AsType[workflow.TooOld](i.WorkflowErr)
+	_, old := errors.AsType[workflow.TooOldError](i.WorkflowErr)
 	return problems, !old && version.Problems(strings.Join(problems, "\n")).NeedsNewer()
 }
 

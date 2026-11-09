@@ -163,8 +163,7 @@ func packageState(m *module, f *goFile) []string {
 		if !ok || g.Tok != token.VAR {
 			continue
 		}
-		for _, s := range g.Specs {
-			v := s.(*ast.ValueSpec)
+		for _, v := range valueSpecs(g) {
 			for i, id := range v.Names {
 				if id.Name == "_" {
 					continue

@@ -88,6 +88,7 @@ func admits(at place, dir string) string {
 			"logic_<topic>.go and out_<topic>.go, %s.md, their tests and helper folders", at.verb)
 	case levelHelper:
 		return fmt.Sprintf("a helper folder holds only %s.go, %s_*.go and their tests", at.helper, at.helper)
+	default:
+		return "out of the layout of " + dir
 	}
-	return "out of the layout of " + dir
 }

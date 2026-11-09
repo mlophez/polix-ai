@@ -183,7 +183,7 @@ func versionCacheProblems(t *testing.T, turnStop []workflow.Entry) Problems {
 	w := workflow.Workflow{Version: 1, EventLines: map[string]int{"session_start": 3, "turn_stop": 5},
 		On: map[string][]workflow.Entry{"session_start": {{Line: 4, Keys: []string{"context"}}}, "turn_stop": turnStop}}
 	err := w.Valid()
-	if _, ok := errors.AsType[workflow.Invalid](err); !ok {
+	if _, ok := errors.AsType[workflow.InvalidError](err); !ok {
 		t.Fatalf("not a workflow with problems: %v", err)
 	}
 	return Problems(err.Error())

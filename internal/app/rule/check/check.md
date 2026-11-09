@@ -24,15 +24,15 @@ polix rules check [--dir <dir>] [--changed] [--base <branch>]
 
 ## Logic
 
-`Decide(rules []rule.Rule, wf workflow.Workflow, onlyChanged bool, changed []string, outcomes []rule.Outcome)
-Output` decides which checks run and how, in the step shape. It takes what the shell read through the port, the
+`Decide(rules []rule.Rule, wf workflow.Workflow, sel rule.Selection, outcomes []rule.Outcome) Output` decides which checks run and how, in the step shape. It takes what the shell read through the port, the
 choice of the request and what the runs carried out so far gave:
 
 - `rules`: the rules of the `*.yaml` of the folder of rules, retired ones (`retired.yaml`) excluded, ordered by id.
 - `wf`: the workflow of polix.yaml, the default one without the file; only its runners (`rules.run`) matter here
   (the shell uses its `rules.path` to read the rules).
-- `onlyChanged`: whether `--changed` was given.
-- `changed`: the files changed by the branch against its base, relative to the root; only with `--changed`.
+- `sel`: the `rule.Selection` the shell builds and validates: `OnlyChanged`, whether `--changed` was given, and
+  `Changed`, the files changed by the branch against its base, relative to the root, only with `--changed`.
+  `Selection.Narrow` keeps the rules it asks for.
 - `outcomes`: the `rule.Outcome` of each run carried out so far, in order.
 
 It plans the runs of the rules (`rule.Rules.Plan`) and walks them, and the reruns of each failed shared run, taking one

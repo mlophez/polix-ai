@@ -8,7 +8,7 @@ import (
 )
 
 // Load loads polix.yaml of the repository at root for the polix of version running, which decides whether the
-// file requires a newer one (TooOld). It is the loader of the use case LoadWorkflow (internal/app/workflow/load),
+// file requires a newer one (TooOldError). It is the loader of the use case LoadWorkflow (internal/app/workflow/load),
 // which cmd/polix builds once and passes to every use case that reads polix.yaml. It never fails: what stops the
 // reading is data of its result.
 type Load func(ctx context.Context, root, running string) Loaded
@@ -19,21 +19,21 @@ type Loaded struct {
 	// Workflow is the workflow of the file; the default one without the file, and empty when Err stops the reading.
 	Workflow Workflow
 	Exists   bool // whether polix.yaml exists
-	// Err tells why the workflow cannot be used as it is: the file cannot be read, requires a newer polix (TooOld),
-	// is not yaml or has an unknown top level key (UnknownKey), which stop the reading; or the problems of a
+	// Err tells why the workflow cannot be used as it is: the file cannot be read, requires a newer polix (TooOldError),
+	// is not yaml or has an unknown top level key (UnknownKeyError), which stop the reading; or the problems of a
 	// workflow that decodes (Invalid), which comes with them. nil when the workflow is valid.
 	Err error
 }
 
-// TooOld is the error of a workflow that requires a newer polix than the one running.
-type TooOld struct {
+// TooOldError is the error of a workflow that requires a newer polix than the one running.
+type TooOldError struct {
 	Requires string // the version polix.yaml requires
 	Running  string // the version of the running polix
 }
 
-// UnknownKey is the error of a top level key of polix.yaml that is not one of TopKeys; a name of the old vocabulary
+// UnknownKeyError is the error of a top level key of polix.yaml that is not one of TopKeys; a name of the old vocabulary
 // comes with its new spelling.
-type UnknownKey struct {
+type UnknownKeyError struct {
 	Key  string // the key, as written
 	Line int    // its line in the file
 }
@@ -48,7 +48,7 @@ var RiskKeys = []string{"weights"}
 // Valid reports why l is not what polix.yaml loads: an error without the file, a workflow with an error that stops
 // the reading, or a workflow with problems without them.
 func (l Loaded) Valid() error {
-	_, invalid := errors.AsType[Invalid](l.Err)
+	_, invalid := errors.AsType[InvalidError](l.Err)
 	switch {
 	case !l.Exists && l.Err != nil:
 		return fmt.Errorf("an error loaded without %s: %w", File, l.Err)
@@ -70,26 +70,26 @@ func (l Loaded) Fail(err error) Loaded {
 }
 
 // Valid tells why the error is not valid: it names both versions.
-func (e TooOld) Valid() error {
+func (e TooOldError) Valid() error {
 	if e.Requires == "" || e.Running == "" {
 		return errors.New("too old needs the version required and the running one")
 	}
 	return nil
 }
 
-func (e TooOld) Error() string {
+func (e TooOldError) Error() string {
 	return fmt.Sprintf("%s requires polix %s or newer and this is %s: run polix update", File, e.Requires, e.Running)
 }
 
 // Valid tells why the error is not valid: it names the line of its key, which may be empty ("": x).
-func (e UnknownKey) Valid() error {
+func (e UnknownKeyError) Valid() error {
 	if e.Line < 1 {
 		return errors.New("an unknown key needs its line")
 	}
 	return nil
 }
 
-func (e UnknownKey) Error() string {
+func (e UnknownKeyError) Error() string {
 	if hint, ok := renamed["top"][e.Key]; ok {
 		return fmt.Sprintf("%s:%d: unknown key %q: %s", File, e.Line, e.Key, hint)
 	}

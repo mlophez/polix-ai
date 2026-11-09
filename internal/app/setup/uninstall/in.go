@@ -107,10 +107,11 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	if !req.User {
 		root = port.Root(ctx, req.Dir)
 	}
-	out := Decide(home, root, req.Agents, req.Version)
-	if out.Failure != "" {
-		return res, errors.New(out.Failure)
+	asked := setup.Setup{Home: home, Root: root, Agents: req.Agents, Version: req.Version}
+	if err := asked.Valid(); err != nil {
+		return res, err
 	}
+	out := Decide(asked)
 	if err := port.Confirm(ctx, out.Summary); err != nil {
 		return res, err
 	}

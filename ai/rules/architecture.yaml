@@ -405,9 +405,12 @@ rules:
       The domain files (internal/app/<noun>/*.go) and the logic files of every use case
       (internal/app/<noun>/<verb>/logic.go and its siblings logic_<topic>.go) import only the standard library
       but what touches the outside (os, os/exec, os/signal, net, net/http, io/fs, runtime, syscall), the
-      randomness (math/rand, math/rand/v2, crypto/rand) and the logs (log, log/slog); internal/app/ (GOARCH-9
+      randomness (math/rand, math/rand/v2, crypto/rand), the logs (log, log/slog) and the formats (encoding/json,
+      encoding/xml); internal/app/ (GOARCH-9
       decides which of its packages); the pure libraries glob, semver, shell, text and yamlfmt of
-      internal/platform/; gopkg.in/yaml.v3; and templates. The logic never imports context either. An allowlist: a
+      internal/platform/; and templates. They know no format: never encoding/json, encoding/xml nor a yaml
+      library, whose translation belongs to the in and out files of a use case (GOARCH-44). The logic never
+      imports context either. An allowlist: a
       new library of internal/platform/ is forbidden to them until it is added on purpose. The lists
       GOARCH-41-domain and GOARCH-41-logic of depguard in .golangci.yml hold it, and the test files are left out.
     scope: ["internal/app/*/*.go", "internal/app/*/*/logic.go", "internal/app/*/*/logic_*.go", ".golangci.yml"]
@@ -446,3 +449,13 @@ rules:
     scope: ["internal/app/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch44_test.go
+
+  - id: GOARCH-45
+    description: >-
+      The logic Decide of a use case takes at most 4 parameters, each name counted (a, b string are two). What
+      does not fit is grouped into a value of the domain, built and validated by the shell (GOARCH-29) and named
+      after what it is (version.Update, rule.Selection), never a bag of the parameters of one function; several
+      flags become one such value, or the method of a domain value that tells them apart.
+    scope: ["internal/app/*/*/logic.go"]
+    deterministic: true
+    check: tests/architecture/goarch45_test.go

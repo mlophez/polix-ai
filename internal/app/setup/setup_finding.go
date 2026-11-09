@@ -33,7 +33,7 @@ type Inspection struct {
 	RepoErr         error  // why the folder is not inside a repository
 	Workflow        workflow.Workflow
 	Found           bool  // whether polix.yaml exists
-	WorkflowErr     error // why polix.yaml cannot be read, parsed or is not valid (workflow.Invalid)
+	WorkflowErr     error // why polix.yaml cannot be read, parsed or is not valid (workflow.InvalidError)
 	Rules           []rule.Rule
 	Invalid         []string             // the problems of the invalid rules (rule.Loaded.Problems)
 	RulesErr        error                // why the rules cannot be read

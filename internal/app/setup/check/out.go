@@ -19,7 +19,7 @@ type Adapter struct {
 }
 
 // LoadWorkflow loads polix.yaml of the repository through the loader of polix.yaml: the workflow, whether the file
-// exists, and the error of loading it, a workflow.Invalid with the workflow when it parses; without the file, the
+// exists, and the error of loading it, a workflow.InvalidError with the workflow when it parses; without the file, the
 // default workflow and false.
 func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, bool, error) {
 	loaded := a.Workflow(ctx, a.Repo.Root, running)

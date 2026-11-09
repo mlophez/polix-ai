@@ -20,8 +20,9 @@ The flags are those of `polix install`; without `--agent` both agents, so a Code
 
 ## Logic
 
-`Decide(home, root string, asked []string, running string) Output` decides the `setup.Setup`, the
-`Summary` to confirm and `RemovePlugin`, true only when both agents are removed; a refusal is its `Failure`.
+`Decide(asked setup.Setup) Output` takes the setup as asked, which the shell builds and validates (the home, the
+root, the agents of the request and the running version), and decides the `setup.Setup` (the agents asked, else
+both, `Setup.Defaulted`), the `Summary` to confirm and `RemovePlugin`, true only when both agents are removed.
 
 ## Response
 
@@ -46,12 +47,13 @@ did not fail, `nothing to remove` unless `--quiet`.
 
 ## Errors
 
-The first error stops the uninstall, after printing what changed.
+A setup that is not valid (an unknown agent, no running version) stops the uninstall before it asks. The first
+error after that stops the uninstall, after printing what changed.
 
 ## Flow
 
 1. `Command` parses the agents (`parseAgents`), injects `Adapter{Ask: ask}`.
-2. The shell reads the home and the repository unless `--user`.
+2. The shell reads the home and the repository unless `--user`, and builds the setup asked.
 3. `Decide` decides; the shell asks for confirmation.
 4. The shell unregisters each agent and its hooks, then removes the marketplace.
 5. The command prints the response.

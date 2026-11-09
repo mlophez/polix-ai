@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -114,9 +113,6 @@ type hookInput struct {
 	Prompt        string          `json:"prompt"`
 	AgentType     string          `json:"agent_type"`
 }
-
-// contextEvents are the native events of an agent whose JSON output can add context to the session.
-type contextEvents map[string]bool
 
 // formats are the formats of the agents, by the name of the agent.
 var formats = map[string]format{agent.Claude: claude{}, agent.Codex: codex{}}
@@ -367,29 +363,4 @@ func (in hookInput) commands(ag, name, command string, failed bool) ([]agent.Eve
 		events = append(events, ev)
 	}
 	return events, nil
-}
-
-// render writes a block as exit 2 with the reasons on stderr, its contexts after them; otherwise the warnings go
-// to stderr and the contexts to the JSON both agents read, on the native events of ce.
-func (ce contextEvents) render(native string, a agent.Answer) (stdout, stderr string, code int) {
-	if a.Block {
-		msg := strings.Join(a.Reasons, "\n\n")
-		if len(a.Contexts) > 0 {
-			msg += "\n\n" + strings.Join(a.Contexts, "\n\n")
-		}
-		return "", msg + "\n", agent.ExitBlock
-	}
-	var errb strings.Builder
-	for _, w := range a.Warnings {
-		errb.WriteString("polix: " + w + "\n")
-	}
-	if len(a.Contexts) > 0 && ce[native] {
-		out := map[string]any{"hookSpecificOutput": map[string]any{
-			"hookEventName":     native,
-			"additionalContext": strings.Join(a.Contexts, "\n\n"),
-		}}
-		data, _ := json.Marshal(out)
-		stdout = string(data) + "\n"
-	}
-	return stdout, errb.String(), agent.ExitOK
 }

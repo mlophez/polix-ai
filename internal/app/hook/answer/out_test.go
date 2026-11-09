@@ -92,7 +92,10 @@ func (r *repo) hook(agent string, input map[string]any) (code int, stdout, stder
 	if _, ok := input["session_id"]; !ok {
 		input["session_id"] = "s1"
 	}
-	data, _ := json.Marshal(input)
+	data, err := json.Marshal(input)
+	if err != nil {
+		r.t.Fatal(err)
+	}
 	return call([]string{agent}, data)
 }
 

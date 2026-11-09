@@ -9,7 +9,7 @@ depends on the product. Growing is adding sibling folders, never deeper ones, an
 
 Each use case is an entry, a pure logic and an adapter (pure core, imperative shell), with the same short names in
 every use case package (`Command`, `Request`, `Response`, `Port`, `Adapter`, `Decide`, `Output`), read with their
-noun and verb outside it (`rulecheck.Command`). The rules are GOARCH-1 to GOARCH-44 of
+noun and verb outside it (`rulecheck.Command`). The rules are GOARCH-1 to GOARCH-45 of
 `ai/rules/architecture.yaml` (GOARCH-31 and GOARCH-40 are retired in `ai/rules/retired.yaml`); the deterministic
 ones are decided by the AST tests of `tests/architecture/` (`go test ./tests/architecture`, one `TestGOARCH<N>` per
 rule), which read `internal/` and `cmd/`, and the fixed lists of imports by depguard, which those tests run (see
@@ -159,8 +159,8 @@ The flow of `polix rules check`:
   nothing deeper, `testdata/` aside (GOARCH-1). A domain is named after its entity, a use case after what it does
   to its noun, a helper after its role in its use case, a library after its technology (GOARCH-17).
 - **Domain**: `<noun>.go` and `<noun>_*.go` in `internal/app/<noun>/`; shared by the whole app. It imports only
-  other domains, the pure libraries of `internal/platform/`, yaml, the templates and the standard library without
-  what touches the outside (GOARCH-41). Its methods live in its package, as Go requires. Its package variables are
+  other domains, the pure libraries of `internal/platform/`, the templates and the standard library without what
+  touches the outside nor the formats (`encoding/json`, `encoding/xml`; no yaml library either) (GOARCH-41). Its methods live in its package, as Go requires. Its package variables are
   tables, built once and never written, or sentinel errors.
 - **Domain without free functions**: a domain declares types, interfaces, constants, variables that are not
   functions, and methods of its types, structs or named types (`workflow.Cond`, a map); never a function that is
@@ -204,8 +204,9 @@ The flow of `polix rules check`:
   earlier steps take this shape; the review rejects it elsewhere.
 - **Logic**: one function `Decide(domain values) Output` in `logic.go`, which exports nothing else, and its
   siblings `logic_<topic>.go` export nothing; the output is its decision and a refusal is data of it, never an
-  error. What is decided after the input and output of the
-  shell is domain behavior (`rule.Result.Tail`, `rule.Results.Failed`).
+  error. `Decide` takes at most 4 parameters (GOARCH-45): what does not fit is a value of the domain that the
+  shell builds and validates (`version.Update`, `rule.Selection`, `setup.Inspection`). What is decided after the
+  input and output of the shell is domain behavior (`rule.Result.Tail`, `rule.Results.Failed`).
 - **Request and response**: every use case has a `Request` and a `Response` in `in.go`, the only types with the
   shape of the transport; the entry validates the flags and serializes the response to the console.
 - **Port**: one interface per use case, `Port`, declared in `in.go` where it is used; its methods take
@@ -225,7 +226,7 @@ The flow of `polix rules check`:
   that stay out of the domain, its logic validates the result with the domain, and its shell sequences both. The
   domain exposes what the decoding needs and validates, never a decoding: the vocabulary of the file
   (`workflow.TopKeys`,
-  `workflow.EntryKeys`...), the errors of a decoding (`workflow.TooOld`, `workflow.UnknownKey`) and the values as
+  `workflow.EntryKeys`...), the errors of a decoding (`workflow.TooOldError`, `workflow.UnknownKeyError`) and the values as
   written that it turns into others (`workflow.Guardrails`, whose shortcuts expand into entries and whose problems
   come with those of the workflow). Its entry is no cobra command: `Command` returns the loader, a named function
   type of its domain (`rule.Load`), whose result (`rule.Loaded`) holds what was loaded, whether the file exists and
@@ -283,6 +284,17 @@ topic along GOARCH-1 (`<noun>_<topic>.go` in a domain, `in_<topic>.go`, `logic_<
 in a use case, `<lib>_<topic>.go` in a library). The `_test.go` files are left out of the three limits by one
 exclusion of `.golangci.yml`, the only exception of GO-3: a table of cases or a test that walks a scenario reads
 better whole than split.
+
+The other linters of design of `.golangci.yml` follow the same policy, enabled with the code already clean:
+
+- `interfacebloat`: an interface has at most 19 methods. The limit is a ratchet set at the largest port of today,
+  the one of AnswerHook (the next is the one of DiagnoseSetup, with 15), and goes down as they shrink.
+- `exhaustive` (a `default` counts), `errname`, `forcetypeassert` and `errchkjson`: a switch on a typed enum lists
+  every value or has a `default`; an error type is named `*Error` and a sentinel `Err*`; a type assertion checks its
+  `ok`; the error of `json.Marshal` is checked.
+- `iface`, `inamedparam`, `recvcheck` and `gochecknoinits`: no interface declared twice or unused, named parameters
+  in the methods of an interface, one kind of receiver per type, and no `init`.
+- `nestif`: an `if` nested past a complexity of 4 splits into functions.
 
 ## How the rules are decided
 

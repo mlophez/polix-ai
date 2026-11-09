@@ -150,7 +150,11 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	if err != nil {
 		return res, err
 	}
-	out := Decide(home, root, req.Agents, req.Version, embedded)
+	asked := setup.Setup{Home: home, Root: root, Agents: req.Agents, Version: req.Version}
+	if err := asked.Valid(); err != nil {
+		return res, err
+	}
+	out := Decide(asked, embedded)
 	if out.Failure != "" {
 		return res, errors.New(out.Failure)
 	}
@@ -218,44 +222,48 @@ func (res Response) printChanges(stdout io.Writer) {
 // print writes, unless quiet, what the install leaves and what to do next to stdout, and the settings that also
 // register the hooks to stderr.
 func (res Response) print(stdout, stderr io.Writer) {
-	u := cli.NewUI(stdout)
 	if !res.Quiet {
-		if len(res.Changes) == 0 {
-			u.OK("polix %s is already installed", res.Version)
-		} else {
-			u.OK("polix %s installed", res.Version)
-		}
-		for _, a := range res.Agents {
-			switch a {
-			case setup.Claude:
-				u.Line("  Claude Code: skills %s and agents %s; start a new session to load them.",
-					cli.Code(strings.Join(prefixed("/polix:", res.Skills), " ")),
-					cli.Code(strings.Join(prefixed("polix:", res.PluginAgents), " ")))
-			case setup.Codex:
-				u.Line("  Codex: the plugin %s with the skills %s; start a new session to load them.",
-					cli.Code(setup.PluginID), cli.Code(strings.Join(res.Skills, " ")))
-			}
-		}
-		switch {
-		case len(res.HooksFiles) > 0:
-			u.Line("  Hooks registered in %s: commit them with the polix.yaml so the team gets them.",
-				strings.Join(res.HooksFiles, ", "))
-			if slices.Contains(res.Agents, setup.Codex) {
-				u.Line("  Codex runs new or changed hooks once trusted with %s.", cli.Code("/hooks"))
-			}
-		case !res.User:
-			u.Warn("not inside a git repository: run polix install in a repository to register its hooks")
-		}
-		if slices.Contains(res.Agents, setup.Codex) {
-			u.Line("  Codex support is not implemented in this release and the setup is untested.")
-		}
-		if res.NotOnPath {
-			u.Warn("polix is not on the PATH: the hooks run `polix`, add its folder to the PATH")
-		}
+		res.summary(cli.NewUI(stdout))
 	}
 	ue := cli.NewUI(stderr)
 	for _, f := range res.Duplicates {
 		ue.Warn("%s also registers the hooks of polix: remove them from there, or Claude Code runs them twice", f)
+	}
+}
+
+// summary writes what the install leaves and what to do next.
+func (res Response) summary(u *cli.UI) {
+	if len(res.Changes) == 0 {
+		u.OK("polix %s is already installed", res.Version)
+	} else {
+		u.OK("polix %s installed", res.Version)
+	}
+	for _, a := range res.Agents {
+		switch a {
+		case setup.Claude:
+			u.Line("  Claude Code: skills %s and agents %s; start a new session to load them.",
+				cli.Code(strings.Join(prefixed("/polix:", res.Skills), " ")),
+				cli.Code(strings.Join(prefixed("polix:", res.PluginAgents), " ")))
+		case setup.Codex:
+			u.Line("  Codex: the plugin %s with the skills %s; start a new session to load them.",
+				cli.Code(setup.PluginID), cli.Code(strings.Join(res.Skills, " ")))
+		}
+	}
+	switch {
+	case len(res.HooksFiles) > 0:
+		u.Line("  Hooks registered in %s: commit them with the polix.yaml so the team gets them.",
+			strings.Join(res.HooksFiles, ", "))
+		if slices.Contains(res.Agents, setup.Codex) {
+			u.Line("  Codex runs new or changed hooks once trusted with %s.", cli.Code("/hooks"))
+		}
+	case !res.User:
+		u.Warn("not inside a git repository: run polix install in a repository to register its hooks")
+	}
+	if slices.Contains(res.Agents, setup.Codex) {
+		u.Line("  Codex support is not implemented in this release and the setup is untested.")
+	}
+	if res.NotOnPath {
+		u.Warn("polix is not on the PATH: the hooks run `polix`, add its folder to the PATH")
 	}
 }
 

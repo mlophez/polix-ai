@@ -119,9 +119,13 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 			return Response{}, err
 		}
 	}
+	sel := rule.Selection{OnlyChanged: req.OnlyChanged, Changed: changed}
+	if err := sel.Valid(); err != nil {
+		return Response{}, err
+	}
 	var outcomes []rule.Outcome
 	for {
-		out := Decide(rules, wf, req.OnlyChanged, changed, outcomes)
+		out := Decide(rules, wf, sel, outcomes)
 		if out.Next == nil {
 			return response(out.Results)
 		}

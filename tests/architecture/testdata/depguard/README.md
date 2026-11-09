@@ -5,7 +5,8 @@ decides (`TestGOARCH41`, `TestGOARCH42` and `TestGOARCH43`) prove that it detect
 compiles, since golangci-lint loads its types, and its `go.mod` declares the module path of polix, so the prefixes
 of the lists match.
 
-- `internal/app/order/order.go`: a domain that imports `os` and the library `git` (GOARCH-41-domain).
+- `internal/app/order/order.go`: a domain that imports `encoding/json`, `os` and the library `git`
+  (GOARCH-41-domain).
 - `internal/app/order/place/logic.go`: a logic that imports `context` (GOARCH-41-logic).
 - `internal/app/order/place/logic_disk.go`: a sibling of the logic that imports `os` (GOARCH-41-logic), and its
   test `logic_disk_test.go`, which imports `os` too and no list reports.

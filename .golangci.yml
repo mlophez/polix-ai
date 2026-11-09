@@ -27,6 +27,22 @@ linters:
     # file is the rule file-length-limit of revive.
     - gocyclo
     - gocognit
+    # Design: a port or any interface of at most 19 methods (see settings.interfacebloat), no interface declared
+    # twice or unused, named parameters in the methods of an interface so a port reads as a contract, one kind of
+    # receiver per type, and no init.
+    - interfacebloat
+    - iface
+    - inamedparam
+    - recvcheck
+    - gochecknoinits
+    # Enums and errors: a switch on a typed enum lists every value or has a default, error types are named *Error
+    # and sentinels Err*, a type assertion checks its ok, and the error of json.Marshal is checked.
+    - exhaustive
+    - errname
+    - forcetypeassert
+    - errchkjson
+    # Nesting: an if nested past a complexity of 4 splits into functions.
+    - nestif
   settings:
     importas:
       # A use case is imported as <noun><verb> (internal/app/rule/check as rulecheck): one pattern covers every use
@@ -47,8 +63,8 @@ linters:
       # since depguard matches packages only by prefix and would need one entry per use case.
       rules:
         # GOARCH-41: the domain imports the standard library but what touches the outside, the randomness and the
-        # logs; internal/app/ (GOARCH-9 decides which); the pure libraries of internal/platform/; yaml and the
-        # templates. A new library of internal/platform/ is denied until it is added here on purpose.
+        # logs and the formats (encoding/json, encoding/xml; yaml is not in the list); internal/app/ (GOARCH-9
+        # decides which); the pure libraries of internal/platform/; the templates. A new library of internal/platform/ is denied until it is added here on purpose.
         GOARCH-41-domain:
           files: ["**/internal/app/*/*.go", "!$test"]
           allow: &goarch41-allow
@@ -60,7 +76,6 @@ linters:
             - github.com/mlophez/polix-ai/internal/platform/text$
             - github.com/mlophez/polix-ai/internal/platform/yamlfmt$
             - github.com/mlophez/polix-ai/templates$
-            - gopkg.in/yaml.v3$
           deny:
             - pkg: os$
               desc: &outside >-
@@ -81,6 +96,10 @@ linters:
               desc: &logs >-
                 GOARCH-41: the domain and the logic do not log; they return what happened and the shell reports it
             - { pkg: log/slog$, desc: *logs }
+            - pkg: encoding/json$
+              desc: &formats >-
+                GOARCH-41: the domain and the logic know no format; the in and out files of a use case translate it
+            - { pkg: encoding/xml$, desc: *formats }
         # GOARCH-41: the logic files of a use case, logic.go and its siblings logic_<topic>.go, import what the domain
         # does, and never context. GOARCH-4 reads this list to check the helpers that the logic imports.
         GOARCH-41-logic:
@@ -103,6 +122,8 @@ linters:
             - { pkg: crypto/rand$, desc: *random }
             - { pkg: log$, desc: *logs }
             - { pkg: log/slog$, desc: *logs }
+            - { pkg: encoding/json$, desc: *formats }
+            - { pkg: encoding/xml$, desc: *formats }
         # GOARCH-42: the technology never depends on the product.
         GOARCH-42:
           files: ["**/internal/platform/**"]
@@ -115,6 +136,14 @@ linters:
           deny:
             - pkg: github.com/mlophez/polix-ai/internal/platform/testenv$
               desc: "GOARCH-43: internal/platform/testenv is support for the tests; import it only from _test.go files"
+    # The largest port today, the one of AnswerHook, has 19 methods: the limit stops it from growing, and goes down
+    # as it shrinks.
+    interfacebloat:
+      max: 19
+    exhaustive:
+      default-signifies-exhaustive: true
+    nestif:
+      min-complexity: 4
     nolintlint:
       require-specific: true
       require-explanation: true

@@ -104,7 +104,7 @@ func (y *guardrailsYAML) shortcut(k *yaml.Node, val nodeYAML) error {
 }
 
 // guardrails builds the section of the domain, with the error of its Valid: the items with problems.
-func (y guardrailsYAML) guardrails() (workflow.Guardrails, error) {
+func (y *guardrailsYAML) guardrails() (workflow.Guardrails, error) {
 	g := workflow.Guardrails{
 		ProtectedFiles:    y.items(y.protectedFiles),
 		ForbiddenCommands: y.forbidden(),
@@ -116,7 +116,7 @@ func (y guardrailsYAML) guardrails() (workflow.Guardrails, error) {
 }
 
 // items converts the items of a shortcut that takes a list of strings; nil without them.
-func (guardrailsYAML) items(items []itemYAML) []workflow.GuardrailItem {
+func (*guardrailsYAML) items(items []itemYAML) []workflow.GuardrailItem {
 	var out []workflow.GuardrailItem
 	for _, it := range items {
 		out = append(out, workflow.GuardrailItem(it))
@@ -125,7 +125,7 @@ func (guardrailsYAML) items(items []itemYAML) []workflow.GuardrailItem {
 }
 
 // forbidden converts the items of forbidden_commands; nil without them.
-func (y guardrailsYAML) forbidden() []workflow.GuardrailForbidden {
+func (y *guardrailsYAML) forbidden() []workflow.GuardrailForbidden {
 	var out []workflow.GuardrailForbidden
 	for _, f := range y.forbiddenCommands {
 		out = append(out, workflow.GuardrailForbidden(f))
@@ -134,7 +134,7 @@ func (y guardrailsYAML) forbidden() []workflow.GuardrailForbidden {
 }
 
 // checks converts the items of format_on_edit or run_before_done; nil without them.
-func (guardrailsYAML) checks(items []checkYAML) []workflow.GuardrailCheck {
+func (*guardrailsYAML) checks(items []checkYAML) []workflow.GuardrailCheck {
 	var out []workflow.GuardrailCheck
 	for _, c := range items {
 		out = append(out, workflow.GuardrailCheck(c))
@@ -285,6 +285,7 @@ func (n nodeYAML) command() bool {
 			}
 		}
 		return true
+	default:
+		return false
 	}
-	return false
 }

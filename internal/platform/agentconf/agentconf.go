@@ -37,7 +37,11 @@ func decodeObject(data []byte) ([]member, error) {
 		if err := dec.Decode(&v); err != nil {
 			return nil, err
 		}
-		out = append(out, member{t.(string), v})
+		key, ok := t.(string)
+		if !ok {
+			return nil, errors.New("not a JSON object")
+		}
+		out = append(out, member{key, v})
 	}
 	if _, err := dec.Token(); err != nil {
 		return nil, err
@@ -81,7 +85,7 @@ func marshal(v any) json.RawMessage {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
-	_ = enc.Encode(v)
+	_ = enc.Encode(v) //nolint:errchkjson // v is a string or a struct of strings, lists and raw JSON, which always encode
 	return bytes.TrimSpace(b.Bytes())
 }
 

@@ -26,8 +26,8 @@ type Port interface {
 	// ReadWorkflow reads polix.yaml of root for the polix of version running and decodes it: the workflow, with the
 	// protections and the entries its shortcuts expand into, and the section guardrails as written, with the
 	// problems of the values of its items; and whether the file exists. The error tells why the file cannot be
-	// read, requires a newer polix (workflow.TooOld), is not yaml or has an unknown top level key
-	// (workflow.UnknownKey), with an empty workflow and section; else it is the error of Workflow.Valid, with the
+	// read, requires a newer polix (workflow.TooOldError), is not yaml or has an unknown top level key
+	// (workflow.UnknownKeyError), with an empty workflow and section; else it is the error of Workflow.Valid, with the
 	// workflow. A missing file has no workflow and no error.
 	ReadWorkflow(ctx context.Context, root, running string) (workflow.Workflow, workflow.Guardrails, bool, error)
 }

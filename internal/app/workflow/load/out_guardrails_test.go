@@ -154,7 +154,7 @@ func TestShortcutsProblems(t *testing.T) {
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {
 			w, err := parse(t, src, "dev")
-			var invalid workflow.Invalid
+			var invalid workflow.InvalidError
 			if !errors.As(err, &invalid) || !strings.HasPrefix(err.Error(), want[name]) {
 				t.Fatalf("got %v, want %s", err, want[name])
 			}
@@ -205,7 +205,7 @@ func TestShortcutsForms(t *testing.T) {
 	}
 	for src, want := range cases {
 		_, err := parse(t, src, "dev")
-		var invalid workflow.Invalid
+		var invalid workflow.InvalidError
 		if err == nil || errors.As(err, &invalid) || err.Error() != want {
 			t.Errorf("%q:\ngot  %v\nwant %s", src, err, want)
 		}

@@ -74,9 +74,9 @@ type ForbiddenCommand struct {
 	Line    int    // the line of the item in the file, for messages and the log
 }
 
-// Invalid is the error of a value with problems, one per line; the list is the error itself, so a caller gets
+// InvalidError is the error of a value with problems, one per line; the list is the error itself, so a caller gets
 // it back with errors.As.
-type Invalid []string
+type InvalidError []string
 
 // validator collects the problems of one workflow, or of one of its values when w is nil (no vars nor event
 // known: the problems that depend on them are left to the workflow).
@@ -143,12 +143,12 @@ var Informed = []string{Start, PostEdit, PostCommand}
 // placeholder finds the {name} placeholders of a string.
 var placeholder = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-func (p Invalid) Error() string { return strings.Join(p, "\n") }
+func (p InvalidError) Error() string { return strings.Join(p, "\n") }
 
 // Valid returns every problem of the workflow joined in one Invalid error, or nil when it is valid.
 func (w Workflow) Valid() error {
 	if p := w.Problems(); len(p) > 0 {
-		return Invalid(p)
+		return InvalidError(p)
 	}
 	return nil
 }
@@ -266,7 +266,7 @@ func (d Var) Valid() error {
 	v := &validator{}
 	v.variable("", d)
 	if len(v.problems) > 0 {
-		return Invalid(v.problems)
+		return InvalidError(v.problems)
 	}
 	return nil
 }

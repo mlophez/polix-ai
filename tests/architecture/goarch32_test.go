@@ -85,8 +85,7 @@ func checkShellShape(m *module) []string {
 					if d.Tok != token.VAR {
 						continue
 					}
-					for _, s := range d.Specs {
-						v := s.(*ast.ValueSpec)
+					for _, v := range valueSpecs(d) {
 						for i, value := range v.Values {
 							if logicCalls(info, value, c) > 0 {
 								out = append(out, fmt.Sprintf("%s: %s calls the logic %s: only the shell %s calls it",

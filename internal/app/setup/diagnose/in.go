@@ -61,31 +61,26 @@ type Port interface {
 	// OpenRepo returns the root and the git directory of the repository that holds dir.
 	OpenRepo(ctx context.Context, dir string) (string, string, error)
 	// LoadWorkflow returns the workflow of polix.yaml of root for the polix of version running and whether the
-	// file exists; the error tells why it cannot be read or parsed, or is a workflow.Invalid.
-	LoadWorkflow(ctx context.Context, root, running string) (workflow.Workflow, bool, error)
-	// LoadRules returns every rule of the folder dir of root, ordered by id, and the problems of the invalid ones.
-	LoadRules(ctx context.Context, root, dir string) ([]rule.Rule, []string, error)
-	// Missing reports whether the file of a check, relative to root, does not exist.
-	Missing(ctx context.Context, root, check string) bool
-	// Runnable returns why a check, relative to root, cannot run as a program; nil when it can or does not exist.
-	Runnable(ctx context.Context, root, check string) error
-	// ResolveBase returns why none of candidates exists as a branch of the repository of root.
-	ResolveBase(ctx context.Context, root string, candidates []string) error
+	// file exists; err tells why it cannot be read or parsed, or is a workflow.InvalidError, and baseErr why none of
+	// the base branches of the workflow exists as a branch of the repository.
+	LoadWorkflow(ctx context.Context, root, running string) (wf workflow.Workflow, found bool, err, baseErr error)
+	// LoadRules returns what the folder dir of root holds: every rule, ordered by id, with the problems of the
+	// invalid ones; and, by the check of each rule that has one, relative to root, whether its file does not exist
+	// (missing) and why it cannot run as a program (runnable), nil when it can or does not exist.
+	LoadRules(ctx context.Context, root, dir string) (loaded rule.Loaded, missing map[string]bool,
+		runnable map[string]error)
 	// WriteState checks that the folder of the state, below gitDir, can be written, and returns it.
 	WriteState(ctx context.Context, gitDir string) (string, error)
-	// ClaudeHooks returns the settings of Claude Code of paths that exist, decoded: their hooks, or why they cannot
-	// be read or are not JSON, an empty file included.
-	ClaudeHooks(ctx context.Context, paths []string) map[string]setup.HooksFile
-	// CodexHooks returns the hooks files of Codex of paths that exist, decoded: their hooks, or why they cannot be
-	// read or are not JSON; an empty file has no hooks.
-	CodexHooks(ctx context.Context, paths []string) map[string]setup.HooksFile
+	// HooksFiles returns the hooks files of agent (setup.Claude or setup.Codex) of paths that exist, decoded: their
+	// hooks, or why they cannot be read or are not JSON. An empty file is not JSON for Claude Code, whose settings
+	// they are, and has no hooks for Codex.
+	HooksFiles(ctx context.Context, agent string, paths []string) map[string]setup.HooksFile
 	// CodexEnabled reports whether the configuration of Codex at path enables the plugin polix.
 	CodexEnabled(ctx context.Context, path string) bool
-	// ReadManifest returns the version of the manifest of the plugin at path, and whether it is the plugin polix:
-	// false when it does not exist, cannot be read or is another one.
-	ReadManifest(ctx context.Context, path string) (string, bool)
-	// Plugin returns the files of the plugin embedded in the binary, by path below polix/.
-	Plugin(ctx context.Context) (map[string][]byte, error)
+	// Plugin returns the files of the plugin embedded in the binary, by path below polix/, and the plugin written
+	// at the path manifest: the version of its manifest, and whether it is the plugin polix (written), false when
+	// it does not exist, cannot be read or is another one.
+	Plugin(ctx context.Context, manifest string) (embedded map[string][]byte, version string, written bool, err error)
 	// ClaudePlugin asks `claude plugin list --json` whether the plugin polix is installed for the user, whether it
 	// is enabled, and the folder Claude Code reads it from; setup.ErrNoCLI without the CLI.
 	ClaudePlugin(ctx context.Context) (bool, bool, string, error)
@@ -158,7 +153,8 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	if err := s.Valid(); err != nil {
 		return Response{}, err
 	}
-	claudeHooks, codexHooks := port.ClaudeHooks(ctx, s.ClaudeSettingsFiles()), port.CodexHooks(ctx, s.CodexHooksFiles())
+	claudeHooks := port.HooksFiles(ctx, setup.Claude, s.ClaudeSettingsFiles())
+	codexHooks := port.HooksFiles(ctx, setup.Codex, s.CodexHooksFiles())
 	codexEnabled := port.CodexEnabled(ctx, s.CodexConfigFile())
 	plugin, err := readPlugin(ctx, port, req, s)
 	if err != nil {
@@ -199,27 +195,20 @@ func releases(ctx context.Context, port Port, req Request, exeErr error) (string
 // inspectRepository reads the repository of root: its workflow, its rules, whether each check exists and can run,
 // whether a base branch exists, and whether the state below gitDir can be written.
 func inspectRepository(ctx context.Context, port Port, req Request, root, gitDir string) repository {
-	r := repository{missing: map[string]bool{}, runnable: map[string]error{}}
-	r.wf, r.found, r.wfErr = port.LoadWorkflow(ctx, root, req.Version)
-	r.rules, r.invalid, r.rulesErr = port.LoadRules(ctx, root, r.wf.RulesPath())
-	for _, rl := range r.rules {
-		if rl.HasCheck() {
-			r.missing[rl.Check] = port.Missing(ctx, root, rl.Check)
-			r.runnable[rl.Check] = port.Runnable(ctx, root, rl.Check)
-		}
-	}
-	r.baseErr = port.ResolveBase(ctx, root, r.wf.BaseBranches())
+	var r repository
+	r.wf, r.found, r.wfErr, r.baseErr = port.LoadWorkflow(ctx, root, req.Version)
+	loaded, missing, runnable := port.LoadRules(ctx, root, r.wf.RulesPath())
+	r.rules, r.invalid, r.rulesErr, r.missing, r.runnable = loaded.Rules, loaded.Problems, loaded.Err, missing, runnable
 	r.stateDir, r.stateErr = port.WriteState(ctx, gitDir)
 	return r
 }
 
 // readPlugin returns the plugin embedded in the binary against the one written in the local marketplace of s.
 func readPlugin(ctx context.Context, port Port, req Request, s setup.Setup) (setup.Plugin, error) {
-	embedded, err := port.Plugin(ctx)
+	embedded, manifest, written, err := port.Plugin(ctx, s.PluginManifest())
 	if err != nil {
 		return setup.Plugin{}, err
 	}
-	manifest, written := port.ReadManifest(ctx, s.PluginManifest())
 	p := setup.Plugin{Written: written, Manifest: manifest, Embedded: embedded, Version: req.Version}
 	if err := p.Valid(); err != nil {
 		return setup.Plugin{}, err

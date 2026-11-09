@@ -13,11 +13,11 @@ func TestWorkflowProblems(t *testing.T) {
 	if p, newer := (Inspection{}).WorkflowProblems(); p != nil || newer {
 		t.Fatal("no error, no problem")
 	}
-	p, newer := Inspection{WorkflowErr: workflow.Invalid{`polix.yaml:3: unknown key "foo"`, "x"}}.WorkflowProblems()
+	p, newer := Inspection{WorkflowErr: workflow.InvalidError{`polix.yaml:3: unknown key "foo"`, "x"}}.WorkflowProblems()
 	if len(p) != 2 || !newer {
 		t.Fatalf("each problem, and unknown options hint a newer polix: %v %v", p, newer)
 	}
-	if p, newer := (Inspection{WorkflowErr: workflow.TooOld{Requires: "0.2.0", Running: "0.1.0"}}).WorkflowProblems(); len(p) != 1 || newer ||
+	if p, newer := (Inspection{WorkflowErr: workflow.TooOldError{Requires: "0.2.0", Running: "0.1.0"}}).WorkflowProblems(); len(p) != 1 || newer ||
 		!strings.Contains(p[0], "requires polix 0.2.0") {
 		t.Fatalf("too old: %v %v", p, newer)
 	}

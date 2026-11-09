@@ -54,6 +54,7 @@ func checkDirection(m *module) []string {
 					out = append(out, fmt.Sprintf("%s: %s imports the helper %s: only the files of its use case %s "+
 						"import it", m.pos(f, s), who(f), dir, owner))
 				}
+			default:
 			}
 		}
 	}
@@ -75,6 +76,7 @@ func who(f *goFile) string {
 		return "the use case " + f.dir
 	case levelHelper:
 		return "the helper " + f.dir
+	default:
+		return f.dir
 	}
-	return f.dir
 }

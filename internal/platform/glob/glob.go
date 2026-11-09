@@ -53,8 +53,10 @@ func compile(pattern string, paths bool) *regexp.Regexp {
 	if paths {
 		key = "p:" + pattern
 	}
-	if re, ok := cache.Load(key); ok {
-		return re.(*regexp.Regexp)
+	if v, ok := cache.Load(key); ok {
+		if re, ok := v.(*regexp.Regexp); ok {
+			return re
+		}
 	}
 	var b strings.Builder
 	b.WriteString("^")

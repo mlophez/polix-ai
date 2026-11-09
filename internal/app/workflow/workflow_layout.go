@@ -34,7 +34,7 @@ func (f Folder) Valid() error {
 	v := &validator{}
 	v.folder("folder", f)
 	if len(v.problems) > 0 {
-		return Invalid(v.problems)
+		return InvalidError(v.problems)
 	}
 	return nil
 }

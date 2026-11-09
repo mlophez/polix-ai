@@ -14,15 +14,12 @@ type Output struct {
 	Results []rule.Result
 }
 
-// Decide decides which checks run and how: those of the deterministic rules, all of them or, with onlyChanged,
-// only those whose scope matches the changed files, grouped into runs by the runners of wf (rule.Rules.Plan). It walks the
+// Decide decides which checks run and how: those of the deterministic rules that sel selects, all of them or only
+// those whose scope matches the changed files, grouped into runs by the runners of wf (rule.Rules.Plan). It walks the
 // runs, and the reruns of each failed shared run (rule.Run.Settle), taking one of outcomes, the runs carried out so
 // far, for each; the first run without outcome is the next one, and with none left it returns the results.
-func Decide(rules []rule.Rule, wf workflow.Workflow, onlyChanged bool, changed []string,
-	outcomes []rule.Outcome) Output {
-	if onlyChanged {
-		rules = rule.Rules(rules).Matching(changed)
-	}
+func Decide(rules []rule.Rule, wf workflow.Workflow, sel rule.Selection, outcomes []rule.Outcome) Output {
+	rules = sel.Narrow(rules)
 	queue := rule.Rules(rules).Plan(wf)
 	var results []rule.Result
 	for k := 0; len(queue) > 0; k++ {

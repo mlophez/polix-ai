@@ -86,8 +86,8 @@ func literalsIn(m *module, info *types.Info, f *goFile, body *ast.BlockStmt) []s
 // them.
 func topLevelLiterals(m *module, info *types.Info, f *goFile, d *ast.GenDecl) []string {
 	var out []string
-	for _, s := range d.Specs {
-		for _, v := range s.(*ast.ValueSpec).Values {
+	for _, s := range valueSpecs(d) {
+		for _, v := range s.Values {
 			ast.Inspect(v, func(n ast.Node) bool {
 				if lit, ok := n.(*ast.CompositeLit); ok && len(lit.Elts) > 0 {
 					if key := m.domainStruct(info.TypeOf(lit)); key != "" {

@@ -32,9 +32,9 @@ func (a Adapter) ReadWorkflow(_ context.Context, root, running string) (workflow
 	return wf, guardrails, true, err
 }
 
-// decode decodes polix.yaml (data) for the polix of version running. It returns a TooOld when the workflow requires
+// decode decodes polix.yaml (data) for the polix of version running. It returns a TooOldError when the workflow requires
 // a newer polix than running, read before the rest, which an older polix may not know (a development build is never
-// too old); an error for broken YAML, or an UnknownKey for an unknown top level key; and else the workflow with the
+// too old); an error for broken YAML, or a UnknownKeyError for an unknown top level key; and else the workflow with the
 // error of its Valid, and the section guardrails as written.
 func (a Adapter) decode(data []byte, running string) (workflow.Workflow, workflow.Guardrails, error) {
 	if err := a.tooOld(data, running); err != nil {
@@ -59,14 +59,14 @@ func (a Adapter) decode(data []byte, running string) (workflow.Workflow, workflo
 	return y.workflow(lines)
 }
 
-// tooOld returns the TooOld of a workflow (data) that requires a newer polix than running; nil when it does not, when
+// tooOld returns the TooOldError of a workflow (data) that requires a newer polix than running; nil when it does not, when
 // running is a development build, which is never too old, or when what the workflow requires is not a version.
 func (a Adapter) tooOld(data []byte, running string) error {
 	req := a.requires(data)
 	if !semver.IsRelease(running) || !semver.Valid(req) || semver.Compare(running, req) >= 0 {
 		return nil
 	}
-	old := workflow.TooOld{Requires: strings.TrimPrefix(req, "v"), Running: running}
+	old := workflow.TooOldError{Requires: strings.TrimPrefix(req, "v"), Running: running}
 	if err := old.Valid(); err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func (a Adapter) requires(data []byte) string {
 }
 
 // top checks the top level keys of the document root, a map: the first one that is not one of workflow.TopKeys is
-// an UnknownKey, with the new spelling of a renamed one. It returns the line of each event of on.
+// a UnknownKeyError, with the new spelling of a renamed one. It returns the line of each event of on.
 func (a Adapter) top(root *yaml.Node) (map[string]int, error) {
 	if len(root.Content) != 1 || root.Content[0].Kind != yaml.MappingNode {
 		return nil, nil
@@ -100,7 +100,7 @@ func (a Adapter) top(root *yaml.Node) (map[string]int, error) {
 	for i := 0; i < len(top.Content); i += 2 {
 		k := top.Content[i]
 		if !slices.Contains(workflow.TopKeys, k.Value) {
-			unknown := workflow.UnknownKey{Key: k.Value, Line: k.Line}
+			unknown := workflow.UnknownKeyError{Key: k.Value, Line: k.Line}
 			if err := unknown.Valid(); err != nil {
 				return nil, err
 			}

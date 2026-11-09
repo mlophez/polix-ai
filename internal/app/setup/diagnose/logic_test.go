@@ -97,10 +97,13 @@ func TestDecideFindsProblems(t *testing.T) {
 	delete(settings["hooks"], "Stop")
 	settings["hooks"]["PreToolUse"][0]["matcher"] = "Edit|Write"
 	settings["hooks"]["PostToolUse"][0]["hooks"] = []map[string]any{{"type": "command", "command": "polix hook claude"}}
-	data, _ := json.Marshal(settings)
+	data, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
 	i.ClaudeHooks[i.Setup.HooksFile(setup.Claude)] = hooksOf(data)
 	i.Latest = "0.3.0"
-	i.WorkflowErr = workflow.Invalid{`polix.yaml:5: unknown key "foo"`}
+	i.WorkflowErr = workflow.InvalidError{`polix.yaml:5: unknown key "foo"`}
 	i.Rules = []rule.Rule{{ID: "A-1", Description: "d", Deterministic: true, Check: "checks/a.sh", File: "ai/rules/a.yaml"}}
 	i.Runnable = map[string]error{"checks/a.sh": errors.New("check checks/a.sh is not executable (chmod +x)")}
 	out := Decide(i, false)
@@ -138,7 +141,10 @@ func TestDecideHooks(t *testing.T) {
 	var doc map[string]map[string]any
 	_ = json.Unmarshal([]byte(settings), &doc)
 	delete(doc["hooks"], "PostToolUseFailure")
-	data, _ := json.Marshal(doc)
+	data, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
 	i.ClaudeHooks[file] = hooksOf(data)
 	if out := Decide(i, false); out.Failed || !strings.Contains(text(out), "warn hooks PostToolUseFailure does not run") {
 		t.Fatalf("old settings only warn:\n%s", text(out))

@@ -58,6 +58,14 @@ func (s Setup) Valid() error {
 	return nil
 }
 
+// Defaulted returns the setup for agents when it asks for none: the agents a command sets up by itself.
+func (s Setup) Defaulted(agents ...string) Setup {
+	if len(s.Agents) == 0 {
+		s.Agents = slices.Clone(agents)
+	}
+	return s
+}
+
 // For reports whether the setup includes agent.
 func (s Setup) For(agent string) bool { return slices.Contains(s.Agents, agent) }
 

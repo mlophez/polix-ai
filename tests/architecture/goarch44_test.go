@@ -63,8 +63,7 @@ func (m *module) freeFunction(f *goFile, fn *ast.FuncDecl) []string {
 // of a function type by the checker.
 func (m *module) functionVars(f *goFile, g *ast.GenDecl) []string {
 	var out []string
-	for _, s := range g.Specs {
-		spec := s.(*ast.ValueSpec)
+	for _, spec := range valueSpecs(g) {
 		for i, id := range spec.Names {
 			var value ast.Expr
 			if i < len(spec.Values) {

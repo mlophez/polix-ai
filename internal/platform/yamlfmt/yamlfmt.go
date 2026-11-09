@@ -219,6 +219,7 @@ func reorder(n *yaml.Node, path []string, order Order) {
 		for _, c := range n.Content {
 			reorder(c, append(slices.Clone(path), "-"), order)
 		}
+	default:
 	}
 }
 

@@ -40,7 +40,7 @@ func TestRunSuccess(t *testing.T) {
 	}
 }
 
-// An ExitCode sets the exit code and prints nothing: the command already told why.
+// An ExitCodeError sets the exit code and prints nothing: the command already told why.
 func TestRunExitCode(t *testing.T) {
 	code, _, _, stderr := execute(Exit(2), "run")
 	if code != 2 || stderr != "" {

@@ -97,7 +97,7 @@ func (it GuardrailItem) Valid() error {
 // Valid tells why the item is not valid: the problems of its values, or a pattern that is not one.
 func (f GuardrailForbidden) Valid() error {
 	if len(f.Problems) > 0 {
-		return Invalid(f.Problems)
+		return InvalidError(f.Problems)
 	}
 	c := ForbiddenCommand{Pattern: f.Pattern, Reason: f.Reason, Line: f.Line}
 	return c.Valid()
@@ -106,7 +106,7 @@ func (f GuardrailForbidden) Valid() error {
 // Valid tells why the item is not valid: the problems of its values, or no command to run.
 func (c GuardrailCheck) Valid() error {
 	if len(c.Problems) > 0 {
-		return Invalid(c.Problems)
+		return InvalidError(c.Problems)
 	}
 	if len(c.Run) == 0 {
 		return errors.New("an item of guardrails needs run")

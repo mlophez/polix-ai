@@ -81,7 +81,7 @@ func TestAdapterReadWorkflowUnreadable(t *testing.T) {
 func TestDecodeRequires(t *testing.T) {
 	src := "version: 1\nrequires: 0.3.0\nan_option_of_0_3: true\n"
 	_, err := parse(t, src, "0.2.1")
-	var old workflow.TooOld
+	var old workflow.TooOldError
 	if !errors.As(err, &old) || old.Requires != "0.3.0" || old.Running != "0.2.1" {
 		t.Fatalf("an older polix: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestDecodeRequires(t *testing.T) {
 		t.Fatalf("a polix as new as required: %v %+v %v", err, w, w.Problems())
 	}
 	w, err = parse(t, "version: 1\nrequires: 0.2\n", "0.2.0")
-	var invalid workflow.Invalid
+	var invalid workflow.InvalidError
 	if !errors.As(err, &invalid) || len(w.Problems()) != 1 {
 		t.Fatalf("requires must be a full version: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestDecodeRequires(t *testing.T) {
 
 // An unknown top level key and broken YAML stop the parse, with the file in the message.
 func TestDecodeErrors(t *testing.T) {
-	var invalid workflow.Invalid
+	var invalid workflow.InvalidError
 	if _, err := parse(t, "version: 1\nonn: {}\n", "dev"); err == nil || errors.As(err, &invalid) ||
 		err.Error() != `polix.yaml:2: unknown key "onn"` {
 		t.Fatalf("unknown key: %v", err)
@@ -142,7 +142,7 @@ guardrails:
 		"version: 1\nrequires: 0.1.0\nbase: [main]\n": `polix.yaml:3: unknown key "base": use base_branch`,
 	} {
 		_, err := parse(t, src, "0.1.0")
-		var invalid workflow.Invalid
+		var invalid workflow.InvalidError
 		if err == nil || errors.As(err, &invalid) || err.Error() != want {
 			t.Errorf("%q: got %v, want %s", src, err, want)
 			continue
@@ -159,7 +159,7 @@ guardrails:
 // guardrails is a map of the five shortcuts: any other key or value stops the parse, and an empty one expands into
 // nothing.
 func TestDecodeGuardrails(t *testing.T) {
-	var invalid workflow.Invalid
+	var invalid workflow.InvalidError
 	five := "protected_files, forbidden_commands, protected_branches, format_on_edit, run_before_done"
 	for src, want := range map[string]string{
 		"version: 1\nguardrails:\n  protected_file: [.env]\n": `polix.yaml: line 3: unknown key "protected_file" in guardrails (` + five + ")",
@@ -284,7 +284,7 @@ func TestDecodeVerbErrors(t *testing.T) {
 		"version: 1\non:\n  pre_commit:\n    - action: { run: { command: ls, always: 1 } }\n":       "polix.yaml: line 4: run.always must be true or false",
 		"version: 1\non:\n  pre_commit:\n    - action: { inject: { text: x, always: [a] } }\n":      "polix.yaml: line 4: inject.always must be true or false",
 	}
-	var invalid workflow.Invalid
+	var invalid workflow.InvalidError
 	for src, want := range cases {
 		if _, err := parse(t, src, "dev"); err == nil || errors.As(err, &invalid) || !strings.HasPrefix(err.Error(), want) {
 			t.Errorf("%q: got %v", src, err)
@@ -350,7 +350,7 @@ func TestDecodeGuidance(t *testing.T) {
 // the parse with the file in the message.
 func TestDecodeGuidanceErrors(t *testing.T) {
 	_, err := parse(t, "version: 1\nguidance: { commit: true, delegation: false }\n", "dev")
-	var invalid workflow.Invalid
+	var invalid workflow.InvalidError
 	if !errors.As(err, &invalid) || !strings.Contains(err.Error(), `unknown key "delegation" in guidance (commit, edit, layout)`) {
 		t.Fatalf("unknown key: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestDecodeRunnerKeys(t *testing.T) {
 		t.Fatalf("non-scalar glob: %v", err)
 	}
 	_, err = parse(t, "version: 1\nrules:\n  run:\n    \"\": b\n", "dev")
-	var invalid workflow.Invalid
+	var invalid workflow.InvalidError
 	if !errors.As(err, &invalid) || !strings.Contains(err.Error(), "polix.yaml:4: rules.run: a glob cannot be empty") {
 		t.Fatalf("empty glob: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestDecodeRisk(t *testing.T) {
 		w.Weights[1].Glob != "internal/**" || w.Weights[1].Factor != 3 || w.Weights[2].Factor != 0 {
 		t.Fatalf("weights = %+v", w.Weights)
 	}
-	var invalid workflow.Invalid
+	var invalid workflow.InvalidError
 	for want, src := range map[string]string{
 		"risk must be a map":                 "version: 1\nrisk: [a]\n",
 		`unknown key "weight" in risk`:       "version: 1\nrisk:\n  weight: {}\n",

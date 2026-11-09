@@ -2,14 +2,14 @@ package workflow
 
 import "regexp"
 
-// Problem is a problem of the workflow: one line of Problems, or the text of an UnknownKey.
+// Problem is a problem of the workflow: one line of Problems, or the text of a UnknownKeyError.
 type Problem string
 
 // renamedEvents maps the events of the old vocabulary to their new name.
 var renamedEvents = map[string]string{"session_start": Start, "turn_stop": Stop}
 
 // renamed holds, per place of the file, the names of the old vocabulary and the hint of their new spelling, which
-// the validator, or UnknownKey for a top-level key (place "top"), appends to the problem of the unknown name.
+// the validator, or UnknownKeyError for a top-level key (place "top"), appends to the problem of the unknown name.
 var renamed = map[string]map[string]string{
 	"top": {
 		"protected":       "use guardrails.protected_files",
@@ -35,7 +35,7 @@ var renamed = map[string]map[string]string{
 // how to rewrite it, not that it has no action.
 var oldActions = []string{"deny", "require", "allow", "run", "context", "record"}
 
-// renamedProblem finds, in a problem of the validator or in an UnknownKey, the unknown name it reports with its new
+// renamedProblem finds, in a problem of the validator or in a UnknownKeyError, the unknown name it reports with its new
 // spelling: the place (key, event or condition), the name and, for a key of the action, " in action". A top-level
 // key is reported as a key.
 var renamedProblem = regexp.MustCompile(`unknown (key|event|condition) "([^"]*)"( in action)?: `)

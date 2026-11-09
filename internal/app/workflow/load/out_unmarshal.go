@@ -140,8 +140,9 @@ func (y *runYAML) UnmarshalYAML(n *yaml.Node) error {
 		*y = runYAML(p)
 		y.keys = nodeYAML{n}.keys()
 		return nil
+	default:
+		return fmt.Errorf("line %d: run takes a command, a list of arguments or a map with command or rules", n.Line)
 	}
-	return fmt.Errorf("line %d: run takes a command, a list of arguments or a map with command or rules", n.Line)
 }
 
 // UnmarshalYAML reads the inject: a string is the text, and a map keeps its keys, so Valid can reject unknown ones.
@@ -162,8 +163,9 @@ func (y *injectYAML) UnmarshalYAML(n *yaml.Node) error {
 		*y = injectYAML(p)
 		y.keys = nodeYAML{n}.keys()
 		return nil
+	default:
+		return fmt.Errorf("line %d: inject takes a text or a map with one of file, text or rules", n.Line)
 	}
-	return fmt.Errorf("line %d: inject takes a text or a map with one of file, text or rules", n.Line)
 }
 
 // UnmarshalYAML reads the block: a string is the message, and a map keeps its keys, so Valid can reject unknown
@@ -185,8 +187,9 @@ func (y *blockYAML) UnmarshalYAML(n *yaml.Node) error {
 		*y = blockYAML(p)
 		y.keys = nodeYAML{n}.keys()
 		return nil
+	default:
+		return fmt.Errorf("line %d: block takes a message or a map with message and once", n.Line)
 	}
-	return fmt.Errorf("line %d: block takes a message or a map with message and once", n.Line)
 }
 
 // UnmarshalYAML keeps the keys of rules, so Valid can reject unknown ones.

@@ -23,9 +23,9 @@ func checkTypesFirst(m *module) []string {
 			case ok && g.Tok == token.IMPORT:
 			case ok && g.Tok == token.TYPE:
 				if other {
-					for _, s := range g.Specs {
+					for _, t := range typeSpecs(g) {
 						out = append(out, fmt.Sprintf("%s: type %s after constants, variables or functions", f.rel,
-							s.(*ast.TypeSpec).Name.Name))
+							t.Name.Name))
 					}
 				}
 			default:

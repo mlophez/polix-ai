@@ -176,11 +176,35 @@ func checkAccepts(t *testing.T, check func(*module) []string, good ...string) {
 	})
 }
 
+// typeSpecs returns the types that the declaration g declares; none when it is not a type declaration.
+func typeSpecs(g *ast.GenDecl) []*ast.TypeSpec {
+	var out []*ast.TypeSpec
+	for _, s := range g.Specs {
+		if t, ok := s.(*ast.TypeSpec); ok {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// valueSpecs returns the constants or variables that the declaration g declares; none when it declares neither.
+func valueSpecs(g *ast.GenDecl) []*ast.ValueSpec {
+	var out []*ast.ValueSpec
+	for _, s := range g.Specs {
+		if v, ok := s.(*ast.ValueSpec); ok {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // mustLoad parses the module at root once per run.
 func mustLoad(t *testing.T, root string) *module {
 	t.Helper()
-	if m, ok := loaded.Load(root); ok {
-		return m.(*module)
+	if v, ok := loaded.Load(root); ok {
+		if m, ok := v.(*module); ok {
+			return m
+		}
 	}
 	m, err := load(root)
 	if err != nil {
@@ -328,6 +352,7 @@ func classify(at place, name string) kind {
 		return kindLibrary
 	case levelCmd:
 		return kindCmd
+	default:
 	}
 	return kindUnknown
 }
@@ -350,8 +375,9 @@ func (f *goFile) sibling() bool {
 			}
 		}
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
 // name is the name of the use case, <Verb><Noun> (CheckRule), the title of its document.
@@ -502,8 +528,8 @@ func topLevelNames(d ast.Decl) []*ast.Ident {
 func typeSpec(f *ast.File, name string) *ast.TypeSpec {
 	for _, d := range f.Decls {
 		if g, ok := d.(*ast.GenDecl); ok && g.Tok == token.TYPE {
-			for _, s := range g.Specs {
-				if t := s.(*ast.TypeSpec); t.Name.Name == name {
+			for _, t := range typeSpecs(g) {
+				if t.Name.Name == name {
 					return t
 				}
 			}
@@ -707,8 +733,7 @@ func (m *module) domainStructs() map[string]bool {
 			if !ok || g.Tok != token.TYPE {
 				continue
 			}
-			for _, sp := range g.Specs {
-				t := sp.(*ast.TypeSpec)
+			for _, t := range typeSpecs(g) {
 				if _, isStruct := t.Type.(*ast.StructType); isStruct && t.Name.IsExported() {
 					out[f.dir+"."+t.Name.Name] = true
 				}

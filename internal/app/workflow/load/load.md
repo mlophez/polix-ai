@@ -31,8 +31,8 @@ with the domain:
 1. Without the file (and without `err`), the default workflow: version 1, `max_stop_retries` 3
    (`workflow.DefaultMaxStopRetries`) and every switch of guidance on, with the error of its `Valid`.
 2. When the values of the shortcuts of guardrails have problems (`Guardrails.Problems`), those problems and the
-   rest of the problems of the workflow, in the order of the file, are the error, as one `workflow.Invalid`;
-   otherwise `err` stays: nil, the `workflow.Invalid` of `Workflow.Valid`, or an error that stops the reading.
+   rest of the problems of the workflow, in the order of the file, are the error, as one `workflow.InvalidError`;
+   otherwise `err` stays: nil, the `workflow.InvalidError` of `Workflow.Valid`, or an error that stops the reading.
 3. The result is a `workflow.Loaded`, followed by `Valid`; one that is not valid fails with its error
    (`Loaded.Fail`).
 
@@ -48,10 +48,10 @@ with the domain:
 - `ReadWorkflow`: reads polix.yaml of the root through `internal/platform/file` and decodes it for the version of
   polix running; whether the file exists. A missing file has no workflow and no error; a file that cannot be read is
   the error. The decoding, in this order:
-  1. `requires`, read before the rest: a release of polix older than it is a `workflow.TooOld`, which an older
+  1. `requires`, read before the rest: a release of polix older than it is a `workflow.TooOldError`, which an older
      polix reports instead of the options it does not know; a development build is never too old.
   2. Broken YAML is the error, with the file (`polix.yaml: ...`).
-  3. An unknown top level key (not one of `workflow.TopKeys`) is a `workflow.UnknownKey`, with the new spelling of
+  3. An unknown top level key (not one of `workflow.TopKeys`) is a `workflow.UnknownKeyError`, with the new spelling of
      a key of the old vocabulary.
   4. The decoding types of `out_workflow.go` (`workflowYAML` and the type of each section, entry and verb), with the
      `UnmarshalYAML` of `out_unmarshal.go`, decode the rest: the short and long forms of each verb, the keys each

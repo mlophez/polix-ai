@@ -22,8 +22,7 @@ func checkExportedFields(m *module) []string {
 			if !ok || g.Tok != token.TYPE {
 				continue
 			}
-			for _, s := range g.Specs {
-				t := s.(*ast.TypeSpec)
+			for _, t := range typeSpecs(g) {
 				st, ok := t.Type.(*ast.StructType)
 				if !ok || !t.Name.IsExported() {
 					continue

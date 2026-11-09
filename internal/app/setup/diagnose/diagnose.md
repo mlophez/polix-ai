@@ -51,18 +51,19 @@ and of polix.yaml (`internal/app/workflow/load`) that `cmd/polix` builds once an
 - `LoadCache`, `SaveCache` and `Latest`: the cache of `polix update`, loaded through the loader of the cache and
   saved with the unexported type `cacheJSON` of `out.go`, the shape the loader decodes, and the releases
   (`POLIX_RELEASES_URL`), within 5 seconds.
-- `OpenRepo`, `LoadWorkflow` (through the loader of polix.yaml: the workflow, whether it exists and the error of
-  loading it), `LoadRules` (through the loader of the rules: every rule, the problems of the invalid ones and the
-  error of a file that cannot be read), `Missing`, `Runnable` (a check that exists but is not
-  executable; on Windows, without its interpreter), `ResolveBase` and `WriteState`.
-- `ClaudeHooks` and `CodexHooks`: the settings of Claude Code and the hooks files of Codex that exist, decoded
-  (`agentconf.ParseHooks`, for which an empty file is not JSON, and `agentconf.ReadHooks`, for which it has no
-  hooks) into `setup.HooksFile`: the groups of hooks that run a command, or why the file cannot be read or is not
-  JSON.
+- `OpenRepo` and `WriteState`.
+- `LoadWorkflow`: through the loader of polix.yaml, the workflow, whether it exists and the error of loading it;
+  and why none of its base branches exists in the repository, asked to git.
+- `LoadRules`: through the loader of the rules, a `rule.Loaded` (every rule, the problems of the invalid ones and
+  the error of a file that cannot be read); and, by the check of each rule that has one, whether its file is
+  missing and why it cannot run (a check that exists but is not executable; on Windows, without its interpreter).
+- `HooksFiles`: the hooks files of an agent that exist, the settings of Claude Code or the hooks files of Codex,
+  decoded (`agentconf.ParseHooks`, for which an empty file is not JSON, and `agentconf.ReadHooks`, for which it has
+  no hooks) into `setup.HooksFile`: the groups of hooks that run a command, or why the file cannot be read or is
+  not JSON.
 - `CodexEnabled`: whether `~/.codex/config.toml` enables the plugin (`agentconf.CodexEnabled`).
-- `ReadManifest`: the version of the manifest of the plugin in the marketplace, and whether it is the plugin polix
-  (`agentconf.ReadManifest`).
-- `Plugin`: the plugin embedded in the binary.
+- `Plugin`: the plugin embedded in the binary, with the version of the manifest of the plugin in the marketplace
+  and whether it is the plugin polix (`agentconf.ReadManifest`).
 - `ClaudePlugin`: `claude plugin list --json`, read by the decoding type of the adapter: whether polix is installed
   for the user, enabled, and the folder it is read from; `setup.ErrNoCLI` without the CLI.
 

@@ -76,7 +76,7 @@ func (e Entry) Valid() error {
 	v := &validator{}
 	v.entry("", e)
 	if len(v.problems) > 0 {
-		return Invalid(v.problems)
+		return InvalidError(v.problems)
 	}
 	return nil
 }
@@ -86,7 +86,7 @@ func (a Action) Valid() error {
 	v := &validator{}
 	v.action("", 0, a, false)
 	if len(v.problems) > 0 {
-		return Invalid(v.problems)
+		return InvalidError(v.problems)
 	}
 	return nil
 }
@@ -120,7 +120,7 @@ func (r Run) Valid() error {
 	v := &validator{}
 	v.run(0, r)
 	if len(v.problems) > 0 {
-		return Invalid(v.problems)
+		return InvalidError(v.problems)
 	}
 	return nil
 }
@@ -130,7 +130,7 @@ func (c Inject) Valid() error {
 	v := &validator{}
 	v.inject("", 0, c)
 	if len(v.problems) > 0 {
-		return Invalid(v.problems)
+		return InvalidError(v.problems)
 	}
 	return nil
 }
@@ -140,7 +140,7 @@ func (b Block) Valid() error {
 	v := &validator{}
 	v.block("", 0, b)
 	if len(v.problems) > 0 {
-		return Invalid(v.problems)
+		return InvalidError(v.problems)
 	}
 	return nil
 }

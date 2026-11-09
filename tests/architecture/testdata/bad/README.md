@@ -37,5 +37,6 @@ Conventions:
 - GOARCH-44 reads the domain files: `order/order_events.go` holds an `init` and a package variable whose value is a
   function, and `stock/stock_units.go` is its good case, a method on the named type `Stock`, with
   `stock/stock_units_test.go` proving that the test files are left out.
+- GOARCH-45 reads the signature of `Decide`: `stock/drop/logic.go` takes five parameters.
 - GO-4 has its own module, `testdata/limits`, since golangci-lint needs one that compiles: `limits.go` breaks the
   three limits once each and `limits_test.go` breaks them too without being reported.

@@ -25,9 +25,9 @@ type UI struct {
 	w io.Writer
 }
 
-// ExitCode is the error of a command that already told the user why it failed: it only carries the exit code,
+// ExitCodeError is the error of a command that already told the user why it failed: it only carries the exit code,
 // and Run prints nothing for it.
-type ExitCode int
+type ExitCodeError int
 
 // Levels of a line of Status.
 const (
@@ -101,14 +101,14 @@ func Code(s string) string { return styleCode.Render(s) }
 // OKText styles a word of a line as something that went well, in the color of OK.
 func OKText(s string) string { return styleOK.Render(s) }
 
-func (e ExitCode) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
+func (e ExitCodeError) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
 
-// Exit turns the exit code of a command into its error: nil for 0, else an ExitCode.
+// Exit turns the exit code of a command into its error: nil for 0, else an ExitCodeError.
 func Exit(code int) error {
 	if code == 0 {
 		return nil
 	}
-	return ExitCode(code)
+	return ExitCodeError(code)
 }
 
 // DirFlag adds --dir (-C), the repository a command works on, with def as its default.
@@ -130,7 +130,7 @@ func Root(use, short, long, example string) *cobra.Command {
 }
 
 // Run executes root with args (without the program name) over stdin, stdout and stderr, with the styles of fang
-// and the version of build.Current, and returns the exit code: 0, the code of an ExitCode, or 1 for any other
+// and the version of build.Current, and returns the exit code: 0, the code of an ExitCodeError, or 1 for any other
 // error, printed in one line. A nil stdin reads os.Stdin.
 func Run(root *cobra.Command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if stdin == nil {
@@ -148,17 +148,17 @@ func Run(root *cobra.Command, args []string, stdin io.Reader, stdout, stderr io.
 	if err == nil {
 		return 0
 	}
-	if code, ok := errors.AsType[ExitCode](err); ok {
+	if code, ok := errors.AsType[ExitCodeError](err); ok {
 		return int(code)
 	}
 	return 1
 }
 
 // errorHandler prints the error of a command of the program name in one line, so scripts and agents can read
-// it; an ExitCode was already explained by the command.
+// it; an ExitCodeError was already explained by the command.
 func errorHandler(name string) fang.ErrorHandler {
 	return func(w io.Writer, _ fang.Styles, err error) {
-		if _, ok := errors.AsType[ExitCode](err); ok {
+		if _, ok := errors.AsType[ExitCodeError](err); ok {
 			return
 		}
 		fmt.Fprintf(w, "%s %s\n", styleFail.Render(name+":"), err)

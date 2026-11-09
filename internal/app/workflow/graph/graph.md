@@ -59,7 +59,7 @@ prints the flowchart to stdout and exits with 0; without polix.yaml it fails wit
 
 - `LoadWorkflow`: loads polix.yaml through the field `Workflow` of the adapter, the loader of `LoadWorkflow`
   (`internal/app/workflow/load`) that `cmd/polix` builds once and passes to `Command`, and tells whether it exists;
-  without it, the default workflow. The problems of a workflow that parses (`workflow.Invalid`) are not an error:
+  without it, the default workflow. The problems of a workflow that parses (`workflow.InvalidError`) are not an error:
   the workflow is drawn as it is.
 
 ## Errors

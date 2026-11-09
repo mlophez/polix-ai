@@ -149,9 +149,9 @@ func (e Evaluation) Note(output string, err error) Evaluation {
 
 // Running returns the evaluation for the polix of version running: when the problems of its workflow may be options
 // of a newer polix than running, Invalid carries a hint, so the agent updates polix instead of removing them. A
-// workflow that requires a newer polix stays a workflow.TooOld, and a usable one stays usable.
+// workflow that requires a newer polix stays a workflow.TooOldError, and a usable one stays usable.
 func (e Evaluation) Running(running string) Evaluation {
-	var old workflow.TooOld
+	var old workflow.TooOldError
 	if e.Invalid == nil || errors.As(e.Invalid, &old) || !e.mayNeedNewer() {
 		return e
 	}

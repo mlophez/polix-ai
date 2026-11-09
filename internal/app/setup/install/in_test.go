@@ -76,6 +76,14 @@ func TestShell(t *testing.T) {
 	}
 }
 
+// Without the running version there is no setup: nothing is asked nor written.
+func TestShellWithoutVersion(t *testing.T) {
+	port := &fakePort{}
+	if _, err := run(context.Background(), port, Request{}); err == nil || len(port.calls) != 0 {
+		t.Fatalf("%v %v", err, port.calls)
+	}
+}
+
 func TestParseAgents(t *testing.T) {
 	req := Request{Version: "1"}
 	if err := req.parseAgents([]string{" Claude", "codex", "claude"}); err != nil ||

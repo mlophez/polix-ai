@@ -178,7 +178,7 @@ func (r *pass) reminded(e workflow.Entry) bool {
 func (r *pass) unusable() (problems, reason string, tooOld bool) {
 	problems = r.ev.Invalid.Error()
 	reason = "polix: el workflow no es válido; corrígelo y ejecuta polix config check.\n" + problems
-	var old workflow.TooOld
+	var old workflow.TooOldError
 	if !errors.As(r.ev.Invalid, &old) {
 		return problems, reason, false
 	}

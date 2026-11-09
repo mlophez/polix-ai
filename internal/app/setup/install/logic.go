@@ -13,25 +13,18 @@ type Output struct {
 	HooksFiles   []string     // the hooks files of the repository, one per agent; none without a repository
 }
 
-// Decide decides what polix install writes for the polix of version running: the plugin of the user below
-// home, for the agents asked or else Claude Code alone, since Codex is set up only when asked; and the hooks of each
-// agent in the repository of root, when there is one. embedded is the plugin of the binary.
-func Decide(home, root string, asked []string, running string, embedded map[string][]byte) Output {
-	agents := asked
-	if len(agents) == 0 {
-		agents = []string{setup.Claude}
-	}
-	s := setup.Setup{Home: home, Root: root, Agents: agents, Version: running}
-	if err := s.Valid(); err != nil {
-		return Output{Failure: err.Error()}
-	}
-	p := setup.Plugin{Embedded: embedded, Version: running}
+// Decide decides what polix install writes for the setup asked: the plugin of the user below its home, for its
+// agents or else Claude Code alone, since Codex is set up only when asked; and the hooks of each agent in the
+// repository of its root, when there is one. embedded is the plugin of the binary, of the version of the setup.
+func Decide(asked setup.Setup, embedded map[string][]byte) Output {
+	s := asked.Defaulted(setup.Claude)
+	p := setup.Plugin{Embedded: embedded, Version: s.Version}
 	if err := p.Valid(); err != nil {
 		return Output{Failure: err.Error()}
 	}
 	var hooksFiles []string
-	for _, a := range agents {
-		if root != "" {
+	for _, a := range s.Agents {
+		if s.Root != "" {
 			hooksFiles = append(hooksFiles, s.HooksFile(a))
 		}
 	}

@@ -65,7 +65,8 @@ func TestDecide(t *testing.T) {
 			message: "polix dev is a development build: run polix update --version 0.1.0 to install 0.1.0"},
 	}
 	for _, c := range cases {
-		got := Decide(c.running, c.want, "/bin/polix", c.check, c.hook, c.disabled, c.due, c.latest, c.failed)
+		got := Decide(version.Update{Running: c.running, Want: c.want, Exe: "/bin/polix", Check: c.check, Hook: c.hook,
+			Disabled: c.disabled}, c.due, c.latest, c.failed)
 		switch {
 		case c.failure != "" || c.message != "":
 			if !strings.Contains(got.Failure, c.failure) || !strings.Contains(got.Message, c.message) ||
@@ -83,16 +84,16 @@ func TestDecide(t *testing.T) {
 func TestOutputFailures(t *testing.T) {
 	broken := errors.New("checksum does not match")
 	replace := fmt.Errorf("%w: permission denied", version.ErrReplace)
-	hook := Decide("0.1.0", "", "/bin/polix", false, true, false, true, "0.2.0", nil)
+	hook := Decide(version.Update{Running: "0.1.0", Exe: "/bin/polix", Hook: true}, true, "0.2.0", nil)
 	if !hook.Record(broken) || hook.Record(nil) || !hook.RefreshAfter(nil) || !hook.RefreshAfter(broken) ||
 		hook.RefreshAfter(replace) {
 		t.Fatalf("hook: %+v", hook)
 	}
-	person := Decide("0.1.0", "", "/bin/polix", false, false, false, true, "0.2.0", nil)
+	person := Decide(version.Update{Running: "0.1.0", Exe: "/bin/polix"}, true, "0.2.0", nil)
 	if person.Record(broken) || !person.RefreshAfter(nil) || person.RefreshAfter(broken) {
 		t.Fatalf("person: %+v", person)
 	}
-	disabled := Decide("0.1.0", "", "/bin/polix", false, true, true, true, "", nil)
+	disabled := Decide(version.Update{Running: "0.1.0", Exe: "/bin/polix", Hook: true, Disabled: true}, true, "", nil)
 	if disabled.Record(broken) || disabled.RefreshAfter(nil) {
 		t.Fatalf("disabled: %+v", disabled)
 	}

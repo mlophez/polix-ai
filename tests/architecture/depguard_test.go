@@ -109,7 +109,10 @@ func depguardFindings(t *testing.T, at, rule string) []string {
 func mustLint(t *testing.T, at string, linters ...string) []string {
 	t.Helper()
 	v, _ := linted.LoadOrStore(at+"\x00"+strings.Join(linters, ","), &lintRun{})
-	run := v.(*lintRun)
+	run, ok := v.(*lintRun)
+	if !ok {
+		t.Fatalf("the lint of %s is a %T", at, v)
+	}
 	run.once.Do(func() { run.found, run.err = lint(at, linters...) })
 	if run.err != nil {
 		t.Fatal(run.err)

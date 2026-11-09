@@ -311,7 +311,7 @@ func runCommand(t *testing.T, args ...string) (int, string, string) {
 	code := 0
 	if err := c.ExecuteContext(context.Background()); err != nil {
 		code = 1
-		if exit, ok := errors.AsType[cli.ExitCode](err); ok {
+		if exit, ok := errors.AsType[cli.ExitCodeError](err); ok {
 			code = int(exit)
 		}
 	}
