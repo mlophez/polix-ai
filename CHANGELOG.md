@@ -7,6 +7,14 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Fixed
+
+- A commit in another repository, as `git -C ../other commit` run from a session in this one, no longer fires the
+  entries of `pre_commit` of this repository; `protected_files` and `forbidden_commands` still apply to it.
+  Only a line of plain `git [-C <folder>] add|commit` commands, with nothing the shell expands, whose commit folders
+  are inside another existing repository counts as such; anything else, a linked worktree of this repository
+  included, keeps the gates.
+
 ## [0.1.0] - 2026-11-08
 
 The first public release: declarative guardrails for Claude Code, where one `polix.yaml` decides what the agent may

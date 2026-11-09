@@ -147,6 +147,11 @@ func (a *AnswerHookAdapter) Real(_ context.Context, paths []string) []string {
 	return out
 }
 
+// Foreign reports whether the absolute folder dir is inside an existing git repository other than this one.
+func (a *AnswerHookAdapter) Foreign(ctx context.Context, dir string) bool {
+	return a.Repo.Foreign(ctx, dir)
+}
+
 // Read returns the content of a file of the repository.
 func (a *AnswerHookAdapter) Read(_ context.Context, path string) (string, error) {
 	data, err := os.ReadFile(filepath.Join(a.Repo.Root, filepath.FromSlash(path)))

@@ -67,6 +67,9 @@ type AnswerHookPort interface {
 	Ignored(ctx context.Context, path string) bool
 	// Real returns the real path of each of paths, symlinks resolved, in the same order.
 	Real(ctx context.Context, paths []string) []string
+	// Foreign reports whether the absolute folder dir is inside an existing git repository other than this one, a
+	// linked worktree of this one excluded.
+	Foreign(ctx context.Context, dir string) bool
 	// Contains reports whether a file of the working tree git does not ignore, matching one of the patterns, holds
 	// text.
 	Contains(ctx context.Context, patterns []string, text string) bool
@@ -190,6 +193,8 @@ func answerHook(ctx context.Context, port AnswerHookPort, req AnswerHookRequest)
 				ev = ev.KnowIgnored(s.Ignored, port.Ignored(ctx, s.Ignored))
 			case s.Real != nil:
 				ev = ev.KnowReal(s.Real, port.Real(ctx, s.Real))
+			case s.Foreign != "":
+				ev = ev.KnowForeign(s.Foreign, port.Foreign(ctx, s.Foreign))
 			case s.Contains != nil:
 				ev = ev.KnowFound(s.Epoch, s.Contains, s.Text, port.Contains(ctx, s.Contains, s.Text))
 			case s.Read != "":

@@ -20,7 +20,7 @@
 #    the repository skips them.
 # 4. Edits outside the repository and edits of files git ignores skip the entries of `on`: they govern the change,
 #    what a commit may hold, so a build output, a local .env or a scratch file never fires a ticket, plan, format or
-#    docs entry.
+#    docs entry. A commit in another repository (git -C ../other commit) skips the entries of pre_commit too.
 # 5. The entries of the event run in order, first those the other shortcuts of `guardrails` expand into, then those
 #    written in `on`; each one whose `when` holds and whose `unless` does not hold carries out its action. The first
 #    one that actually blocks ends the evaluation (see `on` below).
@@ -285,7 +285,8 @@ on:
   #
   # The entries of `on` skip the edits outside the repository and of files git ignores: they govern the change, what
   # a commit may hold, so a build output, a local .env or a scratch file never fires them. Only the built-in
-  # protection, protected_files and forbidden_commands reach an ignored file.
+  # protection, protected_files and forbidden_commands reach an ignored file. A commit in another repository
+  # (git -C ../other commit) skips the entries of pre_commit the same way.
   #
   # The first entry that actually blocks (a block, or a failing run on an event where a run blocks, not let through
   # by the loop guard) ends the evaluation of the event: the entries after it do not run, and those before it already

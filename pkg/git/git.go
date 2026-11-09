@@ -326,6 +326,50 @@ func (r *Repo) Files(ctx context.Context) ([]string, error) {
 	return list, nil
 }
 
+// Foreign reports whether the folder dir is inside an existing git repository other than this one: its git common
+// directory, its objects and its refs are each another file than ours, compared by identity (os.SameFile), so a
+// linked worktree of this repository, another spelling of its path or a repository whose objects or refs link into
+// ours is not foreign. A folder that does not exist, is in no repository or that git cannot read is not foreign
+// either. Like Branch, it runs detached from the cancellation of ctx, since an error reads as not foreign.
+func (r *Repo) Foreign(ctx context.Context, dir string) bool {
+	ctx = context.WithoutCancel(ctx)
+	ours, err := storage(ctx, r.Root)
+	if err != nil {
+		return false
+	}
+	theirs, err := storage(ctx, dir)
+	if err != nil {
+		return false
+	}
+	for i := range ours {
+		if os.SameFile(ours[i], theirs[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// storage returns the git common directory, the objects and the refs of the repository that holds dir. git gives
+// them absolute: a relative answer joined to dir would undo a `..` that git took through a link.
+func storage(ctx context.Context, dir string) ([]fs.FileInfo, error) {
+	out, err := run(ctx, dir, nil, "rev-parse", "--path-format=absolute", "--git-common-dir", "--git-path", "objects",
+		"--git-path", "refs")
+	if err != nil {
+		return nil, err
+	}
+	paths := strings.Split(out, "\n")
+	if len(paths) != 3 {
+		return nil, fmt.Errorf("git rev-parse gave %d paths, want 3", len(paths))
+	}
+	infos := make([]fs.FileInfo, len(paths))
+	for i, p := range paths {
+		if infos[i], err = os.Stat(strings.TrimSpace(p)); err != nil {
+			return nil, err
+		}
+	}
+	return infos, nil
+}
+
 // Ignored reports whether the repository relative path is ignored by git; tracked files never are. Like Branch,
 // it runs detached from the cancellation of ctx, since an error would read as not ignored.
 func (r *Repo) Ignored(ctx context.Context, rel string) bool {

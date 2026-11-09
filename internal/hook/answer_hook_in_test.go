@@ -29,7 +29,8 @@ type answerHookFakePort struct {
 	diffErr   error
 	treeErr   error
 	state     state.State
-	trees     []string // the paths TreeDiff gives
+	trees     []string        // the paths TreeDiff gives
+	foreign   map[string]bool // the folders inside another git repository
 	rules     []rule.Rule
 	calls     []string
 	appended  []state.Entry
@@ -102,6 +103,11 @@ func (p *answerHookFakePort) Ignored(context.Context, string) bool { return fals
 
 func (p *answerHookFakePort) Real(_ context.Context, paths []string) []string { return paths }
 
+func (p *answerHookFakePort) Foreign(_ context.Context, dir string) bool {
+	p.calls = append(p.calls, "Foreign "+filepath.ToSlash(dir))
+	return p.foreign[dir]
+}
+
 func (p *answerHookFakePort) Contains(_ context.Context, _ []string, text string) bool {
 	p.calls = append(p.calls, "Contains "+text)
 	return text == "Ticket: PLAT-1"
@@ -151,6 +157,24 @@ func TestAnswerHookMergesEvents(t *testing.T) {
 	}
 	if res.Code != 2 || res.Stderr != "no\n" || len(port.appended) != 2 {
 		t.Fatalf("response %+v, appended %+v", res, port.appended)
+	}
+}
+
+// A commit the shell confirms through the port as one of another repository skips the entries of pre_commit; one
+// it does not confirm meets them.
+func TestAnswerHookCommitInAnotherRepository(t *testing.T) {
+	yaml := "version: 1\non:\n  pre_commit:\n    - action: { block: \"no\" }\n"
+	other := filepath.FromSlash("/other")
+	for foreign, code := range map[bool]int{true: 0, false: 2} {
+		port := &answerHookFakePort{yaml: yaml, foreign: map[string]bool{other: foreign}}
+		res, err := answerHook(context.Background(), port, answerHookClaude(
+			`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git -C /other commit -m x"}}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Code != code || !slices.Contains(port.calls, "Foreign /other") {
+			t.Errorf("foreign %v: response %+v, calls %q", foreign, res, port.calls)
+		}
 	}
 }
 

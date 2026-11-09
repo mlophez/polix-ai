@@ -57,6 +57,7 @@ type Facts struct {
 	StateAt    int // the steps of the journal that acted before the log was read: their entries are in it
 	Ignored    map[string]bool
 	Reals      map[string]string
+	Foreign    map[string]bool   // per absolute folder, whether it is inside another git repository
 	Contents   map[string]string // per epoch and path, see contentKey
 	Unreadable map[string]bool   // per epoch and path, see contentKey
 	Searches   map[string]bool   // per epoch, patterns and text: whether a matching file holds the text
@@ -144,6 +145,12 @@ func (e Evaluation) KnowIgnored(path string, ignored bool) Evaluation {
 // KnowReal returns the evaluation knowing the real path of each of paths, in the same order.
 func (e Evaluation) KnowReal(paths, reals []string) Evaluation {
 	e.Facts = e.Facts.learnReal(paths, reals)
+	return e
+}
+
+// KnowForeign returns the evaluation knowing whether the absolute folder dir is inside another git repository.
+func (e Evaluation) KnowForeign(dir string, foreign bool) Evaluation {
+	e.Facts = e.Facts.learnForeign(dir, foreign)
 	return e
 }
 
@@ -321,6 +328,14 @@ func (f Facts) learnReal(paths, reals []string) Facts {
 		}
 	}
 	f.Reals = m
+	return f
+}
+
+func (f Facts) learnForeign(dir string, foreign bool) Facts {
+	m := make(map[string]bool, len(f.Foreign)+1)
+	maps.Copy(m, f.Foreign)
+	m[dir] = foreign
+	f.Foreign = m
 	return f
 }
 

@@ -23,6 +23,7 @@ type Step struct {
 	State    bool     // the log of polix
 	Ignored  string   // whether git ignores this path, relative to the root
 	Real     []string // the real paths of these absolute paths, symlinks resolved
+	Foreign  string   // whether this absolute folder is inside an existing git repository other than this one
 	Contains []string // whether a file matching these patterns holds Text, at Epoch
 	Text     string
 	Read     string       // the content of this file, relative to the root with slashes, at Epoch
@@ -42,7 +43,7 @@ type Outcome struct {
 func (s Step) Valid() error {
 	n := 0
 	for _, asks := range []bool{s.Branch, s.Hash, s.Changed, s.Diff, s.Files, s.Rules, s.State, s.Ignored != "",
-		s.Real != nil, s.Contains != nil, s.Read != "", s.Run != nil, s.Check != nil, s.Append != nil,
+		s.Real != nil, s.Foreign != "", s.Contains != nil, s.Read != "", s.Run != nil, s.Check != nil, s.Append != nil,
 		s.Compare != ""} {
 		if asks {
 			n++
@@ -66,8 +67,8 @@ func (s Step) Valid() error {
 // None reports whether the step asks for nothing: the answer is ready.
 func (s Step) None() bool {
 	return !s.Branch && !s.Hash && !s.Changed && !s.Diff && !s.Files && !s.Rules && !s.State && s.Ignored == "" &&
-		s.Real == nil && s.Contains == nil && s.Read == "" && s.Run == nil && s.Check == nil && s.Append == nil &&
-		s.Compare == ""
+		s.Real == nil && s.Foreign == "" && s.Contains == nil && s.Read == "" && s.Run == nil && s.Check == nil &&
+		s.Append == nil && s.Compare == ""
 }
 
 // Valid tells why the outcome is not one: it never is, any output and error may come from a step.

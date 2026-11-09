@@ -161,10 +161,10 @@ func (r *answerHookRun) act(s Step, valid error) Outcome {
 }
 
 // protect applies the protections that come before the entries of the workflow and before the skip of the edits
-// outside the change, and reports whether one denied the event, logged with where it comes from: nobody edits the
-// state of polix, whatever the workflow says, also without one or with an invalid one; and, with a valid workflow,
-// no actor, the main session included, writes a path of guardrails.protected_files, also when git ignores it, nor
-// runs a command of guardrails.forbidden_commands, wherever it comes in the line. Reading is always allowed.
+// and commits outside the change, and reports whether one denied the event, logged with where it comes from: nobody
+// edits the state of polix, whatever the workflow says, also without one or with an invalid one; and, with a valid
+// workflow, no actor, the main session included, writes a path of guardrails.protected_files, also when git ignores
+// it, nor runs a command of guardrails.forbidden_commands, wherever it comes in the line. Reading is always allowed.
 func (r *answerHookRun) protect() (agent.Answer, bool) {
 	ev, fold := r.ev.Event, r.ev.Fold()
 	var wf workflow.Workflow
@@ -268,13 +268,51 @@ func (r *answerHookRun) invalid() agent.Answer {
 }
 
 // outsideChange reports an edit outside the repository (scratchpad, memory, another repository) or of a file
-// git ignores: it is not part of the change, so the workflow does not apply to it.
+// git ignores, and a pre_commit whose commits all happen in another repository (`git -C ../other
+// commit`): they are not part of the change, so the workflow does not apply to them.
 func (r *answerHookRun) outsideChange() bool {
 	ev := r.ev.Event
+	if ev.Name == workflow.PreCommit {
+		return r.commitsOutside()
+	}
 	if !ev.Edits() {
 		return false
 	}
 	return ev.Outside || r.ignored(ev.Path)
+}
+
+// commitsOutside reports whether every commit of the command of the event happens in another repository:
+// CommitDirs places the line, and each folder is outside the root, symlinks resolved, and inside an existing git
+// repository other than this one, a linked worktree of this one excluded. Anything less keeps the workflow.
+func (r *answerHookRun) commitsOutside() bool {
+	root := r.ev.Root
+	dirs, placed := CommitDirs(r.ev.Event.Command, r.ev.Event.Cwd, root, r.ev.Windows())
+	if !placed {
+		return false
+	}
+	reals := r.reals(append([]string{root}, dirs...)...)
+	if r.waiting() {
+		return false
+	}
+	for _, d := range dirs {
+		if Within(reals[root], reals[d], r.ev.Fold()) {
+			return false
+		}
+		if foreign := r.foreign(d); r.waiting() || !foreign {
+			return false
+		}
+	}
+	return true
+}
+
+// foreign reports whether the absolute folder dir is inside an existing git repository other than this one.
+func (r *answerHookRun) foreign(dir string) bool {
+	if foreign, ok := r.ev.Facts.Foreign[dir]; ok {
+		return foreign
+	}
+	s := Step{Foreign: dir}
+	r.ask(s, s.Valid())
+	return false
 }
 
 // apply carries out the verb of the action of a matching entry and reports whether the evaluation of the event

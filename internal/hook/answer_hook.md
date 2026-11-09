@@ -55,10 +55,10 @@ read after it are those of a new epoch, read again.
 
 The rules it follows, as before this use case:
 
-1. Protections, before the entries of the workflow and before the skip of the edits outside the change (rule 3);
-   the first one that denies ends the evaluation. Whatever the workflow says and also without one or with an invalid
-   one, nobody edits the state of polix (`<git-dir>/polix`, by its real path, without case where file names ignore
-   it) nor runs a command that may write and names it, logged as `builtin`. With a valid polix.yaml, no actor, the
+1. Protections, before the entries of the workflow and before the skip of the edits and commits outside the change
+   (rule 3); the first one that denies ends the evaluation. Whatever the workflow says and also without one or with
+   an invalid one, nobody edits the state of polix (`<git-dir>/polix`, by its real path, without case where file
+   names ignore it) nor runs a command that may write and names it, logged as `builtin`. With a valid polix.yaml, no actor, the
    main session included, writes a path of `guardrails.protected_files` (`workflow.Workflow.ProtectedFiles`, matched
    with `AnyPathFold`), also when git ignores it but never on an edit outside the repository, by an edit, a
    redirection or a program that writes the files it names (`rm`, `mv`, `cp`, `sed -i`...), its folders and
@@ -75,10 +75,17 @@ The rules it follows, as before this use case:
    workflow or update polix; any other event only warns, so a stop is never blocked. Problems that may come from a
    newer polix hint to run `polix update` (`Unusable`); a name of the old vocabulary, reported with its new
    spelling, does not.
-3. Without polix.yaml, and for an edit outside the repository or of a file git ignores, only the protections apply:
-   the entries govern the change, what a commit may hold, so a build output or a local `.env` never fires them. The
-   other shortcuts of `guardrails` (`protected_branches`, `format_on_edit`, `run_before_done`) reach the hook
-   already expanded into entries (`workflow.Entry.From` names the shortcut), before those written in `on`.
+3. Without polix.yaml, for an edit outside the repository or of a file git ignores, and for a `pre_commit` whose
+   commits all happen in another repository (`git -C ../other commit`), only the protections apply: the
+   entries govern the change, what a commit may hold, so a build output, a local `.env` or a commit in another
+   repository never fires them. The proof is a strict allowlist: `CommitDirs` places the line only when every
+   command of it is `git [-C dir]... add|commit` and bash expands nothing in it (`placeable`); each commit folder is
+   the cwd after its -C options joined without cleaning, so its real path and `Step.Foreign` resolve a `..` after a
+   link as git does. The hook skips only when every folder is outside the root, symlinks resolved, and inside
+   another existing repository (`Step.Foreign`, a linked worktree of this one excluded). Anything else is a commit
+   of this repository. The other shortcuts of `guardrails` (`protected_branches`, `format_on_edit`,
+   `run_before_done`) reach the hook already expanded into entries (`workflow.Entry.From` names the shortcut),
+   before those written in `on`.
 4. On `start`, the session context (`workflow.Workflow.SessionContext`) is injected as one context first,
    so the contexts of the entries come after it: the template `templates/session_start.md.tmpl` rendered with the
    switches of `guidance` turned on in polix.yaml (commit, edit, layout) and the folders of `rules.path`,
@@ -197,6 +204,10 @@ take it; `Stderr`, the reasons and contexts of a block, else one `polix: <warnin
   `retired.yaml` left out, ordered by id.
 - `LoadState`: the log through `pkg/jsonl`, the lines over `state.MaxLine` skipped and counted.
 - `Real`: the real path of each path.
+- `Foreign`: whether a folder is inside an existing git repository other than this one (`git.Repo.Foreign`: its git
+  common directory, objects and refs are each another file than ours by `os.SameFile`, so a linked worktree of this
+  one or a repository linking into ours is not); an error reads as not, so it runs detached from the cancellation
+  of the caller.
 - `Contains`: whether a file git does not ignore, matching the patterns of a `file` condition, holds the text of
   its `contains`; one step per search and epoch, the contents never leave the adapter.
 - `Read`: the content of a file of the repository.
@@ -234,8 +245,8 @@ The failure policy of the hook, so a broken polix never traps the agent:
 4. For each event, it locates the path of an edit through the port and builds its `Evaluation` with the facts the
    previous event left; then it loops from one call site: it asks `AnswerHook` for the next step, carries it out
    through the port and feeds the result back to the evaluation (`Know*` for a fact, `Note` for an outcome), until
-   the step is none. Each pass walks the protections, whether git ignores an edited path, and the entries, in that
-   order (Logic, rules 1 to 5).
+   the step is none. Each pass walks the protections, whether git ignores an edited path or where the commits of a
+   `pre_commit` land, and the entries, in that order (Logic, rules 1 to 5).
 5. It merges the answers of the events (`agent.Answer.Merge`) and renders them for the agent
    (`agent.Agent.Render`) into the `AnswerHookResponse`.
 6. `AnswerHookCommand` writes stdout and stderr and exits with the code.

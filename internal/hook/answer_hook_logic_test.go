@@ -31,10 +31,12 @@ type answerHookFacts struct {
 	diff      diff.Diff
 	diffErr   error
 	rules     []rule.Rule
-	found     bool            // whether a file holds the text of a search
-	trees     []string        // the paths that differ between two trees
-	treeErr   error           // why two trees cannot be compared
-	ignored   map[string]bool // the paths git ignores
+	found     bool              // whether a file holds the text of a search
+	trees     []string          // the paths that differ between two trees
+	treeErr   error             // why two trees cannot be compared
+	ignored   map[string]bool   // the paths git ignores
+	reals     map[string]string // the real path of a path, when it differs from the path
+	foreign   map[string]bool   // the folders inside another git repository
 
 	// checkFails, when set, decides each check instead of runErr: it fails when it covers one of these rules
 	checkFails map[string]bool
@@ -79,7 +81,16 @@ func answerHookWalk(t *testing.T, ev Evaluation, f answerHookFacts) (AnswerHookO
 		case s.Ignored != "":
 			ev = ev.KnowIgnored(s.Ignored, f.ignored[s.Ignored])
 		case s.Real != nil:
-			ev = ev.KnowReal(s.Real, s.Real)
+			reals := make([]string, len(s.Real))
+			for i, p := range s.Real {
+				reals[i] = p
+				if resolved, ok := f.reals[p]; ok {
+					reals[i] = resolved
+				}
+			}
+			ev = ev.KnowReal(s.Real, reals)
+		case s.Foreign != "":
+			ev = ev.KnowForeign(s.Foreign, f.foreign[s.Foreign])
 		case s.Contains != nil:
 			ev = ev.KnowFound(s.Epoch, s.Contains, s.Text, f.found)
 		case s.Read != "":
@@ -916,6 +927,42 @@ func TestAnswerHookProtectedBranches(t *testing.T) {
 		if block && !slices.Equal(out.Answer.Reasons, []string{want}) {
 			t.Errorf("%s: reasons %q", branch, out.Answer.Reasons)
 		}
+	}
+}
+
+// A commit in another repository (`git -C ../other commit`) is not part of the change: the pre_commit of this
+// workflow does not apply to it. A commit in a folder of the repository, or a line that also commits here, does.
+func TestAnswerHookCommitOutsideRepository(t *testing.T) {
+	ev := answerHookEval(t, "version: 1\nguardrails:\n  protected_branches: [main]\n", workflow.PreCommit)
+	// /other and /tmp/scratch are other repositories; /tmp/link is a link into this one; /tmp/wt is a linked worktree
+	// of it and /tmp/plain a folder in no repository, neither foreign.
+	// The folders come joined as written, uncleaned; ../other from /repo is /repo/../other.
+	foreign := map[string]bool{filepath.FromSlash("/repo/../other"): true, filepath.FromSlash("/tmp/scratch"): true}
+	reals := map[string]string{filepath.FromSlash("/tmp/link"): filepath.FromSlash("/repo/sub")}
+	for line, block := range map[string]bool{
+		"git -C ../other commit -m x":                              false,
+		"git -C /tmp/scratch add -A && git -C /tmp/scratch commit": false,
+		"git -C internal commit -m x":                              true,
+		"git -C /tmp/scratch commit && git commit -m x":            true,
+		`bash -c "git -C /tmp/scratch commit -m x"`:                true,
+		"git --git-dir=/repo/.git -C /tmp/scratch commit":          true,
+		"cd internal && git -C .. commit -m x":                     true,
+		"git -C /tmp/link commit -m x":                             true,
+		"git -C /tmp/wt commit -m x":                               true,
+		"git -C /tmp/plain commit -m x":                            true,
+	} {
+		e := answerHookWith(t, ev, func(e *agent.Event) { e.Command = line })
+		f := answerHookFacts{branch: "main", reals: reals, foreign: foreign}
+		if out, _ := answerHookWalk(t, e, f); out.Answer.Block != block {
+			t.Errorf("%s: block %v, want %v", line, out.Answer.Block, block)
+		}
+	}
+	// The protections still apply to a commit in another repository.
+	guarded := answerHookEval(t, "version: 1\nguardrails:\n  forbidden_commands:\n    - pattern: \"git*--no-verify*\"\n",
+		workflow.PreCommit)
+	guarded = answerHookWith(t, guarded, func(e *agent.Event) { e.Command = "git -C /tmp/scratch commit --no-verify" })
+	if out, _ := answerHookWalk(t, guarded, answerHookFacts{branch: "main", foreign: foreign}); !out.Answer.Block {
+		t.Errorf("a forbidden command in another repository passed: %+v", out.Answer)
 	}
 }
 

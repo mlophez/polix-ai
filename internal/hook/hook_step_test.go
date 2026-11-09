@@ -11,7 +11,7 @@ func TestStepValid(t *testing.T) {
 	if !(Step{}).None() || (Step{}).Valid() != nil {
 		t.Fatal("the zero step is none and valid")
 	}
-	for _, s := range []Step{{Branch: true}, {Hash: true, Epoch: 2}, {Ignored: "a"}, {Real: []string{"/a"}},
+	for _, s := range []Step{{Branch: true}, {Hash: true, Epoch: 2}, {Ignored: "a"}, {Real: []string{"/a"}}, {Foreign: "/a"},
 		{Read: "a", Epoch: 1}, {Run: []string{"ls"}}, {Append: &state.Entry{Kind: state.KindObserved}},
 		{Compare: "old", Tree: "new"}} {
 		if s.None() || s.Valid() != nil {

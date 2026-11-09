@@ -95,6 +95,49 @@ func gitRepo(t testing.TB) (dir string, git func(args ...string) string, write f
 	return dir, git, write
 }
 
+// Only a folder of another repository is foreign: not a folder of this one, a linked worktree of it, a folder outside
+// any repository nor a missing one.
+func TestForeign(t *testing.T) {
+	ctx := context.Background()
+	dir, git, write := gitRepo(t)
+	commit(git, write, "sub/a.txt")
+	wt := filepath.Join(t.TempDir(), "wt")
+	git("worktree", "add", "--quiet", "-b", "side", wt)
+	other, _, _ := gitRepo(t)
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for folder, want := range map[string]bool{filepath.Join(dir, "sub"): false, wt: false, other: true,
+		t.TempDir(): false, filepath.Join(other, "missing"): false} {
+		if got := r.Foreign(ctx, folder); got != want {
+			t.Errorf("Foreign(%s) = %v, want %v", folder, got, want)
+		}
+	}
+	// A `..` after a link into this repository is resolved through the link, as git resolves -C.
+	if err := os.Symlink(filepath.Join(dir, "sub"), filepath.Join(other, "link")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	sep := string(filepath.Separator)
+	if through := other + sep + "link" + sep + ".."; r.Foreign(ctx, through) {
+		t.Errorf("Foreign(%s) = true through a link into this repository", through)
+	}
+	// A repository whose objects and refs link into ours commits into ours: not foreign.
+	borrowed, _, _ := gitRepo(t)
+	for _, name := range []string{"objects", "refs"} {
+		p := filepath.Join(borrowed, ".git", name)
+		if err := os.RemoveAll(p); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(dir, ".git", name), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r.Foreign(ctx, borrowed) {
+		t.Errorf("Foreign(%s) = true for a repository whose objects and refs are ours", borrowed)
+	}
+}
+
 func commit(git func(args ...string) string, write func(string), rel string) {
 	write(rel)
 	git("add", "--all")

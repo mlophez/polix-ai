@@ -249,6 +249,94 @@ func nullDevice(target string, windows bool) bool {
 	return windows && strings.EqualFold(target, "nul")
 }
 
+// CommitDirs returns the folders where the commits of a command line commit, and whether the line can be placed at
+// all. It is a strict allowlist, so a caller keeps the workflow whenever it is false. The line holds none of the
+// characters with which bash expands, groups, escapes or comments (see unplaceable), and every command of it is
+// `git` itself, with no option but -C, running `add` or `commit` (aliases, wrappers, assignments and any other
+// subcommand, which may run programs, are not placed). Each -C folder is a literal path, no `~` and on Windows no
+// Git Bash path such as `/c/x`. Each commit is placed in cwd (the root without one) after its -C options, joined
+// without cleaning, so a `..` after a symlink is resolved as git resolves it: through the link.
+func CommitDirs(command, cwd, root string, windows bool) ([]string, bool) {
+	if !placeable(command) {
+		return nil, false
+	}
+	var out []string
+	for _, seg := range shell.Split(command) {
+		dir, commits, ok := parseCommand(seg.Text).gitPlace(cwd, root, windows)
+		if !ok {
+			return nil, false
+		}
+		if commits {
+			out = append(out, dir)
+		}
+	}
+	return out, len(out) > 0
+}
+
+// placeable reports whether bash runs the line as its words read: outside quotes, none of the characters with which
+// it expands, groups, redirects, escapes or comments (unquoted) nor a second line; inside double quotes, no `$`,
+// backtick or backslash, which still act there; inside single quotes, anything. An unclosed quote is not placeable.
+func placeable(line string) bool {
+	var quote rune
+	for _, r := range line {
+		switch {
+		case quote == '\'':
+			if r == '\'' {
+				quote = 0
+			}
+		case quote == '"':
+			if r == '"' {
+				quote = 0
+			} else if strings.ContainsRune("$`\\", r) {
+				return false
+			}
+		case r == '\'' || r == '"':
+			quote = r
+		case strings.ContainsRune(unquoted, r):
+			return false
+		}
+	}
+	return quote == 0
+}
+
+// unquoted are the characters CommitDirs refuses outside quotes: expansions ($, backtick, globs, braces, ~), groups
+// and process substitutions, redirections, comments, escapes and a second line.
+const unquoted = "$`*?[]{}()<>#\\\n~"
+
+// gitPlace places a command `git [-C dir]... add|commit ...`: the folder it runs in, cwd (the root without one)
+// after its -C options, and whether it commits. ok is false for any other command (see CommitDirs).
+func (c command) gitPlace(cwd, root string, windows bool) (dir string, commits, ok bool) {
+	ws := c.words
+	if len(ws) == 0 || ws[0] != "git" && ws[0] != "git.exe" {
+		return "", false, false
+	}
+	ws = ws[1:]
+	dir = cwd
+	if dir == "" {
+		dir = root
+	}
+	for len(ws) > 1 && ws[0] == "-C" {
+		raw, v := ws[1], filepath.FromSlash(ws[1])
+		ws = ws[2:]
+		switch {
+		case windows && (filepath.VolumeName(raw) == "" && (strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, `\`)) ||
+			len(raw) >= 2 && raw[1] == ':' && (len(raw) == 2 || raw[2] != '/' && raw[2] != '\\')):
+			// On Windows, a path rooted without a drive (a Git Bash /c/x, or \x on the current drive) or relative to
+			// the folder of a drive (C:x) is not placed.
+			return "", false, false
+		case v == "":
+		case filepath.IsAbs(v) || strings.HasPrefix(raw, "/"):
+			dir = v
+		default:
+			dir = dir + string(filepath.Separator) + v
+		}
+	}
+	if len(ws) == 0 || ws[0] != "add" && ws[0] != "commit" {
+		return "", false, false
+	}
+	return dir, ws[0] == "commit", true
+}
+
 // WritePaths returns the paths, absolute, that a command line may write, as Writes resolves them from cwd and the
 // root: the targets of its redirections and the files named by the programs that write by themselves. Their real
 // paths are what Writes needs, so a caller resolves them first.

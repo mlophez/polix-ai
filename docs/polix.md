@@ -212,6 +212,14 @@ Edits outside the repository (scratchpad, memory, another repository) and of fil
 the change: the entries do not apply to them. They govern the change, what a commit may hold, so a build output, a
 local `.env` or a scratch file never fires a ticket, plan, format or docs entry. The built-in protection applies to
 both, and `protected_files` to the edits of files git ignores.
+Likewise a commit in another repository, as `git -C ../other commit`, skips the entries of `pre_commit`, while
+`protected_files` and `forbidden_commands` still apply to it. polix takes a commit as one of another repository
+only through a strict allowlist: every command of the line is `git [-C <folder>]... add|commit ...`, with no
+other option, alias, wrapper or variable; outside quotes the line holds no `$`, backtick, glob, brace, `~`, parenthesis, redirection, `#` comment,
+backslash or second line, and inside double quotes no `$`, backtick or backslash; and the folder of each commit,
+the session folder after its `-C` options, is inside another existing repository, as git itself resolves it, whose
+git directory, objects and refs are not those of this repository (so a linked worktree of it is not another one).
+Any other commit counts as a commit of this repository.
 
 ### Protections
 
@@ -690,11 +698,11 @@ merged: the call blocks when any of them blocks, with the reasons of all of them
 
 For every event the [protections](#protections) come first, before any entry is read: the protection of the
 state, then, with a valid `polix.yaml`, `protected_files` and `forbidden_commands`, also on the edits of files git
-ignores; the first that denies ends the evaluation. Then, unless the edit is outside the change, the entries of the
-event run one after the other, in the order of the file, never in parallel. The shortcuts `protected_branches`,
-`format_on_edit` and `run_before_done` are already entries by then, before the entries written in `on` (see
-[Guardrails](#guardrails)). An entry whose `when` does not hold, or whose `unless` holds, is skipped; one that applies
-carries out the verb of its action, unless the repeat rules of [How often each verb acts](#how-often-each-verb-acts)
+ignores; the first that denies ends the evaluation. Then, unless the edit or commit is outside the change, the
+entries of the event run one after the other, in the order of the file, never in parallel. The shortcuts
+`protected_branches`, `format_on_edit` and `run_before_done` are already entries by then, before the entries
+written in `on` (see [Guardrails](#guardrails)). An entry whose `when` does not hold, or whose `unless` holds, is
+skipped; one that applies carries out the verb of its action, unless the repeat rules of [How often each verb acts](#how-often-each-verb-acts)
 skip it. A `run` waits for its command to finish before the next entry starts, so a `stop` takes the sum of
 its runs, all of them bounded by the budget of 10 minutes of the hook call (see
 [Known limits](#known-limits)).
@@ -891,6 +899,12 @@ may outlive the budget, since polix does not kill the whole process tree.
 - A `git commit` is recognised by a heuristic (global options and quoted commands included); the text of a
   commit inside quotes, as in `echo "git commit"`, also triggers `pre_commit`. The `commit` switch of `guidance`
   asks the agent to run each commit on its own, so it stays recognisable.
+  A commit in another repository skips the entries of `pre_commit` only in the plain forms of the allowlist (see
+  [How a hook call is answered](#how-a-hook-call-is-answered)); `cd <folder> && git commit`, `git -C ~/x commit`,
+  `git -c user.name=x -C ../x commit` or a line with any other command still counts as a commit of this repository
+  and meets its gates. The other repository is trusted as it is: its own hooks, or a setup prepared to write into
+  this one by other means than linking its objects or refs, are not inspected, like the rest of the protections a
+  guard against mistakes rather than against an agent set on getting around them.
 - Every hook call reads the whole log, which grows without bound: one decision per answer, and one `passed` line
   per run of polix that passed.
 - A subagent type launched twice in a session gets an `inject` that acts once again only because the first one
