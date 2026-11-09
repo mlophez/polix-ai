@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -551,6 +552,29 @@ func TestContentHashConcurrent(t *testing.T) {
 	<-toggled
 	if left, _ := filepath.Glob(filepath.Join(scratch, "index-*")); len(left) != 0 {
 		t.Fatalf("temporary indexes are left behind: %v", left)
+	}
+}
+
+// Only a sharing violation or a pending delete on Windows counts as a file held by another process, so the read of the
+// index retries just then.
+func TestLockedByOther(t *testing.T) {
+	sharing := &fs.PathError{Op: "open", Path: "index", Err: syscall.Errno(32)}
+	denied := &fs.PathError{Op: "open", Path: "index", Err: syscall.Errno(5)}
+	missing := &fs.PathError{Op: "open", Path: "index", Err: fs.ErrNotExist}
+	for _, c := range []struct {
+		goos string
+		err  error
+		want bool
+	}{
+		{"windows", sharing, true},
+		{"windows", denied, true},
+		{"windows", missing, false},
+		{"linux", sharing, false},
+		{"darwin", denied, false},
+	} {
+		if got := lockedByOther(c.goos, c.err); got != c.want {
+			t.Errorf("lockedByOther(%s, %v) = %v, want %v", c.goos, c.err, got, c.want)
+		}
 	}
 }
 

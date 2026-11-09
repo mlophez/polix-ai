@@ -12,9 +12,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -271,7 +273,7 @@ func (r *Repo) copyIndex(path string) error {
 	if err != nil {
 		return err
 	}
-	data, err := os.ReadFile(src)
+	data, err := readShared(src)
 	if err != nil {
 		return err
 	}
@@ -279,6 +281,29 @@ func (r *Repo) copyIndex(path string) error {
 		return err
 	}
 	return os.Chtimes(path, info.ModTime(), info.ModTime())
+}
+
+// readShared reads the file at path, retrying for about a second while another process holds it without sharing
+// it: on Windows a git command that replaces the index (git add, git reset) keeps it locked for an instant, and a
+// read in that instant fails with a sharing violation instead of waiting.
+func readShared(path string) ([]byte, error) {
+	for wait := 10 * time.Millisecond; ; wait *= 2 {
+		data, err := os.ReadFile(path)
+		if err == nil || !lockedByOther(runtime.GOOS, err) || wait > 640*time.Millisecond {
+			return data, err
+		}
+		time.Sleep(wait)
+	}
+}
+
+// lockedByOther reports whether err, on the system goos, means another process holds the file for now: on Windows
+// a sharing violation, or access denied while a file replaced by a rename is still pending its delete.
+func lockedByOther(goos string, err error) bool {
+	const (
+		errorAccessDenied     = syscall.Errno(5)  // ERROR_ACCESS_DENIED
+		errorSharingViolation = syscall.Errno(32) // ERROR_SHARING_VIOLATION
+	)
+	return goos == "windows" && (errors.Is(err, errorSharingViolation) || errors.Is(err, errorAccessDenied))
 }
 
 // stageTree stages the whole working tree into the index at path and returns the tree it writes.
