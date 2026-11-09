@@ -217,9 +217,11 @@ Likewise a commit in another repository, as `git -C ../other commit`, skips the 
 only through a strict allowlist: every command of the line is `git [-C <folder>]... add|commit ...`, with no
 other option, alias, wrapper or variable; outside quotes the line holds no `$`, backtick, glob, brace, `~`, parenthesis, redirection, `#` comment,
 backslash or second line, and inside double quotes no `$`, backtick or backslash; and the folder of each commit,
-the session folder after its `-C` options, is inside another existing repository, as git itself resolves it, whose
-git directory, objects and refs are not those of this repository (so a linked worktree of it is not another one).
-Any other commit counts as a commit of this repository.
+the session folder after its `-C` options, is outside the folder of this repository (a repository nested in it
+counts as this one) and inside another existing repository, as git itself resolves it, whose git directory,
+objects and refs are not those of this repository (so a linked worktree of it is not another one). On Windows each
+`-C` folder carries its drive (`C:/x`): a Git Bash `/c/x`, a `\x` or a `C:x` is not placed. Any other commit counts
+as a commit of this repository.
 
 ### Protections
 

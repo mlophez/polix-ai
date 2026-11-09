@@ -937,12 +937,14 @@ func TestAnswerHookCommitOutsideRepository(t *testing.T) {
 	// /other and /tmp/scratch are other repositories; /tmp/link is a link into this one; /tmp/wt is a linked worktree
 	// of it and /tmp/plain a folder in no repository, neither foreign.
 	// The folders come joined as written, uncleaned; ../other from /repo is /repo/../other.
-	foreign := map[string]bool{filepath.FromSlash("/repo/../other"): true, filepath.FromSlash("/tmp/scratch"): true}
+	foreign := map[string]bool{filepath.FromSlash("/repo/../other"): true, filepath.FromSlash("/tmp/scratch"): true,
+		filepath.FromSlash("/repo/vendor/x"): true}
 	reals := map[string]string{filepath.FromSlash("/tmp/link"): filepath.FromSlash("/repo/sub")}
 	for line, block := range map[string]bool{
 		"git -C ../other commit -m x":                              false,
 		"git -C /tmp/scratch add -A && git -C /tmp/scratch commit": false,
 		"git -C internal commit -m x":                              true,
+		"git -C vendor/x commit -m x":                              true, // a repository nested in this one
 		"git -C /tmp/scratch commit && git commit -m x":            true,
 		`bash -c "git -C /tmp/scratch commit -m x"`:                true,
 		"git --git-dir=/repo/.git -C /tmp/scratch commit":          true,

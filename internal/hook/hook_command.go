@@ -251,10 +251,10 @@ func nullDevice(target string, windows bool) bool {
 
 // CommitDirs returns the folders where the commits of a command line commit, and whether the line can be placed at
 // all. It is a strict allowlist, so a caller keeps the workflow whenever it is false. The line holds none of the
-// characters with which bash expands, groups, escapes or comments (see unplaceable), and every command of it is
+// characters with which bash expands, groups, escapes or comments (see placeable), and every command of it is
 // `git` itself, with no option but -C, running `add` or `commit` (aliases, wrappers, assignments and any other
-// subcommand, which may run programs, are not placed). Each -C folder is a literal path, no `~` and on Windows no
-// Git Bash path such as `/c/x`. Each commit is placed in cwd (the root without one) after its -C options, joined
+// subcommand, which may run programs, are not placed). Each -C folder is a literal path, no `~`, and on Windows one
+// with its drive: not rooted without one (a Git Bash `/c/x`, or `\x`) nor relative to a drive (`C:x`). Each commit is placed in cwd (the root without one) after its -C options, joined
 // without cleaning, so a `..` after a symlink is resolved as git resolves it: through the link.
 func CommitDirs(command, cwd, root string, windows bool) ([]string, bool) {
 	if !placeable(command) {

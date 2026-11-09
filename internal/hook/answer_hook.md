@@ -78,7 +78,7 @@ The rules it follows, as before this use case:
 3. Without polix.yaml, for an edit outside the repository or of a file git ignores, and for a `pre_commit` whose
    commits all happen in another repository (`git -C ../other commit`), only the protections apply: the
    entries govern the change, what a commit may hold, so a build output, a local `.env` or a commit in another
-   repository never fires them. The proof is a strict allowlist: `CommitDirs` places the line only when every
+   repository never fires them. The check is a strict allowlist: `CommitDirs` places the line only when every
    command of it is `git [-C dir]... add|commit` and bash expands nothing in it (`placeable`); each commit folder is
    the cwd after its -C options joined without cleaning, so its real path and `Step.Foreign` resolve a `..` after a
    link as git does. The hook skips only when every folder is outside the root, symlinks resolved, and inside
