@@ -9,15 +9,15 @@ import (
 // docSections are the sections every document of a use case has, in this order.
 var docSections = []string{"Trigger", "Request", "Logic", "Response", "Port", "Errors", "Flow"}
 
-// GOARCH-14, the part a check can decide: each use case has its document <verb>_<noun>.md, titled with the name
-// of the use case and with every section once, in order; a heading inside a fenced code block is not a section.
-// That it says what the code does is GOARCH-21.
+// GOARCH-14, the part a check can decide: each use case has its document <verb>.md in its folder, titled with
+// the name of the use case, # <Verb><Noun>, and with every section once, in order; a heading inside a fenced code
+// block is not a section. That it says what the code does is GOARCH-21.
 func TestGOARCH14(t *testing.T) {
-	checkRule(t, checkDocument, "use case cancel_order has no document cancel_order.md",
-		"internal/order/place_order.md: no section ## Port",
-		"internal/stock/count_stock.md: does not start with # CountStock",
-		"internal/stock/count_stock.md: section ## Port out of order",
-		"internal/stock/count_stock.md: section ## Errors appears twice")
+	checkRule(t, checkDocument, "internal/app/order/cancel: use case CancelOrder has no document cancel.md",
+		"internal/app/order/place/place.md: no section ## Port",
+		"internal/app/stock/count/count.md: does not start with # CountStock",
+		"internal/app/stock/count/count.md: section ## Port out of order",
+		"internal/app/stock/count/count.md: section ## Errors appears twice")
 }
 
 func checkDocument(m *module) []string {
@@ -27,13 +27,13 @@ func checkDocument(m *module) []string {
 	}
 	var out []string
 	for _, uc := range m.useCases() {
-		d := docs[uc.dir+"/"+uc.stem+".md"]
+		d := docs[uc.dir+"/"+uc.verb+".md"]
 		if d == nil {
-			out = append(out, fmt.Sprintf("%s: use case %s has no document %s.md", uc.dir, uc.stem, uc.stem))
+			out = append(out, fmt.Sprintf("%s: use case %s has no document %s.md", uc.dir, uc.name(), uc.verb))
 			continue
 		}
 		lines := strings.Split(d.text, "\n")
-		if title := "# " + camel(uc.stem); len(lines) == 0 || strings.TrimSpace(lines[0]) != title {
+		if title := "# " + uc.name(); len(lines) == 0 || strings.TrimSpace(lines[0]) != title {
 			out = append(out, fmt.Sprintf("%s: does not start with %s", d.rel, title))
 		}
 		at := map[string]int{}

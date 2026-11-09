@@ -6,12 +6,12 @@ import (
 	"testing"
 )
 
-// GOARCH-12: a port is one interface, never a struct: the in file declares the interface <Verb><Noun>Port and no
-// other interface, named or anonymous.
+// GOARCH-12: a port is one interface, never a struct: in.go declares the interface Port and no other interface,
+// named or anonymous.
 func TestGOARCH12(t *testing.T) {
-	checkRule(t, checkPort, "PlaceOrderPort is a struct, not an interface",
-		"declares the interface Notifier: the only interface is the port PlaceOrderPort",
-		"declares an anonymous interface: the only interface is the port CancelOrderPort")
+	checkRule(t, checkPort, "internal/app/order/place/in.go:4: Port is a struct, not an interface",
+		"internal/app/order/place/in.go:7: declares the interface Notifier: the only interface of in.go is Port",
+		"internal/app/order/cancel/in.go:35: declares an anonymous interface: the only interface of in.go is Port")
 }
 
 func checkPort(m *module) []string {
@@ -21,7 +21,7 @@ func checkPort(m *module) []string {
 		if in == nil {
 			continue // GOARCH-3
 		}
-		port := camel(uc.stem) + "Port"
+		port := "Port"
 		spec := typeSpec(in.ast, port)
 		if spec != nil {
 			if _, isInterface := spec.Type.(*ast.InterfaceType); !isInterface {
@@ -47,10 +47,10 @@ func checkPort(m *module) []string {
 				return true
 			}
 			if name, ok := named[it]; ok {
-				out = append(out, fmt.Sprintf("%s: declares the interface %s: the only interface is the port %s",
+				out = append(out, fmt.Sprintf("%s: declares the interface %s: the only interface of in.go is %s",
 					m.pos(in, it), name, port))
 			} else {
-				out = append(out, fmt.Sprintf("%s: declares an anonymous interface: the only interface is the port %s",
+				out = append(out, fmt.Sprintf("%s: declares an anonymous interface: the only interface of in.go is %s",
 					m.pos(in, it), port))
 			}
 			return true

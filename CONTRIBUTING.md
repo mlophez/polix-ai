@@ -38,7 +38,8 @@ Windows PowerShell 5.1 and PowerShell 7.
 This repository uses polix on itself:
 
 - `polix.yaml` is its workflow.
-- `ai/rules/` holds the rules of its code (`architecture.yaml`, `go.yaml`, `platform.yaml`).
+- `ai/rules/` holds the rules of its code (`architecture.yaml`, `go.yaml`, `platform.yaml`), and `retired.yaml`
+  keeps the ids of the retired ones, which polix never reads.
 - `.claude/settings.json` registers the hooks of polix for Claude Code, committed with the repository.
 
 The hooks run `polix` from the `PATH`, so run `just install` once before opening a Claude Code session here, and
@@ -60,10 +61,11 @@ In a session, the workflow of `polix.yaml`:
 
 ## Architecture and docs
 
-- [docs/architecture.md](docs/architecture.md): the layout of the Go code, where each command is a use case with an
-  entry, a pure logic and an adapter.
-  Its rules are GOARCH-1 to GOARCH-40 of `ai/rules/architecture.yaml`, and the deterministic ones are checked by
-  the tests of `tests/architecture/`.
+- [docs/architecture.md](docs/architecture.md): the layout of the Go code, `internal/app/<noun>/<verb>/` and
+  `internal/platform/<lib>/`, where each command is a use case package with an entry, a pure logic and an adapter.
+  Its rules are GOARCH-1 to GOARCH-43 of `ai/rules/architecture.yaml`, and the deterministic ones are checked by
+  the tests of `tests/architecture/`, which run golangci-lint for the import lists of depguard (GOARCH-41 to
+  GOARCH-43).
 - [docs/polix.md](docs/polix.md): how polix behaves, its commands and its known limits.
 - [docs/reference.md](docs/reference.md): every key, event, condition and verb of `polix.yaml`.
 - [docs/use-cases.md](docs/use-cases.md): recipes of `polix.yaml`.

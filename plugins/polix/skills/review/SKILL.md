@@ -9,7 +9,7 @@ effort: medium
 model: inherit
 user-invocable: true
 disable-model-invocation: false
-argument-hint: "[range or files, e.g. HEAD~3..HEAD or internal/setup; empty for the current change]"
+argument-hint: "[range or files, e.g. HEAD~3..HEAD or internal/app/setup; empty for the current change]"
 ---
 
 # Reviewing

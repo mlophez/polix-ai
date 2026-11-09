@@ -196,13 +196,13 @@ The Justfile recipes use `sh`: on Windows, run them from Git Bash.
 
 ## How a hook call is answered
 
-The use case `AnswerHook` of `internal/hook` (layout in `docs/architecture.md`) answers it:
+The use case `AnswerHook`, `internal/app/hook/answer` (layout in `docs/architecture.md`) answers it:
 
-1. The agent (`internal/agent`, Claude Code; its Codex adapter is not implemented, see
+1. The agent (`internal/app/agent`, Claude Code; its Codex adapter is not implemented, see
    [Known limits](#known-limits)) turns the JSON of stdin into neutral events.
    An edit becomes one `pre_edit` or `post_edit` per path; a `git commit` in a command also produces
    `pre_commit`.
-2. The logic of the hook (`internal/hook`) applies the [protections](#protections): the built-in protection of the
+2. The logic of the hook (`internal/app/hook`) applies the [protections](#protections): the built-in protection of the
    state, then `guardrails.protected_files` and `guardrails.forbidden_commands`; then the entries of the event in
    order.
 3. The agent answers: exit 2 with the reasons on stderr to block, or exit 0 with

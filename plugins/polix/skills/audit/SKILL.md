@@ -9,7 +9,7 @@ effort: high
 model: inherit
 user-invocable: true
 disable-model-invocation: false
-argument-hint: "[paths and an optional focus, e.g. internal/setup security; empty for the whole repository]"
+argument-hint: "[paths and an optional focus, e.g. internal/app/setup security; empty for the whole repository]"
 ---
 
 # Auditing

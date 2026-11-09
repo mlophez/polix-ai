@@ -1,11 +1,13 @@
 # golangci-lint of polix: the standard linters (errcheck, govet, ineffassign, staticcheck, unused), the linters of
-# idiomatic Go below, importas, and the gofmt and goimports formatters. polix.yaml runs it on stop and CI on every
-# system (version pinned in .github/workflows/ci.yml).
+# idiomatic Go below, importas, depguard with the import lists of the architecture rules, and the gofmt and goimports
+# formatters. polix.yaml runs it on stop and CI on every system (version pinned in .github/workflows/ci.yml).
 version: "2"
 linters:
   default: standard
   enable:
     - importas
+    # The import lists of the architecture rules GOARCH-41 to GOARCH-43 (see settings.depguard).
+    - depguard
     # Errors: a checked error that returns nil, %v instead of %w, a comparison instead of errors.Is or errors.As.
     - nilerr
     - errorlint
@@ -23,12 +25,92 @@ linters:
     - nolintlint
   settings:
     importas:
-      # A nested package of the module is imported as <parent><child> (internal/rules/check as rulescheck), as
-      # docs/architecture.md says: one pattern covers every such package, and an import without the alias fails.
+      # A use case is imported as <noun><verb> (internal/app/rule/check as rulecheck): one pattern covers every use
+      # case, and an import without the alias fails. Only the use cases have a pattern: with no-unaliased, one for
+      # the domains or the libraries would demand an alias on every import of them (platformgit for
+      # internal/platform/git), so they are imported without alias.
       no-unaliased: true
       alias:
-        - pkg: ^github\.com/mlophez/polix-ai/(?:internal|pkg)/(\w+)/(\w+)$
+        - pkg: ^github\.com/mlophez/polix-ai/internal/app/(\w+)/(\w+)$
           alias: $1$2
+    depguard:
+      # The import lists of the architecture rules of ai/rules/architecture.yaml, each named after its rule so a
+      # finding names it (golangci-lint prints the name in lower case); tests/architecture runs depguard alone to
+      # decide them, on this repository and on tests/architecture/testdata/depguard. A file glob with a single *
+      # does not cross /. deny wins over allow, a list with allow denies what it does not allow, and an entry ending
+      # in $ is that package alone, else the package and every package below it. The import rules that depend on the
+      # layout (GOARCH-9: a use case never imports another, a helper only from its use case) stay in the AST tests,
+      # since depguard matches packages only by prefix and would need one entry per use case.
+      rules:
+        # GOARCH-41: the domain imports the standard library but what touches the outside, the randomness and the
+        # logs; internal/app/ (GOARCH-9 decides which); the pure libraries of internal/platform/; yaml and the
+        # templates. A new library of internal/platform/ is denied until it is added here on purpose.
+        GOARCH-41-domain:
+          files: ["**/internal/app/*/*.go", "!$test"]
+          allow: &goarch41-allow
+            - $gostd
+            - github.com/mlophez/polix-ai/internal/app
+            - github.com/mlophez/polix-ai/internal/platform/glob$
+            - github.com/mlophez/polix-ai/internal/platform/semver$
+            - github.com/mlophez/polix-ai/internal/platform/shell$
+            - github.com/mlophez/polix-ai/internal/platform/text$
+            - github.com/mlophez/polix-ai/internal/platform/yamlfmt$
+            - github.com/mlophez/polix-ai/templates$
+            - gopkg.in/yaml.v3$
+          deny:
+            - pkg: os$
+              desc: &outside >-
+                GOARCH-41: the domain and the logic never touch the outside; the adapter does it through the port
+            - { pkg: os/exec$, desc: *outside }
+            - { pkg: os/signal$, desc: *outside }
+            - { pkg: net$, desc: *outside }
+            - { pkg: net/http$, desc: *outside }
+            - { pkg: io/fs$, desc: *outside }
+            - { pkg: runtime$, desc: *outside }
+            - { pkg: syscall$, desc: *outside }
+            - pkg: math/rand$
+              desc: &random >-
+                GOARCH-41: the domain and the logic are deterministic; the adapter draws the random value
+            - { pkg: math/rand/v2$, desc: *random }
+            - { pkg: crypto/rand$, desc: *random }
+            - pkg: log$
+              desc: &logs >-
+                GOARCH-41: the domain and the logic do not log; they return what happened and the shell reports it
+            - { pkg: log/slog$, desc: *logs }
+        # GOARCH-41: the logic of a use case imports what the domain does, and never context. GOARCH-4 reads this
+        # list to check the helpers that the logic imports.
+        GOARCH-41-logic:
+          files: ["**/internal/app/*/*/logic.go"]
+          allow: *goarch41-allow
+          deny:
+            - pkg: context$
+              desc: >-
+                GOARCH-41: the logic does no input nor output to cancel; the context stays in the shell and the adapter
+            - { pkg: os$, desc: *outside }
+            - { pkg: os/exec$, desc: *outside }
+            - { pkg: os/signal$, desc: *outside }
+            - { pkg: net$, desc: *outside }
+            - { pkg: net/http$, desc: *outside }
+            - { pkg: io/fs$, desc: *outside }
+            - { pkg: runtime$, desc: *outside }
+            - { pkg: syscall$, desc: *outside }
+            - { pkg: math/rand$, desc: *random }
+            - { pkg: math/rand/v2$, desc: *random }
+            - { pkg: crypto/rand$, desc: *random }
+            - { pkg: log$, desc: *logs }
+            - { pkg: log/slog$, desc: *logs }
+        # GOARCH-42: the technology never depends on the product.
+        GOARCH-42:
+          files: ["**/internal/platform/**"]
+          deny:
+            - pkg: github.com/mlophez/polix-ai/internal/app
+              desc: "GOARCH-42: internal/platform/ never imports internal/app/; pass the library the values it needs"
+        # GOARCH-43: the support of the tests stays in the tests.
+        GOARCH-43:
+          files: ["$all", "!$test"]
+          deny:
+            - pkg: github.com/mlophez/polix-ai/internal/platform/testenv$
+              desc: "GOARCH-43: internal/platform/testenv is support for the tests; import it only from _test.go files"
     nolintlint:
       require-specific: true
       require-explanation: true

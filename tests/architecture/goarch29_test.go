@@ -19,15 +19,16 @@ var constructor = regexp.MustCompile(`^[Nn]ew([A-Z]|$)`)
 // left out.
 func TestGOARCH29(t *testing.T) {
 	checkRule(t, checkBuildThenValid,
-		"order_line.go: builds a order.Line in other but never calls other.Valid()",
+		"internal/app/order/order_line.go: builds a order.Line in other but never calls other.Valid()",
 		"order_line.go: builds a order.Line that is not bound to a variable, so it is never validated",
 		"order_line.go: builds a order.Line that is assigned to _, so it is never validated",
 		"builds a order.Line in l but discards the error of l.Valid()",
 		"builds a order.Line in p but discards the error of p.Valid()",
 		"builds a order.Line in d but discards the error of d.Valid()",
 		"builds a order.Line in g but discards the error of g.Valid()",
-		"builds a order.Line at the top level of the file, where no function validates it",
-		"internal/order/place_order_out.go:7: declares the constructor NewPlaceOrderAdapter",
+		"internal/app/order/cancel/in.go:38: builds a order.Line at the top level of the file, where no function "+
+			"validates it",
+		"internal/app/order/place/out.go:7: declares the constructor NewAdapter",
 		"declares the constructor newLine")
 }
 

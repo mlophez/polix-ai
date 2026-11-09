@@ -7,18 +7,18 @@ import (
 	"testing"
 )
 
-// GOARCH-33: the port speaks in domain values: every method of <V>Port takes context.Context first, and the rest
-// of its parameters and its results are domain types of any package or predeclared types (error among them), so
-// the types of the infrastructure never leave the adapter; it embeds no interface. A type named *Output,
-// *Request, *Response, *Port or *Adapter is never domain, whatever its package.
+// GOARCH-33: the port speaks in domain values: every method of Port takes context.Context first, and the rest of
+// its parameters and its results are domain types of any noun or predeclared types (error among them), so the
+// types of the infrastructure never leave the adapter; it embeds no interface. A name reserved to the use cases
+// (GOARCH-23) is never domain, whatever its package.
 func TestGOARCH33(t *testing.T) {
 	checkRule(t, checkPortInDomain,
-		"CancelOrderPort.Cancel does not take context.Context first",
-		"CountStockPort.Load takes io.Reader, which is not a domain type",
-		"CountStockPort.Load returns chan int, which is not a domain type",
-		"CountStockPort.Plan returns order.PlaceOrderOutput, which is not a domain type",
-		"CountStockPort.Open takes StockPort, which is not a domain type",
-		"CountStockPort embeds io.Closer: a port lists its own methods")
+		"internal/app/order/cancel/in.go:16: Port.Cancel does not take context.Context first",
+		"internal/app/stock/count/in.go:27: Port.Load takes io.Reader, which is not a domain type",
+		"internal/app/stock/count/in.go:27: Port.Load returns chan int, which is not a domain type",
+		"internal/app/stock/count/in.go:28: Port.Plan returns place.Output, which is not a domain type",
+		"internal/app/stock/count/in.go:29: Port.Open takes stock.StockPort, which is not a domain type",
+		"internal/app/stock/count/in.go:26: Port embeds io.Closer: a port lists its own methods")
 }
 
 func checkPortInDomain(m *module) []string {
@@ -29,7 +29,7 @@ func checkPortInDomain(m *module) []string {
 		if in == nil {
 			continue
 		}
-		port := camel(uc.stem) + "Port"
+		const port = "Port"
 		spec := typeSpec(in.ast, port)
 		if spec == nil {
 			continue // GOARCH-11

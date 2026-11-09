@@ -485,9 +485,10 @@ just demo       # record docs/assets/demo.gif again (needs vhs)
 just release 0.2.0
 ```
 
-Code lives in `cmd/polix`, `internal/` (`agent`, `diff`, `hook`, `rule`, `setup`, `state`, `version`, `workflow`)
-and `pkg/`, with the layout of [docs/architecture.md](docs/architecture.md); `tests/` holds the architecture and
-installer tests. The plugin lives in `plugins/polix/`, embedded in the binary; check it with
+Code lives in `cmd/polix`, `internal/app/` (the domains `agent`, `diff`, `hook`, `rule`, `setup`, `state`,
+`version` and `workflow`, each with its use cases) and `internal/platform/` (the libraries without domain), with the
+layout of [docs/architecture.md](docs/architecture.md); `tests/` holds the architecture, installer and end-to-end
+setup tests. The plugin lives in `plugins/polix/`, embedded in the binary; check it with
 `claude plugin validate plugins/polix`. CI runs on Linux, macOS and Windows, including the PowerShell installer
 under Windows PowerShell 5.1 and PowerShell 7. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build, test and
 check a change, and how this repository's own Polix governs it.

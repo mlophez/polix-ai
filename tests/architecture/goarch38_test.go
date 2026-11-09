@@ -5,17 +5,17 @@ import (
 	"testing"
 )
 
-// GOARCH-38: the tests are white box: every *_test.go of internal/ and pkg/ declares the package of its folder,
-// never <noun>_test.
+// GOARCH-38: the tests are white box: every *_test.go of internal/ declares the package of its folder, never
+// <name>_test.
 func TestGOARCH38(t *testing.T) {
 	checkRule(t, checkWhiteBoxTests,
-		"internal/order/order_test.go: declares package order_test, not order: the tests are white box")
+		"internal/app/order/order_test.go: declares package order_test, not order: the tests are white box")
 }
 
 func checkWhiteBoxTests(m *module) []string {
 	var out []string
 	for _, f := range m.files {
-		if f.top == "cmd" || f.kind != kindTest {
+		if f.place.level == levelCmd || f.kind != kindTest {
 			continue
 		}
 		if f.ast.Name.Name != f.pkg {

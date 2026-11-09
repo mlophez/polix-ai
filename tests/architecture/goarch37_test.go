@@ -9,20 +9,19 @@ import (
 	"testing"
 )
 
-// GOARCH-37: the shell decides nothing: every condition of an if, for or switch in the shell <verb><Noun> and in
-// the unexported functions of the in file is made of fields of the request, errors (err != nil, errors.Is,
-// errors.As), fields or methods of values of the domain or of the output, and len of them, compared only with
-// nil or a zero literal and combined with !, && and ||; the arguments of an accepted call are operands too. The
-// entry <Verb><Noun>Command and the methods are left out. An operand whose type the checker could not resolve is
-// accepted.
+// GOARCH-37: the shell decides nothing: every condition of an if, for or switch in the shell run and in the
+// unexported functions of in.go is made of fields of the request, errors (err != nil, errors.Is, errors.As),
+// fields or methods of values of the domain or of the output, and len of them, compared only with nil or a zero
+// literal and combined with !, && and ||; the arguments of an accepted call are operands too. The entry Command
+// and the methods are left out. An operand whose type the checker could not resolve is accepted.
 func TestGOARCH37(t *testing.T) {
 	checkRule(t, checkShellDecidesNothing,
-		"countStock decides: the condition `len(req.Shop) > 3` uses `len(req.Shop) > 3`",
-		"countStock decides: the condition `req.Shop == \"main\"` uses `\"main\"`",
-		"countStockPick decides: the condition `n % 2 == 0` uses `n % 2`",
-		"countStockPick decides: the condition `stockLimit` uses `stockLimit`",
-		"countStockPick decides: a type switch",
-		"countStock decides: the condition `l.Rename(\"x\").Valid() != nil` uses `\"x\"`")
+		"count/in.go:37: run decides: the condition `len(req.Shop) > 3` uses `len(req.Shop) > 3`",
+		"count/in.go:40: run decides: the condition `req.Shop == \"main\"` uses `\"main\"`",
+		"count/in.go:58: pick decides: the condition `n % 2 == 0` uses `n % 2`",
+		"count/in.go:61: pick decides: the condition `stock.Limit` uses `stock.Limit`",
+		"count/in.go:64: pick decides: a type switch",
+		"count/in.go:44: run decides: the condition `l.Rename(\"x\").Valid() != nil` uses `\"x\"`")
 }
 
 func checkShellDecidesNothing(m *module) []string {
@@ -33,14 +32,12 @@ func checkShellDecidesNothing(m *module) []string {
 		if in == nil {
 			continue // GOARCH-3
 		}
-		c := camel(uc.stem)
 		for _, d := range in.ast.Decls {
 			fn, ok := d.(*ast.FuncDecl)
-			if !ok || fn.Recv != nil || fn.Body == nil || fn.Name.Name == c+"Command" {
+			if !ok || fn.Recv != nil || fn.Body == nil || fn.Name.Name == "Command" {
 				continue
 			}
-			s := &shellConds{m: m, info: info, f: in, fn: fn, output: uc.dir + "." + c + "Output",
-				request: uc.dir + "." + c + "Request"}
+			s := &shellConds{m: m, info: info, f: in, fn: fn, output: uc.dir + ".Output", request: uc.dir + ".Request"}
 			out = append(out, s.check()...)
 		}
 	}
@@ -188,14 +185,14 @@ func (s *shellConds) arguments(call *ast.CallExpr) ast.Expr {
 	}
 }
 
-// sentinel reports whether e is pkg.ErrX, an error of a domain package of internal/.
+// sentinel reports whether e is pkg.ErrX, an error of a domain package.
 func (s *shellConds) sentinel(e ast.Expr) bool {
 	sel, ok := e.(*ast.SelectorExpr)
 	if !ok || !strings.HasPrefix(sel.Sel.Name, "Err") {
 		return false
 	}
 	pkg, ok := sel.X.(*ast.Ident)
-	return ok && pkg.Obj == nil && s.m.internalDir(imports(s.f.ast)[pkg.Name]) != ""
+	return ok && pkg.Obj == nil && s.m.domainDir(imports(s.f.ast)[pkg.Name]) != ""
 }
 
 // allowedRoot reports whether the identifier id is a value the shell may look at: the request, an error, or a
@@ -253,7 +250,7 @@ func (s *shellConds) namedAs(t types.Type, key string) bool {
 		if x.Obj().Pkg() == nil {
 			return false
 		}
-		return s.m.internalDir(x.Obj().Pkg().Path())+"."+x.Obj().Name() == key
+		return s.m.moduleDir(x.Obj().Pkg().Path())+"."+x.Obj().Name() == key
 	}
 	return false
 }

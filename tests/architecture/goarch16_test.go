@@ -12,7 +12,8 @@ import (
 // Request and Response is GOARCH-11; that the response is built from the output is GOARCH-22.
 func TestGOARCH16(t *testing.T) {
 	checkRule(t, checkRequestResponse,
-		"field ID carries the tag `json:\"id\"`", "order_line.go:5: field SKU carries the tag `json:\"sku\"`",
+		"place/logic.go:19: field ID carries the tag `json:\"id\"`",
+		"internal/app/order/order_line.go:5: field SKU carries the tag `json:\"sku\"`",
 		"field Item carries the tag `json:\"item\"`")
 }
 

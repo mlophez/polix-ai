@@ -1,0 +1,1 @@
+A testdata/ folder below a library, which GOARCH-1 admits at any level.

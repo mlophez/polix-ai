@@ -8,15 +8,15 @@ import (
 )
 
 // GOARCH-36, the part of GOARCH-21 a check can decide: the document of a use case names, between backquotes, every
-// field of <V>Request in ## Request, every field of <V>Response and of the structs of the in file it holds in
-// ## Response, and every method of <V>Port in ## Port, so a field or a method added to the code without its
-// documentation fails. A heading inside a fenced code block is not a section.
+// field of Request in ## Request, every field of Response and of the structs of in.go it holds in ## Response, and
+// every method of Port in ## Port, so a field or a method added to the code without its documentation fails. A
+// heading inside a fenced code block is not a section.
 func TestGOARCH36(t *testing.T) {
 	checkRule(t, checkDocumentNamesCode,
-		"internal/stock/count_stock.md: ## Request does not name `Shop` of CountStockRequest",
-		"internal/stock/count_stock.md: ## Response does not name `Count` of CountStockResponse",
-		"internal/stock/count_stock.md: ## Response does not name `Aisle` of CountStockShelf",
-		"internal/stock/count_stock.md: ## Port does not name `Load` of CountStockPort")
+		"internal/app/stock/count/count.md: ## Request does not name `Shop` of Request",
+		"internal/app/stock/count/count.md: ## Response does not name `Count` of Response",
+		"internal/app/stock/count/count.md: ## Response does not name `Aisle` of Shelf",
+		"internal/app/stock/count/count.md: ## Port does not name `Load` of Port")
 }
 
 func checkDocumentNamesCode(m *module) []string {
@@ -26,17 +26,16 @@ func checkDocumentNamesCode(m *module) []string {
 	}
 	var out []string
 	for _, uc := range m.useCases() {
-		d, in := docs[uc.dir+"/"+uc.stem+".md"], uc.files[kindIn]
+		d, in := docs[uc.dir+"/"+uc.verb+".md"], uc.files[kindIn]
 		if d == nil || in == nil {
 			continue // GOARCH-14, GOARCH-3
 		}
 		sections := markdownSections(d.text)
-		c := camel(uc.stem)
 		for _, part := range []struct {
 			section, typ string
 			nested       bool
 		}{
-			{"Request", c + "Request", false}, {"Response", c + "Response", true}, {"Port", c + "Port", false},
+			{"Request", "Request", false}, {"Response", "Response", true}, {"Port", "Port", false},
 		} {
 			text, ok := sections[part.section]
 			if !ok {

@@ -17,7 +17,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mlophez/polix-ai/pkg/github"
+	"github.com/mlophez/polix-ai/internal/platform/github"
 )
 
 // asset is the name of the binary of this platform in a release.
@@ -81,7 +81,7 @@ func buildRelease(version string) ([]byte, error) {
 		out += ".exe"
 	}
 	cmd := exec.Command("go", "build", "-o", out, "-ldflags",
-		"-X github.com/mlophez/polix-ai/pkg/build.Version="+version, "github.com/mlophez/polix-ai/cmd/polix")
+		"-X github.com/mlophez/polix-ai/internal/platform/build.Version="+version, "github.com/mlophez/polix-ai/cmd/polix")
 	cmd.Dir = moduleDir
 	if msg, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("go build: %w\n%s", err, msg)

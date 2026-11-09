@@ -10,11 +10,11 @@ import (
 )
 
 // GOARCH-26: every exported struct of the domain has the method Valid() error, with a value receiver, which tells
-// why a value is not valid. That it is declared in a domain file is GOARCH-40.
+// why a value is not valid. Go declares it in the package of the struct, so in its domain package.
 func TestGOARCH26(t *testing.T) {
-	checkRule(t, checkValid, "internal/order: Note has no method Valid() error",
-		"internal/order: Item has Valid with a pointer receiver, not Valid() error on a value",
-		"internal/order: Pack has Valid() bool, not Valid() error")
+	checkRule(t, checkValid, "internal/app/order: Note has no method Valid() error",
+		"internal/app/order: Item has Valid with a pointer receiver, not Valid() error on a value",
+		"internal/app/order: Pack has Valid() bool, not Valid() error")
 }
 
 func checkValid(m *module) []string {

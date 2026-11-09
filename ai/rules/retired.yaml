@@ -1,0 +1,22 @@
+# Retired rules of ai/rules/: they keep their id, so it is never reused, but polix never reads this file and the
+# rules here never apply.
+rules:
+  - id: GOARCH-31
+    description: >-
+      Every top-level name of the files of a use case (types, functions, constants and variables; not methods,
+      init nor _) starts with the name of the use case, <Verb><Noun> or <verb><Noun> (CheckRuleFailed,
+      checkRuleTimeout): the use cases of a package share its namespace, and the name tells which use case a
+      symbol belongs to.
+    reason: >-
+      Each use case has its own package, internal/app/<noun>/<verb>/, so its names no longer share a namespace
+      with the other use cases of its noun: the package says which use case a name belongs to, and outside it the
+      alias <noun><verb> does (rulecheck.Failed).
+
+  - id: GOARCH-40
+    description: >-
+      The methods of a domain struct are declared in the domain files of its package, never in the files of a use
+      case nor in another package: a method on Rule lives in rule.go or rule_*.go, so no use case adds behavior
+      to the domain that another use case could reach.
+    reason: >-
+      Go declares the methods of a type only in the package of the type, and the domain package holds only domain
+      files now that each use case has its own package: a use case cannot add a method to a domain struct.

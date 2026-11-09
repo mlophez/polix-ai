@@ -7,21 +7,20 @@ import (
 	"testing"
 )
 
-// GOARCH-34: every use case has its two tests. <verb>_<noun>_logic_test.go calls the logic <Verb><Noun>, does
-// not mention <V>Port nor <V>Adapter and uses no name declared in <verb>_<noun>_in_test.go, where the fake of
-// the port lives; <verb>_<noun>_in_test.go calls the shell <verb><Noun> and does not mention <V>Adapter. The
-// optional <verb>_<noun>_out_test.go is never missing. That the logic is tested with domain values and the shell
-// with a fake is left to the review.
+// GOARCH-34: every use case has its two tests. logic_test.go calls the logic Decide, does not mention Port nor
+// Adapter and uses no name declared in in_test.go, where the fake of the port lives; in_test.go calls the shell
+// run and does not mention Adapter. Port and Adapter count only as unqualified identifiers, so a field x.Port is no
+// match. The optional out_test.go is never missing. That the logic is tested with domain values and the shell with
+// a fake is left to the review.
 func TestGOARCH34(t *testing.T) {
 	checkRule(t, checkUseCaseTests,
-		"internal/order/place_order_logic_test.go: uses PlaceOrderPort: the logic is tested with domain values, "+
-			"without fakes",
-		"internal/order: use case place_order has no place_order_in_test.go",
-		"internal/stock/count_stock_logic_test.go: does not call the logic CountStock",
-		"internal/stock/count_stock_logic_test.go: uses fakeCountStockPort, declared in count_stock_in_test.go: "+
-			"the logic is tested with domain values, without fakes",
-		"internal/stock/count_stock_in_test.go: does not call the shell countStock",
-		"internal/stock/count_stock_in_test.go: uses CountStockAdapter: the shell is tested with a fake of the port")
+		"internal/app/order/place/logic_test.go: uses Port: the logic is tested with domain values, without fakes",
+		"internal/app/order/place: use case PlaceOrder has no in_test.go",
+		"internal/app/stock/count/logic_test.go: does not call the logic Decide",
+		"internal/app/stock/count/logic_test.go: uses fakePort, declared in in_test.go: the logic is tested with "+
+			"domain values, without fakes",
+		"internal/app/stock/count/in_test.go: does not call the shell run",
+		"internal/app/stock/count/in_test.go: uses Adapter: the shell is tested with a fake of the port")
 }
 
 func checkUseCaseTests(m *module) []string {
@@ -31,23 +30,21 @@ func checkUseCaseTests(m *module) []string {
 			tests[f.dir+"/"+f.name] = f
 		}
 	}
+	const logicWhy, shellWhy = "the logic is tested with domain values, without fakes",
+		"the shell is tested with a fake of the port"
 	var out []string
 	for _, uc := range m.useCases() {
-		c, lc := camel(uc.stem), lowerCamel(uc.stem)
-		logicWhy, shellWhy := "the logic is tested with domain values, without fakes",
-			"the shell is tested with a fake of the port"
 		for _, want := range []struct {
-			suffix, calls, what string
-			banned              []string
-			why                 string
+			name, calls, what string
+			banned            []string
+			why               string
 		}{
-			{"_logic_test.go", c, "the logic", []string{c + "Port", c + "Adapter"}, logicWhy},
-			{"_in_test.go", lc, "the shell", []string{c + "Adapter"}, shellWhy},
+			{"logic_test.go", "Decide", "the logic", []string{"Port", "Adapter"}, logicWhy},
+			{"in_test.go", "run", "the shell", []string{"Adapter"}, shellWhy},
 		} {
-			name := uc.stem + want.suffix
-			f := tests[uc.dir+"/"+name]
+			f := tests[uc.dir+"/"+want.name]
 			if f == nil {
-				out = append(out, fmt.Sprintf("%s: use case %s has no %s", uc.dir, uc.stem, name))
+				out = append(out, fmt.Sprintf("%s: use case %s has no %s", uc.dir, uc.name(), want.name))
 				continue
 			}
 			if !callsName(f.ast, want.calls) {
@@ -59,7 +56,7 @@ func checkUseCaseTests(m *module) []string {
 				}
 			}
 		}
-		logic, in := tests[uc.dir+"/"+uc.stem+"_logic_test.go"], tests[uc.dir+"/"+uc.stem+"_in_test.go"]
+		logic, in := tests[uc.dir+"/logic_test.go"], tests[uc.dir+"/in_test.go"]
 		if logic == nil || in == nil {
 			continue
 		}
@@ -91,12 +88,19 @@ func callsName(f *ast.File, name string) bool {
 	return found
 }
 
-// usesName reports whether f mentions the identifier name outside its own declarations.
+// usesName reports whether f mentions the identifier name unqualified: the selector of x.name, a field or a
+// method of something, is no match.
 func usesName(f *ast.File, name string) bool {
+	selected := map[*ast.Ident]bool{}
 	found := false
 	ast.Inspect(f, func(n ast.Node) bool {
-		if id, ok := n.(*ast.Ident); ok && id.Name == name {
-			found = true
+		switch x := n.(type) {
+		case *ast.SelectorExpr:
+			selected[x.Sel] = true
+		case *ast.Ident:
+			if x.Name == name && !selected[x] {
+				found = true
+			}
 		}
 		return !found
 	})
