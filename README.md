@@ -153,8 +153,9 @@ Polix comes in two parts, and the second one is optional.
   that the next phase reads:
   - **plan** (`/polix:plan`): turns a request into a plan with its scope, tasks and how each task is verified,
     before any edit.
-  - **build** (`polix:builder`): implements one task of the plan, with its tests and its verification, launched by
-    the main session.
+  - **build** (`/polix:build`, run by `polix:builder`): implements the plan, one builder per task and several at
+    once on tasks that do not depend on each other, updates the docs, then reviews the change and checks the
+    acceptance criteria.
   - **review** (`/polix:review`, run by `polix:reviewer`): reviews the change against its intent and `ai/rules/`,
     and reports findings without fixing them.
 
@@ -174,7 +175,7 @@ Adopt the whole flow, a single phase or none of it.
 
 > The harness is in progress: plan, build and review exist, and a document phase is not written yet. Today the
 > plugin holds the skills that set Polix up (`/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:init`),
-> the skills `/polix:plan`, `/polix:review` and `/polix:audit`, and the agents `polix:workflow-author`,
+> the skills `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit`, and the agents `polix:workflow-author`,
 > `polix:rules-author`, `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`. Every report
 > follows a fixed template, and `/polix:review` and `/polix:audit` save theirs in the folder of reports.
 
@@ -215,8 +216,9 @@ polix install --agent claude,codex  # Codex too: not implemented in this release
 changed:
 
 - **For you, the plugin `polix`.** It holds the skills `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`,
-  `/polix:init`, `/polix:plan`, `/polix:review` and `/polix:audit` and the agents `polix:workflow-author`,
-  `polix:rules-author`, `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`.
+  `/polix:init`, `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit` and the agents
+  `polix:workflow-author`, `polix:rules-author`, `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and
+  `polix:auditor`.
   The plugin ships inside the binary: Polix writes it to the local marketplace `~/.polix/marketplace/` and
   registers it with `claude plugin install polix@polix --scope user` (with `--agent codex`, it also enables it in
   `~/.codex/config.toml`). The plugin only arrives this way: the repository serves no marketplace.

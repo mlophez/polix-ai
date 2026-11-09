@@ -7,6 +7,13 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- The skill `/polix:build`, which implements a plan of the folder of plans with one `polix:builder` per task, several
+  at once on tasks that do not depend on each other, updates the Markdown docs of the project (never `AGENTS.md`,
+  `CLAUDE.md` nor a protected file), then reviews the whole change as `/polix:review` does and checks each acceptance
+  criterion of the plan. It never commits nor fixes the findings.
+
 ### Fixed
 
 - A commit in another repository, as `git -C ../other commit` run from a session in this one, no longer fires the
