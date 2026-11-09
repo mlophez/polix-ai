@@ -1,13 +1,16 @@
 ---
 version: 1
 base_branch: main
-# A stop gate that keeps failing on the same content lets the agent stop after 3 blocks.
-max_stop_retries: 3
+# A stop gate that keeps failing on the same content lets the agent stop after 1 block.
+max_stop_retries: 1
 
 # The Go checks of ai/rules/ run as one `go test` of their package, only the test of the rule.
 rules:
   path: ai/rules
   run: { "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"] }
+
+guidance:
+  edit: false
 
 # Weight of each path in the risk score: the first matching glob wins, any other file weighs 1.
 risk:
