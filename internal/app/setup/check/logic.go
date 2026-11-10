@@ -38,7 +38,7 @@ func Decide(i setup.Inspection, file string) Output {
 	found, newer := i.WorkflowProblems()
 	problems := make([]string, 0, len(found))
 	for _, p := range found {
-		problems = append(problems, out.named(p))
+		problems = append(problems, out.prefixed(p))
 	}
 	if i.RulesErr != nil {
 		problems = append(problems, i.RulesErr.Error())
@@ -56,7 +56,18 @@ func Decide(i setup.Inspection, file string) Output {
 	return out
 }
 
-// named returns the text with polix.yaml, where it names the workflow file as a word of its own (at the start or
+// prefixed returns the problem of the workflow with the polix.yaml it starts with (followed by a colon or a space,
+// as every problem of the workflow does) written as File: the same problem for polix.yaml, and for one that does not
+// start with it, as the error of a file that cannot be read, which already names the path it read.
+func (out Output) prefixed(problem string) string {
+	rest, ok := strings.CutPrefix(problem, workflow.File)
+	if out.File == workflow.File || !ok || (rest != "" && rest[0] != ':' && rest[0] != ' ') {
+		return problem
+	}
+	return out.File + rest
+}
+
+// named returns the warning with polix.yaml, where it names the workflow file as a word of its own (at the start or
 // after a space, and followed by a colon, a space or the end), written as File: the same text for polix.yaml. A path
 // that ends in polix.yaml, as in the error of a file that cannot be read, is left as it is.
 func (out Output) named(text string) string {

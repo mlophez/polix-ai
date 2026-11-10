@@ -82,11 +82,13 @@ func TestDecideFile(t *testing.T) {
 	if !strings.Contains(out.Warning, "set base_branch in x/polix.yaml or pass --base") {
 		t.Fatalf("warning: %q", out.Warning)
 	}
-	// A path that ends in polix.yaml, in the error of a file that cannot be read, is not renamed.
-	unreadable := errors.New("read x/polix.yaml: is a directory")
-	out = Decide(observed(t, setup.Inspection{Found: true, WorkflowErr: unreadable}), "x/polix.yaml")
-	if len(out.Problems) != 1 || out.Problems[0] != "read x/polix.yaml: is a directory" {
-		t.Fatalf("unreadable: %q", out.Problems)
+	// The error of a file that cannot be read already names its path: it is not renamed.
+	for _, file := range []string{"x/polix.yaml", "my polix.yaml"} {
+		unreadable := errors.New("read " + file + ": is a directory")
+		out = Decide(observed(t, setup.Inspection{Found: true, WorkflowErr: unreadable}), file)
+		if len(out.Problems) != 1 || out.Problems[0] != "read "+file+": is a directory" {
+			t.Fatalf("unreadable %q: %q", file, out.Problems)
+		}
 	}
 	// The error of the workflow, which the loader keeps, is left as it was.
 	invalid := workflow.InvalidError{"polix.yaml:2: x"}

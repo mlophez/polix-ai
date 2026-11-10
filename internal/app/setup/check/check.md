@@ -26,10 +26,10 @@ polix config check [--dir <dir>] [file]
 `Decide(i setup.Inspection, file string) Output` takes what the shell observed, the part of a `setup.Inspection`
 about the workflow and the rules, with a `setup.Setup` of the running version, and `File` of the request. With a
 file, a missing one is the only problem, `<file> not found`; and the problems of the workflow and the warning of
-the base branch name the file where they name polix.yaml as a word of its own (at the start or after a space, and
-followed by a colon, a space or the end: `polix.yaml:4: ...`, `polix.yaml requires ...`), without changing the
-error they come from; a path that ends in polix.yaml, as in the error of a file that cannot be read, stays. It gathers the problems
-with the methods of `setup.Inspection` of `internal/app/setup/setup_problems.go`, which `polix doctor` shares:
+the base branch name the file in place of polix.yaml: a problem that starts with it (followed by a colon or a space:
+`polix.yaml:4: ...`, `polix.yaml requires ...`), and the warning where it names it as a word of its own, without
+changing the error they come from. The error of a file that cannot be read already names its path, and stays. It
+gathers the problems with the methods of `setup.Inspection` of `internal/app/setup/setup_problems.go`, which `polix doctor` shares:
 
 1. `WorkflowProblems`: the error of loading polix.yaml is one problem, or each problem of a workflow that parses
    (`workflow.InvalidError`, the runners of `rules.run` included), with whether they may come from a newer polix

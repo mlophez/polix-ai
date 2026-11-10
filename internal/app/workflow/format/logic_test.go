@@ -41,7 +41,7 @@ func TestDecideProblem(t *testing.T) {
 	}
 }
 
-// The command that formats a file names it only when it is not polix.yaml, quoted when the shell would split it.
+// The command that formats a file names it whenever one was given, quoted when the shell would split it.
 func TestFixCommand(t *testing.T) {
 	for file, want := range map[string]string{
 		"":                    "polix config fmt",
