@@ -174,6 +174,21 @@ risk:
 	}
 }
 
+// AC1: a file with requirements loads valid, with the programs in the workflow in file order.
+func TestWorkflowRequirements(t *testing.T) {
+	w, err := parse(t, "version: 1\nrequirements: [go, golangci-lint]\nguardrails:\n  protected_files: [AGENTS.md]\n",
+		"dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(w.Requirements, ",") != "go,golangci-lint" {
+		t.Fatalf("requirements: %q", w.Requirements)
+	}
+	if w, err := parse(t, "version: 1\n", "dev"); err != nil || w.Requirements != nil {
+		t.Fatalf("without the key: %q %v", w.Requirements, err)
+	}
+}
+
 // AC2: each name of the old vocabulary is reported on its line with its new spelling, and an entry whose action
 // is of the old vocabulary is not also told it has none.
 func TestValidHintsOldNames(t *testing.T) {

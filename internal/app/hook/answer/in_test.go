@@ -32,6 +32,7 @@ type fakePort struct {
 	state     state.State
 	trees     []string        // the paths TreeDiff gives
 	foreign   map[string]bool // the folders inside another git repository
+	absent    map[string]bool // the programs the PATH does not run
 	rules     []rule.Rule
 	calls     []string
 	appended  []state.Entry
@@ -107,6 +108,17 @@ func (p *fakePort) Real(_ context.Context, paths []string) []string { return pat
 func (p *fakePort) Foreign(_ context.Context, dir string) bool {
 	p.calls = append(p.calls, "Foreign "+filepath.ToSlash(dir))
 	return p.foreign[dir]
+}
+
+func (p *fakePort) Missing(_ context.Context, programs []string) []string {
+	p.calls = append(p.calls, "Missing "+strings.Join(programs, " "))
+	var missing []string
+	for _, prog := range programs {
+		if p.absent[prog] {
+			missing = append(missing, prog)
+		}
+	}
+	return missing
 }
 
 func (p *fakePort) Contains(_ context.Context, _ []string, text string) bool {
@@ -294,6 +306,24 @@ func TestPortErrors(t *testing.T) {
 	res, _ = run(context.Background(), port, claudeRequest(`{"hook_event_name":"UserPromptSubmit","cwd":"/repo"}`))
 	if !strings.Contains(res.Stdout, `"additionalContext":"Ticket: PLAT-1"`) {
 		t.Fatalf("context: %+v", res)
+	}
+}
+
+// The shell looks the programs of requirements up through the port on a prompt and gives the AI the context of
+// the missing ones, without blocking; a start looks nothing up.
+func TestRequirementsMissing(t *testing.T) {
+	port := &fakePort{yaml: "version: 1\nrequirements: [go, golangci-lint]\n",
+		absent: map[string]bool{"golangci-lint": true}}
+	res, err := run(context.Background(), port, claudeRequest(`{"hook_event_name":"UserPromptSubmit","cwd":"/repo"}`))
+	if err != nil || res.Code != 0 || !slices.Contains(port.calls, "Missing go golangci-lint") ||
+		!strings.Contains(res.Stdout, "are not on the PATH: golangci-lint. Before doing anything else") {
+		t.Fatalf("prompt: %+v %v %q", res, err, port.calls)
+	}
+	port.calls = nil
+	res, err = run(context.Background(), port, claudeRequest(`{"hook_event_name":"SessionStart","cwd":"/repo"}`))
+	if err != nil || res.Code != 0 || strings.Contains(res.Stdout, "not on the PATH") ||
+		slices.ContainsFunc(port.calls, func(c string) bool { return strings.HasPrefix(c, "Missing") }) {
+		t.Fatalf("start: %+v %v %q", res, err, port.calls)
 	}
 }
 

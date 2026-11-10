@@ -19,9 +19,10 @@ type Output struct {
 }
 
 // Decide turns what polix doctor observed (i) into the findings of its report: the binary and its version,
-// the PATH the hooks use, git, and inside a repository the workflow, the rules and their checks, the hooks of
-// Claude Code, the plugin, Codex when polix is registered for it, and the state; outside one, or without git, only
-// the binary and the plugin. With hook (the session start hook) Claude Code is not asked for its plugins.
+// the PATH the hooks use, git, and inside a repository the workflow, the programs it requires on the PATH, the rules
+// and their checks, the hooks of Claude Code, the plugin, Codex when polix is registered for it, and the state;
+// outside one, or without git, only the binary and the plugin. With hook (the session start hook) Claude Code is
+// not asked for its plugins.
 func Decide(i setup.Inspection, hook bool) Output {
 	f := binary(i)
 	switch {
@@ -34,6 +35,7 @@ func Decide(i setup.Inspection, hook bool) Output {
 	default:
 		f = append(f, found(setup.LevelOK, "git", "repository at %s", i.Setup.Root)...)
 		f = append(f, workflowFile(i)...)
+		f = append(f, requirements(i)...)
 		f = append(f, rules(i)...)
 		f = append(f, hooks(i)...)
 		f = append(f, plugin(i, hook)...)
@@ -107,6 +109,30 @@ func workflowFile(i setup.Inspection) []setup.Finding {
 		base()
 	case newer:
 		f = append(f, found(setup.LevelWarn, "workflow", "%s", i.NewerHint())...)
+	}
+	return f
+}
+
+// requirements checks that the PATH runs every program the workflow requires: a warning per program it does not
+// run, each once and in the order of the file, or one OK line when it runs them all; nothing without requirements
+// or with a workflow that cannot be used. A missing program never fails the report.
+func requirements(i setup.Inspection) []setup.Finding {
+	if i.WorkflowErr != nil || len(i.Workflow.Requirements) == 0 {
+		return nil
+	}
+	var f []setup.Finding
+	seen := map[string]bool{}
+	for _, p := range i.Workflow.Requirements {
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		if i.Requirements[p] != nil {
+			f = append(f, found(setup.LevelWarn, "requirements", "%s is not on the PATH: %s requires it", p, workflow.File)...)
+		}
+	}
+	if len(f) == 0 {
+		return found(setup.LevelOK, "requirements", "%d programs of requirements on the PATH", len(seen))
 	}
 	return f
 }

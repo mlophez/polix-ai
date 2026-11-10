@@ -1150,6 +1150,43 @@ func TestAdapterLoadStateUnreadable(t *testing.T) {
 	}
 }
 
+// Missing returns only the programs the lookup fails on, in their order, and nil when it finds them all.
+func TestAdapterMissing(t *testing.T) {
+	a := &Adapter{Look: func(name string) (string, error) {
+		if strings.HasPrefix(name, "no-") {
+			return "", exec.ErrNotFound
+		}
+		return "/bin/" + name, nil
+	}}
+	ctx := context.Background()
+	if got := a.Missing(ctx, []string{"no-b", "go", "no-a"}); !slices.Equal(got, []string{"no-b", "no-a"}) {
+		t.Fatalf("missing: %q", got)
+	}
+	if got := a.Missing(ctx, []string{"go"}); got != nil {
+		t.Fatalf("every program found: %q", got)
+	}
+}
+
+// AC10: with the real lookup, go written without extension is found on every system of the CI matrix (on Windows
+// through PATHEXT, as go.exe), and a made-up name is missing. go test puts the bin folder of GOROOT on the PATH.
+func TestAdapterMissingOnThePath(t *testing.T) {
+	a := &Adapter{Look: exec.LookPath}
+	if got := a.Missing(context.Background(), []string{"go", "polix-does-not-exist"}); !slices.Equal(got,
+		[]string{"polix-does-not-exist"}) {
+		t.Fatalf("missing on %s: %q", runtime.GOOS, got)
+	}
+}
+
+// The command hands the hook the real lookup: a prompt with a made-up program of requirements tells the AI.
+func TestRequirementsCommand(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\nrequirements: [polix-does-not-exist]\n")
+	code, stdout, _ := r.hook("claude", map[string]any{"hook_event_name": "UserPromptSubmit"})
+	if code != 0 || !strings.Contains(stdout, "not on the PATH: polix-does-not-exist.") {
+		t.Fatalf("code %d, stdout %q", code, stdout)
+	}
+}
+
 // The adapter reads the facts of the repository and appends to its log, stamped with the time.
 func TestAdapter(t *testing.T) {
 	r := newRepo(t, "feature")

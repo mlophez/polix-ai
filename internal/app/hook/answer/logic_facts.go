@@ -152,6 +152,17 @@ func (r *pass) foreign(dir string) bool {
 	return false
 }
 
+// missing returns the programs, of programs, that the PATH does not run. They are looked up once per call, so every
+// call asks for the same programs: those of polix.yaml.
+func (r *pass) missing(programs []string) []string {
+	if r.ev.Facts.HasMissing {
+		return r.ev.Facts.Missing
+	}
+	s := hook.Step{Programs: slices.Clone(programs)}
+	r.ask(s, s.Valid())
+	return nil
+}
+
 // contains reports whether a file matching the patterns holds want, at this epoch.
 func (r *pass) contains(patterns []string, want string) bool {
 	if r.waiting() {

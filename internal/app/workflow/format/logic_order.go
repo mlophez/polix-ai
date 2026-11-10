@@ -6,9 +6,10 @@ import (
 )
 
 // topKeys is the order of the top level keys of a formatted polix.yaml: the settings first, in the order of
-// workflow.TopKeys, and the two sections that hold the workflow, guardrails and on, last.
+// workflow.TopKeys, then requirements right before guardrails, since it is not a shortcut that expands into entries,
+// and the two sections that hold the workflow, guardrails and on, last.
 var topKeys = []string{"version", "requires", "base_branch", "max_stop_retries", "vars", "rules", "plans",
-	"reports", "guidance", "risk", "guardrails", "on"}
+	"reports", "guidance", "risk", "requirements", "guardrails", "on"}
 
 // varKeys and rulesKeys are the keys of a variable of vars and of the section rules.
 var (

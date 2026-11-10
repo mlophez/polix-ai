@@ -37,6 +37,8 @@ type Facts struct {
 	Ignored    map[string]bool
 	Reals      map[string]string
 	Foreign    map[string]bool   // per absolute folder, whether it is inside another git repository
+	Missing    []string          // the programs the PATH does not run, of those looked up
+	HasMissing bool              // whether the programs were looked up
 	Contents   map[string]string // per epoch and path, see contentKey
 	Unreadable map[string]bool   // per epoch and path, see contentKey
 	Searches   map[string]bool   // per epoch, patterns and text: whether a matching file holds the text
@@ -200,6 +202,11 @@ func (f Facts) learnForeign(dir string, foreign bool) Facts {
 	maps.Copy(m, f.Foreign)
 	m[dir] = foreign
 	f.Foreign = m
+	return f
+}
+
+func (f Facts) learnMissing(programs []string) Facts {
+	f.Missing, f.HasMissing = slices.Clone(programs), true
 	return f
 }
 

@@ -24,6 +24,7 @@ type Step struct {
 	Ignored  string   // whether git ignores this path, relative to the root
 	Real     []string // the real paths of these absolute paths, symlinks resolved
 	Foreign  string   // whether this absolute folder is inside an existing git repository other than this one
+	Programs []string // which of these programs are not on the PATH
 	Contains []string // whether a file matching these patterns holds Text, at Epoch
 	Text     string
 	Read     string       // the content of this file, relative to the root with slashes, at Epoch
@@ -52,6 +53,8 @@ func (s Step) Valid() error {
 		return errors.New("a comparison needs both trees")
 	case s.Run != nil && len(s.Run) == 0:
 		return errors.New("a run needs a command")
+	case s.Programs != nil && len(s.Programs) == 0:
+		return errors.New("a lookup needs its programs")
 	}
 	return nil
 }
@@ -63,8 +66,8 @@ func (s Step) None() bool { return s.asks() == 0 }
 func (s Step) asks() int {
 	n := 0
 	for _, asks := range []bool{s.Branch, s.Hash, s.Changed, s.Diff, s.Files, s.Rules, s.State, s.Ignored != "",
-		s.Real != nil, s.Foreign != "", s.Contains != nil, s.Read != "", s.Run != nil, s.Check != nil, s.Append != nil,
-		s.Compare != ""} {
+		s.Real != nil, s.Foreign != "", s.Programs != nil, s.Contains != nil, s.Read != "", s.Run != nil,
+		s.Check != nil, s.Append != nil, s.Compare != ""} {
 		if asks {
 			n++
 		}

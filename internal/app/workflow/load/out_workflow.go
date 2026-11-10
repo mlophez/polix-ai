@@ -12,6 +12,7 @@ type workflowYAML struct {
 	Requires       string                 `yaml:"requires"`
 	BaseBranch     stringsYAML            `yaml:"base_branch"`
 	MaxStopRetries int                    `yaml:"max_stop_retries"`
+	Requirements   requirementsYAML       `yaml:"requirements"`
 	Guardrails     guardrailsYAML         `yaml:"guardrails"`
 	Vars           map[string]varYAML     `yaml:"vars"`
 	On             map[string][]entryYAML `yaml:"on"`
@@ -166,6 +167,7 @@ func (y workflowYAML) workflow(eventLines map[string]int) (workflow.Workflow, wo
 		Requires:          y.Requires,
 		Base:              []string(y.BaseBranch),
 		MaxStopRetries:    y.MaxStopRetries,
+		Requirements:      []string(y.Requirements),
 		ProtectedFiles:    guardrails.Protected(),
 		ForbiddenCommands: guardrails.Forbidden(),
 		Vars:              y.vars(),

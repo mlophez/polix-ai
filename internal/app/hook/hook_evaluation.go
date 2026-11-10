@@ -118,6 +118,12 @@ func (e Evaluation) KnowForeign(dir string, foreign bool) Evaluation {
 	return e
 }
 
+// KnowMissing returns the evaluation knowing the programs, of those looked up, that the PATH does not run.
+func (e Evaluation) KnowMissing(programs []string) Evaluation {
+	e.Facts = e.Facts.learnMissing(programs)
+	return e
+}
+
 // KnowContent returns the evaluation knowing the content of the file at epoch, or that it cannot be read.
 func (e Evaluation) KnowContent(epoch int, path, data string, err error) Evaluation {
 	e.Facts = e.Facts.learnContent(epoch, path, data, err)

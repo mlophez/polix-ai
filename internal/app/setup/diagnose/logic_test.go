@@ -277,6 +277,44 @@ func TestDecideMissingBase(t *testing.T) {
 	}
 }
 
+// requirementLines are the lines of the report about the programs the workflow requires.
+func requirementLines(out Output) string {
+	var b strings.Builder
+	for _, f := range out.Findings {
+		if f.Area == "requirements" {
+			b.WriteString(f.Level + " " + f.Message + "\n")
+		}
+	}
+	return b.String()
+}
+
+// A program the PATH does not run is a warning, in the order of the file, right after the workflow, and never a
+// failure; all found give one OK line; no requirements, or a workflow that cannot be used, give none.
+func TestDecideRequirements(t *testing.T) {
+	i := healthy(t)
+	if got := requirementLines(Decide(i, false)); got != "" {
+		t.Fatalf("no requirements, no finding:\n%s", got)
+	}
+	i.Workflow = workflow.Workflow{Requirements: []string{"zz", "go", "aa", "zz"}}
+	i.Requirements = map[string]error{"zz": errors.New("not found"), "go": nil, "aa": errors.New("not found")}
+	out := Decide(i, false)
+	if got := requirementLines(out); got != "warn zz is not on the PATH: polix.yaml requires it\n"+
+		"warn aa is not on the PATH: polix.yaml requires it\n" || out.Failed {
+		t.Fatalf("missing programs:\n%s", text(out))
+	}
+	if got := text(out); !strings.Contains(got, "ok workflow polix.yaml is valid\nwarn requirements zz") {
+		t.Fatalf("the requirements come right after the workflow:\n%s", got)
+	}
+	i.Requirements = map[string]error{"zz": nil, "go": nil, "aa": nil}
+	if got := requirementLines(Decide(i, false)); got != "ok 3 programs of requirements on the PATH\n" {
+		t.Fatalf("all found:\n%s", got)
+	}
+	i.WorkflowErr, i.Requirements = workflow.InvalidError{"polix.yaml:5: bad"}, nil
+	if got := requirementLines(Decide(i, false)); got != "" {
+		t.Fatalf("an invalid workflow has no requirements:\n%s", got)
+	}
+}
+
 func TestFound(t *testing.T) {
 	if found("info", "x", "y") != nil || found(setup.LevelOK, "", "y") != nil {
 		t.Fatal("an unknown level, or no area, is not a finding")

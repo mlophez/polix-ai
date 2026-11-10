@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -44,6 +45,8 @@ type Response struct {
 // Port is what the shell of AnswerHook needs from the outside: the repository, its workflow, its
 // facts, the processes and the log. It speaks in domain values, and every method takes the context of the
 // caller.
+//
+//nolint:interfacebloat // the hook reads every fact through this one port, and the step shape needs one method per fact
 type Port interface {
 	// Open opens the repository that contains dir and returns its root and its git directory.
 	Open(ctx context.Context, dir string) (root, gitDir string, err error)
@@ -76,6 +79,8 @@ type Port interface {
 	// Foreign reports whether the absolute folder dir is inside an existing git repository other than this one, a
 	// linked worktree of this one excluded.
 	Foreign(ctx context.Context, dir string) bool
+	// Missing returns the programs, of programs, that the PATH does not run, in the same order.
+	Missing(ctx context.Context, programs []string) []string
 	// Contains reports whether a file of the working tree git does not ignore, matching one of the patterns, holds
 	// text.
 	Contains(ctx context.Context, patterns []string, text string) bool
@@ -125,9 +130,9 @@ var gitCommit = regexp.MustCompile(`(^|[;&|(\s'"])git(\s+(-[cC]|--git-dir|--work
 
 // Command is the command `polix hook <claude|codex>`, the entry of the use case AnswerHook: it turns
 // the argument, the flag and stdin into a Request, injects the adapter with the loaders rules, loadWorkflow and
-// loadState as the port, runs the shell and writes the Response as the agent expects it. Its failure policy: an
-// unknown agent exits with 1; an input that cannot be read or parsed lets the action go on, with the error on
-// stderr.
+// loadState and the lookup exec.LookPath as the port, runs the shell and writes the Response as the agent expects
+// it. Its failure policy: an unknown agent exits with 1; an input that cannot be read or parsed lets the action go
+// on, with the error on stderr.
 func Command(rules rule.Load, loadWorkflow workflow.Load, loadState state.Load) *cobra.Command {
 	req := Request{Version: build.Current(), System: runtime.GOOS}
 	c := &cobra.Command{
@@ -152,7 +157,8 @@ func Command(rules rule.Load, loadWorkflow workflow.Load, loadState state.Load) 
 				return nil
 			}
 			req.Input = input
-			res, err := run(c.Context(), &Adapter{Rules: rules, Workflow: loadWorkflow, State: loadState}, req)
+			res, err := run(c.Context(), &Adapter{Rules: rules, Workflow: loadWorkflow, State: loadState,
+				Look: exec.LookPath}, req)
 			if err != nil {
 				fmt.Fprintln(stderr, "polix hook:", err)
 				return nil
@@ -249,6 +255,8 @@ func carry(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook
 		return ev.KnowReal(s.Real, port.Real(ctx, s.Real))
 	case s.Foreign != "":
 		return ev.KnowForeign(s.Foreign, port.Foreign(ctx, s.Foreign))
+	case s.Programs != nil:
+		return ev.KnowMissing(port.Missing(ctx, s.Programs))
 	case s.Contains != nil:
 		return ev.KnowFound(s.Epoch, s.Contains, s.Text, port.Contains(ctx, s.Contains, s.Text))
 	case s.Read != "":

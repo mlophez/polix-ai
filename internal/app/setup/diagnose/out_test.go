@@ -90,6 +90,22 @@ func TestAdapter(t *testing.T) {
 	}
 }
 
+// A program of requirements is written without extension and found on every system: on Windows the real lookup
+// tries the extensions of PATHEXT, so go finds go.exe; a made-up name is missing.
+func TestAdapterLookPathRequirements(t *testing.T) {
+	a := Adapter{OS: runtime.GOOS, Look: exec.LookPath}
+	path, err := a.LookPath(context.Background(), "go")
+	if err != nil || path == "" {
+		t.Fatalf("go is not found without extension on %s: %q %v", runtime.GOOS, path, err)
+	}
+	if runtime.GOOS == "windows" && !strings.EqualFold(filepath.Ext(path), ".exe") {
+		t.Fatalf("go is found through PATHEXT: %s", path)
+	}
+	if _, err := a.LookPath(context.Background(), "polix-no-such-program"); err == nil {
+		t.Fatal("a made-up program is missing")
+	}
+}
+
 func TestAdapterClaudePlugin(t *testing.T) {
 	a := Adapter{}
 	inst, en, folder, err := a.claudePlugin([]byte(`[{"id":"polix@polix","scope":"user","enabled":true,"readFromFolder":"/f"}]`))

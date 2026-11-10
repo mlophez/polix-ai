@@ -136,8 +136,9 @@ linters:
           deny:
             - pkg: github.com/mlophez/polix-ai/internal/platform/testenv$
               desc: "GOARCH-43: internal/platform/testenv is support for the tests; import it only from _test.go files"
-    # The largest port today, the one of AnswerHook, has 19 methods: the limit stops it from growing, and goes down
-    # as it shrinks.
+    # The port of AnswerHook, with 20 methods, is the only interface past the limit, with a //nolint and its reason
+    # on its declaration: the hook reads every fact through that one port, and the step shape needs one method per
+    # fact. No other interface may pass it: the limit stops them from growing, and goes down as they shrink.
     interfacebloat:
       max: 19
     exhaustive:

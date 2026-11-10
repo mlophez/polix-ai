@@ -8,7 +8,7 @@ limits), [polix.md](polix.md).
 Validate the file with `polix config check` and draw it with `polix graph`. `polix config check` rejects every
 unknown key, event, condition or verb, so a typo never turns into an entry that silently stops applying.
 `polix config fmt` formats it in place, keeping its comments: the keys of each section in the order of this
-reference, with `guardrails` and `on` at the end; the items of a list and the keys you name (variables, globs of
+reference, with `requirements`, `guardrails` and `on` at the end; the items of a list and the keys you name (variables, globs of
 `risk.weights` and `rules.run`) keep their order.
 
 The file has two layers. [`guardrails`](#guardrails) holds the basics every project wants from the first minute,
@@ -37,6 +37,7 @@ version: 1                       # required
 requires: 0.3.0                  # oldest polix that knows this file (guardrails needs it)
 base_branch: [main, dev]         # branch the change merges into (polix rules check --changed)
 max_stop_retries: 3              # loop guard of stop and subagent_stop
+requirements: [go, golangci-lint]  # programs needed on the PATH, told to the AI on the first prompt
 guardrails:                      # the basics every project wants
   protected_files: [.env, /AGENTS.md]           # path globs no agent writes, before every entry
   forbidden_commands:                           # commands no agent runs, before every entry
@@ -208,6 +209,34 @@ is `true` when left out; `false` turns it off.
 vars:
   key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # PLAT-123-add-retry -> PLAT-123
   release: { branch: "^release/[0-9.]+$" }      # release/2.4 -> release/2.4
+```
+
+### requirements
+
+- Type: a list of program names. Default: none.
+- The programs the repository needs on the PATH, such as the linter, the test runner or the formatter its workflow
+  runs. polix checks only these: it never derives them from the commands of the workflow nor checks versions.
+- On the first `prompt` of a session, before the entries, the hook looks them up and, when some are missing, tells
+  the AI as a context: `These programs that polix.yaml requires are not on the PATH: <names>. Before doing anything
+  else, install them, or ask the user to install them if you cannot.` It is a once-only context: the later prompts
+  of the session do not repeat it; it is due again after a `start` of the session (startup, resume, clear,
+  compaction) and when the set of missing programs changes; a refused prompt does not count it as told. `start`
+  never tells it, and it never blocks.
+- `polix doctor` warns once per missing program, in the area `requirements`: `<program> is not on the PATH:
+  polix.yaml requires it`; with every program found it gives one OK line, `<n> programs of requirements on the
+  PATH`. A missing program never makes it fail; `polix doctor --hook` lists the missing ones.
+- The lookup is that of the command of a `run`: the PATH the hooks give polix, not that of an interactive shell. On
+  Windows it tries the extensions of `PATHEXT`, so write names without extension (`golangci-lint`, never
+  `golangci-lint.exe`, which is missing on macOS and Linux). A shell alias or function, a script without extension
+  that only Git Bash runs, and a program found only in the current folder count as missing.
+- `polix config check` reports a single name, a map and an item that is not a name at their line, with the form
+  the key takes (`requirements takes a list of program names, as [go, golangci-lint]`), and an empty name
+  (`requirements: a program name cannot be empty`).
+- `polix config fmt` places it right before `guardrails`, keeping the order of its programs. A polix older than the
+  key reports it as unknown: set `requires` to a release that knows it.
+
+```yaml
+requirements: [go, golangci-lint]
 ```
 
 ### on

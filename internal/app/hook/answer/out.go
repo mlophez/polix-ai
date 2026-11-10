@@ -26,6 +26,7 @@ type Adapter struct {
 	Rules    rule.Load     // the loader of the rules (internal/app/rule/load), which cmd/polix builds once
 	Workflow workflow.Load // the loader of polix.yaml (internal/app/workflow/load), which cmd/polix builds once too
 	State    state.Load    // the loader of the log (internal/app/state/load), which cmd/polix builds once too
+	Look     proc.LookFunc // how a program is found on the PATH (exec.LookPath)
 }
 
 // checkTimeout bounds the check of one rule, within the budget of the call.
@@ -133,6 +134,19 @@ func (a *Adapter) Real(_ context.Context, paths []string) []string {
 // Foreign reports whether the absolute folder dir is inside an existing git repository other than this one.
 func (a *Adapter) Foreign(ctx context.Context, dir string) bool {
 	return a.Repo.Foreign(ctx, dir)
+}
+
+// Missing returns the programs the lookup does not find, in their order. exec.LookPath searches the PATH the hooks
+// give polix, as a command of run is found; on Windows it tries the extensions of PATHEXT, so a name without
+// extension finds its .exe. A program found only in the current folder (exec.ErrDot) is missing.
+func (a *Adapter) Missing(_ context.Context, programs []string) []string {
+	var missing []string
+	for _, p := range programs {
+		if _, err := a.Look(p); err != nil {
+			missing = append(missing, p)
+		}
+	}
+	return missing
 }
 
 // Read returns the content of a file of the repository.

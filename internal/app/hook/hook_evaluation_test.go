@@ -58,6 +58,23 @@ func TestEvaluationKnow(t *testing.T) {
 	}
 }
 
+// The missing programs are kept on a copy, without sharing the slice with the caller nor touching the original.
+func TestEvaluationKnowMissing(t *testing.T) {
+	var ev Evaluation
+	programs := []string{"go", "golangci-lint"}
+	got := ev.KnowMissing(programs)
+	programs[0] = "changed"
+	if !got.Facts.HasMissing || !slices.Equal(got.Facts.Missing, []string{"go", "golangci-lint"}) {
+		t.Fatalf("facts: %+v", got.Facts)
+	}
+	if none := ev.KnowMissing(nil); !none.Facts.HasMissing || len(none.Facts.Missing) != 0 {
+		t.Fatalf("every program found: %+v", none.Facts)
+	}
+	if ev.Facts.HasMissing || ev.Facts.Missing != nil {
+		t.Fatal("the original changed")
+	}
+}
+
 // A hash that cannot be computed is unknown and warned once.
 func TestEvaluationKnowHashError(t *testing.T) {
 	ev := Evaluation{}.KnowHash(0, "x", errors.New("boom")).KnowHash(1, "", errors.New("boom"))

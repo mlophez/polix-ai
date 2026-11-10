@@ -83,6 +83,44 @@ on:
 	}
 }
 
+// AC2: requirements, written after on, goes right before guardrails, its programs and its comment kept in order.
+func TestFormatOrderRequirements(t *testing.T) {
+	src := `version: 1
+guardrails:
+  protected_files: [AGENTS.md]
+on:
+  stop:
+    - action: { block: "stop" }
+# The programs the hooks run.
+requirements: [golangci-lint, go]
+risk:
+  weights:
+    "a/**": 2
+`
+	want := `version: 1
+risk:
+  weights:
+    "a/**": 2
+# The programs the hooks run.
+requirements: [golangci-lint, go]
+guardrails:
+  protected_files: [AGENTS.md]
+on:
+  stop:
+    - action: { block: "stop" }
+`
+	got, err := formatData([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	if again, err := formatData(got); err != nil || string(again) != want {
+		t.Fatalf("not idempotent: %v\n%s", err, again)
+	}
+}
+
 // The workflows of the repository, formatted in the order of the reference, keep their data and are stable.
 func TestFormatRepositoryWorkflows(t *testing.T) {
 	for _, name := range []string{"polix.yaml", "examples/polix.yaml"} {

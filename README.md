@@ -370,8 +370,10 @@ measures `changed_lines`, `changed_files` and `risk_score` (a number: at least t
 is what is not committed yet (changed since HEAD, or untracked).
 
 **Top-level keys:** `version`, `requires`, `base_branch` (the branch, or candidates, `rules check --changed`
-compares with), `max_stop_retries` (the loop guard), `guardrails`, `vars`, `on`, `rules` (`run`: the command that
-runs each kind of `check`, by the glob of its file name).
+compares with), `max_stop_retries` (the loop guard), `requirements` (the programs the repository needs on the PATH:
+the first prompt of a session tells the AI which ones are missing, and `polix doctor` warns, never blocking),
+`guardrails`, `vars`, `on`, `rules` (`run`: the command that runs each kind of `check`, by the glob of its file
+name).
 
 **Ignored files:** the entries of `on:` skip the edits of files git ignores, since they govern what a commit may
 hold; `protected_files` and `forbidden_commands` still cover them. To keep an agent away from a path with an

@@ -287,8 +287,10 @@ better whole than split.
 
 The other linters of design of `.golangci.yml` follow the same policy, enabled with the code already clean:
 
-- `interfacebloat`: an interface has at most 19 methods. The limit is a ratchet set at the largest port of today,
-  the one of AnswerHook (the next is the one of DiagnoseSetup, with 15), and goes down as they shrink.
+- `interfacebloat`: an interface has at most 19 methods. The port of AnswerHook, with 20, is the only one past it,
+  with a `//nolint` and its reason on its declaration (GO-3): the hook reads every fact through that one port, and
+  the step shape needs one method per fact. No other interface may pass it: the limit is a ratchet (the next port is
+  the one of DiagnoseSetup, with 15) and goes down as they shrink.
 - `exhaustive` (a `default` counts), `errname`, `forcetypeassert` and `errchkjson`: a switch on a typed enum lists
   every value or has a `default`; an error type is named `*Error` and a sentinel `Err*`; a type assertion checks its
   `ok`; the error of `json.Marshal` is checked.

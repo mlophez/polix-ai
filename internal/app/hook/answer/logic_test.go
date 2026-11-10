@@ -43,6 +43,7 @@ type facts struct {
 	ignored   map[string]bool   // the paths git ignores
 	reals     map[string]string // the real path of a path, when it differs from the path
 	foreign   map[string]bool   // the folders inside another git repository
+	missing   []string          // the programs the PATH does not run
 
 	// checkFails, when set, decides each check instead of runErr: it fails when it covers one of these rules
 	checkFails map[string]bool
@@ -97,6 +98,8 @@ func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
 			ev = ev.KnowReal(s.Real, reals)
 		case s.Foreign != "":
 			ev = ev.KnowForeign(s.Foreign, f.foreign[s.Foreign])
+		case s.Programs != nil:
+			ev = ev.KnowMissing(f.missing)
 		case s.Contains != nil:
 			ev = ev.KnowFound(s.Epoch, s.Contains, s.Text, f.found)
 		case s.Read != "":
@@ -1946,6 +1949,88 @@ on:
 	if !out.Answer.Block || !slices.Equal(out.Answer.Contexts, []string{"Cuidado"}) || len(got) != 1 ||
 		got[0].Outcome != state.OutcomeInjected || got[0].Key != "Cuidado" {
 		t.Fatalf("a refused command: %+v %+v", out.Answer, got)
+	}
+}
+
+// lookups returns the programs of the Programs steps the steps asked for, in order.
+func lookups(steps []hook.Step) [][]string {
+	var out [][]string
+	for _, s := range steps {
+		if s.Programs != nil {
+			out = append(out, s.Programs)
+		}
+	}
+	return out
+}
+
+// AC3, AC4, AC5 and AC6: a prompt with a program of requirements not on the PATH tells the AI once per session,
+// without blocking, after one lookup; it tells it again after a start of the session or when the missing programs
+// change, and a refused prompt does not record it. A start never looks the programs up nor tells them; without
+// requirements nothing is looked up, and with every program found nothing is told.
+func TestRequirementsPrompt(t *testing.T) {
+	yaml := `version: 1
+requirements: [go, does-not-exist]
+guidance: { commit: false, edit: false, layout: false }
+on:
+  prompt:
+    - when: { branch: "^refuse$" }
+      action: { block: "No" }
+`
+	const text = "These programs that polix.yaml requires are not on the PATH: does-not-exist. Before doing anything " +
+		"else, install them, or ask the user to install them if you cannot."
+	prompt := eval(t, yaml, workflow.Prompt)
+	var st state.State
+	step := func(ev hook.Evaluation, branch string, missing []string) (Output, []hook.Step) {
+		t.Helper()
+		out, steps := walk(t, ev, facts{branch: branch, state: st, missing: missing})
+		st = logged(t, st, steps)
+		return out, steps
+	}
+	absent := []string{"does-not-exist"}
+	out, steps := step(prompt, "main", absent)
+	got := observed(steps)
+	if out.Answer.Block || !slices.Equal(out.Answer.Contexts, []string{text}) ||
+		!reflect.DeepEqual(lookups(steps), [][]string{{"go", "does-not-exist"}}) || len(got) != 1 ||
+		got[0].Outcome != state.OutcomeInjected || got[0].Line != 0 || got[0].Key != "requirements: does-not-exist" {
+		t.Fatalf("first prompt: %+v %+v %+v", out.Answer, lookups(steps), got)
+	}
+	out, steps = step(prompt, "main", absent)
+	if skips := decided(steps, "skip"); len(out.Answer.Contexts) != 0 || len(observed(steps)) != 0 ||
+		len(skips) != 1 || skips[0].Action != "requirements" {
+		t.Fatalf("second prompt: %+v %+v", out.Answer, appended(steps))
+	}
+	// Another set of missing programs is told again.
+	if out, _ = step(prompt, "main", []string{"go", "does-not-exist"}); len(out.Answer.Contexts) != 1 ||
+		!strings.Contains(out.Answer.Contexts[0], "not on the PATH: go, does-not-exist.") {
+		t.Fatalf("another set: %+v", out.Answer)
+	}
+	// A start never looks the programs up nor tells them, and makes the context due again.
+	out, steps = step(with(t, prompt, func(e *agent.Event) { e.Name = workflow.Start }), "main", absent)
+	if len(out.Answer.Contexts) != 0 || len(lookups(steps)) != 0 {
+		t.Fatalf("start: %+v %+v", out.Answer, lookups(steps))
+	}
+	if out, _ = step(prompt, "main", absent); !slices.Equal(out.Answer.Contexts, []string{text}) {
+		t.Fatalf("a prompt after a start: %+v", out.Answer)
+	}
+	// A refused prompt never reaches the AI: it is not recorded, and the next prompt tells it.
+	st = state.State{}
+	out, steps = step(prompt, "refuse", absent)
+	if !out.Answer.Block || len(observed(steps)) != 0 {
+		t.Fatalf("a refused prompt: %+v %+v", out.Answer, observed(steps))
+	}
+	if out, _ = step(prompt, "main", absent); !slices.Equal(out.Answer.Contexts, []string{text}) {
+		t.Fatalf("the prompt after a refused one: %+v", out.Answer)
+	}
+	// Every program found tells nothing.
+	st = state.State{}
+	if out, steps = step(prompt, "main", nil); len(out.Answer.Contexts) != 0 || len(observed(steps)) != 0 ||
+		len(lookups(steps)) != 1 {
+		t.Fatalf("every program found: %+v %+v", out.Answer, appended(steps))
+	}
+	// Without requirements nothing is looked up.
+	without := eval(t, "version: 1\non:\n  prompt:\n    - action: { inject: \"Hola\" }\n", workflow.Prompt)
+	if _, steps = walk(t, without, facts{branch: "main"}); len(lookups(steps)) != 0 {
+		t.Fatalf("without requirements: %+v", lookups(steps))
 	}
 }
 

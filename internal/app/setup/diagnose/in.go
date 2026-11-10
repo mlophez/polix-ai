@@ -88,17 +88,18 @@ type Port interface {
 
 // repository is what the shell reads through the port about the repository, inside one with git.
 type repository struct {
-	wf       workflow.Workflow
-	found    bool
-	wfErr    error
-	rules    []rule.Rule
-	invalid  []string
-	rulesErr error
-	missing  map[string]bool
-	runnable map[string]error
-	baseErr  error
-	stateDir string
-	stateErr error
+	wf           workflow.Workflow
+	found        bool
+	wfErr        error
+	requirements map[string]error
+	rules        []rule.Rule
+	invalid      []string
+	rulesErr     error
+	missing      map[string]bool
+	runnable     map[string]error
+	baseErr      error
+	stateDir     string
+	stateErr     error
 }
 
 // Command is the command `polix doctor`, the entry of the use case DiagnoseSetup: it turns the flags
@@ -135,9 +136,9 @@ func Command(rules rule.Load, cache version.Load, loadWorkflow workflow.Load) *c
 
 // run is the shell, from request to response: it reads through the port everything doctor looks at (the
 // latest release only for a release build without --hook nor --offline, saving what it saw; inside a repository
-// its workflow, rules, checks, base and state; the hooks files and the configuration of the agents, decoded; the
-// plugin; Claude Code only without --hook and with the plugin of this binary), calls the logic once and builds the
-// response.
+// its workflow, the programs it requires, rules, checks, base and state; the hooks files and the configuration of
+// the agents, decoded; the plugin; Claude Code only without --hook and with the plugin of this binary), calls the
+// logic once and builds the response.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	home := port.Home(ctx)
 	exe, exeErr := port.Executable(ctx)
@@ -163,8 +164,9 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	installed, enabled, folder, claudeErr := askClaude(ctx, port, req, s, plugin)
 	i := setup.Inspection{Setup: s, Exe: exe, ExeErr: exeErr, Latest: latest, LatestErr: latestErr, Path: path,
 		PathErr: pathErr, SamePath: port.SameFile(ctx, path, exe), GitErr: gitErr, RepoErr: repoErr,
-		Workflow: repo.wf, Found: repo.found, WorkflowErr: repo.wfErr, Rules: repo.rules, Invalid: repo.invalid,
-		RulesErr: repo.rulesErr, Missing: repo.missing, Runnable: repo.runnable, BaseErr: repo.baseErr,
+		Workflow: repo.wf, Found: repo.found, WorkflowErr: repo.wfErr, Requirements: repo.requirements,
+		Rules: repo.rules, Invalid: repo.invalid, RulesErr: repo.rulesErr, Missing: repo.missing,
+		Runnable: repo.runnable, BaseErr: repo.baseErr,
 		ClaudeHooks: claudeHooks, CodexHooks: codexHooks, CodexEnabled: codexEnabled, Plugin: plugin,
 		ClaudeInstalled: installed, ClaudeEnabled: enabled, ClaudeFolder: folder, ClaudeErr: claudeErr,
 		SameFolder: port.SameFile(ctx, folder, s.PluginDir()), StateDir: repo.stateDir, StateErr: repo.stateErr}
@@ -192,15 +194,29 @@ func releases(ctx context.Context, port Port, req Request, exeErr error) (string
 	return cache.Latest, nil
 }
 
-// inspectRepository reads the repository of root: its workflow, its rules, whether each check exists and can run,
-// whether a base branch exists, and whether the state below gitDir can be written.
+// inspectRepository reads the repository of root: its workflow, why the PATH does not run each program it requires
+// (only for a workflow that can be used), its rules, whether each check exists and can run, whether a base branch
+// exists, and whether the state below gitDir can be written.
 func inspectRepository(ctx context.Context, port Port, req Request, root, gitDir string) repository {
-	var r repository
-	r.wf, r.found, r.wfErr, r.baseErr = port.LoadWorkflow(ctx, root, req.Version)
+	wf, found, wfErr, baseErr := port.LoadWorkflow(ctx, root, req.Version)
+	r := repository{wf: wf, found: found, wfErr: wfErr, baseErr: baseErr}
+	if wfErr == nil {
+		r.requirements = lookRequirements(ctx, port, wf.Requirements)
+	}
 	loaded, missing, runnable := port.LoadRules(ctx, root, r.wf.RulesPath())
 	r.rules, r.invalid, r.rulesErr, r.missing, r.runnable = loaded.Rules, loaded.Problems, loaded.Err, missing, runnable
 	r.stateDir, r.stateErr = port.WriteState(ctx, gitDir)
 	return r
+}
+
+// lookRequirements looks each program up on the PATH, the one the hooks give polix, and returns by program why the
+// PATH does not run it, nil when it does.
+func lookRequirements(ctx context.Context, port Port, programs []string) map[string]error {
+	why := make(map[string]error, len(programs))
+	for _, p := range programs {
+		_, why[p] = port.LookPath(ctx, p)
+	}
+	return why
 }
 
 // readPlugin returns the plugin embedded in the binary against the one written in the local marketplace of s.

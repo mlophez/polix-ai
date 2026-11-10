@@ -18,6 +18,9 @@ type fakePort struct {
 	calls   []string
 	saved   version.Cache
 	repoErr error
+	wf      workflow.Workflow // the workflow LoadWorkflow returns
+	absent  map[string]bool   // the programs LookPath does not find
+	looked  []string          // the programs LookPath was asked for
 }
 
 func (f *fakePort) note(c string) { f.calls = append(f.calls, c) }
@@ -38,6 +41,10 @@ func (f *fakePort) Latest(_ context.Context) (string, error) {
 	return "0.3.0", nil
 }
 func (f *fakePort) LookPath(_ context.Context, name string) (string, error) {
+	f.looked = append(f.looked, name)
+	if f.absent[name] {
+		return "", errors.New("executable file not found in $PATH")
+	}
 	return "/bin/" + name, nil
 }
 func (f *fakePort) SameFile(_ context.Context, a, b string) bool { return a == b }
@@ -46,7 +53,7 @@ func (f *fakePort) OpenRepo(_ context.Context, _ string) (string, string, error)
 }
 func (f *fakePort) LoadWorkflow(_ context.Context, _, _ string) (workflow.Workflow, bool, error, error) {
 	f.note("LoadWorkflow")
-	return workflow.Workflow{}, true, nil, nil
+	return f.wf, true, nil, nil
 }
 func (f *fakePort) LoadRules(_ context.Context, _, _ string) (rule.Loaded, map[string]bool, map[string]error) {
 	loaded := rule.Loaded{Rules: []rule.Rule{{ID: "A-1", Description: "d", Deterministic: true, Check: "a.sh", File: "f"}}}
@@ -93,6 +100,27 @@ func TestShell(t *testing.T) {
 	if _, err := run(context.Background(), port, Request{Version: "dev"}); err != nil ||
 		port.calls[0] == "Latest" {
 		t.Fatal("dev asks the releases")
+	}
+}
+
+// The shell looks up on the PATH each program the workflow requires, and --hook prints the missing ones.
+func TestShellRequirements(t *testing.T) {
+	port := &fakePort{wf: workflow.Workflow{Requirements: []string{"go", "nope"}}, absent: map[string]bool{"nope": true}}
+	res, err := run(context.Background(), port, Request{Version: "0.2.0", Hook: true})
+	if err != nil || strings.Join(port.looked, " ") != "polix git go nope" {
+		t.Fatalf("%v %v", err, port.looked)
+	}
+	var b strings.Builder
+	res.print(&b)
+	if got := b.String(); !strings.Contains(got, "- [warn] requirements: nope is not on the PATH: polix.yaml requires it") ||
+		strings.Contains(got, "go is not") {
+		t.Fatal(got)
+	}
+	// Outside a repository no program of a workflow is looked up.
+	port = &fakePort{repoErr: errors.New("not inside"), wf: workflow.Workflow{Requirements: []string{"go"}}}
+	if _, err := run(context.Background(), port, Request{Version: "0.2.0", Hook: true}); err != nil ||
+		strings.Join(port.looked, " ") != "polix git" {
+		t.Fatalf("%v %v", err, port.looked)
 	}
 }
 

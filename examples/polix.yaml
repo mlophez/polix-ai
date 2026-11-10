@@ -151,6 +151,23 @@ risk:
     "docs/**": 0.2
     "*.lock": 0
 
+# Optional. The programs the repository needs on the PATH: a list of names, nothing else (no version, no reason).
+# polix checks only these, never the commands of the workflow, and it never blocks because of them:
+# - On the first prompt of a session, before the entries, the hook looks them up and, when some are missing, tells
+#   the AI, in English, which ones, asking it to install them, or to ask the user to, before anything else. It is a
+#   once-only context: due again after a start of the session (startup, resume, clear, compaction) or when the set
+#   of missing programs changes, never on start itself, and a refused prompt does not count it as told.
+# - `polix doctor` warns once per missing program in the area `requirements`, or gives one OK line when the PATH runs
+#   them all; it never fails because of them, and `polix doctor --hook` at session start lists the missing ones.
+# A program is looked up as the command of a `run` is: on the PATH the hooks give polix, not that of an interactive
+# shell. On Windows the lookup tries the extensions of PATHEXT, so write the names without extension (`golangci-lint`,
+# never `golangci-lint.exe`, which is missing on macOS and Linux). A shell alias or function, a script without
+# extension that only Git Bash runs, and a program found only in the current folder count as missing.
+# `polix config check` reports a single name, a map or an item that is not a name, showing the form, and an empty
+# name; `polix config fmt` puts the key right before guardrails. A polix older than the key reports it as unknown, so
+# set `requires` to a release that knows it.
+requirements: [go, golangci-lint]
+
 # Optional. The guardrails every project wants from the first minute, each a short list in exactly one form. Two
 # of them are protections of the engine: protected_files and forbidden_commands apply before every entry of `on`, to
 # every actor, without exceptions, also to the files git ignores, and only with a valid file. The other three are

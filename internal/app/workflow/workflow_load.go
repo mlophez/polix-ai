@@ -39,8 +39,8 @@ type UnknownKeyError struct {
 }
 
 // TopKeys are the keys of polix.yaml.
-var TopKeys = []string{"version", "requires", "base_branch", "max_stop_retries", "guardrails", "vars", "on", "rules",
-	"plans", "reports", "guidance", "risk"}
+var TopKeys = []string{"version", "requires", "base_branch", "max_stop_retries", "requirements", "guardrails", "vars",
+	"on", "rules", "plans", "reports", "guidance", "risk"}
 
 // RiskKeys are the keys of the section risk.
 var RiskKeys = []string{"weights"}

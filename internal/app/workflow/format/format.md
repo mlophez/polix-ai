@@ -40,7 +40,8 @@ vocabulary of the domain:
   last line of an item, indented deeper than the next item, stays below it. The comments right above the first key
   stay at the top of the file when that key moves, unless a blank line sets them apart from the top.
 - The top level keys follow `version`, `requires`, `base_branch`, `max_stop_retries`, `vars`, `rules`, `plans`,
-  `reports`, `guidance`, `risk`, `guardrails` and `on`. Inside each section the keys follow the order of their schema:
+  `reports`, `guidance`, `risk`, `requirements`, `guardrails` and `on`: `requirements` goes right before
+  `guardrails`, and its programs keep their order. Inside each section the keys follow the order of their schema:
   the shortcuts of `guardrails` and the keys of their items, the events of `on` in lifecycle order (`workflow.Events`),
   the keys of an entry (`when`, `unless`, `action`), the conditions (`workflow.Conditions`, also inside `any` and
   `not`), and the keys of each verb. An unknown key goes after the known ones, in its order in the source.

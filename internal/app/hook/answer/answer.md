@@ -56,7 +56,8 @@ what the next event of the call starts from.
 holds only what its events do and calls the engine as a library:
 
 - `session` (`logic_session.go`), for `start` and `prompt`: the session context and the `started` line of `start`
-  (rules 4 and 6), and the discard of the once-only injects of a refused `prompt` (rule 6).
+  (rules 4 and 6), the context of the missing programs of `requirements` on `prompt` (rule 14), and the discard of
+  the once-only injects of a refused `prompt` (rule 6).
 - `edit` (`logic_edit.go`), for `pre_edit` and `post_edit`: the protections of an edit (rule 1), the edits an
   unusable workflow lets through (rule 2) and the skip of the edits outside the change (rule 3).
 - `command` (`logic_command.go`), for `pre_command`, `post_command` and `pre_commit`: the protections of a command
@@ -78,7 +79,8 @@ A `hook.Step` asks for one of: the branch, the content hash (of an epoch), the p
 observed line and the current one (`Compare` and `Tree`, kept in the facts per pair of trees), the changed files,
 the diff (`Diff`: the
 added and deleted lines of each file not committed yet, the same files as the changed ones), the files, the rules, the
-log, whether git ignores a path, the real paths of some paths, the content of a file (of an epoch), or acts: runs
+log, whether git ignores a path, the real paths of some paths, which programs the PATH does not run (`Programs`, kept
+in the facts as `Missing` once per call), the content of a file (of an epoch), or acts: runs
 a command, runs the checks of one or several rules (`rule.Run`, with the argv of its runner of `rules.run`) or
 appends an entry to the log. A check step may decide several rules: the runs come from `rule.Rules.Plan`, and a failed
 shared run is rerun once per rule (`rule.Run.Settle`), each rerun a step of its own, so the block names only the
@@ -202,6 +204,15 @@ The rules it follows, as before this use case:
 13. The placeholders `{changed_lines}`, `{changed_files}` and `{risk_score}` of every string of an entry expand to
     the measures over the `changed` of its `when`, else the whole diff, or to `?` when it cannot be measured
     (`measureValues`).
+14. On `prompt`, before the entries, when the workflow declares `requirements` (`workflow.Workflow.Requirements`),
+    the programs are looked up once per call (`hook.Step.Programs`, answered by `Missing`) and, when some are not on
+    the PATH, the AI gets one context: `These programs that polix.yaml requires are not on the PATH: <names>. Before
+    doing anything else, install them, or ask the user to install them if you cannot.` It is a once-only inject of
+    rule 6 at line 0, keyed by `requirements: ` and the missing names joined by `, `: it is due again after a
+    `started` of the session (`InjectsOnce` holds with requirements, so `start` writes it) or when the set of missing
+    programs changes, its skip is logged as a `skip` decision of the action `requirements`, and a refused prompt does
+    not write it. It never blocks. `start` never looks the programs up; without `requirements` nothing is looked up,
+    and with every program found nothing is told.
 
 The engine holds the protections and the heuristics of the command lines (`lineWrites`, `namesState`, `within`,
 `anyPathFold`, `forbidden`, `matchingCommands`, `commitDirs`), the placeholders (`expandPlaceholders`,
@@ -220,7 +231,9 @@ take it; `Stderr`, the reasons and contexts of a block, else one `polix: <warnin
 ## Port
 
 `Port`, declared in `in.go` and implemented by `Adapter` in
-`out.go` and, for the log, `out_log.go`:
+`out.go` and, for the log, `out_log.go`. With 20 methods it passes the maximum of 19 of `interfacebloat`, silenced on
+its declaration with a `//nolint` and its reason: the hook reads every fact through this one port, and the step shape
+needs one method per fact.
 
 - `Open`: opens the repository that contains the folder through `internal/platform/git` and starts the budget of
   10 minutes of every run of the call together.
@@ -248,6 +261,10 @@ take it; `Stderr`, the reasons and contexts of a block, else one `polix: <warnin
   common directory, objects and refs are each another file than ours by `os.SameFile`, so a linked worktree of this
   one or a repository linking into ours is not); an error reads as not, so it runs detached from the cancellation
   of the caller.
+- `Missing`: the programs of those it is given that the PATH does not run, in their order, through the field `Look`
+  of the adapter, `exec.LookPath`, which `Command` sets: the PATH the hooks give polix, as a command of `run` is
+  found; on Windows through the extensions of `PATHEXT`, so `go` finds `go.exe`. A failed lookup is a missing
+  program, never an error, and a program found only in the current folder (`exec.ErrDot`) is missing.
 - `Contains`: whether a file git does not ignore, matching the patterns of a `file` condition, holds the text of
   its `contains`; one step per search and epoch, the contents never leave the adapter.
 - `Read`: the content of a file of the repository.
@@ -280,8 +297,8 @@ The failure policy of the hook, so a broken polix never traps the agent:
 ## Flow
 
 1. `Command` checks the agent, reads stdin into a `Request` and injects an `Adapter` with the loaders of the rules,
-   of polix.yaml and of the log it was given (`Adapter{Rules: rules, Workflow: loadWorkflow, State: loadState}`) as
-   the `Port`.
+   of polix.yaml and of the log it was given and the lookup of programs
+   (`Adapter{Rules: rules, Workflow: loadWorkflow, State: loadState, Look: exec.LookPath}`) as the `Port`.
 2. `run` (shell) chooses the `format` of the agent of the request (`claude` or `codex`) and parses the input with
    it into a `hook.Hook`; without events it answers nothing.
 3. It opens the repository from `hook.Hook.Folder` and loads the workflow through the port; outside a repository it

@@ -57,6 +57,33 @@ func TestInjectsOnce(t *testing.T) {
 	}
 }
 
+// The requirements inject once without any inject of on: the context of the missing programs on the first prompt.
+func TestInjectsOnceRequirements(t *testing.T) {
+	w := Workflow{Version: 1, Requirements: []string{"go"}}
+	if err := w.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	if !w.InjectsOnce() {
+		t.Fatal("requirements without injects: not once")
+	}
+	if (Workflow{Version: 1, Requirements: []string{}}).InjectsOnce() {
+		t.Fatal("an empty list of requirements: once")
+	}
+}
+
+// An empty or blank program name of requirements is a problem of the whole file, once per name.
+func TestRequirementsValid(t *testing.T) {
+	if err := (Workflow{Version: 1, Requirements: []string{"go", "golangci-lint"}}).Valid(); err != nil {
+		t.Fatal(err)
+	}
+	w := Workflow{Version: 1, Requirements: []string{"go", "", " "}}
+	want := "polix.yaml: requirements: a program name cannot be empty\n" +
+		"polix.yaml: requirements: a program name cannot be empty"
+	if got := strings.Join(w.Problems(), "\n"); got != want {
+		t.Fatalf("problems: %q", got)
+	}
+}
+
 // Valid joins every problem in one Invalid error, whose list is that of Problems.
 func TestValidJoinsProblems(t *testing.T) {
 	w := Workflow{Version: 2, MaxStopRetries: -1}

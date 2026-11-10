@@ -13,6 +13,11 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   at once on tasks that do not depend on each other, updates the Markdown docs of the project (never `AGENTS.md`,
   `CLAUDE.md` nor a protected file), then reviews the whole change as `/polix:review` does and checks each acceptance
   criterion of the plan. It never commits nor fixes the findings.
+- `requirements:` in `polix.yaml`, the programs a repository needs on the PATH, as `[go, golangci-lint]`. On the
+  first prompt of a session the hook tells the AI which ones are missing and asks it to install them, or to ask the
+  user to, before anything else; it tells it again after a start of the session or when the missing set changes.
+  `polix doctor` warns once per missing program. Neither ever blocks. Names are written without extension: on
+  Windows the lookup tries the extensions of `PATHEXT`.
 
 ### Fixed
 

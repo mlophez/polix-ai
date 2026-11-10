@@ -171,7 +171,8 @@ start hook only refreshes the plugin already installed: it never installs anythi
 the repository.
 
 `polix doctor` checks the version against the latest release, that the `PATH` the hooks use runs this binary, git,
-`polix.yaml`, the rules and that their checks exist and are executable (on Windows, that their interpreter is found;
+`polix.yaml`, the programs of its `requirements` (a warning per missing one, see [Requirements](#requirements)),
+the rules and that their checks exist and are executable (on Windows, that their interpreter is found;
 a check that a runner of `rules.run` runs skips both, since its runner runs it), the hooks of Claude Code (project,
 local and user settings: every event, every governed tool in the matchers, a timeout above the run budget, and never
 twice), the plugin of the user (its version against the binary and, except in `--hook`, that Claude Code has it
@@ -323,6 +324,7 @@ version: 1
 requires: 0.1.0       # oldest polix that knows every option of the file (optional, since 0.1.0)
 base_branch: [main, dev]  # branch, or candidates, a change merges into, for rules check --changed (default main)
 max_stop_retries: 3   # loop guard of every block on stop and subagent_stop, per entry (default 3)
+requirements: [go, golangci-lint]  # programs the repository needs on the PATH: told to the AI, never blocking
 guardrails:           # the basics every project wants (optional)
   protected_files: [".env"]                       # path globs no agent writes, the main session included
   forbidden_commands:                             # commands no agent runs, each command of the line as written
@@ -364,6 +366,42 @@ on:
 
 An entry has two parts: when it applies (`when` and `unless`) and what it does (`action`). A comment of YAML is
 the place for its reason, for people; the message of a `block` or a `run` is the reason the AI reads.
+
+### Requirements
+
+`requirements` lists the programs the repository needs on the PATH, by name: the linter, the test runner, the
+formatter its workflow runs. A program missing on the machine of the session would otherwise show up late, as a
+check that fails at the end of the turn; polix tells it at the start instead, and never blocks because of it.
+
+```yaml
+requirements: [go, golangci-lint]
+```
+
+- polix checks only the programs listed: it never derives them from the commands of the workflow, and it never
+  checks their versions.
+- On the first `prompt` of a session, before the entries, the hook looks each program up and, when some are not
+  on the PATH, tells the AI, as a context, `These programs that polix.yaml requires are not on the PATH: <names>.
+  Before doing anything else, install them, or ask the user to install them if you cannot.` It is a once-only
+  context of the session, as a once-only `inject`: the later prompts of the session do not repeat it, it is due
+  again after a `start` of the session (a new session, a resume, a clear or a compaction) and when the set of
+  missing programs changes, and a prompt that an entry refuses does not count it as told. `start` never tells
+  it, and the hook looks nothing up without `requirements`.
+- `polix doctor` gives one warning of the area `requirements` per missing program,
+  `<program> is not on the PATH: polix.yaml requires it`, or one OK line, `<n> programs of requirements on the
+  PATH`, when the PATH runs them all. A missing program never makes it fail, and `polix doctor --hook`, run at the
+  session start, lists the missing ones too.
+
+A program is looked up as polix itself finds the command of a `run`: on the PATH the hooks give polix, which may
+differ from that of an interactive shell. On Windows the lookup tries the extensions of `PATHEXT`, so write the
+names without extension: `golangci-lint` finds `golangci-lint.exe` there, while `golangci-lint.exe` would be
+missing on macOS and Linux. A shell alias or function, a script without extension that only Git Bash runs, and a
+program found only in the current folder count as missing.
+
+`polix config check` reports a single name, a map or an item that is not a name, at its line, with the form the
+key takes (`requirements takes a list of program names, as [go, golangci-lint]`), and an empty name as
+`requirements: a program name cannot be empty`. `polix config fmt` places the key right before `guardrails`,
+keeping the order of its programs. A polix older than the key rejects it as an unknown key, so a file that uses it
+sets `requires` to a release that knows it. `polix graph` does not draw it, since it enforces nothing.
 
 ### Guardrails
 

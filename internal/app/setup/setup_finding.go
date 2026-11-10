@@ -13,7 +13,7 @@ import (
 // built with a literal followed by Valid.
 type Finding struct {
 	Level   string // LevelOK, LevelWarn or LevelFail
-	Area    string // binary, version, path, git, repo, workflow, rules, hooks, plugin, codex or state
+	Area    string // binary, version, path, git, repo, workflow, requirements, rules, hooks, plugin, codex or state
 	Message string
 }
 
@@ -32,8 +32,9 @@ type Inspection struct {
 	GitErr          error  // why git is not on the PATH
 	RepoErr         error  // why the folder is not inside a repository
 	Workflow        workflow.Workflow
-	Found           bool  // whether polix.yaml exists
-	WorkflowErr     error // why polix.yaml cannot be read, parsed or is not valid (workflow.InvalidError)
+	Found           bool             // whether polix.yaml exists
+	WorkflowErr     error            // why polix.yaml cannot be read, parsed or is not valid (workflow.InvalidError)
+	Requirements    map[string]error // by program the workflow requires, why the PATH does not run it (nil if it does)
 	Rules           []rule.Rule
 	Invalid         []string             // the problems of the invalid rules (rule.Loaded.Problems)
 	RulesErr        error                // why the rules cannot be read

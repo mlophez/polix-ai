@@ -59,6 +59,10 @@ with the domain:
      weights of `risk.weights` in file order. A value of the wrong kind is an error with its line, and the errors of
      yaml name the types of the domain (`workflow.Workflow`, `workflow.Entry`...), never those of the decoding.
      `max_stop_retries` left out is `workflow.DefaultMaxStopRetries`; a switch of guidance left out is on.
+     `requirementsYAML` of `out_requirements.go` reads the key `requirements` into `Workflow.Requirements`, the
+     programs the repository requires on the PATH, in file order: only a list of names, else an error at the line of
+     the node with the form it takes (`line 3: requirements takes a list of program names, as [go, golangci-lint]`);
+     a null item is an empty name, which `Workflow.Valid` reports, and left out or empty there is no requirement.
   5. `guardrailsYAML` of `out_guardrails.go` reads the section guardrails into a `workflow.Guardrails`: each
      shortcut in its one form, else an error with the form it takes; each item with its line and the problems of
      its values (a key unknown or written twice, a text that is not one, no pattern, no run).
