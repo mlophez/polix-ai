@@ -61,15 +61,15 @@ func (r *pass) session() agent.Answer {
 	return r.warn(ans)
 }
 
-// requirements adds to ans the context of the programs of requirements the PATH does not run, as a once-only inject
-// of the session: at line 0, keyed by keyRequirements and the missing names, so it is due again after a start of the
-// session or when the set of missing programs changes. It is skipped, and the skip logged, while not due; it is kept
+// requirements adds to ans the context of the programs of requirements, git included (workflow.Programs), the PATH
+// does not run, as a once-only inject of the session: at line 0, keyed by keyRequirements and the missing names, so it
+// is due again after a start of the session or when the set of missing programs changes. It is skipped, and the skip logged, while not due; it is kept
 // to be written as injected (see writeInjected), and it never blocks. Without requirements it looks nothing up.
 func (r *pass) requirements(ans agent.Answer) agent.Answer {
 	if len(r.ev.Workflow.Requirements) == 0 {
 		return ans
 	}
-	missing := r.missing(r.ev.Workflow.Requirements)
+	missing := r.missing(r.ev.Workflow.Programs())
 	if r.waiting() || len(missing) == 0 {
 		return ans
 	}

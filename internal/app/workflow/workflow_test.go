@@ -80,6 +80,29 @@ func TestObservesStartRequirements(t *testing.T) {
 	}
 }
 
+// The programs of the repository are those of requirements followed by git, which a list that names it keeps once in
+// its place; without requirements there are none.
+func TestPrograms(t *testing.T) {
+	cases := []struct {
+		reqs []string
+		want string
+	}{
+		{nil, ""},
+		{[]string{}, ""},
+		{[]string{"go", "golangci-lint"}, "go,golangci-lint,git"},
+		{[]string{"git", "go"}, "git,go"},
+	}
+	for _, c := range cases {
+		w := Workflow{Version: 1, Requirements: c.reqs}
+		if got := strings.Join(w.Programs(), ","); got != c.want {
+			t.Errorf("%q: %q, want %q", c.reqs, got, c.want)
+		}
+		if len(c.reqs) > 0 && strings.Join(w.Requirements, ",") != strings.Join(c.reqs, ",") {
+			t.Errorf("%q: Programs changed the requirements to %q", c.reqs, w.Requirements)
+		}
+	}
+}
+
 // A program name of requirements that is empty, has spaces around it, is a path or is repeated is a problem of the
 // whole file, once per name.
 func TestRequirementsValid(t *testing.T) {

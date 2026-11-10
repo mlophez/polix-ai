@@ -41,7 +41,8 @@ type Workflow struct {
 	Base           []string
 	MaxStopRetries int // loop guard of every block on stop and subagent_stop (max_stop_retries)
 	// Requirements are the programs the repository requires on the PATH (requirements), in file order: the hook
-	// checks them on the first prompt of a session and `polix doctor` warns about each missing one; neither blocks.
+	// checks them, with git (Programs), on the first prompt of a session and `polix doctor` warns about each missing
+	// one; neither blocks.
 	Requirements []string
 	// ProtectedFiles are the path globs no agent writes, the main session included (guardrails.protected_files):
 	// a protection the hook applies before the entries of on, also to the files git ignores.
@@ -266,6 +267,21 @@ func (v *validator) requirements(names []string) {
 		}
 		seen[p] = true
 	}
+}
+
+// Git is the program polix itself runs to read every fact of the repository, which Programs adds to requirements.
+const Git = "git"
+
+// Programs returns the programs the PATH must run for the repository: those of requirements, in file order, followed
+// by git (Git) when the list does not name it; nil without requirements, where nothing is looked up.
+func (w Workflow) Programs() []string {
+	if len(w.Requirements) == 0 {
+		return nil
+	}
+	if slices.Contains(w.Requirements, Git) {
+		return slices.Clone(w.Requirements)
+	}
+	return append(slices.Clone(w.Requirements), Git)
 }
 
 // ObservesStart reports whether polix writes the start of a session to its log, so what it tells once per session is

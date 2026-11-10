@@ -152,7 +152,8 @@ risk:
     "*.lock": 0
 
 # Optional. The programs the repository needs on the PATH: a list of names, nothing else (no version, no reason).
-# polix checks only these, never the commands of the workflow, and it never blocks because of them:
+# polix checks only these, plus git, which it adds at the end when the list does not name it (a missing git is the
+# fail of the area git of polix doctor), never the commands of the workflow, and it never blocks because of them:
 # - On the first prompt of a session, before the entries, the hook looks them up and, when some are missing, tells
 #   the AI, in English, which ones, asking it to install them, or to ask the user to, before anything else. It is a
 #   once-only context: due again after a start of the session (startup, resume, clear, compaction) or when the set

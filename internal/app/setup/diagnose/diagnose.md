@@ -24,8 +24,8 @@ polix doctor [--dir <dir>] [--hook] [--offline]
 into findings (`setup.Finding`: level, area, message, each built by `found`), in this order: the binary (version
 against the latest release, the polix of the PATH); without git or outside a repository only the plugin; else the
 workflow (the methods `WorkflowProblems`, `NewerHint` and `BaseWarning` of `setup.Inspection`), the requirements
-(`requirements`: one `warn` per program of `Workflow.Requirements` that `Requirements` of the inspection says the
-PATH does not run, each once and in the order of the file, `<program> is not on the PATH: polix.yaml requires it`,
+(`requirements`: one `warn` per program of `Workflow.Programs`, the requirements followed by git, that
+`Requirements` of the inspection says the PATH does not run, each once and in that order, `<program> is not on the PATH: polix.yaml requires it`,
 or one `ok` line, `<n> programs of requirements on the PATH`, when it runs them all; nothing without requirements or
 with a workflow that cannot be used; a missing program never fails the report), the rules
 (`RuleProblems`, and `runProblems` of the logic: a check that a runner of `rules.run` runs is never reported as not
@@ -82,7 +82,7 @@ Every problem is a finding; only a broken embedded plugin is an error of the she
    `--offline`, saving it with `Cache.Saw`; the method `parse` of the unexported type `versionText` of
    `in_version.go` translates the version of the request into a `version.Version`, validated with the domain, to
    tell a release build), the PATH, the repository and its facts (`inspectRepository`; for a workflow that can be
-   used, `lookRequirements` asks `LookPath` once per program of `requirements`, on the PATH the hooks give polix,
+   used, `lookRequirements` asks `LookPath` once per program of `Workflow.Programs`, on the PATH the hooks give polix,
    which on Windows tries the extensions of `PATHEXT`, and keeps by program why it is not found), the
    hooks files of both agents and `~/.codex/config.toml`, decoded (from which the logic decides whether polix is
    registered for Codex), the plugin (`readPlugin`) and Claude Code (`askClaude`), into a `setup.Inspection`.

@@ -113,16 +113,16 @@ func workflowFile(i setup.Inspection) []setup.Finding {
 	return f
 }
 
-// requirements checks that the PATH runs every program the workflow requires: a warning per program it does not
-// run, each once and in the order of the file, or one OK line when it runs them all; nothing without requirements
-// or with a workflow that cannot be used. A missing program never fails the report.
+// requirements checks that the PATH runs every program the workflow requires, git included (workflow.Programs): a
+// warning per program it does not run, each once and in the order of Programs, or one OK line when it runs them all;
+// nothing without requirements or with a workflow that cannot be used. A missing program never fails the report.
 func requirements(i setup.Inspection) []setup.Finding {
 	if i.WorkflowErr != nil || len(i.Workflow.Requirements) == 0 {
 		return nil
 	}
 	var f []setup.Finding
 	seen := map[string]bool{}
-	for _, p := range i.Workflow.Requirements {
+	for _, p := range i.Workflow.Programs() {
 		if seen[p] {
 			continue
 		}

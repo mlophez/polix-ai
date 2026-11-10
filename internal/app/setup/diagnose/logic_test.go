@@ -305,8 +305,8 @@ func TestDecideRequirements(t *testing.T) {
 	if got := text(out); !strings.Contains(got, "ok workflow polix.yaml is valid\nwarn requirements zz") {
 		t.Fatalf("the requirements come right after the workflow:\n%s", got)
 	}
-	i.Requirements = map[string]error{"zz": nil, "go": nil, "aa": nil}
-	if got := requirementLines(Decide(i, false)); got != "ok 3 programs of requirements on the PATH\n" {
+	i.Requirements = map[string]error{"zz": nil, "go": nil, "aa": nil, "git": nil}
+	if got := requirementLines(Decide(i, false)); got != "ok 4 programs of requirements on the PATH\n" {
 		t.Fatalf("all found:\n%s", got)
 	}
 	i.WorkflowErr, i.Requirements = workflow.InvalidError{"polix.yaml:5: bad"}, nil

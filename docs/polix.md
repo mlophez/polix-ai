@@ -377,8 +377,10 @@ check that fails at the end of the turn; polix tells it at the start instead, an
 requirements: [go, golangci-lint]
 ```
 
-- polix checks only the programs listed: it never derives them from the commands of the workflow, and it never
-  checks their versions.
+- polix checks only the programs listed, plus `git`, which polix itself runs: it adds it at the end of a list that
+  does not name it, so the OK line of `polix doctor` counts it. It never reports git as missing there, since both
+  look the programs up only once git runs: without git the hook tells nothing and `polix doctor` fails in the area
+  `git`. It never derives the programs from the commands of the workflow, and it never checks their versions.
 - On the first `prompt` of a session, before the entries, the hook looks each program up and, when some are not
   on the PATH, tells the AI, as a context, `These programs that polix.yaml requires are not on the PATH: <names>.
   Before doing anything else, install them, or ask the user to install them if you cannot.` It is a once-only

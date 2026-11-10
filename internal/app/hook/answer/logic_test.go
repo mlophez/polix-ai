@@ -2077,7 +2077,7 @@ on:
 	out, steps := step(prompt, "main", absent)
 	got := observed(steps)
 	if out.Answer.Block || !slices.Equal(out.Answer.Contexts, []string{text}) ||
-		!reflect.DeepEqual(lookups(steps), [][]string{{"go", "does-not-exist"}}) || len(got) != 1 ||
+		!reflect.DeepEqual(lookups(steps), [][]string{{"go", "does-not-exist", "git"}}) || len(got) != 1 ||
 		got[0].Outcome != state.OutcomeInjected || got[0].Line != 0 || got[0].Key != "requirements: does-not-exist" {
 		t.Fatalf("first prompt: %+v %+v %+v", out.Answer, lookups(steps), got)
 	}

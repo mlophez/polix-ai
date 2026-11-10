@@ -195,13 +195,13 @@ func releases(ctx context.Context, port Port, req Request, exeErr error) (string
 }
 
 // inspectRepository reads the repository of root: its workflow, why the PATH does not run each program it requires
-// (only for a workflow that can be used), its rules, whether each check exists and can run, whether a base branch
+// (workflow.Programs, git included; only for a workflow that can be used), its rules, whether each check exists and can run, whether a base branch
 // exists, and whether the state below gitDir can be written.
 func inspectRepository(ctx context.Context, port Port, req Request, root, gitDir string) repository {
 	wf, found, wfErr, baseErr := port.LoadWorkflow(ctx, root, req.Version)
 	r := repository{wf: wf, found: found, wfErr: wfErr, baseErr: baseErr}
 	if wfErr == nil {
-		r.requirements = lookRequirements(ctx, port, wf.Requirements)
+		r.requirements = lookRequirements(ctx, port, wf.Programs())
 	}
 	loaded, missing, runnable := port.LoadRules(ctx, root, r.wf.RulesPath())
 	r.rules, r.invalid, r.rulesErr, r.missing, r.runnable = loaded.Rules, loaded.Problems, loaded.Err, missing, runnable

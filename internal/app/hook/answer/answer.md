@@ -214,8 +214,8 @@ The rules it follows, as before this use case:
     the measures over the `changed` of its `when`, else the whole diff, or to `?` when it cannot be measured
     (`measureValues`).
 14. On `prompt`, before the entries, when the workflow declares `requirements` (`workflow.Workflow.Requirements`),
-    the programs are looked up once per call (`hook.Step.Programs`, answered by `Missing`) and, when some are not on
-    the PATH, the AI gets one context: `These programs that polix.yaml requires are not on the PATH: <names>. Before
+    its programs followed by git (`workflow.Workflow.Programs`) are looked up once per call (`hook.Step.Programs`,
+    answered by `Missing`) and, when some are not on the PATH, the AI gets one context: `These programs that polix.yaml requires are not on the PATH: <names>. Before
     doing anything else, install them, or ask the user to install them if you cannot.` It is a once-only inject of
     rule 6 at line 0, keyed by `requirements: ` and the missing names joined by `, `: it is due again after a
     `started` of the session (`ObservesStart` holds with requirements, so `start` writes it) or when the set of missing

@@ -107,7 +107,7 @@ func TestShell(t *testing.T) {
 func TestShellRequirements(t *testing.T) {
 	port := &fakePort{wf: workflow.Workflow{Requirements: []string{"go", "nope"}}, absent: map[string]bool{"nope": true}}
 	res, err := run(context.Background(), port, Request{Version: "0.2.0", Hook: true})
-	if err != nil || strings.Join(port.looked, " ") != "polix git go nope" {
+	if err != nil || strings.Join(port.looked, " ") != "polix git go nope git" {
 		t.Fatalf("%v %v", err, port.looked)
 	}
 	var b strings.Builder

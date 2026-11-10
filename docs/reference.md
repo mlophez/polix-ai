@@ -215,7 +215,9 @@ vars:
 
 - Type: a list of program names. Default: none.
 - The programs the repository needs on the PATH, such as the linter, the test runner or the formatter its workflow
-  runs. polix checks only these: it never derives them from the commands of the workflow nor checks versions.
+  runs. polix checks only these, plus `git`, which polix itself runs and adds to a non-empty list that does not name
+  it, so the OK line of `polix doctor` counts it (a missing git is the `fail` of the area `git`, never a
+  requirement): it never derives them from the commands of the workflow nor checks versions.
 - On the first `prompt` of a session, before the entries, the hook looks them up and, when some are missing, tells
   the AI as a context: `These programs that polix.yaml requires are not on the PATH: <names>. Before doing anything
   else, install them, or ask the user to install them if you cannot.` It is a once-only context: the later prompts

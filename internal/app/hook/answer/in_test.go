@@ -319,7 +319,7 @@ func TestRequirementsMissing(t *testing.T) {
 	port := &fakePort{yaml: "version: 1\nrequirements: [go, golangci-lint]\n",
 		absent: map[string]bool{"golangci-lint": true}}
 	res, err := run(context.Background(), port, claudeRequest(`{"hook_event_name":"UserPromptSubmit","cwd":"/repo"}`))
-	if err != nil || res.Code != 0 || !slices.Contains(port.calls, "Missing go golangci-lint") ||
+	if err != nil || res.Code != 0 || !slices.Contains(port.calls, "Missing go golangci-lint git") ||
 		!strings.Contains(res.Stdout, "are not on the PATH: golangci-lint. Before doing anything else") {
 		t.Fatalf("prompt: %+v %v %q", res, err, port.calls)
 	}
