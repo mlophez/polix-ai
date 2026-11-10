@@ -20,7 +20,7 @@ import (
 // fills it from its flags.
 type Request struct {
 	Dir     string // any folder of the repository whose hooks to refresh
-	Quiet   bool   // one line in Spanish when something changed, for the session start hook
+	Quiet   bool   // one line when something changed, for the session start hook
 	Hooks   bool   // also refresh the hooks of polix of the repository
 	Version string // version of the running polix
 }
@@ -29,7 +29,7 @@ type Request struct {
 // the command serializes it to the console.
 type Response struct {
 	Changes []setup.Change // what changed, also when the refresh failed
-	Quiet   bool           // one line in Spanish instead of the changes
+	Quiet   bool           // one line instead of the changes
 }
 
 // Port is what the shell of RefreshSetup needs from the outside: the home, the repository, the plugin
@@ -75,7 +75,7 @@ func Command() *cobra.Command {
 			return err
 		},
 	}
-	c.Flags().BoolVarP(&req.Quiet, "quiet", "q", false, "one line in Spanish when something changed, for the session start hook")
+	c.Flags().BoolVarP(&req.Quiet, "quiet", "q", false, "one line when something changed, for the session start hook")
 	c.Flags().BoolVar(&req.Hooks, "hooks", false, "also refresh the hooks of polix of the repository")
 	return c
 }
@@ -127,13 +127,13 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	return res, errors.Join(errs...)
 }
 
-// print writes what changed to stdout: with --quiet one line in Spanish, else one line per change.
+// print writes what changed to stdout: with --quiet one line, else one line per change.
 func (res Response) print(stdout io.Writer) {
 	if len(res.Changes) == 0 {
 		return
 	}
 	if res.Quiet {
-		fmt.Fprintln(stdout, "polix ha actualizado su plugin: se carga en la próxima sesión.")
+		fmt.Fprintln(stdout, "polix updated its plugin: it loads in the next session.")
 		return
 	}
 	u := cli.NewUI(stdout)

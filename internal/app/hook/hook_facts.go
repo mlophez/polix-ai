@@ -132,8 +132,8 @@ func (f Facts) learnHash(epoch int, hash string, err error) Facts {
 	if err != nil {
 		hash = ""
 		f = f.warned(fmt.Sprintf(
-			"polix no puede calcular el hash del contenido (%v): no se registra lo observado ni se cumple finished, "+
-				"y run y los block con once actúan cada vez", err))
+			"polix cannot hash the content (%v): nothing observed is recorded, finished does not hold, "+
+				"and run and the blocks with once act every time", err))
 	}
 	hashes := make(map[int]string, len(f.Hashes)+1)
 	maps.Copy(hashes, f.Hashes)
@@ -151,7 +151,7 @@ func (f Facts) learnDiff(d diff.Diff, err error) Facts {
 	if err != nil {
 		d = diff.Diff{}
 		f = f.warned(fmt.Sprintf(
-			"polix no puede medir el diff (%v): changed_lines, changed_files y risk_score se cumplen", err))
+			"polix cannot measure the diff (%v): changed_lines, changed_files and risk_score hold", err))
 	}
 	f.Diff, f.DiffErr, f.HasDiff = d.Narrow(nil), err, true
 	return f

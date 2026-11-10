@@ -12,8 +12,8 @@ import (
 
 // The reasons of the protection of the state of polix, which comes before the workflow.
 const (
-	reasonStateEdit    = "El estado de polix solo lo escribe polix."
-	reasonStateCommand = "El estado de polix solo lo escribe polix; para leerlo usa polix log."
+	reasonStateEdit    = "Only polix writes the state of polix."
+	reasonStateCommand = "Only polix writes the state of polix; to read it, use polix log."
 )
 
 // reasonForbidden is the reason of a forbidden command without a reason of its own, in English since polix writes

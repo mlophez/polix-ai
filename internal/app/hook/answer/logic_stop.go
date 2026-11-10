@@ -58,7 +58,7 @@ func (r *pass) loopGuard(e workflow.Entry, st state.State, err error, hash strin
 		return hash, unusableLog(err, reason)
 	}
 	if n := len(st.Observed(q)); n >= r.ev.Workflow.MaxStopRetries {
-		return hash, fmt.Sprintf("polix deja parar tras %d bloqueos: %s", n, reason)
+		return hash, fmt.Sprintf("polix lets the agent stop after %d blocks: %s", n, reason)
 	}
 	return hash, ""
 }
@@ -93,8 +93,8 @@ func (r *pass) observeFinished() {
 			return
 		}
 		if !known {
-			r.log("finished", 0, "warn", "hash del contenido desconocido; no se registra que "+ev.Actor+
-				" terminó para finished")
+			r.log("finished", 0, "warn", "unknown hash of the content: that "+ev.Actor+
+				" finished is not recorded for finished")
 		}
 		hash = h
 	}
@@ -105,5 +105,5 @@ func (r *pass) observeFinished() {
 
 // unusableLog is the warning of a stop the loop guard lets through because the log cannot be used.
 func unusableLog(err error, reason string) string {
-	return fmt.Sprintf("polix deja parar porque no puede usar su log (%v): %s", err, reason)
+	return fmt.Sprintf("polix lets the agent stop because it cannot use its log (%v): %s", err, reason)
 }

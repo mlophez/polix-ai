@@ -22,7 +22,7 @@ func TestEncodeLineCapsReason(t *testing.T) {
 	if err := json.Unmarshal(line, &l); err != nil {
 		t.Fatal(err)
 	}
-	if e := state.Entry(l); len(e.Reason) > state.MaxReason || !strings.HasSuffix(e.Reason, "[recortado]") {
+	if e := state.Entry(l); len(e.Reason) > state.MaxReason || !strings.HasSuffix(e.Reason, "[truncated]") {
 		t.Fatalf("reason of %d bytes", len(e.Reason))
 	}
 }

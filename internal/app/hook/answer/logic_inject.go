@@ -36,7 +36,7 @@ func (r *pass) inject(e workflow.Entry, ans agent.Answer) agent.Answer {
 			return ans
 		}
 		if !due {
-			r.log(workflow.VerbInject, e.Line, "skip", "ya se inyectó a "+r.ev.Event.Actor+" en esta sesión")
+			r.log(workflow.VerbInject, e.Line, "skip", "already injected into "+r.ev.Event.Actor+" in this session")
 			return ans
 		}
 	}
@@ -106,8 +106,8 @@ func (r *pass) contextRules(line int, target string, once bool) string {
 	}
 	if len(lines) == 0 {
 		if len(matching) > 0 {
-			r.log(workflow.VerbInject, line, "skip", "las rules de "+target+" ya se inyectaron a "+r.ev.Event.Actor+
-				" en esta sesión")
+			r.log(workflow.VerbInject, line, "skip", "the rules of "+target+" were already injected into "+r.ev.Event.Actor+
+				" in this session")
 		}
 		return ""
 	}

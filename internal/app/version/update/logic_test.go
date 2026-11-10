@@ -47,7 +47,7 @@ func TestDecide(t *testing.T) {
 		{name: "update", running: "0.1.0", due: true, latest: "0.2.0", wantOut: Output{
 			Install: "0.2.0", Installed: "polix updated from 0.1.0 to 0.2.0 (/bin/polix)", Remember: true, Refresh: true}},
 		{name: "update hook", running: "0.1.0", hook: true, due: true, latest: "0.2.0", wantOut: Output{
-			Install: "0.2.0", Installed: "polix se ha actualizado de 0.1.0 a 0.2.0.", Remember: true, Refresh: true,
+			Install: "0.2.0", Installed: "polix updated from 0.1.0 to 0.2.0.", Remember: true, Refresh: true,
 			RecordFailure: true, RefreshAfterFailure: true}},
 		{name: "a version, older ones included", running: "0.2.0", want: "0.1.0", due: true,
 			wantOut: Output{Install: "0.1.0",

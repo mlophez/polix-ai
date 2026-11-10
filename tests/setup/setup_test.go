@@ -123,7 +123,7 @@ func TestRefresh(t *testing.T) {
 	}
 	s := setup.Setup{Home: os.Getenv("HOME"), Version: "dev"}
 	testenv.Write(t, s.PluginManifest(), `{"name": "polix", "version": "0.1.0"}`)
-	if code, stdout, _ := runSetup("__refresh", "--quiet"); code != 0 || !strings.Contains(stdout, "ha actualizado su plugin") {
+	if code, stdout, _ := runSetup("__refresh", "--quiet"); code != 0 || !strings.Contains(stdout, "updated its plugin") {
 		t.Fatalf("the hook refreshes an older plugin: %d %q", code, stdout)
 	}
 	if _, stdout, _ := runSetup("__refresh", "--quiet"); stdout != "" {

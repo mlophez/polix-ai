@@ -156,8 +156,8 @@ The rules it follows, as before this use case:
      With `always: true` it injects on every event and writes nothing.
    - On `start`, after the entries, polix writes `started` when the workflow has a once-only inject
      (`workflow.Workflow.InjectsOnce`).
-   - When the log cannot be read, every verb acts every time, `finished` never holds and the call warns: `polix no
-     puede usar su log (<cause>): run, inject y los block con once actúan cada vez, y finished no se cumple`.
+   - When the log cannot be read, every verb acts every time, `finished` never holds and the call warns: `polix
+     cannot use its log (<cause>): run, inject and the blocks with once act every time, and finished does not hold`.
 7. One stop rule, whatever the verb: the first entry that actually blocks, a `block` or a failing `run` on an event
    where it blocks, ends the evaluation. The entries after it never run, so a `stop` answers with one failure
    at a time, in the order of the file, and the next one reruns only the runs that did not pass; the contexts of the
@@ -189,16 +189,16 @@ The rules it follows, as before this use case:
 11. The content hash is computed only when something needs it: the repeat of a `run` and its `passed` line (before
     and after the run), a `block` with `once`, the loop guard, `finished` and its observed line. An `inject`, the
     `injected` and `started` lines and a `finished` that only resets injects never compute it. When it cannot be
-    computed nothing that needs it is observed nor holds, nothing is skipped, and the call warns once: `polix no
-    puede calcular el hash del contenido (<cause>): no se registra lo observado ni se cumple finished, y run y los
-    block con once actúan cada vez`.
+    computed nothing that needs it is observed nor holds, nothing is skipped, and the call warns once: `polix
+    cannot hash the content (<cause>): nothing observed is recorded, finished does not hold, and run and the blocks
+    with once act every time`.
 12. The measures `changed_lines`, `changed_files` and `risk_score` compare the lines, the files or the risk score
     (`diff.Diff.Lines`, `Count` and `Risk` with `risk.weights`) of the diff against their number. They measure
     the files of the nearest `changed`: the one of their own map, else the one of the enclosing map (`any` and
     `not` nest maps), else the whole diff. `any` holds when one of the conditions of its map holds. The diff is read
     once per call (`hook.Facts.Diff`, `hook.Facts.HasDiff`), only when a condition or a string needs it. When it
     cannot be measured (`hook.Facts.DiffErr`), the three measures hold, so a broken git never skips a review, and
-    the call warns once: `polix no puede medir el diff (<cause>): changed_lines, changed_files y risk_score se cumplen`.
+    the call warns once: `polix cannot measure the diff (<cause>): changed_lines, changed_files and risk_score hold`.
 13. The placeholders `{changed_lines}`, `{changed_files}` and `{risk_score}` of every string of an entry expand to
     the measures over the `changed` of its `when`, else the whole diff, or to `?` when it cannot be measured
     (`measureValues`).
@@ -272,7 +272,7 @@ The failure policy of the hook, so a broken polix never traps the agent:
 - A workflow that cannot be used is data of the answer (Logic, rule 2), never an error.
 - The errors of the steps are data too: an unknown hash warns, a diff that cannot be measured warns and makes the
   measures hold, two trees that cannot be compared make `finished` not hold and a `block` with `once` block again,
-  rules that cannot be loaded fail the `run` that needs them (`No se pueden cargar las rules`), a log that cannot be
+  rules that cannot be loaded fail the `run` that needs them (`The rules cannot be loaded`), a log that cannot be
   used lets a stop through and makes every verb act every time, a file
   that cannot be read gives no context, a failing command or check blocks with its output, or informs on the
   events that already happened.

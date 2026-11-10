@@ -238,7 +238,7 @@ func (r *pass) finished(name string, scope []string) bool {
 	same, err := r.sameScope(last.Hash, hash, scope)
 	if err != nil {
 		r.log("finished", r.entry.Line, "warn", fmt.Sprintf(
-			"no se puede comparar el contenido en que terminó %s con el actual (%v): finished no se cumple", name, err))
+			"the content %s finished on cannot be compared with the current one (%v): finished does not hold", name, err))
 		return false
 	}
 	return same

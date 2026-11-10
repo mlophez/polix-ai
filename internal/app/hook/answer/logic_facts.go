@@ -109,8 +109,8 @@ func (r *pass) currentState() (state.State, error) {
 // warnLog warns the user, once per pass, that the log cannot be read: the verbs that repeat by it act every time, and
 // finished never holds.
 func (r *pass) warnLog(err error) {
-	w := fmt.Sprintf("polix no puede usar su log (%v): run, inject y los block con once actúan cada vez, y finished "+
-		"no se cumple", err)
+	w := fmt.Sprintf("polix cannot use its log (%v): run, inject and the blocks with once act every time, and finished "+
+		"does not hold", err)
 	if !slices.Contains(r.warnings, w) {
 		r.warnings = append(r.warnings, w)
 	}

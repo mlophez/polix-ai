@@ -77,7 +77,7 @@ func Interpreter(file string, look LookFunc, exists ExistsFunc) ([]string, error
 		if b, err := look("bash"); err == nil && !inWindowsDir(b) {
 			return []string{b}, nil
 		}
-		return nil, errors.New("no se encuentra bash para ejecutar el check: instala Git for Windows (git y su bash)")
+		return nil, errors.New("bash not found to run the check: install Git for Windows (git and its bash)")
 	case ".py":
 		for _, c := range []struct {
 			name string
@@ -87,7 +87,7 @@ func Interpreter(file string, look LookFunc, exists ExistsFunc) ([]string, error
 				return append([]string{p}, c.args...), nil
 			}
 		}
-		return nil, errors.New("no se encuentra python para ejecutar el check: instala Python (py, python3 o python en el PATH)")
+		return nil, errors.New("python not found to run the check: install Python (py, python3 or python on the PATH)")
 	}
 	return nil, nil
 }

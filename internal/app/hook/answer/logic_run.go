@@ -37,7 +37,7 @@ func (r *pass) runEntry(e workflow.Entry, ans agent.Answer) (agent.Answer, bool)
 			return ans, false
 		}
 		if passed {
-			r.log(workflow.VerbRun, e.Line, "skip", key+" ya pasó en este contenido")
+			r.log(workflow.VerbRun, e.Line, "skip", key+" already passed on this content")
 			return ans, false
 		}
 	}
@@ -113,7 +113,7 @@ func (r *pass) run(run workflow.Run, args []string) string {
 	if r.waiting() || o.Err == nil {
 		return ""
 	}
-	return fmt.Sprintf("Falla %s: %v\n%s", strings.Join(args, " "), o.Err,
+	return fmt.Sprintf("%s failed: %v\n%s", strings.Join(args, " "), o.Err,
 		indent(text.LastLines(o.Output, outputLines, rule.MaxLineLen)))
 }
 
@@ -126,7 +126,7 @@ func (r *pass) runRules(target string) string {
 		return ""
 	}
 	if err != nil {
-		return fmt.Sprintf("No se pueden cargar las rules: %v", err)
+		return fmt.Sprintf("The rules cannot be loaded: %v", err)
 	}
 	var paths []string
 	if target == "changed" {
@@ -156,7 +156,7 @@ func (r *pass) runRules(target string) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("Rules que no se cumplen:")
+	b.WriteString("Rules not met:")
 	for _, f := range failed {
 		fmt.Fprintf(&b, "\n- %s (%s): %s\n%s", f.Rule.ID, f.Rule.Check, f.Rule.Description, indent(f.Tail()))
 	}

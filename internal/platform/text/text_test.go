@@ -10,7 +10,7 @@ func TestCut(t *testing.T) {
 		t.Fatalf("Cut of a short text = %q", got)
 	}
 	got := Cut(strings.Repeat("é", 512*1024), 8*1024)
-	if len(got) > 8*1024 || !strings.HasSuffix(got, "[recortado]") {
+	if len(got) > 8*1024 || !strings.HasSuffix(got, "[truncated]") {
 		t.Fatalf("Cut of %d bytes", len(got))
 	}
 	if got := strings.TrimSuffix(got, Mark); !strings.HasSuffix(got, "é") {

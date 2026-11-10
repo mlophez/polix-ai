@@ -8,7 +8,7 @@ import (
 )
 
 // Mark ends a text that Cut shortened.
-const Mark = "… [recortado]"
+const Mark = "… [truncated]"
 
 // Cut shortens s to at most limit bytes, on a rune boundary, marking the cut.
 func Cut(s string, limit int) string {

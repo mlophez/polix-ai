@@ -73,8 +73,8 @@ func (r *pass) apply(e workflow.Entry, ans agent.Answer) (agent.Answer, bool) {
 				return ans, false
 			}
 			if reminded {
-				r.log(workflow.VerbBlock, e.Line, "skip", "ya bloqueó a "+r.ev.Event.Actor+
-					" en esta sesión sobre el mismo contenido")
+				r.log(workflow.VerbBlock, e.Line, "skip", "already blocked "+r.ev.Event.Actor+
+					" in this session on the same content")
 				return ans, false
 			}
 		}
@@ -166,7 +166,7 @@ func (r *pass) reminded(e workflow.Entry) bool {
 	same, err := r.sameScope(last.Hash, hash, r.whenScope())
 	if err != nil {
 		r.log(workflow.VerbBlock, e.Line, "warn", fmt.Sprintf(
-			"no se puede comparar el contenido en que se recordó con el actual (%v): el block vuelve a bloquear", err))
+			"the content it reminded on cannot be compared with the current one (%v): the block blocks again", err))
 		return false
 	}
 	return same
@@ -177,14 +177,14 @@ func (r *pass) reminded(e workflow.Entry) bool {
 // update polix instead of fixing it, and not to change it.
 func (r *pass) unusable() (problems, reason string, tooOld bool) {
 	problems = r.ev.Invalid.Error()
-	reason = "polix: el workflow no es válido; corrígelo y ejecuta polix config check.\n" + problems
+	reason = "polix: the workflow is not valid; fix it and run polix config check.\n" + problems
 	var old workflow.TooOldError
 	if !errors.As(r.ev.Invalid, &old) {
 		return problems, reason, false
 	}
-	problems = fmt.Sprintf("este repositorio necesita polix %s o posterior y la instalada es %s", old.Requires,
+	problems = fmt.Sprintf("this repository needs polix %s or later and the installed one is %s", old.Requires,
 		old.Running)
-	reason = "polix: " + problems + ". Ejecuta polix update (o pide al usuario que lo haga) y no cambies " +
+	reason = "polix: " + problems + ". Run polix update (or ask the user to) and do not change " +
 		workflow.File + "."
 	return problems, reason, true
 }
@@ -194,9 +194,9 @@ func (r *pass) unusable() (problems, reason string, tooOld bool) {
 func (r *pass) warnUnusable() agent.Answer {
 	problems, _, tooOld := r.unusable()
 	if tooOld {
-		return agent.Answer{}.Warn("polix: " + problems + ": ejecuta polix update")
+		return agent.Answer{}.Warn("polix: " + problems + ": run polix update")
 	}
-	return agent.Answer{}.Warn("el workflow no es válido: " + problems)
+	return agent.Answer{}.Warn("the workflow is not valid: " + problems)
 }
 
 // refuseUnusable refuses the event for a workflow that cannot be used, logged as invalid: edits and commands fail

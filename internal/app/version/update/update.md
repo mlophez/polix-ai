@@ -44,7 +44,7 @@ now, the latest release and the error of asking it. In order:
    downgrade), or this is a development build.
 5. `--check` (`installing`): the binary can be updated to the latest release.
 6. Else (`installing`) `Install` the target, telling `polix updated from <running> to <target> (<exe>)`, or with
-   `--hook` `polix se ha actualizado de <running> a <target>.`; with the latest release, `Remember` it as checked.
+   `--hook` `polix updated from <running> to <target>.`; with the latest release, `Remember` it as checked.
 
 The versions are text, compared with `semver.Compare` and `semver.IsRelease` of `internal/platform/semver`: versions
 like `1.2.3`, `v1.2.3` or `1.2.3-rc1`, where a missing number counts as 0, a pre-release is lower than its release

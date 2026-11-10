@@ -265,15 +265,15 @@ func TestPortErrors(t *testing.T) {
 	}{
 		{"hash", &fakePort{yaml: "version: 1\non:\n  stop:\n    - unless: { finished: polix:reviewer }\n" +
 			"      action: { run: ls }\n", hashErr: errors.New("boom")},
-			0, "polix: polix no puede calcular el hash del contenido (boom)"},
+			0, "polix: polix cannot hash the content (boom)"},
 		{"rules", &fakePort{yaml: "version: 1\non:\n  stop:\n    - action: { run: { rules: changed } }\n",
-			rulesErr: errors.New("boom")}, 2, "No se pueden cargar las rules: boom"},
+			rulesErr: errors.New("boom")}, 2, "The rules cannot be loaded: boom"},
 		{"state", &fakePort{yaml: "version: 1\non:\n  stop:\n    - action: { block: x }\n",
-			stateErr: errors.New("boom")}, 0, "no puede usar su log (boom): x"},
+			stateErr: errors.New("boom")}, 0, "cannot use its log (boom): x"},
 		{"append", &fakePort{yaml: "version: 1\non:\n  stop:\n    - action: { block: x }\n",
-			appendErr: errors.New("boom")}, 0, "no puede usar su log (boom): x"},
+			appendErr: errors.New("boom")}, 0, "cannot use its log (boom): x"},
 		{"run", &fakePort{yaml: "version: 1\non:\n  stop:\n    - action: { run: [just, test] }\n",
-			runErr: errors.New("exit status 1")}, 2, "Falla just test: exit status 1"},
+			runErr: errors.New("exit status 1")}, 2, "just test failed: exit status 1"},
 		{"check", &fakePort{yaml: "version: 1\non:\n  stop:\n    - action: { run: { rules: changed } }\n",
 			rules:  []rule.Rule{{ID: "R-1", Description: "d", Deterministic: true, Check: "c.sh"}},
 			runErr: errors.New("exit status 1")}, 2, "- R-1 (c.sh): d"},
@@ -326,11 +326,11 @@ func TestUnusableWorkflow(t *testing.T) {
 	port := &fakePort{yaml: "version: 2\n"}
 	res, err := run(context.Background(), port, claudeRequest(
 		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"ls"}}`))
-	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, "no las quites: ejecuta polix update") {
+	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, "do not remove them: run polix update") {
 		t.Fatalf("command: %+v %v", res, err)
 	}
 	res, err = run(context.Background(), port, claudeRequest(`{"hook_event_name":"Stop","cwd":"/repo"}`))
-	if err != nil || res.Code != 0 || !strings.HasPrefix(res.Stderr, "polix: el workflow no es válido") {
+	if err != nil || res.Code != 0 || !strings.HasPrefix(res.Stderr, "polix: the workflow is not valid") {
 		t.Fatalf("stop: %+v %v", res, err)
 	}
 	// A workflow of the old vocabulary is told its new spelling, never to update polix to keep it.
@@ -339,7 +339,7 @@ func TestUnusableWorkflow(t *testing.T) {
 		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"ls"}}`))
 	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, `unknown event "turn_stop": use stop`) ||
 		!strings.Contains(res.Stderr, `unknown key "require": use action: { block: <message> }`) ||
-		strings.Contains(res.Stderr, "no las quites") {
+		strings.Contains(res.Stderr, "do not remove them") {
 		t.Fatalf("old vocabulary: %+v %v", res, err)
 	}
 }

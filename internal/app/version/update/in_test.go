@@ -65,14 +65,14 @@ func (f *fakePort) Install(_ context.Context, _, release string) error {
 func (f *fakePort) Refresh(_ context.Context, _ string, hook bool) (string, string, error) {
 	f.calls = append(f.calls, fmt.Sprintf("refresh hook=%v", hook))
 	if hook {
-		return "polix ha actualizado su plugin: se carga en la próxima sesión.\n", "", f.refreshErr
+		return "polix updated its plugin: it loads in the next session.\n", "", f.refreshErr
 	}
 	return "installed plugin\n", "", f.refreshErr
 }
 
 func (f *fakePort) Doctor(context.Context, string) (string, string, error) {
 	f.calls = append(f.calls, "doctor")
-	return "polix doctor ha encontrado 1 problema\n", "", f.doctorErr
+	return "polix doctor found 1 problem\n", "", f.doctorErr
 }
 
 // asked reports whether the shell made the call.
@@ -149,8 +149,8 @@ func TestDevelopmentBuild(t *testing.T) {
 func TestHook(t *testing.T) {
 	f := &fakePort{exe: "/bin/polix", latest: "0.2.0"}
 	res, stdout, _ := runShell(t, f, Request{Hook: true, Version: "0.1.0"})
-	if res.Failure != "" || !strings.HasPrefix(stdout, "polix se ha actualizado de 0.1.0 a 0.2.0.\n") ||
-		f.binary != "0.2.0" || !f.asked("refresh hook=true") || !strings.HasSuffix(stdout, "ha encontrado 1 problema\n") {
+	if res.Failure != "" || !strings.HasPrefix(stdout, "polix updated from 0.1.0 to 0.2.0.\n") ||
+		f.binary != "0.2.0" || !f.asked("refresh hook=true") || !strings.HasSuffix(stdout, "found 1 problem\n") {
 		t.Fatalf("first hook updates, refreshes and runs the doctor: %+v %q %v", res, stdout, f.calls)
 	}
 
@@ -179,7 +179,7 @@ func TestDisabled(t *testing.T) {
 	}
 	f.calls = nil
 	res, stdout, stderr := runShell(t, f, Request{NoUpdate: true, Hook: true, Version: "0.1.0"})
-	if res.Failure != "" || stderr != "" || !strings.Contains(stdout, "polix doctor ha encontrado") ||
+	if res.Failure != "" || stderr != "" || !strings.Contains(stdout, "polix doctor found") ||
 		f.asked("latest") || f.asked("workflow") || f.asked("refresh hook=true") {
 		t.Fatalf("POLIX_NO_UPDATE only skips the update, not the doctor: %+v %q %v", res, stdout, f.calls)
 	}
@@ -230,12 +230,12 @@ func TestReplaceFails(t *testing.T) {
 // one when this binary rejects the workflow in a way a newer polix may not.
 func TestHookChecksAtOnce(t *testing.T) {
 	f := &fakePort{exe: "/bin/polix", latest: "0.2.0", cache: version.Cache{CheckedAt: now, Latest: "0.2.0"}}
-	if _, stdout, _ := runShell(t, f, Request{Hook: true, Version: "0.1.0"}); !strings.Contains(stdout, "actualizado") {
+	if _, stdout, _ := runShell(t, f, Request{Hook: true, Version: "0.1.0"}); !strings.Contains(stdout, "updated from") {
 		t.Fatalf("a known newer release: %q", stdout)
 	}
 	f = &fakePort{exe: "/bin/polix", latest: "0.2.0", cache: version.Cache{CheckedAt: now, Latest: "0.1.0"},
 		rejected: errors.New("polix.yaml requires polix 0.2.0 or newer and this is 0.1.0: run polix update")}
-	if _, stdout, _ := runShell(t, f, Request{Hook: true, Version: "0.1.0"}); !strings.Contains(stdout, "actualizado de 0.1.0 a 0.2.0") {
+	if _, stdout, _ := runShell(t, f, Request{Hook: true, Version: "0.1.0"}); !strings.Contains(stdout, "updated from 0.1.0 to 0.2.0") {
 		t.Fatalf("a workflow ahead skips the hour: %q %v", stdout, f.calls)
 	}
 	f = &fakePort{exe: "/bin/polix", latest: "0.2.0", cache: version.Cache{CheckedAt: now, Latest: "0.1.0"},

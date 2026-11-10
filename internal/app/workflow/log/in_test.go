@@ -71,7 +71,7 @@ func TestShellPrintsJSON(t *testing.T) {
 func TestShellPrintsRepeatLines(t *testing.T) {
 	port := fakePort{st: state.State{Entries: []state.Entry{
 		{At: "t3", Kind: state.KindDecision, Event: "stop", Actor: "session", Action: "run", Outcome: "skip",
-			Line: 5, Reason: "just test ya pasó en este contenido"},
+			Line: 5, Reason: "just test already passed on this content"},
 		{At: "t4", Kind: state.KindObserved, Event: "stop", Actor: "session", Key: "just test",
 			Outcome: state.OutcomePassed, Line: 5, Hash: "0123456789abcdef"},
 		{At: "t5", Kind: "injected", Session: "s", Rule: "GO-2"},
@@ -86,7 +86,7 @@ func TestShellPrintsRepeatLines(t *testing.T) {
 	}
 	var out, errb bytes.Buffer
 	res.print(&out, &errb, false)
-	want := "t3  decision   stop          session   skip run           just test ya pasó en este contenido\n" +
+	want := "t3  decision   stop          session   skip run           just test already passed on this content\n" +
 		"t4  observed   stop          session   passed just test 01234567  \n" +
 		"t5  injected                           GO-2               \n" +
 		"t6  stop_block stop          session                    abcdef01  revisa\n" +

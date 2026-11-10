@@ -311,7 +311,7 @@ func TestUpdateHookRunsTheNewDoctor(t *testing.T) {
 		"POLIX_NO_UPDATE=", "PATH="+pathWithoutAgents(), "CLAUDE_CONFIG_DIR="+t.TempDir())
 	out, err := cmd.Output()
 	stdout := string(out)
-	if err != nil || !strings.Contains(stdout, "actualizado de 0.1.0 a 0.2.0") {
+	if err != nil || !strings.Contains(stdout, "updated from 0.1.0 to 0.2.0") {
 		t.Fatalf("update --hook: %v %q", err, stdout)
 	}
 	if !strings.Contains(stdout, "polix doctor found problems") {

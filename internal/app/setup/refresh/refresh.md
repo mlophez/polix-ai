@@ -9,7 +9,7 @@ runs after `polix update`.
 polix __refresh [--quiet] [--hooks]
 ```
 
-- `--quiet`: one line in Spanish when something changed, for the session start hook.
+- `--quiet`: one line when something changed, for the session start hook.
 - `--hooks`: also refresh the hooks of polix of the repository of the working folder.
 
 ## Request
@@ -25,7 +25,7 @@ manifest of the plugin polix is in the marketplace (`setup.Plugin.Written`), wit
 ## Response
 
 `Response`: `Changes` and `Quiet`. When something changed the command prints, with `--quiet`,
-`polix ha actualizado su plugin: se carga en la próxima sesión.`, else each change.
+`polix updated its plugin: it loads in the next session.`, else each change.
 
 ## Port
 

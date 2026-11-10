@@ -274,7 +274,7 @@ on:
 		t.Fatalf("only the first run runs: %q", runs)
 	}
 	if !out.Answer.Block || len(out.Answer.Reasons) != 1 ||
-		!strings.HasPrefix(out.Answer.Reasons[0], "Falla just lint: exit status 1") {
+		!strings.HasPrefix(out.Answer.Reasons[0], "just lint failed: exit status 1") {
 		t.Fatalf("answer: %+v", out.Answer)
 	}
 	logged := appended(steps)
@@ -312,8 +312,8 @@ on:
 				t.Fatalf("the next entry runs: %q", runs)
 			}
 			if !out.Answer.Block || len(out.Answer.Reasons) != 1 ||
-				!strings.HasPrefix(out.Answer.Reasons[0], "Falla just test: exit status 1") ||
-				len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "tras 1 bloqueos") {
+				!strings.HasPrefix(out.Answer.Reasons[0], "just test failed: exit status 1") ||
+				len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "after 1 blocks") {
 				t.Fatalf("answer: %+v", out.Answer)
 			}
 		})
@@ -333,8 +333,8 @@ on:
 		t.Fatalf("both runs run: %q", runs)
 	}
 	if out.Answer.Block || len(out.Answer.Contexts) != 2 ||
-		!strings.HasPrefix(out.Answer.Contexts[0], "Falla just lint: exit status 1") ||
-		!strings.HasPrefix(out.Answer.Contexts[1], "Falla just test: exit status 1") {
+		!strings.HasPrefix(out.Answer.Contexts[0], "just lint failed: exit status 1") ||
+		!strings.HasPrefix(out.Answer.Contexts[1], "just test failed: exit status 1") {
 		t.Fatalf("answer: %+v", out.Answer)
 	}
 }
@@ -406,7 +406,7 @@ func TestLoopGuard(t *testing.T) {
 	}
 	two := state.State{Entries: []state.Entry{block, block}}
 	out, steps = walk(t, ev, facts{branch: "main", hashes: []string{"h"}, state: two})
-	if out.Answer.Block || len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "tras 2 bloqueos") {
+	if out.Answer.Block || len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "after 2 blocks") {
 		t.Fatalf("answer after max_stop_retries: %+v", out.Answer)
 	}
 	if logged := appended(steps); len(logged) != 1 || logged[0].Outcome != "loop_guard" {
@@ -428,7 +428,7 @@ func TestLoopGuardFailsOpen(t *testing.T) {
 	} {
 		out, _ := walk(t, ev, f)
 		if out.Answer.Block || len(out.Answer.Warnings) != 1 ||
-			!strings.Contains(out.Answer.Warnings[0], "no puede usar su log (permission denied): revisa") {
+			!strings.Contains(out.Answer.Warnings[0], "cannot use its log (permission denied): revisa") {
 			t.Errorf("%s: %+v", name, out.Answer)
 		}
 	}
@@ -453,7 +453,7 @@ func TestRun(t *testing.T) {
 	}
 	out, _ = walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"},
 		runErr: errors.New("exit status 1")})
-	if !out.Answer.Block || !strings.HasPrefix(out.Answer.Reasons[0], "Falla just test: exit status 1\n  salida") {
+	if !out.Answer.Block || !strings.HasPrefix(out.Answer.Reasons[0], "just test failed: exit status 1\n  salida") {
 		t.Fatalf("a failing run blocks with its output: %+v", out.Answer)
 	}
 }
@@ -465,7 +465,7 @@ func TestRunMessage(t *testing.T) {
 	out, _ := walk(t, ev, facts{branch: "main", hashes: []string{"h"},
 		runErr: errors.New("exit status 1")})
 	if !out.Answer.Block || !strings.HasPrefix(out.Answer.Reasons[0],
-		"Arregla los tests de main\n\nFalla just test: exit status 1\n  salida") {
+		"Arregla los tests de main\n\njust test failed: exit status 1\n  salida") {
 		t.Fatalf("answer: %+v", out.Answer)
 	}
 	out, _ = walk(t, ev, facts{branch: "main", hashes: []string{"h"}})
@@ -484,7 +484,7 @@ func TestRunInformsAfterTheFact(t *testing.T) {
 				"    - action: { inject: { text: \"después\", always: true } }\n", event)
 			out, steps := walk(t, ev, facts{branch: "main", runErr: errors.New("exit status 1")})
 			if out.Answer.Block || len(out.Answer.Contexts) != 2 ||
-				!strings.HasPrefix(out.Answer.Contexts[0], "Corrige el estilo\n\nFalla ruff check: exit status 1\n  salida") ||
+				!strings.HasPrefix(out.Answer.Contexts[0], "Corrige el estilo\n\nruff check failed: exit status 1\n  salida") ||
 				out.Answer.Contexts[1] != "después" {
 				t.Fatalf("answer: %+v", out.Answer)
 			}
@@ -575,7 +575,7 @@ on:
 	out, steps = walk(t, reviewer, facts{branch: "main", hashErr: errors.New("permission denied")})
 	logged := appended(steps)
 	if len(observed(steps)) != 0 || len(logged) != 1 || logged[0].Outcome != "warn" ||
-		len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "hash del contenido (permission denied)") {
+		len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "hash the content (permission denied)") {
 		t.Fatalf("unknown hash: %+v %+v", out.Answer, logged)
 	}
 	// Without a finished in the workflow, nothing is observed.
@@ -684,7 +684,7 @@ on:
 		checks[1].Argv != nil {
 		t.Fatalf("checks: %+v", checks)
 	}
-	if !out.Answer.Block || !strings.HasPrefix(out.Answer.Reasons[0], "Rules que no se cumplen:\n- GO-1 (tests/go1_test.go): d") {
+	if !out.Answer.Block || !strings.HasPrefix(out.Answer.Reasons[0], "Rules not met:\n- GO-1 (tests/go1_test.go): d") {
 		t.Fatalf("answer: %+v", out.Answer)
 	}
 }
@@ -730,7 +730,7 @@ on:
 	if checks = checksOf(steps); len(checks) != 4 || len(checks[2].Rules) != 1 || checks[2].Rules[0].ID != "A-2" {
 		t.Fatalf("a failed group is rerun per rule: %+v", checks)
 	}
-	if !out.Answer.Block || !strings.HasPrefix(out.Answer.Reasons[0], "Rules que no se cumplen:\n- A-2 (tests/a2_test.go): a2") ||
+	if !out.Answer.Block || !strings.HasPrefix(out.Answer.Reasons[0], "Rules not met:\n- A-2 (tests/a2_test.go): a2") ||
 		strings.Contains(out.Answer.Reasons[0], "A-1") || strings.Contains(out.Answer.Reasons[0], "A-3") {
 		t.Fatalf("answer: %+v", out.Answer)
 	}
@@ -886,7 +886,7 @@ func TestProtectedOutside(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out, _ := walk(t, invalid, facts{branch: "main"}); !out.Answer.Block ||
-		!strings.Contains(out.Answer.Reasons[0], "el workflow no es válido") {
+		!strings.Contains(out.Answer.Reasons[0], "the workflow is not valid") {
 		t.Fatalf("invalid: %+v", out.Answer)
 	}
 }
@@ -1140,7 +1140,7 @@ func TestWithoutOrInvalidWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, _ = walk(t, edit, facts{branch: "main"})
-	if !out.Answer.Block || !strings.Contains(out.Answer.Reasons[0], "el workflow no es válido") {
+	if !out.Answer.Block || !strings.Contains(out.Answer.Reasons[0], "the workflow is not valid") {
 		t.Fatalf("an invalid workflow blocks an edit: %+v", out.Answer)
 	}
 }
@@ -1296,7 +1296,7 @@ func TestMeasuresFailClosed(t *testing.T) {
 	if !out.Answer.Block || out.Answer.Reasons[0] != "? ? ?" {
 		t.Fatalf("answer: %+v", out.Answer)
 	}
-	want := "polix no puede medir el diff (git roto): changed_lines, changed_files y risk_score se cumplen"
+	want := "polix cannot measure the diff (git roto): changed_lines, changed_files and risk_score hold"
 	if len(out.Answer.Warnings) != 1 || out.Answer.Warnings[0] != want {
 		t.Fatalf("warnings: %q", out.Answer.Warnings)
 	}
@@ -1867,7 +1867,7 @@ func TestRepeatWithoutLog(t *testing.T) {
 				out, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"},
 					stateErr: errors.New("permission denied")})
 				if !c.acted(out, steps) || !slices.ContainsFunc(out.Answer.Warnings, func(w string) bool {
-					return strings.Contains(w, "no puede usar su log (permission denied)")
+					return strings.Contains(w, "cannot use its log (permission denied)")
 				}) {
 					t.Fatalf("event %d: %+v", i, out.Answer)
 				}
@@ -1979,7 +1979,7 @@ func TestHashOnlyWhenNeeded(t *testing.T) {
 	out, steps := walk(t, gate, facts{branch: "main", hashes: []string{"h"},
 		stateErr: errors.New("permission denied")})
 	if !out.Answer.Block || len(hashes(steps)) != 0 || !slices.ContainsFunc(out.Answer.Warnings,
-		func(w string) bool { return strings.Contains(w, "no puede usar su log (permission denied)") }) {
+		func(w string) bool { return strings.Contains(w, "cannot use its log (permission denied)") }) {
 		t.Fatalf("a log that cannot be read: %+v", out.Answer)
 	}
 	run := eval(t, "version: 1\non:\n  stop:\n    - action: { run: just test }\n", workflow.Stop)

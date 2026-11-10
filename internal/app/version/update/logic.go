@@ -119,7 +119,7 @@ func installing(u version.Update, target string) Output {
 	}
 	installed := fmt.Sprintf("polix updated from %s to %s (%s)", u.Running, target, u.Exe)
 	if u.Hook {
-		installed = fmt.Sprintf("polix se ha actualizado de %s a %s.", u.Running, target)
+		installed = fmt.Sprintf("polix updated from %s to %s.", u.Running, target)
 	}
 	return Output{Install: target, Installed: installed, Remember: u.Latest(), Refresh: true}
 }

@@ -64,7 +64,7 @@ func TestEvaluationKnowHashError(t *testing.T) {
 	if h, known, computed := ev.Facts.Hash(0); h != "" || known || !computed {
 		t.Fatal("an unknown hash")
 	}
-	if len(ev.Facts.Warnings) != 1 || !strings.Contains(ev.Facts.Warnings[0], "hash del contenido (boom)") {
+	if len(ev.Facts.Warnings) != 1 || !strings.Contains(ev.Facts.Warnings[0], "hash the content (boom)") {
 		t.Fatalf("warnings: %q", ev.Facts.Warnings)
 	}
 }
@@ -116,7 +116,7 @@ func TestEvaluationRunning(t *testing.T) {
 		"polix.yaml:4: unknown key \"context\" in action: use inject":                                                                false,
 	} {
 		err := unusable(errors.New(problem), "0.1.0")
-		if got := strings.Contains(err.Error(), "no las quites: ejecuta polix update"); got != hint {
+		if got := strings.Contains(err.Error(), "do not remove them: run polix update"); got != hint {
 			t.Errorf("%s: hint %v", problem, got)
 		}
 		if !strings.HasPrefix(err.Error(), problem) {
@@ -137,12 +137,12 @@ func TestEvaluationRunning(t *testing.T) {
 			{Line: 6, Keys: []string{"context"}},
 		}}}
 	err := oldVocabulary.Valid()
-	if err == nil || strings.Contains(unusable(err, "0.1.0").Error(), "no las quites") {
+	if err == nil || strings.Contains(unusable(err, "0.1.0").Error(), "do not remove them") {
 		t.Fatalf("the old vocabulary hints an update: %v", err)
 	}
 	old := workflow.TooOldError{Requires: "0.2.0", Running: "0.1.0"}
 	var got workflow.TooOldError
-	if err := unusable(old, "0.1.0"); !errors.As(err, &got) || strings.Contains(err.Error(), "no las quites") {
+	if err := unusable(old, "0.1.0"); !errors.As(err, &got) || strings.Contains(err.Error(), "do not remove them") {
 		t.Fatalf("TooOldError: %v", err)
 	}
 }

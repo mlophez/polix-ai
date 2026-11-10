@@ -276,7 +276,7 @@ func TestTeamFlow(t *testing.T) {
 	r.write("src/domain/order.go", "package domain\n")
 	code, _, stderr = r.bash("git commit -m 'PLAT-7 orders'", false)
 	expect(t, "commit without tests", code, 2, stderr)
-	if !strings.HasPrefix(stderr, "Faltan los tests\n\nFalla git rev-parse") {
+	if !strings.HasPrefix(stderr, "Faltan los tests\n\ngit rev-parse --verify --quiet tested failed: ") {
 		t.Fatalf("reason: %q", stderr)
 	}
 
@@ -379,7 +379,7 @@ on:
 	code, stdout, stderr = r.hook("claude", map[string]any{"hook_event_name": "PostToolUse", "tool_name": "Edit",
 		"tool_input": map[string]any{"file_path": filepath.Join(r.dir, "b.txt")}})
 	expect(t, "a failing run after an edit", code, 0, stderr)
-	if !strings.Contains(stdout, `"additionalContext":"b.txt no pasa el check\n\nFalla git rev-parse`) {
+	if !strings.Contains(stdout, `"additionalContext":"b.txt no pasa el check\n\ngit rev-parse --verify --quiet no-such-ref failed: `) {
 		t.Fatalf("the failure reaches the AI as context: %q", stdout)
 	}
 	if !strings.Contains(r.log(), `"outcome":"inform"`) {
@@ -424,7 +424,7 @@ on:
 	r.write(".git/polix/log.jsonl", `{"kind":"observed","outcome":"finished","key":"polix:reviewer","branch":"main",`+
 		`"hash":"`+strings.Repeat("1", 40)+`"}`+"\n")
 	commit("commit with the tree of the review missing", 2)
-	if !strings.Contains(r.log(), "no se puede comparar el contenido en que terminó polix:reviewer") {
+	if !strings.Contains(r.log(), "the content polix:reviewer finished on cannot be compared") {
 		t.Fatalf("the failed comparison is logged: %s", r.log())
 	}
 }
@@ -732,7 +732,7 @@ func TestRunRulesFailsOnBadRules(t *testing.T) {
 	r.write("ai/rules/bad.yaml", "rules: [\n")
 	code, _, stderr := r.stop()
 	expect(t, "stop with rules that do not load", code, 2, stderr)
-	if !strings.Contains(stderr, "No se pueden cargar las rules") {
+	if !strings.Contains(stderr, "The rules cannot be loaded") {
 		t.Fatalf("reason: %q", stderr)
 	}
 }
@@ -800,7 +800,7 @@ func TestInvalidWorkflowCanBeFixed(t *testing.T) {
 	expect(t, "edit outside the repository", code, 0, stderr)
 	code, _, stderr = r.edit(".git/polix/log.jsonl", "")
 	expect(t, "edit of the state", code, 2, stderr)
-	if !strings.Contains(stderr, "estado de polix") {
+	if !strings.Contains(stderr, "Only polix writes the state of polix") {
 		t.Fatalf("the protection should answer, not the invalid workflow: %q", stderr)
 	}
 	for c, want := range map[string]int{"polix config check": 0, "cd . && polix config check --dir .": 0, "ls": 2,
@@ -810,7 +810,7 @@ func TestInvalidWorkflowCanBeFixed(t *testing.T) {
 	}
 	code, _, stderr = r.bash("git commit -m x", false)
 	expect(t, "commit", code, 2, stderr)
-	if n := strings.Count(stderr, "no es válido"); n != 1 {
+	if n := strings.Count(stderr, "is not valid"); n != 1 {
 		t.Fatalf("the command and its commit give one message, got %d: %q", n, stderr)
 	}
 }
@@ -826,8 +826,8 @@ func TestWorkflowAheadOfPolix(t *testing.T) {
 
 	code, _, stderr := r.edit("polix.yaml", "")
 	expect(t, "the session edits a workflow ahead", code, 2, stderr)
-	if !strings.Contains(stderr, "necesita polix 0.2.0") || !strings.Contains(stderr, "polix update") ||
-		strings.Contains(stderr, "corrígelo") {
+	if !strings.Contains(stderr, "needs polix 0.2.0") || !strings.Contains(stderr, "polix update") ||
+		strings.Contains(stderr, "fix it") {
 		t.Fatalf("the reason asks to update polix: %q", stderr)
 	}
 	code, _, stderr = r.edit("src/a.go", "")
@@ -848,7 +848,7 @@ func TestUnknownOptionsHintAnUpdate(t *testing.T) {
 	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - action: { block: x }\n      an_option_of_0_2: 1\n")
 	code, _, stderr := r.edit("src/a.go", "")
 	expect(t, "edit", code, 2, stderr)
-	if !strings.Contains(stderr, "no las quites: ejecuta polix update") {
+	if !strings.Contains(stderr, "do not remove them: run polix update") {
 		t.Fatalf("the reason hints an update: %q", stderr)
 	}
 	// A name of the old vocabulary comes with its new spelling, not with an update.
@@ -997,7 +997,7 @@ func TestStopLoopGuardReadOnlyState(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 	code, _, stderr := r.stop()
 	expect(t, "stop with a read only state", code, 0, stderr)
-	if !strings.Contains(stderr, "no puede usar su log") {
+	if !strings.Contains(stderr, "cannot use its log") {
 		t.Fatalf("stderr: %q", stderr)
 	}
 }
@@ -1023,7 +1023,7 @@ on:
 		if len(line) > 16*1024 {
 			t.Fatalf("a log line has %d bytes", len(line))
 		}
-		found = found || strings.Contains(line, "Falla git diff")
+		found = found || strings.Contains(line, "git diff --no-index empty.txt big.txt failed: ")
 	}
 	if !found {
 		t.Fatalf("log: %.2000s", data)
@@ -1049,7 +1049,7 @@ on:
 	t.Cleanup(func() { _ = os.Chmod(p, 0o644) })
 	code, _, stderr := r.subagentStop("reviewer")
 	expect(t, "the reviewer stops without a hash", code, 0, stderr)
-	if !strings.Contains(stderr, "hash del contenido") {
+	if !strings.Contains(stderr, "hash the content") {
 		t.Fatalf("stderr should warn about the hash: %q", stderr)
 	}
 	if strings.Contains(r.log(), `"kind":"observed"`) {

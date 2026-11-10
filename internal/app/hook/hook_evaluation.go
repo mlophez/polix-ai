@@ -155,9 +155,9 @@ func (e Evaluation) Running(running string) Evaluation {
 	if e.Invalid == nil || errors.As(e.Invalid, &old) || !e.mayNeedNewer() {
 		return e
 	}
-	//nolint:staticcheck // ST1005: the agent reads this message as is, a sentence in Spanish
-	e.Invalid = fmt.Errorf("%w\nSi %s usa opciones de una versión de polix más reciente que la instalada (%s), no las "+
-		"quites: ejecuta polix update.", e.Invalid, workflow.File, running)
+	//nolint:staticcheck // ST1005: the agent reads this message as is, a whole sentence
+	e.Invalid = fmt.Errorf("%w\nIf %s uses options of a newer polix than the installed one (%s), do not remove "+
+		"them: run polix update.", e.Invalid, workflow.File, running)
 	return e
 }
 

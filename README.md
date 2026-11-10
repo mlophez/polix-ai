@@ -299,7 +299,7 @@ in a diff:
 ```text
 $ polix log --tail 3
 2026-11-04T12:04:04+01:00  observed   stop          session   blocked just test efd99ae6
-2026-11-04T12:04:04+01:00  decision   stop          session   block run        efd99ae6  Falla just test: exit status 1
+2026-11-04T12:04:04+01:00  decision   stop          session   block run        efd99ae6  just test failed: exit status 1
 2026-11-04T12:09:13+01:00  observed   stop          session   passed just test 3b1c07d2
 ```
 
