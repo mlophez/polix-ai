@@ -1,14 +1,14 @@
 ---
 name: review
+# Reviews the current change with the subagent polix:reviewer: its intent, bugs, the rules of the project, its tests
+# and its docs, relays the verdict and saves the report in the folder of reports.
+# It never fixes what it finds.
 description: >
-  Reviews the current change with the subagent polix:reviewer: its intent, bugs, the rules of the project, its tests
-  and its docs, relays the verdict and saves the report in the folder of reports.
-  It runs only when the user or the workflow of polix asks for it.
-  It never fixes what it finds.
+  It runs only when the user or the workflow of polix asks for it. Never suggest it nor mention it on your own.
 effort: medium
 model: inherit
 user-invocable: true
-disable-model-invocation: true
+disable-model-invocation: false
 argument-hint: "[range or files, e.g. HEAD~3..HEAD or internal/app/setup; empty for the current change]"
 ---
 

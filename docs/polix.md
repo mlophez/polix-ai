@@ -835,9 +835,11 @@ also prints that Codex support is not implemented in this release and the setup 
     implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
     or the workflow of polix asks for it, as its description says, and the frontmatter enforces it.
-    `init`, `plan`, `build`, `review`, `audit` and `doctor` carry `disable-model-invocation: true`: only the user
-    runs them, typing the command, so the model never starts one on its own; when a message of polix asks for one,
-    as the session start does for `/polix:doctor`, the model tells the user to run it. `workflow` and `add-rule`
+    `init` and `doctor` carry `disable-model-invocation: true`: only the user runs them, typing the command; when a
+    message of polix asks for one, as the session start does for `/polix:doctor`, the model tells the user to run
+    it. `plan`, `build`, `review` and `audit` stay open to the model, so a message of polix can ask it to run one,
+    but their description holds only the fixed sentence and asks the model never to suggest nor mention them on its
+    own, and what each one does is a comment of the frontmatter, which the model never sees. `workflow` and `add-rule`
     stay open to the model but carry `paths` (`polix.yaml`, `ai/rules/**`): the model sees them only while it works
     on those files. A `rules.path` other than `ai/rules/` leaves `add-rule` to the user's command. The agents stay
     open to the model, so a rule that asks for `polix:reviewer` still works.

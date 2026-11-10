@@ -1,14 +1,14 @@
 ---
 name: audit
+# Audits the repository, or part of it, for bugs, flaws and inconsistencies with several polix:auditor subagents in
+# parallel, one per area, and merges their reports into one ranked by severity, saved in the folder of reports.
+# It never fixes what it finds.
 description: >
-  Audits the repository, or part of it, for bugs, flaws and inconsistencies with several polix:auditor subagents in
-  parallel, one per area, and merges their reports into one ranked by severity, saved in the folder of reports.
-  It runs only when the user or the workflow of polix asks for it.
-  It never fixes what it finds.
+  It runs only when the user or the workflow of polix asks for it. Never suggest it nor mention it on your own.
 effort: high
 model: inherit
 user-invocable: true
-disable-model-invocation: true
+disable-model-invocation: false
 argument-hint: "[paths and an optional focus, e.g. internal/app/setup security; empty for the whole repository]"
 ---
 

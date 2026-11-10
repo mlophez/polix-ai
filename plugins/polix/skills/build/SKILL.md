@@ -1,15 +1,15 @@
 ---
 name: build
+# Implements a plan of the folder of plans (ai/plans/ by default) with polix:builder subagents in parallel, one per
+# task, in the order its dependencies allow, updates the Markdown docs of the project, then reviews the whole change
+# with polix:reviewer and checks the acceptance criteria of the plan.
+# It never edits the code itself, never commits and never fixes the findings of the review.
 description: >
-  Implements a plan of the folder of plans (ai/plans/ by default) with polix:builder subagents in parallel, one per
-  task, in the order its dependencies allow, updates the Markdown docs of the project, then reviews the whole change
-  with polix:reviewer and checks the acceptance criteria of the plan.
-  It runs only when the user or the workflow of polix asks for it.
-  It never edits the code itself, never commits and never fixes the findings of the review.
+  It runs only when the user or the workflow of polix asks for it. Never suggest it nor mention it on your own.
 effort: medium
 model: inherit
 user-invocable: true
-disable-model-invocation: true
+disable-model-invocation: false
 argument-hint: "[plan and optional tasks, e.g. ai/plans/add-retries.md 2 3; empty to take it from the conversation]"
 ---
 
