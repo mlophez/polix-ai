@@ -8,6 +8,7 @@ effort: medium
 model: inherit
 user-invocable: true
 disable-model-invocation: false
+paths: polix.yaml
 argument-hint: "[what to enforce, e.g. no commit without tests; empty to review the current workflow]"
 ---
 

@@ -102,7 +102,7 @@ func TestPrint(t *testing.T) {
 		Findings: []setup.Finding{fine, {Level: setup.LevelFail, Area: "hooks", Message: "Stop does not run"}}}
 	var b strings.Builder
 	res.print(&b)
-	if !strings.Contains(b.String(), "cuéntaselos al usuario") || !strings.Contains(b.String(), "- [fail] hooks: Stop does not run") ||
+	if !strings.Contains(b.String(), "tell the user about them") || !strings.Contains(b.String(), "- [fail] hooks: Stop does not run") ||
 		strings.Contains(b.String(), "[ok]") {
 		t.Fatal(b.String())
 	}

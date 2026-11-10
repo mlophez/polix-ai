@@ -39,7 +39,7 @@ registered, that Codex runs them once trusted with `/hooks`, and that Codex supp
 ## Response
 
 `Response`: `Hook`, `Findings` and `Failed`. The command prints one line per finding and exits with 1
-on a failure; with `--hook` it prints only the problems, in a paragraph in Spanish for the agent, and exits with 0.
+on a failure; with `--hook` it prints only the problems, in a paragraph for the agent, and exits with 0.
 
 ## Port
 

@@ -226,7 +226,7 @@ func askClaude(ctx context.Context, port Port, req Request, s setup.Setup, p set
 }
 
 // print serializes the response to stdout: one line per finding; with --hook only the problems, in a paragraph
-// in Spanish the agent tells the user, and nothing when everything is fine.
+// the agent tells the user, and nothing when everything is fine.
 func (res Response) print(stdout io.Writer) {
 	if res.Hook {
 		var lines []string
@@ -236,8 +236,8 @@ func (res Response) print(stdout io.Writer) {
 			}
 		}
 		if len(lines) > 0 {
-			fmt.Fprintf(stdout, "polix doctor ha encontrado problemas en este equipo o repositorio; cuéntaselos al usuario y "+
-				"ofrécete a arreglarlos (polix doctor da el detalle, y la skill polix:doctor sabe cómo):\n%s\n", strings.Join(lines, "\n"))
+			fmt.Fprintf(stdout, "polix doctor found problems on this machine or repository; tell the user about them and that "+
+				"they can fix them by running /polix:doctor (polix doctor gives the detail):\n%s\n", strings.Join(lines, "\n"))
 		}
 		return
 	}

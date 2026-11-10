@@ -834,8 +834,14 @@ also prints that Codex support is not implemented in this release and the setup 
     `audit` launch the agents; Codex, which has no agents of plugins and whose support is not
     implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
-    or the workflow of polix asks for it, as its description says: the model does not reach for them by itself, and
-    a message of polix such as "Run /polix:review" still runs the skill. The read-only agents (`reviewer`,
+    or the workflow of polix asks for it, as its description says, and the frontmatter enforces it.
+    `init`, `plan`, `build`, `review`, `audit` and `doctor` carry `disable-model-invocation: true`: only the user
+    runs them, typing the command, so the model never starts one on its own; when a message of polix asks for one,
+    as the session start does for `/polix:doctor`, the model tells the user to run it. `workflow` and `add-rule`
+    stay open to the model but carry `paths` (`polix.yaml`, `ai/rules/**`): the model sees them only while it works
+    on those files. A `rules.path` other than `ai/rules/` leaves `add-rule` to the user's command. The agents stay
+    open to the model, so a rule that asks for `polix:reviewer` still works.
+    The read-only agents (`reviewer`,
     `rules-reviewer`, `auditor`) fill the report template inside their own file. The skills `audit` and `review`
     save their report in the folder of reports from the `template.md` next to them, as `plan` saves its plan; a
     `polix:reviewer` launched without the skill answers in the chat and saves no file.

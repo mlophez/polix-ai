@@ -99,7 +99,7 @@ func TestDoctor(t *testing.T) {
 	if _, stdout, _ := runSetup("doctor", "--offline", "--dir", r); !strings.Contains(stdout, "runs polix twice") {
 		t.Fatalf("duplicated hooks:\n%s", stdout)
 	}
-	if code, stdout, _ := runSetup("doctor", "--hook", "--dir", r); code != 0 || !strings.Contains(stdout, "cuéntaselos") {
+	if code, stdout, _ := runSetup("doctor", "--hook", "--dir", r); code != 0 || !strings.Contains(stdout, "tell the user about them") {
 		t.Fatalf("the hook never fails: %d\n%s", code, stdout)
 	}
 	if _, stdout, _ := runSetup("doctor", "--offline", "--dir", t.TempDir()); !strings.Contains(stdout, "not inside a git repository") {

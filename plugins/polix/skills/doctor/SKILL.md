@@ -6,7 +6,7 @@ description: >
 effort: medium
 model: inherit
 user-invocable: true
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 # Fixing polix

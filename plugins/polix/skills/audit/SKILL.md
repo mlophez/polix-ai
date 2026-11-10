@@ -8,7 +8,7 @@ description: >
 effort: high
 model: inherit
 user-invocable: true
-disable-model-invocation: false
+disable-model-invocation: true
 argument-hint: "[paths and an optional focus, e.g. internal/app/setup security; empty for the whole repository]"
 ---
 

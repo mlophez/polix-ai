@@ -9,6 +9,7 @@ effort: medium
 model: inherit
 user-invocable: true
 disable-model-invocation: false
+paths: "ai/rules/**"
 argument-hint: "[the rule or the document to migrate, e.g. docs/conventions.md; empty to ask]"
 ---
 

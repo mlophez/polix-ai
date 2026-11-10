@@ -8,7 +8,7 @@ description: >
 effort: high
 model: inherit
 user-invocable: true
-disable-model-invocation: false
+disable-model-invocation: true
 argument-hint: "[what to plan, e.g. add retries to the webhook sender; empty to take it from the conversation]"
 ---
 

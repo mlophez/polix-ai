@@ -9,7 +9,7 @@ description: >
 effort: medium
 model: inherit
 user-invocable: true
-disable-model-invocation: false
+disable-model-invocation: true
 argument-hint: "[plan and optional tasks, e.g. ai/plans/add-retries.md 2 3; empty to take it from the conversation]"
 ---
 

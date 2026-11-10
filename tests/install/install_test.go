@@ -314,7 +314,7 @@ func TestUpdateHookRunsTheNewDoctor(t *testing.T) {
 	if err != nil || !strings.Contains(stdout, "actualizado de 0.1.0 a 0.2.0") {
 		t.Fatalf("update --hook: %v %q", err, stdout)
 	}
-	if !strings.Contains(stdout, "polix doctor ha encontrado") {
+	if !strings.Contains(stdout, "polix doctor found problems") {
 		t.Fatalf("the new binary runs the doctor after the update: %q", stdout)
 	}
 	if v, err := exec.Command(exe, "version").Output(); err != nil || strings.TrimSpace(string(v)) != "0.2.0" {

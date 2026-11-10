@@ -323,11 +323,11 @@ on:
   stop:
     - when: { changed: ["src/**", "internal/**"] }
       unless: { finished: "polix:reviewer" }
-      action: { block: "Run /polix:review on the current diff before you finish" }
+      action: { block: "Launch the polix:reviewer subagent on the current diff before you finish" }
 
   pre_commit:
     - unless: { finished: "polix:reviewer" }
-      action: { block: "The diff is not reviewed: run /polix:review before committing" }
+      action: { block: "The diff is not reviewed: launch the polix:reviewer subagent before committing" }
 ```
 
 How it works:
@@ -341,9 +341,10 @@ How it works:
   `pre_commit` has no `changed`, so any edit asks for a new review there.
 - The reviewer reports and never fixes, so its run does not change the content it just approved.
 - Both are plain blocks, gates that hold on every attempt until the review ran.
-- `/polix:review` saves its report in the folder of reports (`ai/reports/` by default), so each review leaves
-  evidence next to the plan. The skill and the reviewer run only when you or the workflow ask for them, so this
-  entry decides when a review happens.
+- The block asks for the subagent, not for the skill: only the user runs `/polix:review`, so the agent satisfies
+  the gate by launching `polix:reviewer` itself. Run `/polix:review` yourself when you want its report saved in
+  the folder of reports (`ai/reports/` by default), as evidence next to the plan; it launches the same reviewer,
+  so it satisfies the gate as well.
 
 When the reviewer runs in the background, the stop above blocks again on every turn until it ends. To ask once
 per content instead, make the block of the stop a reminder with `once: true`:
@@ -354,7 +355,7 @@ on:
     - when: { changed: ["src/**", "internal/**"] }
       unless: { finished: "polix:reviewer" }
       action:
-        block: { message: "Run /polix:review on the current diff before you finish", once: true }
+        block: { message: "Launch the polix:reviewer subagent on the current diff before you finish", once: true }
 ```
 
 The reminder then stops enforcing: a second stop on the same content passes even if no review ran, and an edit of
@@ -738,7 +739,7 @@ on:
       action: { run: just test }
     - when: { changed: "src/**", finished: documenter }
       unless: { finished: "polix:reviewer" }
-      action: { block: "Run /polix:review on the final diff" }
+      action: { block: "Launch the polix:reviewer subagent on the final diff" }
 
   pre_commit:
     - unless: { finished: [documenter, "polix:reviewer"] }
