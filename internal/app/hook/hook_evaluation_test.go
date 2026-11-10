@@ -24,6 +24,12 @@ func TestEvaluationValid(t *testing.T) {
 	if (Evaluation{Root: "/r", GitDir: "/g", Event: stop, Facts: Facts{Epoch: -1}}).Valid() == nil {
 		t.Fatal("negative facts are valid")
 	}
+	if (Evaluation{Root: "/r", GitDir: "/g", Event: stop, Remaining: -1}).Valid() == nil {
+		t.Fatal("negative remaining events are valid")
+	}
+	if !(Evaluation{}).Last() || (Evaluation{Remaining: 1}).Last() {
+		t.Fatal("Last")
+	}
 	ev := Evaluation{GitDir: filepath.FromSlash("/r/.git"), System: "darwin"}
 	if ev.StateDir() != filepath.FromSlash("/r/.git/polix") || !ev.Fold() || ev.Windows() {
 		t.Fatal("StateDir, Fold, Windows")

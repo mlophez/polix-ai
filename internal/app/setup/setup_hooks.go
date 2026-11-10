@@ -17,11 +17,13 @@ type HookGroup struct {
 	Handlers []HookHandler
 }
 
-// HookHandler is a command a group of hooks runs: the command and its timeout in seconds, 0 when it sets none and
-// the agent applies its default. It is built with a literal followed by Valid.
+// HookHandler is a command a group of hooks runs: the command, its timeout in seconds, 0 when it sets none and
+// the agent applies its default, and its status, the text the agent shows while the hook runs, empty for none. It
+// is built with a literal followed by Valid.
 type HookHandler struct {
 	Command string
 	Timeout float64
+	Status  string
 }
 
 // HooksFile is a hooks file of an agent that exists, as polix doctor read it: its groups of hooks by event, or
@@ -50,12 +52,16 @@ const (
 // runs hooks with, must understand; what it does lives in the binary.
 const UpdateCommand = "polix update --hook"
 
+// StatusMessage is the text both agents show next to their spinner while a hook of polix runs, the same on every
+// handler polix registers, so the user knows who the wait is on.
+const StatusMessage = "polix"
+
 // legacyCommands are the commands earlier builds registered, recognized so install replaces them.
 var legacyCommands = []string{"polix update --hook; polix doctor --hook"}
 
 // HookEvents are the events polix registers, in lifecycle order: the order new events are added to a file.
-var HookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-	"SubagentStop", "Stop"}
+var HookEvents = []string{"SessionStart", "UserPromptSubmit", "SubagentStart", "PreToolUse", "PostToolUse",
+	"PostToolUseFailure", "SubagentStop", "Stop"}
 
 // ClaudeHookEvents are the events polix needs in Claude Code, in lifecycle order, with the tools the matcher of
 // the tool events must cover.
@@ -65,6 +71,7 @@ var ClaudeHookEvents = []struct {
 }{
 	{"SessionStart", nil},
 	{"UserPromptSubmit", nil},
+	{"SubagentStart", nil},
 	{"PreToolUse", []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}},
 	{"PostToolUse", []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}},
 	{"PostToolUseFailure", []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}},
@@ -111,10 +118,10 @@ func (f HooksFile) Valid() error {
 
 // Hooks returns the hooks polix registers for agent, by event: `polix hook <agent>` on every event, on the tools
 // polix governs (every tool on Codex, which names its tools differently), and the session start command of
-// UpdateCommand on startup.
+// UpdateCommand on startup, each with the status StatusMessage.
 func (s Setup) Hooks(agent string) map[string][]HookGroup {
-	call := HookHandler{Command: "polix hook " + agent, Timeout: HookTimeout}
-	update := HookHandler{Command: UpdateCommand, Timeout: updateTimeout}
+	call := HookHandler{Command: "polix hook " + agent, Timeout: HookTimeout, Status: StatusMessage}
+	update := HookHandler{Command: UpdateCommand, Timeout: updateTimeout, Status: StatusMessage}
 	if call.Valid() != nil || update.Valid() != nil {
 		return nil
 	}
@@ -125,6 +132,7 @@ func (s Setup) Hooks(agent string) map[string][]HookGroup {
 	out := map[string][]HookGroup{
 		"SessionStart":     append(call.Alone(""), update.Alone("startup")...),
 		"UserPromptSubmit": call.Alone(""),
+		"SubagentStart":    call.Alone(""),
 		"PreToolUse":       call.Alone(tools),
 		"PostToolUse":      call.Alone(tools),
 		"SubagentStop":     call.Alone(""),

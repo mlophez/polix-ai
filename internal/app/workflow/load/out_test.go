@@ -237,8 +237,8 @@ on:
     - action: { run: { rules: changed, message: "m" } }
     - action: { inject: "texto" }
     - action: { inject: { file: AGENTS.md, always: true } }
-    - action: { block: "mensaje" }
     - action: { block: { message: "recuerda", once: true } }
+    - action: { block: "mensaje" }
 `
 	w, err := parse(t, src, "dev")
 	if err != nil {
@@ -260,11 +260,11 @@ on:
 	if a := es[4].Action.Inject; a == nil || a.File != "AGENTS.md" || !a.Always {
 		t.Fatalf("inject map: %+v", a)
 	}
-	if a := es[5].Action.Block; a == nil || a.Message != "mensaje" || a.Once {
-		t.Fatalf("block message: %+v", a)
-	}
-	if a := es[6].Action.Block; a == nil || a.Message != "recuerda" || !a.Once {
+	if a := es[5].Action.Block; a == nil || a.Message != "recuerda" || !a.Once {
 		t.Fatalf("block map: %+v", a)
+	}
+	if a := es[6].Action.Block; a == nil || a.Message != "mensaje" || a.Once {
+		t.Fatalf("block message: %+v", a)
 	}
 	for i, e := range es {
 		if e.Action.Verb() == "" || e.Line != 4+i {

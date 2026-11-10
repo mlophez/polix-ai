@@ -203,12 +203,12 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	wf, present, problem := port.LoadWorkflow(ctx, req.Version)
 	var facts hook.Facts
 	var answer agent.Answer
-	for _, e := range h.Events {
+	for i, e := range h.Events {
 		if e.Edits() {
 			e = e.Locate(port.Locate(ctx, e.AbsPath, e.Cwd))
 		}
 		ev := hook.Evaluation{Workflow: wf, Present: present, Invalid: problem, Root: root, GitDir: gitDir,
-			System: req.System, Event: e, Facts: facts}
+			System: req.System, Event: e, Remaining: h.Remaining(i), Facts: facts}
 		if err := ev.Valid(); err != nil {
 			return Response{}, err
 		}

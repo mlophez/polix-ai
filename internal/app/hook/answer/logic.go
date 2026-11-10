@@ -42,6 +42,13 @@ type pass struct {
 	// injected are the once-only injects that reached the answer, written as observed `injected` lines once the
 	// answer is known (see writeInjected).
 	injected []passInject
+	// notices are the notices of notify without always that reached the answer of the event, written as observed
+	// `notified` lines only when the whole call does not block (see settle).
+	notices []passNotice
+	// pending are the observed lines written only when the whole call does not block: those of the earlier events
+	// of the call (hook.Facts.Pending), then those of this one, carried to the next event until the last one writes
+	// them (see settle).
+	pending []state.Entry
 }
 
 // passInject is a once-only inject that reached the answer: the line of its entry and its key.
@@ -54,27 +61,32 @@ type passInject struct {
 // (see route), which applies the protections of its events, then, with a valid workflow, the entries of the event
 // in order, each with its conditions and its action, through the engine. It walks the event from its start every
 // time it is asked, so the step it returns is the first one whose result the evaluation does not know yet; with
-// none, the event is answered.
+// none, the event is answered, and the facts the next event starts from know the answer (hook.Facts.Answered), so
+// the messages for the user a block of the call hides are logged as not shown (see warn), and the lines written
+// only when the whole call does not block are carried to its last event (see settle).
 func Decide(ev hook.Evaluation) Output {
 	r := &pass{ev: ev, epoch: ev.Facts.Epoch, state: ev.Facts.State,
-		informed: slices.Contains(workflow.Informed, ev.Event.Name)}
+		informed: slices.Contains(workflow.Informed, ev.Event.Name), pending: ev.Facts.Pending}
 	var ans agent.Answer
 	if family := route(ev.Event.Name); family != nil {
 		ans = family(r)
 	}
+	if !r.waiting() {
+		r.settle(ans)
+	}
 	if r.step != nil {
 		return Output{Step: *r.step}
 	}
-	return Output{Answer: ans, Facts: ev.Facts.Carry(r.epoch, r.state)}
+	return Output{Answer: ans, Facts: ev.Facts.Carry(r.epoch, r.state).Answered(ans, r.pending)}
 }
 
-// route returns the family of the event name, the method of pass that answers it: session for start and prompt
-// (logic_session.go), edit for pre_edit and post_edit (logic_edit.go), command for pre_command, post_command and
+// route returns the family of the event name, the method of pass that answers it: session for start, prompt and
+// subagent_start (logic_session.go), edit for pre_edit and post_edit (logic_edit.go), command for pre_command, post_command and
 // pre_commit (logic_command.go), and stop for stop and subagent_stop (logic_stop.go); nil for an event polix does
 // not evaluate. Each family stops early when a step is missing; its answer is then meaningless.
 func route(name string) func(*pass) agent.Answer {
 	switch name {
-	case workflow.Start, workflow.Prompt:
+	case workflow.Start, workflow.Prompt, workflow.SubagentStart:
 		return (*pass).session
 	case workflow.PreEdit, workflow.PostEdit:
 		return (*pass).edit

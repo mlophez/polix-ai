@@ -55,7 +55,8 @@ with the domain:
   3. An unknown top level key (not one of `workflow.TopKeys`) is a `workflow.UnknownKeyError`, with the new spelling of
      a key of the old vocabulary.
   4. The decoding types of `out_workflow.go` (`workflowYAML` and the type of each section, entry and verb), with the
-     `UnmarshalYAML` of `out_unmarshal.go`, decode the rest: the short and long forms of each verb, the keys each
+     `UnmarshalYAML` of `out_unmarshal.go`, decode the rest: the short and long forms of each verb (`notify` takes
+     its message, or a map with `message` and `always`, into `workflow.Notify`), the keys each
      map uses, the line of each entry, of each event of `on` and of each runner, the runners of `rules.run` and the
      weights of `risk.weights` in file order. A value of the wrong kind is an error with its line, and the errors of
      yaml name the types of the domain (`workflow.Workflow`, `workflow.Entry`...), never those of the decoding.

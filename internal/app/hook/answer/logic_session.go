@@ -15,12 +15,15 @@ const (
 	keyRequirements = actionRequirements + ": "
 )
 
-// session answers start and prompt, the start of a session (or the compaction of its context) and a prompt of the
-// user. They come with no protection, and an unusable workflow only warns. Without polix.yaml nothing happens.
+// session answers start, prompt and subagent_start: the start of a session (or the compaction of its context), a
+// prompt of the user and the start of a subagent. They come with no protection, and an unusable workflow only warns.
+// Without polix.yaml nothing happens.
 //
 // On start the built-in guidance of the workflow comes before the entries, so the contexts of the repository have the
-// last word, and every inject injects each time it applies; with the answer known, it writes that the session
-// started when the workflow injects once, so its once-only injects are due again. On prompt a refusal rejects the
+// last word. On start and subagent_start, which begin a new context, every inject injects each time it applies; with
+// the answer known, they write that the session, or the subagent of the type of the actor, started when the workflow
+// observes it (workflow.Workflow.ObservesStart), so its once-only injects are due again (see due). subagent_start
+// gets neither the guidance nor the requirements, which are told to the main session. On prompt a refusal rejects the
 // prompt, so its contexts never reach the AI: its once-only injects are written as injected only when the answer
 // does not refuse. On prompt, before the entries, the programs of requirements the PATH does not run are told to the
 // AI once (see requirements).
@@ -31,11 +34,13 @@ func (r *pass) session() agent.Answer {
 	if !r.ev.Present {
 		return agent.Answer{}
 	}
-	start := r.ev.Event.Name == workflow.Start
+	name := r.ev.Event.Name
+	start := name == workflow.Start || name == workflow.SubagentStart
 	var ans agent.Answer
-	if start {
+	switch name {
+	case workflow.Start:
 		ans = r.guidance(ans)
-	} else {
+	case workflow.Prompt:
 		ans = r.requirements(ans)
 		if r.waiting() {
 			return ans

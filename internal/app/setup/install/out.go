@@ -173,14 +173,15 @@ func (a Adapter) editFile(path string, edit func([]byte, bool) ([]byte, string, 
 	return setup.Changes{}.Add(action, path)
 }
 
-// groups returns the hooks of polix as the groups of a hooks file, by event.
+// groups returns the hooks of polix as the groups of a hooks file, by event, each handler with its status.
 func (a Adapter) groups(hooks map[string][]setup.HookGroup) map[string][]agentconf.Group {
 	out := map[string][]agentconf.Group{}
 	for ev, groups := range hooks {
 		for _, g := range groups {
 			group := agentconf.Group{Matcher: g.Matcher}
 			for _, h := range g.Handlers {
-				group.Handlers = append(group.Handlers, agentconf.Handler{Command: h.Command, Timeout: h.Timeout})
+				group.Handlers = append(group.Handlers, agentconf.Handler{Command: h.Command, Timeout: h.Timeout,
+					Status: h.Status})
 			}
 			out[ev] = append(out[ev], group)
 		}

@@ -1,23 +1,26 @@
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900 }] },
-      { "matcher": "startup", "hooks": [{ "type": "command", "command": "polix update --hook", "timeout": 180 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900, "statusMessage": "polix" }] },
+      { "matcher": "startup", "hooks": [{ "type": "command", "command": "polix update --hook", "timeout": 180, "statusMessage": "polix" }] }
     ],
     "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900, "statusMessage": "polix" }] }
+    ],
+    "SubagentStart": [
+      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900, "statusMessage": "polix" }] }
     ],
     "PreToolUse": [
-      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900, "statusMessage": "polix" }] }
     ],
     "PostToolUse": [
-      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900, "statusMessage": "polix" }] }
     ],
     "SubagentStop": [
-      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900, "statusMessage": "polix" }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook codex", "timeout": 900, "statusMessage": "polix" }] }
     ]
   }
 }

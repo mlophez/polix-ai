@@ -104,7 +104,8 @@ func TestShortcutsExpand(t *testing.T) {
 // Without shortcuts the entries written in on stay as they are, and a file without on nor shortcuts has no events
 // nor protections.
 func TestShortcutsWrittenOnly(t *testing.T) {
-	w, err := parse(t, "version: 1\non:\n  pre_edit:\n    - action: { block: a }\n    - action: { block: b }\n", "dev")
+	w, err := parse(t, "version: 1\non:\n  pre_edit:\n    - action: { block: { message: a, once: true } }\n"+
+		"    - action: { block: b }\n", "dev")
 	if err != nil || len(w.On[workflow.PreEdit]) != 2 || w.On[workflow.PreEdit][0].Action.Block.Message != "a" {
 		t.Fatalf("%v %+v", err, w.On)
 	}

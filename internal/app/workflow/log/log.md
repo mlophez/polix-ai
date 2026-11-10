@@ -42,8 +42,9 @@ the log skipped for being too long.
 The command writes to stderr `polix: <n> lines of the log are longer than <max> bytes and were skipped` when
 `Skipped` is not 0, then each entry to stdout: with `--json` as a JSON line, else as one line with the time, the
 kind, the event, the actor, what happened (the outcome with the verb of a decision, such as `skip run` for a verb
-its repeat rules spared, or with the key of an observed line: `finished polix:reviewer`, `passed just test`,
-`injected <text, file or rule id>`, or just `blocked` and `started`), the first 8 characters of the hash and the
+its repeat rules spared and `notify notify` for a notice shown to the user, with its text as the reason, or with the
+key of an observed line: `finished polix:reviewer`, `passed just test`, `injected <text, file or rule id>`,
+`notified <text>`, or just `blocked` and `started`), the first 8 characters of the hash and the
 first line of the reason. A line of a kind polix no longer writes (`fact`, `injected`, `stop_block`) shows its kind
 and the fields it shares with the current lines, the rule of an old `injected` line and the name of an old `fact`
 line included. It exits with 0.

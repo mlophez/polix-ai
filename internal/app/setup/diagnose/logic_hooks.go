@@ -89,13 +89,13 @@ func sessionStart(merged map[string][]setup.HookGroup) []setup.Finding {
 }
 
 // event checks that the groups of an event run `polix hook claude`, on every one of its tools, with a timeout
-// above the run budget of a call. Settings written by an older polix lack PostToolUseFailure: only the feedback of
-// failed commands is lost, so it is a warning.
+// above the run budget of a call. Settings written by an older polix lack PostToolUseFailure and SubagentStart: only
+// the feedback of failed commands, or the context at the start of subagents, is lost, so it is a warning.
 func event(name string, tools []string, groups []setup.HookGroup) []setup.Finding {
 	polix, short := claudeCalls(name, groups)
 	if len(polix) == 0 {
 		level := setup.LevelFail
-		if name == "PostToolUseFailure" {
+		if name == "PostToolUseFailure" || name == "SubagentStart" {
 			level = setup.LevelWarn
 		}
 		return found(level, "hooks", "%s does not run polix hook claude: run polix install", name)

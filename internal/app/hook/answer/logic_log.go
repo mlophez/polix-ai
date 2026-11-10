@@ -17,11 +17,18 @@ func (r *pass) log(action string, line int, outcome, reason string) {
 // (finished with a hash, passed and blocked) also carry the HEAD commit, so another branch on the same commit
 // reads them too; every other entry goes without it.
 func (r *pass) write(kind, action string, line int, outcome, reason, key, hash string) error {
-	ev := r.ev.Event
-	branch, head := r.branch(), r.head()
+	e, valid := r.entryOf(kind, action, line, outcome, reason, key, hash)
 	if r.waiting() {
 		return nil
 	}
+	return r.appendEntry(e, valid)
+}
+
+// entryOf builds the entry of kind about the event that write appends, and the error of an entry that is not valid
+// to append; the branch it carries may be a step the pass waits for.
+func (r *pass) entryOf(kind, action string, line int, outcome, reason, key, hash string) (state.Entry, error) {
+	ev := r.ev.Event
+	branch, head := r.branch(), r.head()
 	if hash == "" && kind == state.KindDecision {
 		hash, _, _ = r.ev.Facts.Hash(r.epoch)
 	}
@@ -31,7 +38,7 @@ func (r *pass) write(kind, action string, line int, outcome, reason, key, hash s
 	e := state.Entry{Kind: kind, Agent: ev.Agent, Session: ev.Session, Event: ev.Name, Actor: ev.Actor,
 		Branch: branch, Hash: hash, Head: head, Action: action, Line: line, Key: key, Outcome: outcome,
 		Reason: reason}
-	return r.appendEntry(e, e.Valid())
+	return e, e.Valid()
 }
 
 // appendEntry appends e to the log and returns the error of appending it. Once the log is read, an entry

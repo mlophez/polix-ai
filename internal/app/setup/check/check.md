@@ -33,7 +33,17 @@ gathers the problems with the methods of `setup.Inspection` of `internal/app/set
 
 1. `WorkflowProblems`: the error of loading polix.yaml is one problem, or each problem of a workflow that parses
    (`workflow.InvalidError`, the runners of `rules.run` included), with whether they may come from a newer polix
-   (`version.Problems.NeedsNewer`, never when the workflow requires one: `workflow.TooOldError`).
+   (`version.Problems.NeedsNewer`, never when the workflow requires one: `workflow.TooOldError`). Among them, a verb
+   the event does not allow by `workflow.EventVerbs`, the verbs both agents support on it (`run`, `inject` and
+   `notify` on `start`, `subagent_start`, `post_edit` and `post_command`; `run`, `inject`, `block` and `notify` on
+   `prompt`, `pre_edit`, `pre_command` and `pre_commit`; `run`, `block` and `notify` on `stop` and
+   `subagent_stop`), named with the event, the verb, why and the verbs the event allows. An entry that never runs,
+   after a `block` without `when`, `unless` or `once` of the same event other than `stop` and `subagent_stop`:
+   `never runs: the entry of line M always blocks the event`, at the line of the later entry, a shortcut named by
+   its path. And a notice a later gate could swallow, on every event: a `notify` followed in its event by an entry
+   that may block it, a `block` or a `run` on an event outside `workflow.Informed`, as `the notice is not shown when
+   the entry of line M blocks the event: move it after that entry or into its message`, at the line of the
+   `notify`, since a blocked event shows the user no message.
 2. The error of reading the rules is one problem; else `RuleProblems`: every invalid rule (`rule.Loaded.Problems`,
    in the words `<file> <id>: no description`), every id repeated (`rule.Rules.Repeated`) and every check that does
    not exist.

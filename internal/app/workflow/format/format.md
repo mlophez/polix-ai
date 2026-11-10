@@ -50,7 +50,9 @@ vocabulary of the domain:
   `guardrails`, and its programs keep their order. Inside each section the keys follow the order of their schema:
   the shortcuts of `guardrails` and the keys of their items, the events of `on` in lifecycle order (`workflow.Events`),
   the keys of an entry (`when`, `unless`, `action`), the conditions (`workflow.Conditions`, also inside `any` and
-  `not`), and the keys of each verb. An unknown key goes after the known ones, in its order in the source.
+  `not`), the verbs of an action (`workflow.Actions`), and the keys of each verb (`workflow.RunKeys`,
+  `workflow.InjectKeys`, `workflow.BlockKeys` and `workflow.NotifyKeys`, so `always` goes before the `message` of a
+  `notify`). An unknown key goes after the known ones, in its order in the source.
 - The items of a list never move, nor the keys a user names: the variables of `vars`, the globs of `risk.weights`
   and of `rules.run`, whose order decides which one matches first.
 - A leading document start marker (`---`) stays, with the comments above it. It refuses anchors, aliases, explicit

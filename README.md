@@ -119,8 +119,8 @@ an entry that says on which event it applies, when, and what it does
   `finished: polix:reviewer` holds once the reviewer ended, until a file it looks at changes. Polix remembers only
   what the workflow asks about.
 - **Gates and reminders.** A `block` holds every time until its `unless` does; `once: true` turns it into a
-  reminder that asks once per content. A warning is an `inject`, and the first entry that blocks ends the
-  evaluation.
+  reminder that asks once per content. A warning for the AI is an `inject`, a notice for the person is a `notify`,
+  and the first entry that blocks ends the evaluation.
 - **Declarative and validated.** `polix config check` rejects unknown events, keys, conditions, placeholders and
   conditions that can never hold on their event, so a typo cannot quietly switch a guardrail off.
 - **Guardrails in a few lines.** `guardrails:` lists the files no agent writes, the commands no agent runs, the
@@ -227,10 +227,11 @@ changed:
   `--agent codex`), keeping every other setting and hook of those files. Commit them with your workflow so the team
   gets them.
 
-Every hook calls the same command, as in [`examples/claude-settings.json`](examples/claude-settings.json):
+Every hook calls the same command, as in [`examples/claude-settings.json`](examples/claude-settings.json), and the
+agent shows `polix` next to its spinner while it runs:
 
 ```json
-{ "type": "command", "command": "polix hook claude", "timeout": 900 }
+{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }
 ```
 
 `SessionStart` also runs `polix update --hook` when a session starts: Polix keeps itself up to date. It looks for a
@@ -280,6 +281,7 @@ flowchart LR
   S[("&lt;git-dir&gt;/polix/log.jsonl<br/>observations and decisions")] <--> D
   D -->|exit 2 + reasons| X["Block"]
   D -->|additionalContext| Y["Inject context"]
+  D -->|systemMessage| N["Tell the user"]
   D -->|exit 0| Z["Let it go on"]
 ```
 
@@ -290,7 +292,8 @@ flowchart LR
    files git ignores: they govern the change, what a commit may hold, so a build output or a local `.env` never
    fires them, while the protections still cover those files.
 3. The adapter **answers** the agent. It exits with code 2 and the reasons on stderr to block, or with code 0 and
-   `additionalContext` to inject guidance.
+   `additionalContext` to inject guidance and `systemMessage` for the messages to the user, those of `notify` among
+   them, which the model never sees.
 
 Every decision ends up in the log, with what Polix observed for the workflow (a check of its own that passed, a
 subagent that finished, an entry that blocked a stop). The log lives inside the git directory, so it never appears
@@ -311,7 +314,7 @@ $ polix log --tail 3
   `protected_files`, `forbidden_commands`, `protected_branches`, `format_on_edit` and `run_on_stop`.
 - **`on:`**, where the team orchestrates its flow: the review subagents, the builder, the plan, the ticket. It is
   a list of entries per event. Each entry says when it applies (`when`, `unless`) and what it does (`action`, with
-  exactly one verb: `block`, `run` or `inject`).
+  exactly one verb: `block`, `run`, `inject` or `notify`).
 
 `protected_files` and `forbidden_commands` are protections of the engine: they apply before every entry of `on:`,
 to every agent, without exceptions. The other shortcuts are only sugar: Polix expands each one into entries of `on:`
@@ -361,8 +364,9 @@ on:
         block: { message: "Check whether README.md needs an update; if not, commit again", once: true }
 ```
 
-**Events:** `start`, `prompt`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
-`subagent_stop`, `stop`.
+**Events:** `start`, `prompt`, `subagent_start` (a subagent starts with a new context: give it the rules there),
+`pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`, `subagent_stop`, `stop`. Each takes only the
+verbs Claude Code and Codex both support on it, so `polix.yaml` means the same in each agent.
 
 **Conditions:** `branch`, `var`, `path`, `changed`, `file` (optionally with `contains`), `command`, `exit`,
 `writes`, `actor`, `finished` (a subagent ended on the files of the entry as they are now), `not`, `any`, and the
@@ -382,8 +386,11 @@ exception, write a `block` in `on:` with `unless` instead of an item of `protect
 **Verbs:** `block` (a message for the AI; a gate on every attempt, or a reminder once per content with
 `once: true`), `run` (a command, or the checks of the matching rules; a failure blocks, or only informs the AI after
 an edit or a command; not run again once it passed on the same content unless `always: true`), `inject` (a text, a
-file or the matching rules; once per agent and session unless `always: true`). The first entry that blocks ends the
-evaluation of the event.
+file or the matching rules; once per agent and session unless `always: true`), `notify` (a message for the user,
+never for the AI, which costs it no context; once per session and text, whatever the agent, unless `always: true`).
+The first entry that blocks ends the evaluation of the event; a blocked event shows the user no message, so
+`polix config check` rejects a `notify` before an entry that may block it, and an entry after a `block` that always
+blocks, which never runs.
 
 Commands are split and matched the way a shell runs them. In `cd x && just test 2>&1 | tail -3`, Polix sees three
 commands. It also knows that `tail` decides the exit code of the line, so `exit` looks at the right command. A

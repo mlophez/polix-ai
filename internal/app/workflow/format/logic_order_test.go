@@ -123,6 +123,39 @@ on:
 	}
 }
 
+// AC9: the keys of the long form of notify follow workflow.NotifyKeys, always before message, and notify comes last
+// among the verbs of an action.
+func TestFormatOrderNotify(t *testing.T) {
+	src := `version: 1
+on:
+  prompt:
+    - action:
+        notify:
+          message: "Rama {branch}"
+          always: true
+    - action: { notify: { message: x, always: false } }
+`
+	want := `version: 1
+on:
+  prompt:
+    - action:
+        notify:
+          always: true
+          message: "Rama {branch}"
+    - action: { notify: { always: false, message: x } }
+`
+	got, err := formatData([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	if got := order([]string{"on", "prompt", "-", "action"}); got[len(got)-1] != "notify" {
+		t.Fatalf("the verbs: %q", got)
+	}
+}
+
 // The workflows of the repository, formatted in the order of the reference, keep their data and are stable.
 func TestFormatRepositoryWorkflows(t *testing.T) {
 	for _, name := range []string{"polix.yaml", "examples/polix.yaml"} {

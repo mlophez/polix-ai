@@ -183,8 +183,9 @@ of the project or the user that runs polix, or the plugin enabled in `~/.codex/c
 `polix install --agent codex` leaves them; its OK line says Codex support is not implemented and untested, and a
 Codex never set up for polix gets no line), and that the state can be written. It also
 warns when `SessionStart` does not run `polix update --hook`, or runs the command of an earlier build, which `polix
-install` replaces, and when `PostToolUseFailure` does not run polix, as in the settings of an earlier build: only
-the feedback of failed commands is lost. It exits 1 on any failure. `--hook` prints nothing when everything is fine
+install` replaces, and when `PostToolUseFailure` or `SubagentStart` does not run polix, as in the settings of an
+earlier build: only the feedback of failed commands, or the context at the start of subagents, is lost, and `polix
+install` adds them. It exits 1 on any failure. `--hook` prints nothing when everything is fine
 and never fails; otherwise it prints the problems, which Claude Code adds to the context of the session, so the
 agent tells the user and offers to fix them. It does not use the network: it compares with the latest release the
 last `polix update` or `polix doctor` saw.
@@ -205,12 +206,20 @@ The use case `AnswerHook`, `internal/app/hook/answer` (layout in `docs/architect
    of the agent, `claude` (Claude Code) or `codex` (Codex support is not implemented, see
    [Known limits](#known-limits)).
    An edit becomes one `pre_edit` or `post_edit` per path; a `git commit` in a command also produces
-   `pre_commit`.
+   `pre_commit`; the `SubagentStart` of either agent becomes `subagent_start`, with the type of the subagent as
+   actor.
 2. The logic of AnswerHook (`internal/app/hook/answer`) applies the [protections](#protections): the built-in protection of the
    state, then `guardrails.protected_files` and `guardrails.forbidden_commands`; then the entries of the event in
    order.
-3. The format of the agent renders the answer: exit 2 with the reasons on stderr to block, or exit 0 with
-   `hookSpecificOutput.additionalContext` on stdout to inject context.
+3. The format of the agent renders the answer: exit 2 with the reasons on stderr to block, or exit 0 with one JSON
+   object on stdout, `hookSpecificOutput.additionalContext` to inject context and `systemMessage` for the messages
+   for the user, each as `polix: <message>`.
+   Each field is written only when it has something and the native event accepts it: Codex fails a hook on a field
+   it does not accept. The messages for the user (the notices of the verb `notify`, a log that cannot be read, an
+   unknown content hash, the loop guard letting the agent stop) never go to stderr nor reach the agent. Neither agent reads the output of a blocked event but its reasons, so
+   a blocked event shows them to nobody: each one is logged as a `skip` decision of the action `message` that says
+   it was not shown. The events of one call (an edit of several paths, a command and its commit) give one answer, so
+   a block of any of them hides the messages of all, and those are logged the same way.
 
 Edits outside the repository (scratchpad, memory, another repository) and of files git ignores are not part of
 the change: the entries do not apply to them. They govern the change, what a commit may hold, so a build output, a
@@ -358,16 +367,19 @@ on:
   <event>:
     - when: { <condition>: <value>, ... }    # optional: all must hold
       unless: { <condition>: <value>, ... }  # optional: skip the entry when all hold
-      action:                                # required: exactly one verb, block, run or inject
+      action:                                # required: exactly one verb, block, run, inject or notify
         block: <message>                     # or { message: <message>, once: true }
     - action:
         run: <command>                       # or [<arg>, ...], or { command | rules, message, always: true }
     - action:
         inject: <text>                       # or { file | text | rules, always: true }
+    - action:
+        notify: <message>                    # or { message: <message>, always: true }
 ```
 
 An entry has two parts: when it applies (`when` and `unless`) and what it does (`action`). A comment of YAML is
-the place for its reason, for people; the message of a `block` or a `run` is the reason the AI reads.
+the place for its reason, for people; the message of a `block` or a `run` is the reason the AI reads, and the
+message of a `notify` is what the user reads.
 
 ### Requirements
 
@@ -494,10 +506,14 @@ resume, clear and compaction), before the contexts of the `start` entries, and i
 agent to cooperate and blocks nothing. `polix config check` reports an unknown key, and a value that is not a
 boolean, or a `guidance` that is not a map, stops the parse.
 
-Events: `start`, `prompt`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
+Events: `start`, `prompt`, `subagent_start`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
 `subagent_stop` and `stop`.
 `stop` is the main session about to end its turn, and `subagent_stop` a subagent about to end: they are
 separate events, so the entries of `stop` never run when a subagent ends.
+`subagent_start` is a subagent that starts, with a new context, before its first tool use; `actor` is its type.
+Its injects and the failures of its runs reach the subagent as context, so a subagent that only reads, such as a
+reviewer, gets the rules even if it never edits nor runs a command. It cannot be stopped, and it gets neither the
+guidance of `start` nor the context of `requirements`, which are told to the main session.
 
 Conditions:
 
@@ -603,8 +619,8 @@ form, a map:
 
 - `block: <message>` blocks the event with a message for the AI (placeholders allowed). The long form is
   `block: { message: <message>, once: true }`, and `message` is required. Valid on `prompt`, `pre_edit`,
-  `pre_command`, `pre_commit`, `stop` and `subagent_stop`; `start`, `post_edit` and `post_command`
-  already happened, so `polix config check` rejects it there.
+  `pre_command`, `pre_commit`, `stop` and `subagent_stop`; `start`, `subagent_start`, `post_edit` and
+  `post_command` already happened, so `polix config check` rejects it there.
 - `run: <command>` runs a command from the root, without a shell (no pipes, redirections or globs). The command is
   a string, split on spaces into arguments and never given to a shell, or a list of arguments when one holds a
   space; placeholders are allowed in each argument, and `{path}` stays one argument. The long form is a map with
@@ -622,19 +638,38 @@ form, a map:
   `file` (a file of the repository; a missing file injects nothing), `text` or `rules` (the rules whose scope
   matches a path, `rules: "{path}"`, each one as `- <id>: <description>`), plus `always`. Not valid on
   `stop` or `subagent_stop`, where the agent cannot receive context.
+- `notify: <message>` shows a message to the user (placeholders allowed), the `systemMessage` of the answer of the
+  hook, which the agent shows as `polix: <message>`; it never reaches the agent and spends none of its context. The
+  long form is `notify: { message: <message>, always: true }`, and `message` is required. Valid on every event,
+  but only after the entries that may block it: a blocked event shows the user no message, so `polix config check`
+  rejects a `notify` followed in its event by a `block`, or by a `run` on an event where a run blocks (see
+  [What polix config check reports](#what-polix-config-check-reports)). A message that expands to nothing shows
+  nothing.
 
-`once` only goes in a `block` and `always` only in a `run` or an `inject`, both as booleans.
+`once` only goes in a `block` and `always` only in a `run`, an `inject` or a `notify`, both as booleans.
+
+The verbs each event allows are one table, the same for every agent: only what Claude Code and Codex both support
+on the event, so `polix.yaml` means the same in each (`workflow.EventVerbs`).
+
+- `start`, `subagent_start`, `post_edit`, `post_command`: `run`, `inject` and `notify`.
+- `prompt`, `pre_edit`, `pre_command`, `pre_commit`: `run`, `inject`, `block` and `notify`.
+- `stop`, `subagent_stop`: `run`, `block` and `notify`.
+
+`polix config check` reports any other verb as a problem at the line of its entry, naming the event, the verb, why
+and the verbs the event allows.
 
 A failing `run` answers with its `message`, a blank line and the last 15 lines of the output (the failing rules and
 their output for `rules`). What it does depends on the event:
 
 - On `prompt`, `pre_edit`, `pre_command`, `pre_commit`, `stop` and `subagent_stop` it blocks, as a `block`
   does, and ends the evaluation of the event (up to the [loop guard](#loop-guard) on the two stops).
-- On `start`, `post_edit` and `post_command`, which already happened, it never blocks: the message and the
+- On `start`, `subagent_start`, `post_edit` and `post_command`, which already happened, it never blocks: the
+  message and the
   output reach the AI as context, as feedback it acts on at once, and the log records an `inform` decision. A lint
   or a formatter on `post_edit` is feedback, not a gate.
 
-A warning is an `inject`: the AI is told and nothing is blocked. There is no mode to try an entry without
+A warning is an `inject`: the AI is told and nothing is blocked. A notice for the person is a `notify`: the user is
+told, and the AI neither sees it nor spends context on it. There is no mode to try an entry without
 enforcing it: try a new gate in a branch, and read its decisions with `polix log` once it is enforced.
 
 ### How often each verb acts
@@ -654,15 +689,21 @@ enforcing it: try a new gate in a branch, and read its decisions with `polix log
   repository (the network, the clock, a service).
 - An `inject` reaches each actor once per session for each text it expands to, and `inject: { rules }` each rule
   once per actor and session. It is due again after a `start` of the session (a new, resumed, cleared or
-  compacted context) and, for a subagent, after that subagent type finished in the session, since its next run
-  starts with a new context. `always: true` injects it on every event. A text with a placeholder that changes on
+  compacted context), for every actor, and, for a subagent, after a `subagent_start` or the end of that subagent
+  type in the session, since its run starts with a new context; the start of a subagent leaves the main session and
+  the other types as they were. `always: true` injects it on every event. A text with a placeholder that changes on
   every event (`{command}`, a measure such as `{changed_lines}`) expands to a new text each time, so it is injected
-  every time its value changes; `{path}` gives one inject per path. On `start` every `inject` acts every
-  time, so `always` has no effect there.
+  every time its value changes; `{path}` gives one inject per path. On `start` and `subagent_start` every `inject`
+  acts every time, so `always` has no effect there.
+- A `notify` reaches the user once per session for each entry and each text it expands to, whatever the actor: the
+  user is one person, so a subagent or another actor does not show it again, and neither does a `start`, a
+  compaction or the end of a subagent. Each notice shown is logged as a `notify` decision with its text, and
+  `polix log` lists it. A placeholder that changes its text makes a new notice. `always: true` shows it every
+  time its entry applies.
 
 A verb that does not act because of these rules is logged as a `skip` decision of its entry and never blocks.
-When the log cannot be read, a `run`, an `inject` and a `block` with `once` act every time, and the call warns once
-with the cause. On `stop` and `subagent_stop` the [loop guard](#loop-guard) cannot count, so it lets the agent
+When the log cannot be read, a `run`, an `inject`, a `notify` and a `block` with `once` act every time, and the call
+warns once with the cause. On `stop` and `subagent_stop` the [loop guard](#loop-guard) cannot count, so it lets the agent
 stop.
 
 The scope of an entry is the set of files the `changed` of its `when` names (the nearest `changed`, as the measures
@@ -692,9 +733,17 @@ out when the repository has no commit yet; the decisions and the other outcomes 
 - `injected`: an `inject` that acts once reached the AI, keyed by its entry and the text, file or rule it injected,
   without hash. On `prompt`, an inject followed by a block that rejects the prompt writes none, since the AI never
   sees that prompt; on the other events an inject before a block reaches the AI with the block and counts.
-- `started`: a session started, resumed, was cleared or was compacted. Written only when the workflow has an
-  `inject` without `always` on an event other than `start` (one that acts once, `inject: { rules }`
-  included).
+- `started`: a session started, resumed, was cleared or was compacted, on `start`, or a subagent started, on
+  `subagent_start`, with its type as the actor. Written only when the workflow has an `inject` without `always` on
+  an event other than `start` and `subagent_start` (one that acts once, `inject: { rules }` included), or
+  `requirements`. The line of `start` makes the once-only injects due again for every actor; the line of a subagent
+  only for its type.
+- `notified`: a `notify` without `always` reached the user, keyed by its entry and the text it expanded to, without
+  hash. The events of one hook call give one answer, and a blocked one shows the user no message, so it is written
+  only when the whole call does not block, by its last event: the notice of the `pre_command` of a commit whose
+  `pre_commit` blocks is logged as not shown and stays due, and shows again on the next call. Within one call a
+  notice shows once: the second path of an edit of several does not show it again. Nothing makes it due again in
+  the session. A line that cannot be written leaves the notice due again, never an error of the call.
 
 `finished: <subagent>` (or a list, all of them) holds when the latest `finished` line with a hash of that type on
 the current branch, or on the same HEAD commit, has a content equal to the current one on the scope of the entry:
@@ -722,12 +771,22 @@ before a failing check.
 
 ### What polix config check reports
 
-`polix config check` rejects unknown events, conditions, verbs and keys (inside `action`, `run`, `inject`, `block` and
-`vars` too), an entry without `action`, an `action` without a verb or with two, a verb on an event where it is not
-valid, a `run` without exactly one of `command` and `rules`, an `inject` without exactly one of `file`, `text` and
-`rules`, a `block` without `message`, a `once` or `always` that is not a boolean or sits in the wrong verb,
-`contains` inside `any`, variables and placeholders that are not defined, and conditions on events where they never
-hold, so a typo never turns into an entry that silently stops applying. Of `ai/rules/` it reports every problem,
+`polix config check` rejects unknown events, conditions, verbs and keys (inside `action`, `run`, `inject`, `block`,
+`notify` and `vars` too), an entry without `action`, an `action` without a verb or with two, a verb the event does
+not allow (see [Verbs](#verbs)), a `run` without exactly one of `command` and `rules`, an `inject` without exactly one
+of `file`, `text` and `rules`, a `block` or a `notify` without `message`, a `once` or `always` that is not a boolean or sits in the
+wrong verb, `contains` inside `any`, variables and placeholders that are not defined, and conditions on events where
+they never hold, so a typo never turns into an entry that silently stops applying. It also rejects an entry that
+never runs: one that follows, in the same event, a `block` without `when`, `unless` or `once`, which blocks every
+time and ends the evaluation (see [How the entries of an event are evaluated](#how-the-entries-of-an-event-are-evaluated)).
+The problem is at the line of the later entry, as `never runs: the entry of line M always blocks the event`, and an
+entry expanded from a shortcut is named by its shortcut. `stop` and `subagent_stop` are left out, since the
+[loop guard](#loop-guard) lets the later entries run after `max_stop_retries` blocks. It rejects too a notice that a
+later gate could swallow: a `notify` followed in its event by an entry that may block it, a `block` or a `run` on an
+event outside `workflow.Informed` (all but `start`, `subagent_start`, `post_edit` and `post_command`), on every event,
+the two stops included. A blocked event shows the user no message, so the notice would be lost whenever the gate acts.
+The problem is at the line of the `notify`, naming the line of the first such entry and asking to move the notice
+after it or into its message. Of `ai/rules/` it reports every problem,
 not only the first: a rule without id or description, an id repeated, a check that does not exist, a `check` on a
 rule that is not `deterministic: true`, and a `check` named by an absolute path instead of one relative to the root.
 It also rejects the problems of the shortcuts of [Guardrails](#guardrails).
@@ -770,8 +829,8 @@ after it never run;
 those before it already acted, so the texts of an `inject` before the block reach the agent with it and count as
 given. On `prompt` the rejected prompt never reaches the AI, so an `inject` before the block is not counted as given
 and acts again on the next prompt.
-Everything else goes on to the next entry: an `inject`, a skipped verb, a passing `run`, a failing `run` on
-`start`, `post_edit` or `post_command`, and a block the loop guard let through.
+Everything else goes on to the next entry: an `inject`, a `notify`, a skipped verb, a passing `run`, a failing `run` on
+`start`, `subagent_start`, `post_edit` or `post_command`, and a block the loop guard let through.
 
 The trade-off is one failure per answer: when the lint and the tests of a `stop` both fail, the agent gets the
 lint first and the tests on its next attempt. The order of the file is the priority, so put first the gate whose
@@ -784,8 +843,9 @@ What a block does depends on the event:
 - `prompt`: the prompt is rejected before the agent reads it.
 - `stop`, `subagent_stop`: the main session, or the subagent, may not end its turn and receives the reasons to
   act on them, up to the loop guard.
-- `start`, `post_edit`, `post_command`: they already happened, so nothing blocks there: `block` is rejected
-  by `polix config check`, and a failing `run` reaches the agent as context, logged as an `inform` decision.
+- `start`, `subagent_start`, `post_edit`, `post_command`: they already happened, so nothing blocks there: `block`
+  is rejected by `polix config check`, and a failing `run` reaches the agent, or the subagent that starts, as
+  context, logged as an `inform` decision.
 
 The `stop` of this repository shows it. Its `guardrails.run_on_stop` has two items, golangci-lint over the
 module and `go test ./...`, which expand into two plain `run` entries of `stop`, each with a `when` on the files it
@@ -819,15 +879,16 @@ count: it fails open, lets the agent stop with a warning and records a `loop_gua
 
 `<git-dir>/polix/log.jsonl`, one JSON object per line, only written by polix:
 
-- `decision`: what it answered (`block`, `deny` for a protection, `inform`, `warn`, `skip` or `loop_guard`), the
+- `decision`: what it answered (`block`, `deny` for a protection, `inform`, `notify` for a notice shown to the user,
+  `warn`, `skip` or `loop_guard`), the
   action (the verb of the entry, `builtin` for the protection of the state, `guardrails.protected_files` or
   `guardrails.forbidden_commands` for those protections,
-  `invalid` for an invalid workflow and `finished` for
-  the end of a subagent it could not observe or a tree it could not compare), the `line` of the entry and the
-  reason, the evidence of the process each change followed. It carries the content hash only when the call already
+  `invalid` for an invalid workflow, `message` for a message for the user a blocked event did not show, and
+  `finished` for the end of a subagent it could not observe or a tree it could not compare), the `line` of the entry
+  and the reason, the evidence of the process each change followed. It carries the content hash only when the call already
   computed it, since computing it costs a pass over the whole tree.
 - `observed`: what polix saw by itself and the workflow asks about, with its outcome (`finished`, `passed`,
-  `blocked`, `injected` or `started`), its key and, on a `finished` with hash, a `passed` and a `blocked`, the
+  `blocked`, `injected`, `started` or `notified`), its key and, on a `finished` with hash, a `passed` and a `blocked`, the
   `head` commit; see
   [What polix observes](#what-polix-observes-and-finished). Nothing else is recorded: an edit and a command of the
   AI leave no observed line, nor does the end of a subagent no `finished` names when no `inject` acts once.
@@ -852,8 +913,8 @@ without anyone invalidating anything.
 It is computed only when something needs it. Each `run` computes it before it runs, `always` included, and again
 after it passes when the first was known, so `passed` is written only when the run did not change the content;
 anything that needs it after a run computes it again, since a run may rewrite files. A `once` block and the loop
-guard compute it, and `finished` only when a `finished` line of that type exists. An `inject` and a `started` line
-never compute it.
+guard compute it, and `finished` only when a `finished` line of that type exists. An `inject`, a `notify`, a
+`started` and a `notified` line never compute it.
 When it cannot be computed (an unreadable file, a broken index), nothing that needs it is observed nor holds:
 `finished` does not hold, a `run` is not skipped, a `once` block blocks, and the hook warns with the cause. The loop
 guard still counts the blocks of a stop made without a hash, as one content, so the agent can always stop.
@@ -909,9 +970,14 @@ also prints that Codex support is not implemented in this release and the setup 
   When the CLI of an agent is not on the `PATH`, install writes the plugin and prints the commands to run by hand.
 - The hooks, for the repository of the working directory (or `--dir`), since they belong to the project like its
   `polix.yaml` and are committed with it: merged into `.claude/settings.json`, and into `.codex/hooks.json` only with
-  `--agent codex`. For Claude Code they cover `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
-  `PostToolUseFailure` (a failed command reaches `post_command` with a non-zero `exit`; a failed edit runs no
-  `post_edit`), `SubagentStop` and `Stop`; Codex gets the same events except `PostToolUseFailure`. Every
+  `--agent codex`. For Claude Code they cover `SessionStart`, `UserPromptSubmit`, `SubagentStart` (the start of a
+  subagent, `subagent_start`), `PreToolUse`, `PostToolUse`, `PostToolUseFailure` (a failed command reaches
+  `post_command` with a non-zero `exit`; a failed edit runs no `post_edit`), `SubagentStop` and `Stop`; Codex gets
+  the same events except `PostToolUseFailure`. Rerunning install adds `SubagentStart` to the hooks of an earlier
+  release. Every handler
+  of polix, the session start update included, carries `"statusMessage": "polix"`, so both agents show `polix` next
+  to their spinner while the hook runs and the user knows who the wait is on; rerunning install adds it to the
+  hooks of an earlier release. Every
   other setting, event and hook of those files is kept in its order, and the hooks of polix take the place of the
   ones they replace, so the file only changes where polix changed. A group that mixes a hook of polix with other
   commands keeps the other commands, and the hook of polix goes to a group of its own. Each group of hooks of an

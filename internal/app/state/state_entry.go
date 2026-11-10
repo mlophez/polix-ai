@@ -49,8 +49,12 @@ const (
 	OutcomeBlocked = "blocked"
 	// OutcomeInjected: a once-only inject reached the AI; Key is its expanded text, file or rule id.
 	OutcomeInjected = "injected"
-	// OutcomeStarted: a session started or its context was compacted, so its once-only injects are due again.
+	// OutcomeStarted: a session started or its context was compacted, so its once-only injects are due again for
+	// every actor; or, on subagent_start, a subagent started, its type the actor, so they are due again for that type.
 	OutcomeStarted = "started"
+	// OutcomeNotified: a notice of the verb notify reached the user, in an answer that did not block; Key is its
+	// expanded text. It is never due again in the session, whatever the actor and the starts.
+	OutcomeNotified = "notified"
 )
 
 // UnknownHash is the hash of a blocked entry written on a stop whose content hash could not be computed, so the loop
@@ -59,7 +63,8 @@ const (
 const UnknownHash = "unknown"
 
 // Outcomes lists the outcomes of an observed entry.
-var Outcomes = []string{OutcomeFinished, OutcomePassed, OutcomeBlocked, OutcomeInjected, OutcomeStarted}
+var Outcomes = []string{OutcomeFinished, OutcomePassed, OutcomeBlocked, OutcomeInjected, OutcomeStarted,
+	OutcomeNotified}
 
 // hashed are the outcomes that are about a content, so their entries need its hash.
 var hashed = []string{OutcomePassed, OutcomeBlocked}

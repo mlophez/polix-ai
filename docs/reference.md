@@ -428,10 +428,17 @@ entries, before both.
 
 - `when`: a map of [conditions](#conditions), all of which must hold. Without it the entry always applies.
 - `unless`: a map of conditions; the entry is skipped when all of them hold. Without it nothing skips the entry.
-- `action`: a map with exactly one [verb](#verbs): `block`, `run` or `inject`.
+- `action`: a map with exactly one [verb](#verbs): `block`, `run`, `inject` or `notify`.
 
 An exception to an entry is a `not` in its `when`, or a condition in its `unless`. A YAML comment above the entry
-is the place for its reason, for people; the message of a `block` or a `run` is the reason the AI reads.
+is the place for its reason, for people; the message of a `block` or a `run` is the reason the AI reads, and the
+message of a `notify` is what the user reads.
+
+Two orders of the entries of an event are problems. An entry after a `block` without `when`, `unless` or `once`
+never runs (outside `stop` and `subagent_stop`, whose loop guard lets the later entries run). A `notify` followed in
+its event by an entry that may block it, a `block` or a `run` on an event where a run blocks, would be swallowed
+whenever that entry blocks, since a blocked event shows the user no message: put the notice after the gate, or into
+its message. Both problems name the lines of the two entries.
 
 The entries skip the edits outside the repository and of the files git ignores: they govern the change, what a
 commit may hold, so a build output, a local `.env` or a scratch file never fires a ticket, plan, format or docs
@@ -440,61 +447,74 @@ entry. Only the protection of the state of polix, [`protected_files`](#protected
 
 ## Events
 
-In lifecycle order. Valid verbs and specific conditions per event:
+In lifecycle order. Valid verbs and specific conditions per event. The verbs of each event are only those Claude
+Code and Codex both support on it, so the file means the same in each agent: `polix config check` reports any other
+verb at the line of its entry, naming the event, the verb, why and the verbs the event allows.
 
 ### start
 
 - When: a session starts, resumes, is cleared or is compacted.
-- Verbs: `inject`, `run`. It cannot be blocked: a failing `run` reaches the AI as context.
-- Every `inject` acts every time on `start`, so the context survives a compaction; `always` has no effect.
+- Verbs: `inject`, `run`, `notify`. It cannot be blocked: a failing `run` reaches the AI as context.
+- Every `inject` acts every time on `start`, so the context survives a compaction; `always` has no effect. A
+  `notify` already shown in the session is not shown again after a compaction.
 
 ### prompt
 
 - When: the user sends a prompt.
-- Verbs: `block`, `run`, `inject`. A block rejects the prompt before the model sees it; an inject adds context to it.
-  An inject before a block that rejects the prompt is not counted as given.
+- Verbs: `block`, `run`, `inject`, `notify`. A block rejects the prompt before the model sees it; an inject adds
+  context to it. An inject before a block that rejects the prompt is not counted as given.
+
+### subagent_start
+
+- When: a subagent starts, with a new context, before its first tool use; `actor` is its type.
+- Verbs: `inject`, `run`, `notify`. It cannot be blocked: a failing `run` reaches the subagent as context.
+- Every `inject` acts every time on `subagent_start`, as on `start`; `always` has no effect. It gets neither the
+  guidance nor the context of `requirements`, which go to the main session.
+- When the workflow has an `inject` that acts once, it makes those injects due again for that subagent type only:
+  the main session and the other types keep theirs.
 
 ### pre_edit
 
 - When: before the agent edits a file, once per path.
-- Verbs: `block`, `run`, `inject`. A block denies the edit.
+- Verbs: `block`, `run`, `inject`, `notify`. A block denies the edit.
 - Conditions of its own: [`path`](#path).
 
 ### post_edit
 
 - When: after the agent edited a file, once per path.
-- Verbs: `run`, `inject`. It cannot be blocked: a failing `run` reaches the AI as context (feedback, not a gate).
+- Verbs: `run`, `inject`, `notify`. It cannot be blocked: a failing `run` reaches the AI as context (feedback, not a
+  gate).
 - Conditions of its own: [`path`](#path).
 
 ### pre_command
 
 - When: before a shell command runs.
-- Verbs: `block`, `run`, `inject`. A block denies the command.
+- Verbs: `block`, `run`, `inject`, `notify`. A block denies the command.
 - Conditions of its own: [`command`](#command), [`writes`](#writes).
 
 ### post_command
 
 - When: after a shell command ran, or failed to run.
-- Verbs: `run`, `inject`. It cannot be blocked: a failing `run` reaches the AI as context.
+- Verbs: `run`, `inject`, `notify`. It cannot be blocked: a failing `run` reaches the AI as context.
 - Conditions of its own: [`command`](#command), [`writes`](#writes), [`exit`](#exit).
 
 ### pre_commit
 
 - When: before a command line that holds a `git commit` runs, right after its `pre_command`.
-- Verbs: `block`, `run`, `inject`. A block denies the commit.
+- Verbs: `block`, `run`, `inject`, `notify`. A block denies the commit.
 - Conditions of its own: [`command`](#command), [`writes`](#writes).
 
 ### subagent_stop
 
 - When: a subagent is about to end; `actor` is its type.
-- Verbs: `block`, `run`. A block keeps the subagent working, up to the loop guard. `inject` is rejected: an agent
-  that stops cannot receive context.
+- Verbs: `block`, `run`, `notify`. A block keeps the subagent working, up to the loop guard. `inject` is rejected:
+  an agent that stops cannot receive context.
 
 ### stop
 
 - When: the main session is about to end its turn; `actor` is always `session`. A subagent ends with
   `subagent_stop`, which never runs these entries.
-- Verbs: `block`, `run`. A block keeps the session working, up to the loop guard. `inject` is rejected.
+- Verbs: `block`, `run`, `notify`. A block keeps the session working, up to the loop guard. `inject` is rejected.
 
 ## Conditions
 
@@ -615,7 +635,8 @@ when: { command: "npm install*", exit: 0 }
 - Value: `session` (the main session) or a subagent type, or a list of them.
 - Holds when who acts is any of them. An agent of a plugin is named with its prefix (`polix:reviewer`,
   `acme:builder`); an agent of `.claude/agents/` by its bare name. On `stop` the actor is always `session`; on
-  `subagent_stop` it is the type of the subagent that ends.
+  `subagent_start` it is the type of the subagent that starts, and on `subagent_stop` the type of the subagent that
+  ends.
 - Events: all.
 
 ```yaml
@@ -720,7 +741,7 @@ action:
 Runs a command from the root without a shell (no pipes, redirections or globs), or the checks of the rules.
 
 - Events: all. On `prompt`, `pre_edit`, `pre_command`, `pre_commit`, `subagent_stop` and `stop` a failure blocks,
-  as a `block` does; on `start`, `post_edit` and `post_command` it reaches the AI as context.
+  as a `block` does; on `start`, `subagent_start`, `post_edit` and `post_command` it reaches the AI as context.
 - Short form: the command, a string split on spaces or a list of arguments (placeholders allowed in each; `{path}`
   stays one argument).
 - Long form, exactly one of:
@@ -764,9 +785,9 @@ Injects a text for the AI, as context.
   plus:
   - `always`: boolean, default `false`.
 - Repeat: each actor gets each expanded text once per session, and again after a compaction or, for a subagent, on
-  its next run; `inject: { rules }` gives each rule once per actor and session. A placeholder that changes on every
-  event (`{command}`, a measure) makes a new text each time. `always: true` injects it on every event. On `start`
-  every inject acts every time.
+  its next run (its `subagent_start` or the end of the previous one); `inject: { rules }` gives each rule once per
+  actor and session. A placeholder that changes on every event (`{command}`, a measure) makes a new text each time.
+  `always: true` injects it on every event. On `start` and `subagent_start` every inject acts every time.
 
 ```yaml
 action:
@@ -781,6 +802,34 @@ action:
   inject:
     always: true
     text: "Los tests fallan: arréglalos antes de seguir."
+```
+
+### notify
+
+Shows a message to the user, never to the AI: the agent shows it as `polix: <message>` (the `systemMessage` of the
+answer of the hook), and it spends none of the context of the AI.
+
+- Events: all, after the entries of the event that may block it: a `block`, or a `run` on `prompt`, `pre_edit`,
+  `pre_command`, `pre_commit`, `subagent_stop` or `stop`. A blocked event shows the user no message, so
+  `polix config check` rejects a `notify` before such an entry, naming both lines: put it after the gate, or put the
+  text into the message of the block.
+- Short form: the message (placeholders allowed).
+- Long form:
+  - `message`: required, the message;
+  - `always`: boolean, default `false`.
+- A message that expands to nothing shows nothing.
+- Repeat: each entry shows each expanded text once per session, whatever the actor: a subagent, a compaction or the
+  end of a subagent never show it again. A placeholder that changes the text makes a new notice. `always: true`
+  shows it every time its entry applies. Each notice shown is a `notify` decision in the log, listed by `polix log`;
+  one that does not show is a `skip` decision.
+
+```yaml
+action:
+  notify: "Rama de release {release}: avisa a QA antes de publicar."
+action:
+  notify:
+    always: true
+    message: "Estás en {branch}."
 ```
 
 ## Placeholders
@@ -832,7 +881,9 @@ the [order of the expanded entries](#order-of-the-expanded-entries).
    then carries out its verb, unless the repeat rules of that verb skip it.
 5. The first entry that actually blocks (a `block`, or a failing `run` where a run blocks, not let through by the
    loop guard) ends the evaluation: the entries after it do not run. The order is the priority, and the AI gets one
-   failure per answer.
+   failure per answer. An entry after a `block` without `when`, `unless` or `once` would never run, so
+   `polix config check` reports it at its line, as `never runs: the entry of line M always blocks the event`;
+   `stop` and `subagent_stop` are left out, since the loop guard lets the later entries run.
 
 An invalid file blocks `pre_edit`, `pre_command` and `pre_commit` with its problems (fail closed), except the main
 session editing `polix.yaml` or running `polix config check`, `polix config fmt --check`, `polix update`,

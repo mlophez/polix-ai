@@ -30,6 +30,7 @@ func TestParseClaude(t *testing.T) {
 	}{
 		{`{"hook_event_name":"SessionStart"}`, []string{workflow.Start}, agent.ActorSession, "SessionStart"},
 		{`{"hook_event_name":"UserPromptSubmit","prompt":"hola"}`, []string{workflow.Prompt}, agent.ActorSession, "UserPromptSubmit"},
+		{`{"hook_event_name":"SubagentStart","agent_type":"polix:reviewer"}`, []string{workflow.SubagentStart}, "polix:reviewer", "SubagentStart"},
 		{`{"hook_event_name":"Stop","agent_type":"builder"}`, []string{workflow.Stop}, agent.ActorSession, "Stop"},
 		{`{"hook_event_name":"SubagentStop","agent_type":"reviewer"}`, []string{workflow.SubagentStop}, "reviewer", "SubagentStop"},
 		{`{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{"file_path":"/r/a.go"}}`, []string{workflow.PreEdit}, agent.ActorSession, "PreToolUse"},
@@ -61,5 +62,21 @@ func TestParseClaude(t *testing.T) {
 	}
 	if _, _, err := (claude{}).parse([]byte(`{`)); err == nil {
 		t.Error("broken JSON is an error")
+	}
+}
+
+// AC4: the start of a subagent of Claude Code is one subagent_start of its type, and its contexts reach the subagent
+// as the additionalContext of SubagentStart.
+func TestClaudeSubagentStart(t *testing.T) {
+	native, evs, err := claude{}.parse([]byte(`{"hook_event_name":"SubagentStart","session_id":"s1",` +
+		`"agent_id":"a1","agent_type":"polix:reviewer"}`))
+	if err != nil || native != "SubagentStart" || len(evs) != 1 || evs[0].Name != workflow.SubagentStart ||
+		evs[0].Actor != "polix:reviewer" || evs[0].Session != "s1" {
+		t.Fatalf("parse: %q %+v %v", native, evs, err)
+	}
+	stdout, _, code := claude{}.render(native, agent.Answer{}.Inform("Lee las reglas"))
+	want := `{"hookSpecificOutput":{"additionalContext":"Lee las reglas","hookEventName":"SubagentStart"}}` + "\n"
+	if code != agent.ExitOK || stdout != want {
+		t.Fatalf("render: %d %q", code, stdout)
 	}
 }

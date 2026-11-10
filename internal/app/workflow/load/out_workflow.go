@@ -63,6 +63,7 @@ type actionYAML struct {
 	Run    *runYAML    `yaml:"run"`
 	Inject *injectYAML `yaml:"inject"`
 	Block  *blockYAML  `yaml:"block"`
+	Notify *notifyYAML `yaml:"notify"`
 	keys   []string
 }
 
@@ -88,6 +89,13 @@ type injectYAML struct {
 type blockYAML struct {
 	Message string `yaml:"message"`
 	Once    bool   `yaml:"once"`
+	keys    []string
+}
+
+// notifyYAML is the verb notify: a message or a map.
+type notifyYAML struct {
+	Message string `yaml:"message"`
+	Always  bool   `yaml:"always"`
 	keys    []string
 }
 
@@ -139,6 +147,7 @@ func (workflowYAML) names() *strings.Replacer {
 		"load.runYAML", "workflow.Run",
 		"load.injectYAML", "workflow.Inject",
 		"load.blockYAML", "workflow.Block",
+		"load.notifyYAML", "workflow.Notify",
 		"load.rulesYAML", "workflow.Rules",
 		"load.folderYAML", "workflow.Folder",
 		"load.guidanceYAML", "workflow.Guidance",
@@ -241,7 +250,12 @@ func (y actionYAML) action() (workflow.Action, error) {
 		b, _ := y.Block.block()
 		block = &b
 	}
-	a := workflow.Action{Run: run, Inject: inject, Block: block, Keys: y.keys}
+	var notify *workflow.Notify
+	if y.Notify != nil {
+		n, _ := y.Notify.notify()
+		notify = &n
+	}
+	a := workflow.Action{Run: run, Inject: inject, Block: block, Notify: notify, Keys: y.keys}
 	return a, a.Valid()
 }
 
@@ -258,6 +272,11 @@ func (y injectYAML) inject() (workflow.Inject, error) {
 func (y blockYAML) block() (workflow.Block, error) {
 	b := workflow.Block{Message: y.Message, Once: y.Once, Keys: y.keys}
 	return b, b.Valid()
+}
+
+func (y notifyYAML) notify() (workflow.Notify, error) {
+	n := workflow.Notify{Message: y.Message, Always: y.Always, Keys: y.keys}
+	return n, n.Valid()
 }
 
 func (y rulesYAML) rules() (workflow.Rules, error) {

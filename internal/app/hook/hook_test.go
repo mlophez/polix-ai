@@ -21,6 +21,14 @@ func TestHookValid(t *testing.T) {
 	}
 }
 
+// Each event of a call knows how many come after it, 0 for the last one and for a call without events.
+func TestHookRemaining(t *testing.T) {
+	h := Hook{Events: []agent.Event{{}, {}, {}}}
+	if h.Remaining(0) != 2 || h.Remaining(1) != 1 || h.Remaining(2) != 0 || (Hook{}).Remaining(0) != 0 {
+		t.Fatal("Remaining")
+	}
+}
+
 // The repository is looked for from the dir asked, else the cwd of the call, else the working directory.
 func TestHookFolder(t *testing.T) {
 	h := Hook{Events: []agent.Event{{Cwd: "/repo/src"}}}

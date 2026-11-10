@@ -1,7 +1,8 @@
 // Package workflow is the domain of polix.yaml: for each neutral event, an ordered list of entries, each with
-// optional `when` and `unless` conditions and an action with one verb (run, inject or block), plus the variables,
-// the base branches, the protected files, the forbidden commands, the loop guard and the runners of the checks of
-// the rules. The other shortcuts of the section guardrails are expanded into entries when the file is loaded.
+// optional `when` and `unless` conditions and an action with one verb (run, inject, block or notify), plus the
+// variables, the base branches, the protected files, the forbidden commands, the loop guard and the runners of the
+// checks of the rules. The other shortcuts of the section guardrails are expanded into entries when the file is
+// loaded.
 //
 //	version: 1
 //	vars:
@@ -96,54 +97,6 @@ const File = "polix.yaml"
 // DefaultMaxStopRetries is the loop guard of stop and subagent_stop when the workflow does not say.
 const DefaultMaxStopRetries = 3
 
-// Neutral events, the same for every agent.
-const (
-	Start        = "start"
-	Prompt       = "prompt"
-	PreEdit      = "pre_edit"
-	PostEdit     = "post_edit"
-	PreCommand   = "pre_command"
-	PostCommand  = "post_command"
-	PreCommit    = "pre_commit"
-	SubagentStop = "subagent_stop"
-	Stop         = "stop" // the main session ends its turn; a subagent ends with subagent_stop
-)
-
-// Verbs of an action: the action of an entry holds exactly one.
-const (
-	VerbRun    = "run"
-	VerbInject = "inject"
-	VerbBlock  = "block"
-)
-
-// Events lists every neutral event in lifecycle order.
-var Events = []string{Start, Prompt, PreEdit, PostEdit, PreCommand, PostCommand, PreCommit, SubagentStop, Stop}
-
-// Actions are the verbs an action can hold, exactly one per entry.
-var Actions = []string{VerbRun, VerbInject, VerbBlock}
-
-// Conditions a `when` or `unless` can use.
-var Conditions = []string{"actor", "finished", "branch", "var", "path", "changed", "file", "contains", "command",
-	"writes", "exit", "not", "any", "changed_lines", "changed_files", "risk_score"}
-
-// Measures are the conditions that measure the uncommitted diff, over the files of the nearest `changed`.
-var Measures = []string{"changed_lines", "changed_files", "risk_score"}
-
-// Builtins are the placeholders every string may use; a variable cannot take their names.
-var Builtins = []string{"path", "command", "branch", "changed_lines", "changed_files", "risk_score"}
-
-// conditionEvents limits the conditions that only make sense on some events; the rest hold on any event.
-var conditionEvents = map[string][]string{
-	"path":    {PreEdit, PostEdit},
-	"command": {PreCommand, PostCommand, PreCommit},
-	"writes":  {PreCommand, PostCommand, PreCommit},
-	"exit":    {PostCommand},
-}
-
-// Informed are the events that already happened when polix hears of them: a block cannot stop them, and a failing
-// run only reaches the AI as context.
-var Informed = []string{Start, PostEdit, PostCommand}
-
 // placeholder finds the {name} placeholders of a string.
 var placeholder = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
@@ -214,9 +167,9 @@ func (v *validator) settings(w Workflow) {
 	}
 }
 
-// events reports the problems of the events of the workflow w, in the order of their names: an unknown event, and
-// the entries of each known one. The entries of a renamed event are checked as those of its new name, so every hint
-// comes at once.
+// events reports the problems of the events of the workflow w, in the order of their names: an unknown event, the
+// entries of each known one and then their order. The entries of a renamed event are checked as those of its new
+// name, so every hint comes at once.
 func (v *validator) events(w Workflow) {
 	for _, ev := range slices.Sorted(maps.Keys(w.On)) {
 		known := ev
@@ -232,6 +185,7 @@ func (v *validator) events(w Workflow) {
 		for _, e := range w.On[ev] {
 			v.entry(known, e)
 		}
+		v.order(known, w.On[ev])
 	}
 }
 
@@ -284,19 +238,19 @@ func (w Workflow) Programs() []string {
 	return append(slices.Clone(w.Requirements), Git)
 }
 
-// ObservesStart reports whether polix writes the start of a session to its log, so what it tells once per session is
-// due again: when the workflow injects once (InjectsOnce), or has requirements, whose missing programs the hook tells
-// once on the first prompt of a session.
+// ObservesStart reports whether polix writes the start of a session, or of a subagent, to its log, so what it tells
+// once per session is due again: when the workflow injects once (InjectsOnce), or has requirements, whose missing
+// programs the hook tells once on the first prompt of a session.
 func (w Workflow) ObservesStart() bool {
 	return len(w.Requirements) > 0 || w.InjectsOnce()
 }
 
 // InjectsOnce reports whether the workflow has a once-only inject: an inject without always on an event other than
-// start, which always injects. Its injects are due again when a session starts or a subagent finishes, so polix then
-// writes those events to its log.
+// start and subagent_start, which always inject. Its injects are due again when a session or a subagent starts or a
+// subagent finishes, so polix then writes those events to its log.
 func (w Workflow) InjectsOnce() bool {
 	for ev, entries := range w.On {
-		if ev == Start {
+		if ev == Start || ev == SubagentStart {
 			continue
 		}
 		for _, e := range entries {

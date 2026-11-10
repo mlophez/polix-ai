@@ -177,6 +177,34 @@ func TestMergesEvents(t *testing.T) {
 	}
 }
 
+// AC9: the shell tells each event how many come after it, so a notice of the pre_command of a commit is written as
+// notified only when the commit is not blocked, and shown to the user then.
+func TestNotifiedOnceTheCallIsKnown(t *testing.T) {
+	const input = `{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git commit -m x"}}`
+	for _, c := range []struct {
+		branch   string
+		code     int
+		notified int
+	}{{"^main$", 2, 0}, {"^dev$", 0, 1}} {
+		port := &fakePort{yaml: "version: 1\non:\n  pre_command:\n    - action: { notify: \"Aviso\" }\n" +
+			"  pre_commit:\n    - when: { branch: \"" + c.branch + "\" }\n      action: { block: \"no\" }\n"}
+		res, err := run(context.Background(), port, claudeRequest(input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		notified := 0
+		for _, e := range port.appended {
+			if e.Outcome == state.OutcomeNotified {
+				notified++
+			}
+		}
+		shown := strings.Contains(res.Stdout, "polix: Aviso")
+		if res.Code != c.code || notified != c.notified || shown != (c.code == 0) {
+			t.Errorf("block on %s: response %+v, %d notified", c.branch, res, notified)
+		}
+	}
+}
+
 // A commit the shell confirms through the port as one of another repository skips the entries of pre_commit; one
 // it does not confirm meets them.
 func TestCommitInAnotherRepository(t *testing.T) {
@@ -295,7 +323,11 @@ func TestPortErrors(t *testing.T) {
 			runErr: errors.New("exit status 1")}, 2, "- R-1 (c.sh): d"},
 	} {
 		res, err := run(context.Background(), c.port, claudeRequest(stop))
-		if err != nil || res.Code != c.code || !strings.Contains(res.Stderr, c.wants) {
+		said := res.Stderr
+		if c.code == 0 {
+			said = systemMessage(t, res.Stdout)
+		}
+		if err != nil || res.Code != c.code || !strings.Contains(said, c.wants) {
 			t.Errorf("%s: %+v %v", c.name, res, err)
 		}
 	}
@@ -364,7 +396,8 @@ func TestUnusableWorkflow(t *testing.T) {
 		t.Fatalf("command: %+v %v", res, err)
 	}
 	res, err = run(context.Background(), port, claudeRequest(`{"hook_event_name":"Stop","cwd":"/repo"}`))
-	if err != nil || res.Code != 0 || !strings.HasPrefix(res.Stderr, "polix: the workflow is not valid") {
+	if err != nil || res.Code != 0 || res.Stderr != "" ||
+		!strings.HasPrefix(systemMessage(t, res.Stdout), "polix: the workflow is not valid") {
 		t.Fatalf("stop: %+v %v", res, err)
 	}
 	// A workflow of the old vocabulary is told its new spelling, never to update polix to keep it.
@@ -448,16 +481,17 @@ func TestFormats(t *testing.T) {
 	}
 }
 
-// A block goes to stderr with exit 2, its contexts after the reasons; otherwise warnings go to stderr and the
-// contexts to the JSON of the events that take it.
+// A block goes to stderr with exit 2, its contexts after the reasons; otherwise the messages for the user go to the
+// systemMessage and the contexts to the JSON of the events that take it.
 func TestContextEventsRender(t *testing.T) {
 	stdout, stderr, code := claudeContextEvents.render("PreToolUse", agent.Answer{}.Refuse("a").Refuse("b").Inform("c"))
 	if code != agent.ExitBlock || stdout != "" || stderr != "a\n\nb\n\nc\n" {
 		t.Fatalf("block: %q %q %d", stdout, stderr, code)
 	}
 	stdout, stderr, code = claudeContextEvents.render("PreToolUse", agent.Answer{}.Inform("x<y").Inform("z").Warn("w"))
-	want := `{"hookSpecificOutput":{"additionalContext":"x\u003cy\n\nz","hookEventName":"PreToolUse"}}` + "\n"
-	if code != agent.ExitOK || stdout != want || stderr != "polix: w\n" {
+	want := `{"systemMessage":"polix: w","hookSpecificOutput":{"additionalContext":"x\u003cy\n\nz",` +
+		`"hookEventName":"PreToolUse"}}` + "\n"
+	if code != agent.ExitOK || stdout != want || stderr != "" {
 		t.Fatalf("context: %q %q %d", stdout, stderr, code)
 	}
 	if stdout, _, _ := claudeContextEvents.render("Stop", agent.Answer{}.Inform("x")); stdout != "" {

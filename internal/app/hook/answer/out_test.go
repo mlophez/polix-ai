@@ -837,9 +837,12 @@ func TestWorkflowAheadOfPolix(t *testing.T) {
 		code, _, stderr = r.bash(c, false)
 		expect(t, c, code, want, stderr)
 	}
-	code, _, stderr = r.stop()
+	code, stdout, stderr := r.stop()
 	expect(t, "stop", code, 0, stderr)
-
+	if msg := systemMessage(t, stdout); !strings.HasPrefix(msg, "polix: this repository needs polix 0.2.0") ||
+		strings.Contains(msg, "polix: polix:") {
+		t.Fatalf("the stop warns once with the prefix: %q", msg)
+	}
 }
 
 // Unknown options may belong to a newer polix: the reason says so, so the agent updates instead of removing them.
@@ -995,10 +998,10 @@ func TestStopLoopGuardReadOnlyState(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
-	code, _, stderr := r.stop()
+	code, stdout, stderr := r.stop()
 	expect(t, "stop with a read only state", code, 0, stderr)
-	if !strings.Contains(stderr, "cannot use its log") {
-		t.Fatalf("stderr: %q", stderr)
+	if !strings.Contains(systemMessage(t, stdout), "cannot use its log") {
+		t.Fatalf("stdout: %q", stdout)
 	}
 }
 
@@ -1047,10 +1050,10 @@ on:
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(p, 0o644) })
-	code, _, stderr := r.subagentStop("reviewer")
+	code, stdout, stderr := r.subagentStop("reviewer")
 	expect(t, "the reviewer stops without a hash", code, 0, stderr)
-	if !strings.Contains(stderr, "hash the content") {
-		t.Fatalf("stderr should warn about the hash: %q", stderr)
+	if !strings.Contains(systemMessage(t, stdout), "hash the content") {
+		t.Fatalf("stdout should warn about the hash: %q", stdout)
 	}
 	if strings.Contains(r.log(), `"kind":"observed"`) {
 		t.Fatalf("log: %s", r.log())

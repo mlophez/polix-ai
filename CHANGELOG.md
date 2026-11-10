@@ -7,6 +7,28 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- Every hook polix registers, in `.claude/settings.json` and `.codex/hooks.json`, the session start update included,
+  carries `"statusMessage": "polix"`: both agents show `polix` next to their spinner while the hook runs, so the user
+  knows who the wait is on. Run `polix install` again to add it to the hooks of an earlier release; every other hook
+  is kept.
+- The event `subagent_start`, a subagent that starts, with the subagent type as `actor`, from the `SubagentStart` of
+  Claude Code and of Codex: its injects and the failures of its runs reach the subagent as context before its first
+  tool use, so a subagent that only reads, such as a reviewer, gets the rules too. It takes `run`, `inject` and
+  `notify`, never blocks, and every inject acts there every time, as on `start`; it gets neither the guidance nor the
+  requirements of the main session. It makes the once-only injects due again for its subagent type only, while a
+  `start` of the session still resets every actor. `polix install` registers `SubagentStart` for both agents;
+  `polix doctor` warns when the settings of an earlier release lack it, and `polix install` adds it.
+- The verb `notify`, a message for the user that never reaches the agent nor spends its context: `notify: <message>`,
+  or `notify: { message: <message>, always: true }`, placeholders allowed, on every event. The agent shows it as
+  `polix: <message>`, the `systemMessage` of the hook. It shows once per session for each entry and text it expands
+  to, whatever the actor, and never again in that session, not even after a compaction or for a subagent;
+  `always: true` shows it every time its entry applies. Each notice shown is a `notify` decision of the log, which
+  `polix log` lists, and a notice that did not show because its hook call was blocked, by its own event or by
+  another one of the call such as the commit of a command, stays due. `polix config fmt`
+  writes `always` before `message`, and `polix workflow graph` draws it with its message.
+
 ### Changed
 
 - The shortcut `guardrails.run_before_done` is now `guardrails.run_on_stop`, named after the event `stop` its entries
@@ -25,6 +47,28 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 - `polix config fmt` writes the conditions `actor` and `finished` first in `when` and `unless`, before `branch` and
   `changed`, so who acts reads before what changed; the unknown condition problem of `polix config check` lists them
   first too.
+- The verbs each event allows are one table, the same for Claude Code and Codex: `run`, `inject` and `notify` on
+  `start`, `subagent_start`, `post_edit` and `post_command`; `run`, `inject`, `block` and `notify` on `prompt`,
+  `pre_edit`, `pre_command` and `pre_commit`; `run`, `block` and `notify` on `stop` and `subagent_stop`. The problem
+  of `polix config check` for any other verb names the event, the verb, why and the verbs the event allows.
+- `polix config check` reports a notice a later gate could swallow: a `notify` followed in its event by an entry
+  that may block it, a `block` or a `run` on an event other than `start`, `subagent_start`, `post_edit` and
+  `post_command`, on every event, the two stops included. A blocked event shows the user no message, so the problem,
+  at the line of the `notify`, names the line of that entry and asks to move the notice after it or into its
+  message.
+- `polix config check` reports an entry that never runs: one that follows, in the same event, a `block` without
+  `when`, `unless` or `once`, as `never runs: the entry of line M always blocks the event`, at the line of the later
+  entry. `stop` and `subagent_stop` are left out, since the loop guard lets the later entries run. A `polix.yaml`
+  with such an entry is now an invalid workflow, and its hooks block edits and commands: move the entry before the
+  block, give the block a `when`, `unless` or `once`, or remove the entry.
+- The messages of polix for the user, such as a log that cannot be read, an unknown content hash or the loop guard
+  letting the agent stop, are now the `systemMessage` of the JSON the hook writes on exit 0, each as
+  `polix: <message>`, instead of lines on stderr that neither agent reliably showed. The hook writes each field of
+  that JSON only when it has something and the native event accepts it, since Codex fails a hook on a field it does
+  not accept. A blocked event shows them to nobody, as neither agent reads its output but the reasons: each one is
+  logged as a `skip` decision of the action `message` that says it was not shown, also when another event of the
+  same call, as the commit of a command, is the one that blocks. The warning of a workflow that requires a newer
+  polix no longer repeats the prefix `polix:`.
 
 ## [0.2.0] - 2026-11-10
 

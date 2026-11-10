@@ -1,26 +1,29 @@
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900 }] },
-      { "matcher": "startup", "hooks": [{ "type": "command", "command": "polix update --hook", "timeout": 180 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] },
+      { "matcher": "startup", "hooks": [{ "type": "command", "command": "polix update --hook", "timeout": 180, "statusMessage": "polix" }] }
     ],
     "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] }
+    ],
+    "SubagentStart": [
+      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] }
     ],
     "PreToolUse": [
-      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash", "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900 }] }
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash", "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] }
     ],
     "PostToolUse": [
-      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash", "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900 }] }
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash", "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] }
     ],
     "PostToolUseFailure": [
-      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash", "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900 }] }
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash", "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] }
     ],
     "SubagentStop": [
-      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] }
     ]
   }
 }

@@ -54,7 +54,7 @@ func TestParseCodex(t *testing.T) {
 		t.Fatalf("apply_patch: %+v", evs)
 	}
 	for _, in := range []string{`{"hook_event_name":"SessionStart"}`, `{"hook_event_name":"UserPromptSubmit"}`,
-		`{"hook_event_name":"Stop"}`, `{"hook_event_name":"SubagentStop"}`} {
+		`{"hook_event_name":"SubagentStart"}`, `{"hook_event_name":"Stop"}`, `{"hook_event_name":"SubagentStop"}`} {
 		if _, evs, err := (codex{}).parse([]byte(in)); err != nil || len(evs) != 1 {
 			t.Errorf("%s: %+v %v", in, evs, err)
 		}
@@ -68,5 +68,21 @@ func TestParseCodex(t *testing.T) {
 	}
 	if _, _, err := (codex{}).parse([]byte(`[`)); err == nil {
 		t.Fatal("broken JSON is an error")
+	}
+}
+
+// AC4: the start of a subagent of Codex is one subagent_start of its type, and its contexts reach the subagent as
+// the additionalContext of SubagentStart.
+func TestCodexSubagentStart(t *testing.T) {
+	native, evs, err := codex{}.parse([]byte(`{"hook_event_name":"SubagentStart","session_id":"s1",` +
+		`"agent_type":"polix:reviewer"}`))
+	if err != nil || native != "SubagentStart" || len(evs) != 1 || evs[0].Name != workflow.SubagentStart ||
+		evs[0].Actor != "polix:reviewer" || evs[0].Agent != agent.Codex {
+		t.Fatalf("parse: %q %+v %v", native, evs, err)
+	}
+	stdout, _, code := codex{}.render(native, agent.Answer{}.Inform("Lee las reglas"))
+	want := `{"hookSpecificOutput":{"additionalContext":"Lee las reglas","hookEventName":"SubagentStart"}}` + "\n"
+	if code != agent.ExitOK || stdout != want {
+		t.Fatalf("render: %d %q", code, stdout)
 	}
 }

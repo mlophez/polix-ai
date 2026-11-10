@@ -15,8 +15,8 @@ type claude struct{}
 var claudeEditTools = map[string]bool{"Edit": true, "Write": true, "MultiEdit": true, "NotebookEdit": true}
 
 // claudeContextEvents are the events of Claude Code whose JSON output can add context to the session.
-var claudeContextEvents = contextEvents{"SessionStart": true, "UserPromptSubmit": true, "PreToolUse": true,
-	"PostToolUse": true, "PostToolUseFailure": true}
+var claudeContextEvents = contextEvents{"SessionStart": true, "UserPromptSubmit": true, "SubagentStart": true,
+	"PreToolUse": true, "PostToolUse": true, "PostToolUseFailure": true}
 
 // parse reads the input of a hook of Claude Code.
 func (c claude) parse(input []byte) (string, []agent.Event, error) {
@@ -32,6 +32,8 @@ func (c claude) parse(input []byte) (string, []agent.Event, error) {
 		events, err = in.single(agent.Claude, workflow.Start)
 	case "UserPromptSubmit":
 		events, err = in.single(agent.Claude, workflow.Prompt)
+	case "SubagentStart":
+		events, err = in.single(agent.Claude, workflow.SubagentStart)
 	case "Stop":
 		events, err = in.single(agent.Claude, workflow.Stop)
 	case "SubagentStop":

@@ -14,11 +14,12 @@ type Group struct {
 	Handlers []Handler
 }
 
-// Handler is a command a group of hooks runs, with its timeout in seconds, 0 when it sets none. A handler of
-// another type (a prompt) has no command.
+// Handler is a command a group of hooks runs, with its timeout in seconds, 0 when it sets none, and its status,
+// the text the agent shows while it runs, empty for none. A handler of another type (a prompt) has no command.
 type Handler struct {
 	Command string
 	Timeout float64
+	Status  string
 }
 
 // hookGroup and hookHandler are the JSON format of the hooks of Claude Code and Codex: by event, groups with a
@@ -32,6 +33,7 @@ type hookHandler struct {
 	Type    string  `json:"type"`
 	Command string  `json:"command"`
 	Timeout float64 `json:"timeout,omitempty"`
+	Status  string  `json:"statusMessage,omitempty"`
 }
 
 // hooksFileJSON is the part of a settings file of Claude Code, or a hooks file of Codex, that holds the hooks.
@@ -59,7 +61,7 @@ func ParseHooks(data []byte) (map[string][]Group, error) {
 		for _, g := range groups {
 			group := Group{Matcher: g.Matcher}
 			for _, h := range g.Hooks {
-				group.Handlers = append(group.Handlers, Handler{Command: h.Command, Timeout: h.Timeout})
+				group.Handlers = append(group.Handlers, Handler{Command: h.Command, Timeout: h.Timeout, Status: h.Status})
 			}
 			out[ev] = append(out[ev], group)
 		}
@@ -158,14 +160,15 @@ func withHooks(top []member, at int, merged []member, had bool) []member {
 	return next
 }
 
-// encodeGroups encodes the groups of want, by event, as handlers of type command.
+// encodeGroups encodes the groups of want, by event, as handlers of type command, with their status.
 func encodeGroups(want map[string][]Group) map[string][]json.RawMessage {
 	out := map[string][]json.RawMessage{}
 	for ev, groups := range want {
 		for _, g := range groups {
 			group := hookGroup{Matcher: g.Matcher}
 			for _, h := range g.Handlers {
-				group.Hooks = append(group.Hooks, hookHandler{Type: "command", Command: h.Command, Timeout: h.Timeout})
+				group.Hooks = append(group.Hooks,
+					hookHandler{Type: "command", Command: h.Command, Timeout: h.Timeout, Status: h.Status})
 			}
 			out[ev] = append(out[ev], marshal(group))
 		}

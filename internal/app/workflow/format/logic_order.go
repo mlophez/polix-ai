@@ -102,6 +102,8 @@ func orderEntry(path []string) []string {
 		return workflow.InjectKeys
 	case workflow.VerbBlock:
 		return workflow.BlockKeys
+	case workflow.VerbNotify:
+		return workflow.NotifyKeys
 	}
 	return nil
 }

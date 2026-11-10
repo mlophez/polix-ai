@@ -2,7 +2,7 @@
 
 Answers one hook call of Claude Code or Codex: it turns the event of the agent into neutral events, evaluates the
 protections and the workflow of polix.yaml for each of them, and answers with the exit code and the output the
-agent expects (2 blocks the action, context goes to the session, warnings to the user).
+agent expects (2 blocks the action, context goes to the session, the messages for the user to its `systemMessage`).
 
 ## Trigger
 
@@ -31,7 +31,8 @@ It is the entry point of the hooks of Claude Code; the polix plugin registers it
 The formats of the agents are the transport of the entry, not domain: the in files declare the unexported
 interface `format`, with `parse`, which turns the input into the native name of the event and the neutral
 `agent.Event`s (one `pre_edit` or `post_edit` per edited path, made absolute from the `cwd` of the call; a
-`pre_command` whose line runs a `git commit` also gives `pre_commit`), and `render`, which turns an
+`pre_command` whose line runs a `git commit` also gives `pre_commit`; the `SubagentStart` of either agent gives one
+`subagent_start` whose actor is its `agent_type`), and `render`, which turns an
 `agent.Answer` into stdout, stderr and the exit code for the native event. It has one implementation per agent:
 `claude` in `in_claude.go` and `codex` in `in_codex.go`, which share the fields of the input both agents write and
 the rendering of an answer, in `in.go`.
@@ -44,7 +45,8 @@ files changes the content a later `finished` compares), and the first entry that
 logic cannot plan the event at once.
 
 `hook.Evaluation` (domain) holds the workflow, whether polix.yaml exists (`Present`), why it cannot be used
-(`Invalid`), the root, the git directory, the system, the event, the `Facts` of the repository read so far and the
+(`Invalid`), the root, the git directory, the system, the event, how many events of the call come after it
+(`Remaining`), the `Facts` of the repository read so far and the
 `Journal`, the outcomes of the steps that acted on this event in order. The logic walks the event from its start
 every time it is asked: a fact it knows is used, a fact it lacks is the next step; a step that acts takes its
 outcome from the journal, in order, and the first one the journal lacks is the next step. `Output.Step`
@@ -55,9 +57,10 @@ what the next event of the call starts from.
 `logic.go`, gives the family that answers it, a method of `pass` in a file of its own. Each family reads top-down,
 holds only what its events do and calls the engine as a library:
 
-- `session` (`logic_session.go`), for `start` and `prompt`: the session context and the `started` line of `start`
-  (rules 4 and 6), the context of the missing programs of `requirements` on `prompt` (rule 14), and the discard of
-  the once-only injects of a refused `prompt` (rule 6).
+- `session` (`logic_session.go`), for `start`, `prompt` and `subagent_start`: the session context of `start` (rule
+  4), the `started` line of `start` and `subagent_start` (rule 6), the context of the missing programs of
+  `requirements` on `prompt` (rule 14), and the discard of the once-only injects of a refused `prompt` (rule 6).
+  `subagent_start` gets neither the session context nor the requirements, which are told to the main session.
 - `edit` (`logic_edit.go`), for `pre_edit` and `post_edit`: the protections of an edit (rule 1), the edits an
   unusable workflow lets through (rule 2) and the skip of the edits outside the change (rule 3).
 - `command` (`logic_command.go`), for `pre_command`, `post_command` and `pre_commit`: the protections of a command
@@ -68,11 +71,12 @@ holds only what its events do and calls the engine as a library:
 
 The engine is the rest, in the `logic_<topic>.go` files, and has no `if` on the name of an event: the step machinery
 and the readers of the facts (`logic_facts.go`), the protections (`logic_protect.go`), the walk of the entries and
-their verbs (`logic_entries.go`, `logic_run.go`, `logic_inject.go`), the conditions and the placeholders
+their verbs (`logic_entries.go`, `logic_run.go`, `logic_inject.go`, `logic_notify.go`), the conditions and the placeholders
 (`logic_condition.go`, `logic_placeholder.go`), the parsing of command lines, what they write and where their commits
 land (`logic_cmdline.go`, `logic_writes.go`, `logic_commit.go`), and the log (`logic_log.go`). What differs per event
 reaches it as fields of the pass: `informed`, set by `Decide` for the events of `workflow.Informed`, turns a failing
-`run` into context; `always`, set by `session` on `start`, makes every inject act every time; and `loop`, set by
+`run` into context; `always`, set by `session` on `start` and `subagent_start`, makes every inject act every time;
+and `loop`, set by
 `stop`, sends every block through the loop guard.
 
 A `hook.Step` asks for one of: the branch and the HEAD commit (`hook.Step.Branch`), the content hash (of an epoch),
@@ -129,9 +133,11 @@ The rules it follows, as before this use case:
    (`workflow.Action.Verb`). The condition `path` ignores case where file names ignore it (`anyPathFold`), as the
    protection of the state and `writes` do. `block`
    blocks with its message; `run` runs a command or the checks of the rules (`changed`, or a path), and a failure,
-   its `message`, a blank line and the output, blocks the event or, on `start`, `post_edit` and
+   its `message`, a blank line and the output, blocks the event or, on `start`, `subagent_start`, `post_edit` and
    `post_command` (`workflow.Informed`), reaches the AI as context and is logged as `inform`; `inject` injects a
-   text, a file or the rules of a path.
+   text, a file or the rules of a path; `notify` adds its expanded message to the messages for the user (rule 15),
+   never to the AI, logged as a `notify` decision with the text, and a message that expands to nothing shows
+   nothing.
 6. Repeat rules, on the observed lines of the log (`state.KindObserved`, read with `state.Query`). A verb that does
    not act because of them is logged as a `skip` decision of its entry and never blocks. The three readers of the
    lines by branch, the reminder of a `block` with `once`, the repeat of a `run` and `finished` (rule 8), select
@@ -154,26 +160,45 @@ The rules it follows, as before this use case:
      writes `passed` with its key when the hash before and after it is the same; a run during which the content
      changed, or with an unknown hash, writes none, and the hash after it is computed only when the one before it is
      known. With `always: true` it runs on every event.
-   - `inject` acts once by default, except on `start`, which always injects: keyed by the session, the
+   - `inject` acts once by default, except on `start` and `subagent_start`, which begin a new context and always
+     inject: keyed by the session, the
      actor, the line of its entry and the expanded text or file path (one key per rule id for `inject: { rules }`),
      it is skipped while not due and writes `injected`, without hash, when it reaches the AI: the lines are written
      once the answer of the event is known, in the order of the injects, and not at all when the answer to a `prompt`
      refuses, since the AI never sees the contexts of a rejected prompt (on the other events they reach the AI with
      the block, and are written). It is due when it never reached the actor in the session, or when after it a
-     `started` of the session or, for a subagent, a `finished` of its type in the session was written: both start a
-     new context. A placeholder that changes on every event (a measure, `{command}`) makes a new key each time, so the
+     `started` of the session (written on `start`, which resets every actor) or, for a subagent, a `started` of its
+     type (written on its `subagent_start`) or a `finished` of its type in the session was written: each starts a new
+     context. The `started` of a subagent resets only its type: the main session and the other types keep theirs. A placeholder that changes on every event (a measure, `{command}`) makes a new key each time, so the
      inject acts every time; `{path}` gives once per path.
      With `always: true` it injects on every event and writes nothing.
-   - On `start`, after the entries, polix writes `started` when the workflow has a once-only inject or
-     `requirements` (`workflow.Workflow.ObservesStart`); the end of a subagent is written only for a once-only inject
-     (`workflow.Workflow.InjectsOnce`), since the context of the requirements never goes to a subagent.
+   - On `start` and `subagent_start`, after the entries, polix writes `started`, with the actor of the event (the
+     subagent type on `subagent_start`), when the workflow has a once-only inject or `requirements`
+     (`workflow.Workflow.ObservesStart`); the end of a subagent is written only for a once-only inject
+     (`workflow.Workflow.InjectsOnce`, which skips the injects of `start` and `subagent_start`), since the context of
+     the requirements never goes to a subagent.
+   - `notify` acts once by default: keyed by the session, the line of its entry and the expanded text, whatever the
+     actor, it is skipped, with a `skip` decision, when the log has a `notified` line of that key, or an earlier
+     event of the call already showed it (`passNotice`, `notified`). Nothing makes it due again in the session: a
+     `started`, a `finished` and another actor never do, since the user is one person. A placeholder that changes its
+     text makes a new key. The `notified` lines, without hash, are written only when the whole call does not block
+     (`settle`, called by `Decide` once the family answered): the events of one call give one answer, and a blocked
+     one shows the user no message (rule 15). So each event that does not block keeps its notices, after those of the
+     earlier events, as pending lines (`hook.Facts.Pending`, carried with `hook.Facts.Answered`), and the last event
+     of the call (`hook.Evaluation.Last`, from `hook.Evaluation.Remaining`, which the shell sets with
+     `hook.Hook.Remaining`) appends them all, in the order they were shown. A block of any event, earlier
+     (`hook.Facts.Blocked`) or later (`hook.Facts.Answered`), drops them: the notices stay due and their messages are
+     logged as not shown. A line that cannot be written leaves its notice due again. With `always: true` it shows
+     every time and writes nothing. The once-only injects keep their own rule above: their contexts reach the agent
+     with a block, on stderr, except on a refused `prompt`, which is a call of one event.
    - When the log cannot be read, every verb acts every time, `finished` never holds and the call warns: `polix
-     cannot use its log (<cause>): run, inject and the blocks with once act every time, and finished does not hold`.
+     cannot use its log (<cause>): run, inject, notify and the blocks with once act every time, and finished does not
+     hold`.
 7. One stop rule, whatever the verb: the first entry that actually blocks, a `block` or a failing `run` on an event
    where it blocks, ends the evaluation. The entries after it never run, so a `stop` answers with one failure
    at a time, in the order of the file, and the next one reruns only the runs that did not pass; the contexts of the
-   entries before it reach the agent with the block. A block let through by the loop guard, an `inject`, a skipped
-   verb, a passing `run` and a failing `run` on the events where it only informs never end it.
+   entries before it reach the agent with the block. A block let through by the loop guard, an `inject`, a `notify`,
+   a skipped verb, a passing `run` and a failing `run` on the events where it only informs never end it.
 8. `finished: <subagent>` (or a list, all of them) holds when the latest observed `finished` line of that type on
    the current branch or the same HEAD commit (rule 6), with a hash, has a tree whose paths that differ from the
    current content (`hook.Step.Compare`, answered by `TreeDiff`) are all outside the scope of the entry: the globs
@@ -198,8 +223,9 @@ The rules it follows, as before this use case:
     `max_stop_retries` the agent may stop with a warning and the next entries run, and when the log cannot be read or
     written the guard fails open.
 11. The content hash is computed only when something needs it: the repeat of a `run` and its `passed` line (before
-    and after the run), a `block` with `once`, the loop guard, `finished` and its observed line. An `inject`, the
-    `injected` and `started` lines and a `finished` that only resets injects never compute it. When it cannot be
+    and after the run), a `block` with `once`, the loop guard, `finished` and its observed line. An `inject`, a
+    `notify`, the `injected`, `started` and `notified` lines and a `finished` that only resets injects never compute
+    it. When it cannot be
     computed nothing that needs it is observed nor holds, nothing is skipped, and the call warns once: `polix
     cannot hash the content (<cause>): nothing observed is recorded, finished does not hold, and run and the blocks
     with once act every time`.
@@ -222,6 +248,18 @@ The rules it follows, as before this use case:
     programs changes, its skip is logged as a `skip` decision of the action `requirements`, and a refused prompt does
     not write it. It never blocks. `start` never looks the programs up; without `requirements` nothing is looked up,
     and with every program found nothing is told.
+15. The messages for the user (`agent.Answer.Warnings`: the notices of `notify`, the warnings of the pass and of the
+    call, such as a log that cannot be read or an unknown hash, the warning of the loop guard and that of a workflow
+    that cannot be used)
+    are added to the answer at the end of each family, a denial of a protection and a refusal of a workflow that
+    cannot be used included (`warn`). Each one goes without the prefix `polix: `, which the render adds once.
+    Neither agent reads the output of a blocked event but its reasons, so on a blocked answer they are not shown:
+    `unshown` logs each one as a `skip` decision of the action `message`, at line 0, that says the event was blocked
+    and the message was not shown to the user. The answers of the events of one call are merged into one, so a block
+    of any of them hides the messages of all: `Decide` hands the answer to the facts of the next event
+    (`hook.Facts.Answered`), where the messages of an answer that does not block become warnings of the call and a
+    block sets `hook.Facts.Blocked`. A later event that blocks logs the messages of the earlier ones, and one that
+    does not block logs its own after an earlier block; a warning of the call may then be logged once per event.
 
 The engine holds the protections and the heuristics of the command lines (`lineWrites`, `namesState`, `within`,
 `anyPathFold`, `forbidden`, `matchingCommands`, `commitDirs`), the placeholders (`expandPlaceholders`,
@@ -233,9 +271,12 @@ and `InjectsOnce`, `rule.Rules` (`Matching` and `Plan`), `rule.Results.Failed`, 
 ## Response
 
 `Response`, the answers of the events of the call merged (without repeating a text) and rendered for
-the native event of the agent: `Stdout`, the JSON with the `additionalContext` of the contexts on the events that
-take it; `Stderr`, the reasons and contexts of a block, else one `polix: <warning>` line per warning; and `Code`,
-2 for a block and 0 otherwise. The command writes them as they are and exits with `Code`.
+the native event of the agent: `Stdout`, on exit 0, one JSON object with `systemMessage`, the messages for the user
+each as `polix: <message>` joined by new lines, and `hookSpecificOutput`, the `additionalContext` of the contexts
+and the `hookEventName`, only on the events that take it; each field is left out when empty, since Codex fails a hook
+on a field it does not accept, and stdout is empty with neither. `Stderr`, the reasons and contexts of a block, and
+empty otherwise; a block writes nothing to stdout and no message for the user (rule 15). `Code`, 2 for a block and 0
+otherwise. The command writes them as they are and exits with `Code`.
 
 ## Port
 
@@ -315,7 +356,8 @@ The failure policy of the hook, so a broken polix never traps the agent:
 3. It opens the repository from `hook.Hook.Folder` and loads the workflow through the port; outside a repository it
    answers nothing.
 4. For each event, it locates the path of an edit through the port and builds its `hook.Evaluation` with the facts the
-   previous event left, its problems told for the running polix (`hook.Evaluation.Running`); then it loops from one
+   previous event left and the events after it (`hook.Hook.Remaining`), its problems told for the running polix
+   (`hook.Evaluation.Running`); then it loops from one
    call site: it asks `Decide` for the next step, carries it out through the port and feeds the result back to the
    evaluation (`Know*` for a fact, `Note` for an outcome), until the step is none; the unexported functions `carry`
    (the facts) and `act` (the steps that act) of `in.go` carry out each step. Each pass routes the event to its

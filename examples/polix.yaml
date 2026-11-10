@@ -34,13 +34,14 @@
 # Cheat sheet (each one is explained where it is first used below):
 # - Shortcuts of guardrails, each in its one form: protected_files and protected_branches take a list of strings;
 #   forbidden_commands, format_on_edit and run_on_stop a list of maps.
-# - Events, in lifecycle order: start, prompt, pre_edit, post_edit, pre_command, post_command, pre_commit,
-#   subagent_stop, stop.
-# - Verbs, exactly one per action:
-#   - block: on prompt, pre_edit, pre_command, pre_commit, subagent_stop and stop (rejected on start, post_edit
-#     and post_command, which already happened);
+# - Events, in lifecycle order: start, prompt, subagent_start, pre_edit, post_edit, pre_command, post_command,
+#   pre_commit, subagent_stop, stop.
+# - Verbs, exactly one per action, only where Claude Code and Codex both support them:
+#   - block: on prompt, pre_edit, pre_command, pre_commit, subagent_stop and stop (rejected on start,
+#     subagent_start, post_edit and post_command, which already happened);
 #   - inject: on every event but subagent_stop and stop (an agent that stops cannot receive context);
-#   - run: on every event; it blocks where block is valid, and elsewhere a failure reaches the AI as context.
+#   - run: on every event; it blocks where block is valid, and elsewhere a failure reaches the AI as context;
+#   - notify: on every event; a message for the user, never for the AI.
 # - Conditions that hold only on some events (`polix config check` rejects them elsewhere):
 #   - path: pre_edit, post_edit;
 #   - command, writes: pre_command, post_command, pre_commit;
@@ -56,7 +57,8 @@ version: 1
 # other options blocks edits and commands asking to run `polix update`, instead of reporting them as mistakes, and
 # the session start hook looks for the new release at once. A development build ignores it. `polix config check`
 # rejects a value that is not a version like 0.2.0. Known since polix 0.1.0: no earlier polix exists. This file needs
-# 0.3.0: `guardrails.run_on_stop`, `base_branch` and `max_stop_retries` are unknown to an older polix.
+# 0.3.0: `guardrails.run_on_stop`, `base_branch`, `max_stop_retries`, `subagent_start` and `notify` are unknown to
+# an older polix.
 requires: 0.3.0
 
 # Optional, default main. The branch the change merges into, or a list of candidates, used only by
@@ -293,7 +295,8 @@ on:
   #   action: required, a map with exactly one verb:
   #     run:    run a command, or the checks of the rules (see post_edit);
   #     inject: inject text for the AI (see start);
-  #     block:  block the event with a message for the AI (see pre_edit).
+  #     block:  block the event with a message for the AI (see pre_edit);
+  #     notify: show a message to the user, never to the AI (see prompt).
   # A YAML comment above the entry is the place for its reason, for people; the message of a block or a run is the
   # reason the AI reads.
   #
@@ -311,7 +314,10 @@ on:
   # acted, so an inject before a block reaches the AI with it (on prompt, a rejected prompt never reaches the AI, so
   # that inject acts again on the next prompt). The order of the file is the priority: the AI gets one failure per
   # answer, the first one. Put first the gate whose failure makes the later ones pointless, and the cheaper one when
-  # it does not matter.
+  # it does not matter. Two orders are rejected by `polix config check`, outside stop and subagent_stop for the first:
+  # an entry after a block without when, unless nor once, which never runs; and, on every event, a notify before an
+  # entry that may block it (a block, or a run where a run blocks), since a blocked event shows the user no message:
+  # put the notice after the gates, or into the message of the block.
   #
   # How often each verb acts:
   # - block blocks every time its entry applies: a gate, which holds until its `unless` does. `once: true` makes it a
@@ -326,6 +332,8 @@ on:
   #   compacted or, for a subagent, on its next run. `always: true` injects it on every event. A text with a
   #   placeholder that changes on every event ({command}, a measure) is a new text, so it is injected every time;
   #   {path} gives once per path.
+  # - notify reaches the user once per session for each entry and text it expands to, whatever the actor, and never
+  #   again in that session, not even after a compaction. `always: true` shows it every time its entry applies.
   # The scope of an entry is the set of files the `changed` of its `when` names (the nearest `changed`, as the
   # measures take it), or the whole tree without one: `finished` and a `once` block compare only the files of that
   # scope, so an edit of README.md or docs/ keeps a review of `changed: "src/**"` and a reminder already given. Name
@@ -333,14 +341,14 @@ on:
   #
   # What polix remembers: its log (<git-dir>/polix/log.jsonl, read with `polix log`) holds a decision for each
   # answer, and an `observed` line only for what this file asks about: the end of a subagent a `finished` names,
-  # a run of polix that passed, a block of a `once` entry or of a stop, an inject made once and the start of a
-  # session. When an inject acts once, the end of any subagent is also written, without hash, so its next run gets
-  # the inject again; `finished` never reads those lines. A command the AI runs is never recorded and never counts
-  # as passed: polix cannot know what it really ran (an alias, another folder, a command still running in the
-  # background). A check that must hold is a `run` of polix.
+  # a run of polix that passed, a block of a `once` entry or of a stop, an inject made once, a notice shown once and
+  # the start of a session or of a subagent. When an inject acts once, the end of any subagent is also written,
+  # without hash, so its next run gets the inject again; `finished` never reads those lines. A command the AI runs is
+  # never recorded and never counts as passed: polix cannot know what it really ran (an alias, another folder, a
+  # command still running in the background). A check that must hold is a `run` of polix.
   #
-  # Unknown events, keys (also inside action, run, inject, block and vars), conditions and verbs are rejected by
-  # `polix config check`, and so are conditions on events where they never hold (path, command, writes, exit). A
+  # Unknown events, keys (also inside action, run, inject, block, notify and vars), conditions and verbs are rejected
+  # by `polix config check`, and so are conditions on events where they never hold (path, command, writes, exit). A
   # name of the old vocabulary (session_start, turn_stop, if, why, mode, deny, require, allow, run or context as keys
   # of an entry, record, done, at_least, and the top-level protected, base and max_stop_blocks) is reported with its
   # new spelling.
@@ -396,6 +404,22 @@ on:
         block:
           once: true
           message: "Estás en {branch}: crea una rama con /ticket antes de pedir cambios, o repite el prompt si solo es una consulta."
+    # notify: a message for the user, shown by the agent, which never reaches the AI and costs it no context. The
+    # short form is the message (placeholders allowed); the long form a map with `message` (required) and `always`.
+    # Valid on every event, after the entries that may block it: a blocked event shows the user no message.
+    - when: { var: release }
+      action:
+        notify: "Rama de release {release}: avisa a QA antes de publicar."
+
+  # subagent_start: a subagent starts, with a new context; actor is its type. It cannot be blocked: block is rejected,
+  # and a failing run reaches the subagent as context. As on start, every inject acts every time. It gets neither the
+  # built-in guidance nor the requirements, told to the main session. path, command, writes and exit never hold here.
+  # A subagent that only reads, such as a reviewer, never edits nor runs a command, so pre_edit never gives it the
+  # rules: give them at its start.
+  subagent_start:
+    - when: { actor: polix:reviewer }
+      action:
+        inject: "Revisa el diff contra las reglas de ai/rules/: cada hallazgo cita el id de la regla que incumple."
 
   # pre_edit: before a file is edited, once per path. Conditions of the edit: path, actor.
   pre_edit:

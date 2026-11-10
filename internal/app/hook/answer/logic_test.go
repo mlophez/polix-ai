@@ -237,7 +237,8 @@ func TestBlockEnds(t *testing.T) {
 on:
   pre_command:
     - action: { inject: { text: "cuidado", always: true } }
-    - action: { block: "primero" }
+    - when: { branch: "^main$" }
+      action: { block: "primero" }
     - action: { block: "segundo" }
 `, workflow.PreCommand)
 	out, steps := walk(t, ev, facts{branch: "main"})
@@ -350,7 +351,8 @@ func TestBlockAndInjectOrder(t *testing.T) {
 		name, entries string
 		contexts      []string
 	}{
-		{"block first", "    - action: { block: \"no\" }\n    - action: { inject: \"después\" }\n", nil},
+		{"block first", "    - when: { branch: \"^main$\" }\n      action: { block: \"no\" }\n" +
+			"    - action: { inject: \"después\" }\n", nil},
 		{"inject first", "    - action: { inject: \"antes\" }\n    - action: { block: \"no\" }\n", []string{"antes"}},
 	}
 	for _, c := range cases {
@@ -438,6 +440,117 @@ func TestLoopGuardFailsOpen(t *testing.T) {
 	}
 }
 
+// unshownMessages returns the reasons of the skip decisions of actionMessage the steps logged, in order: the
+// messages for the user of a blocked event, which are not shown.
+func unshownMessages(steps []hook.Step) []string {
+	var out []string
+	for _, e := range decided(steps, "skip") {
+		if e.Action == actionMessage {
+			out = append(out, e.Reason)
+		}
+	}
+	return out
+}
+
+// AC7: the warning of the loop guard reaches the messages for the user of an answer that is not blocked, and nothing
+// is logged as not shown. A blocked answer keeps its messages, and the logic logs each one as a skip decision that
+// says it was not shown: on a stop the guard let an earlier entry through, on pre_commit and on prompt a log that
+// cannot be read.
+func TestMessagesOfABlockedEvent(t *testing.T) {
+	block := state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeBlocked, Session: "s1",
+		Event: workflow.Stop, Actor: agent.ActorSession, Line: 5, Hash: "h"}
+	guarded := state.State{Entries: []state.Entry{block}}
+	ev := eval(t, "version: 1\nmax_stop_retries: 1\non:\n  stop:\n    - action: { block: \"revisa\" }\n",
+		workflow.Stop)
+	out, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h"}, state: guarded})
+	if out.Answer.Block || len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "after 1 blocks") ||
+		len(unshownMessages(steps)) != 0 {
+		t.Fatalf("the guard lets the stop through: %+v %v", out.Answer, unshownMessages(steps))
+	}
+	unreadable := errors.New("permission denied")
+	for _, c := range []struct {
+		name, yaml, event string
+		f                 facts
+		want              string
+	}{
+		{"stop", "version: 1\nmax_stop_retries: 1\non:\n  stop:\n    - action: { block: \"revisa\" }\n" +
+			"    - action: { run: just test }\n", workflow.Stop,
+			facts{branch: "main", hashes: []string{"h", "h"}, state: guarded, runErr: errors.New("exit status 1")},
+			"polix lets the agent stop after 1 blocks: revisa"},
+		{"pre_commit", "version: 1\non:\n  pre_commit:\n    - unless: { finished: polix:reviewer }\n" +
+			"      action: { block: \"Revisa\" }\n", workflow.PreCommit,
+			facts{branch: "main", hashes: []string{"h"}, stateErr: unreadable}, "cannot use its log (permission denied)"},
+		{"prompt", "version: 1\non:\n  prompt:\n    - action: { block: { message: \"Espera\", once: true } }\n",
+			workflow.Prompt, facts{branch: "main", hashes: []string{"h"}, stateErr: unreadable},
+			"cannot use its log (permission denied)"},
+	} {
+		out, steps := walk(t, eval(t, c.yaml, c.event), c.f)
+		unshown := unshownMessages(steps)
+		if !out.Answer.Block || len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], c.want) ||
+			len(unshown) != 1 || !strings.Contains(unshown[0], "not shown to the user: "+out.Answer.Warnings[0]) {
+			t.Errorf("%s: %+v %q", c.name, out.Answer, unshown)
+		}
+	}
+}
+
+// AC7: a protection and a workflow that cannot be used block with the pending warnings of the call, which are logged
+// as not shown; a workflow that cannot be used on a stop warns once with no prefix of its own, which the render
+// adds.
+func TestMessagesOfARefusal(t *testing.T) {
+	hashErr := "polix cannot hash the content (boom)"
+	ev := eval(t, "version: 1\nguardrails:\n  protected_files: [.env]\n", workflow.PreEdit)
+	protected := edit(t, ev, workflow.PreEdit, ".env", agent.ActorSession).KnowHash(0, "", errors.New("boom"))
+	invalid := edit(t, ev, workflow.PreEdit, "src/a.go", agent.ActorSession).KnowHash(0, "", errors.New("boom"))
+	invalid.Invalid = errors.New("polix.yaml: unknown key")
+	for name, ev := range map[string]hook.Evaluation{"protection": protected, "invalid": invalid} {
+		out, steps := walk(t, ev, facts{branch: "main"})
+		unshown := unshownMessages(steps)
+		if !out.Answer.Block || len(unshown) != 1 || !strings.Contains(unshown[0], "not shown to the user: "+hashErr) {
+			t.Errorf("%s: %+v %q", name, out.Answer, unshown)
+		}
+	}
+	stop := eval(t, "version: 1\n", workflow.Stop)
+	stop.Invalid = workflow.TooOldError{Requires: "0.2.0", Running: "0.1.0"}
+	out, steps := walk(t, stop, facts{})
+	want := "this repository needs polix 0.2.0 or later and the installed one is 0.1.0: run polix update"
+	if out.Answer.Block || !slices.Equal(out.Answer.Warnings, []string{want}) || len(unshownMessages(steps)) != 0 {
+		t.Fatalf("a stop with a workflow ahead of polix: %+v", out.Answer)
+	}
+}
+
+// AC7: the answers of the events of one call are merged into one, so a block of one hides the messages of the
+// others: a later event that blocks logs the messages of an earlier one that did not, and a later event that does
+// not block logs its own after an earlier one that blocked.
+func TestMessagesOfACall(t *testing.T) {
+	ev := eval(t, "version: 1\nguardrails:\n  protected_files: [.env]\non:\n  pre_edit:\n"+
+		"    - action: { inject: \"Lee el plan\" }\n", workflow.PreEdit)
+	code := edit(t, ev, workflow.PreEdit, "src/a.go", agent.ActorSession)
+	env := edit(t, ev, workflow.PreEdit, ".env", agent.ActorSession)
+	f := facts{branch: "main", stateErr: errors.New("permission denied")}
+	const logErr = "cannot use its log (permission denied)"
+	first, steps := walk(t, code, f)
+	if first.Answer.Block || len(first.Answer.Warnings) != 1 || len(unshownMessages(steps)) != 0 {
+		t.Fatalf("the edit of code warns: %+v", first.Answer)
+	}
+	env.Facts = first.Facts
+	second, steps := walk(t, env, f)
+	if unshown := unshownMessages(steps); !second.Answer.Block || len(unshown) != 1 ||
+		!strings.Contains(unshown[0], logErr) {
+		t.Fatalf("a later block logs the earlier message: %+v %q", second.Answer, unshown)
+	}
+	env = edit(t, ev, workflow.PreEdit, ".env", agent.ActorSession)
+	first, steps = walk(t, env, f)
+	if !first.Answer.Block || len(unshownMessages(steps)) != 0 || !first.Facts.Blocked {
+		t.Fatalf("the edit of .env is denied without messages: %+v", first.Answer)
+	}
+	code.Facts = first.Facts
+	second, steps = walk(t, code, f)
+	if unshown := unshownMessages(steps); second.Answer.Block || len(unshown) != 1 ||
+		!strings.Contains(unshown[0], logErr) {
+		t.Fatalf("a later message after an earlier block is logged: %+v %q", second.Answer, unshown)
+	}
+}
+
 // A failing run blocks with its output; a passing one writes only that it passed.
 func TestRun(t *testing.T) {
 	ev := eval(t, "version: 1\non:\n  stop:\n    - action: { run: just test }\n", workflow.Stop)
@@ -478,10 +591,10 @@ func TestRunMessage(t *testing.T) {
 	}
 }
 
-// AC21: a failing run on start, post_edit or post_command never blocks: its message and output reach the
-// AI as context, the evaluation goes on, and the decision is logged as inform.
+// AC21: a failing run on start, subagent_start, post_edit or post_command never blocks: its message and output reach
+// the AI as context, the evaluation goes on, and the decision is logged as inform.
 func TestRunInformsAfterTheFact(t *testing.T) {
-	for _, event := range []string{workflow.Start, workflow.PostEdit, workflow.PostCommand} {
+	for _, event := range []string{workflow.Start, workflow.SubagentStart, workflow.PostEdit, workflow.PostCommand} {
 		t.Run(event, func(t *testing.T) {
 			ev := eval(t, "version: 1\nguidance: { commit: false, edit: false, layout: false }\non:\n  "+
 				event+":\n    - action: { run: { command: [ruff, check], message: \"Corrige el estilo\" } }\n"+
@@ -1820,6 +1933,67 @@ on:
 	}
 }
 
+// AC4 and AC5: on subagent_start every inject acts on every call, without the guidance nor the requirements of the
+// main session, and polix writes started with the subagent type as actor: a once-only inject of a later event is due
+// again for that type only, while the main session and the other types keep theirs. An invalid workflow only warns.
+func TestSubagentStart(t *testing.T) {
+	const rules, plan = "Lee las reglas antes de revisar", "Lee el plan antes de editar"
+	base := eval(t, `version: 1
+requirements: [go]
+on:
+  subagent_start:
+    - action: { inject: "`+rules+`" }
+  pre_edit:
+    - action: { inject: "`+plan+`" }
+`, workflow.PreEdit)
+	var st state.State
+	walkLogged := func(ev hook.Evaluation) (Output, []hook.Step) {
+		t.Helper()
+		out, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h"}, state: st, missing: []string{"go"}})
+		st = logged(t, st, steps)
+		return out, steps
+	}
+	spawn := func(actor string) hook.Evaluation {
+		return with(t, base, func(e *agent.Event) { e.Name, e.Actor = workflow.SubagentStart, actor })
+	}
+	for range 2 {
+		out, steps := walkLogged(spawn("polix:reviewer"))
+		if out.Answer.Block || !slices.Equal(out.Answer.Contexts, []string{rules}) || len(lookups(steps)) != 0 ||
+			hashed(steps) {
+			t.Fatalf("every subagent_start injects, without guidance nor requirements: %+v %+v", out.Answer, steps)
+		}
+		if got := observed(steps); len(got) != 1 || got[0].Outcome != state.OutcomeStarted ||
+			got[0].Event != workflow.SubagentStart || got[0].Actor != "polix:reviewer" || got[0].Hash != "" {
+			t.Fatalf("started: %+v", got)
+		}
+	}
+	injects := func(actor string) bool {
+		t.Helper()
+		out, _ := walkLogged(edit(t, base, workflow.PreEdit, "src/a.go", actor))
+		return slices.Equal(out.Answer.Contexts, []string{plan})
+	}
+	for _, actor := range []string{agent.ActorSession, "polix:reviewer", "polix:builder"} {
+		if !injects(actor) || injects(actor) {
+			t.Fatalf("%s gets the inject once", actor)
+		}
+	}
+	walkLogged(spawn("polix:reviewer"))
+	if !injects("polix:reviewer") {
+		t.Fatal("a new polix:reviewer gets the inject again")
+	}
+	if injects(agent.ActorSession) || injects("polix:builder") {
+		t.Fatal("the start of a polix:reviewer does not remind the main session nor polix:builder")
+	}
+	broken := hook.Evaluation{Present: true, Invalid: errors.New("polix.yaml: unknown key"), Root: base.Root,
+		GitDir: base.GitDir, Event: spawn("polix:reviewer").Event}
+	if err := broken.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := walk(t, broken, facts{}); out.Answer.Block || len(out.Answer.Warnings) != 1 {
+		t.Fatalf("an invalid workflow only warns on subagent_start: %+v", out.Answer)
+	}
+}
+
 // AC18 and AC23: a once-only inject is keyed by the text it expands to: a {path} gives once per path, and a measure
 // that changed injects it again. A file is keyed by its path, and with always every event injects.
 func TestInjectKeys(t *testing.T) {
@@ -1900,12 +2074,14 @@ func TestObservesOnlyWhatTheWorkflowAsks(t *testing.T) {
 		"a block":          "  pre_commit:\n    - action: { block: x }\n",
 		"an always inject": "  pre_edit:\n    - action: { inject: { text: x, always: true } }\n",
 		"start only":       "  start:\n    - action: { inject: x }\n",
+		"subagent_start":   "  subagent_start:\n    - action: { inject: x }\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			yaml := "version: 1\non:\n" + entries
 			start := eval(t, yaml, workflow.Start)
+			spawn := as(t, eval(t, yaml, workflow.SubagentStart), "acme:builder")
 			stop := as(t, eval(t, yaml, workflow.SubagentStop), "acme:builder")
-			for _, ev := range []hook.Evaluation{start, stop} {
+			for _, ev := range []hook.Evaluation{start, spawn, stop} {
 				_, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h"}})
 				if len(appended(steps)) != 0 || hashed(steps) {
 					t.Fatalf("%s: %+v", ev.Event.Name, steps)
@@ -2204,12 +2380,12 @@ func TestDetachedHead(t *testing.T) {
 	}
 }
 
-// Decide routes each event of the workflow to its family: session for start and prompt, edit for pre_edit and
-// post_edit, command for pre_command, post_command and pre_commit, and stop for stop and subagent_stop; an event
-// polix does not evaluate reaches none.
+// Decide routes each event of the workflow to its family: session for start, prompt and subagent_start, edit for
+// pre_edit and post_edit, command for pre_command, post_command and pre_commit, and stop for stop and subagent_stop;
+// an event polix does not evaluate reaches none.
 func TestRoutesByFamily(t *testing.T) {
 	families := map[string]func(*pass) agent.Answer{
-		workflow.Start: (*pass).session, workflow.Prompt: (*pass).session,
+		workflow.Start: (*pass).session, workflow.Prompt: (*pass).session, workflow.SubagentStart: (*pass).session,
 		workflow.PreEdit: (*pass).edit, workflow.PostEdit: (*pass).edit,
 		workflow.PreCommand: (*pass).command, workflow.PostCommand: (*pass).command, workflow.PreCommit: (*pass).command,
 		workflow.Stop: (*pass).stop, workflow.SubagentStop: (*pass).stop,

@@ -57,7 +57,12 @@ untested; and it warns on stderr about the other settings of Claude Code that al
   plugin enabled in `~/.codex/config.toml` (`agentconf.CodexPlugin`); a CLI that is missing leaves a todo.
 - `RegisterHooks`: writes the hooks of polix of an agent (`setup.Setup.Hooks`, given by the shell) into its hooks
   file in place of the ones of polix it had (`setup.HookHandler.Polix`), keeping every other setting and hook
-  (`agentconf.MergeHooks`); a file that is not a JSON object is an error that names it.
+  (`agentconf.MergeHooks`); a file that is not a JSON object is an error that names it. Every handler of polix,
+  the update one included, carries the status `setup.StatusMessage`, written as `"statusMessage": "polix"`, so both
+  agents show `polix` next to their spinner while the hook runs; a file written without it gets it on the next
+  install. Both agents get `SubagentStart`, right after `UserPromptSubmit` in `setup.HookEvents` and without
+  matcher, so the start of a subagent reaches the event `subagent_start`; a file of an earlier release gets it on the
+  next install, added after its other events.
 - `Registered`: which settings of Claude Code register a hook of polix (`agentconf.Registers`), for the
   duplicates.
 

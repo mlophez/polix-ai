@@ -28,8 +28,11 @@ type Evaluation struct {
 	GitDir   string // git directory of the working tree, where the log lives
 	System   string // the system polix runs on (GOOS), whose file names may ignore case
 	Event    agent.Event
-	Facts    Facts
-	Journal  []Outcome // the outcomes of the steps that acted on this event, in order
+	// Remaining is the number of events of the call after this one (Hook.Remaining): 0 for the last one, which
+	// knows the answer of the whole call (see Last).
+	Remaining int
+	Facts     Facts
+	Journal   []Outcome // the outcomes of the steps that acted on this event, in order
 }
 
 // newerVersion matches the problem of a workflow of a later version of the schema.
@@ -41,9 +44,16 @@ func (e Evaluation) Valid() error {
 	if e.Root == "" || e.GitDir == "" {
 		errs = append(errs, errors.New("an evaluation needs the root and the git directory of the repository"))
 	}
+	if e.Remaining < 0 {
+		errs = append(errs, errors.New("the events remaining in the call cannot be negative"))
+	}
 	errs = append(errs, e.Event.Valid(), e.Facts.Valid())
 	return errors.Join(errs...)
 }
+
+// Last reports whether the event is the last of its call: once it is answered the answer of the whole call is
+// known, so what is written only when the call does not block (Facts.Pending) is written then.
+func (e Evaluation) Last() bool { return e.Remaining == 0 }
 
 // StateDir returns the folder of the state of polix, below the git directory.
 func (e Evaluation) StateDir() string { return filepath.Join(e.GitDir, state.DirName) }

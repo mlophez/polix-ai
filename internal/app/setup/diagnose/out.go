@@ -298,7 +298,7 @@ func (a Adapter) hookGroups(groups map[string][]agentconf.Group) map[string][]se
 		for _, g := range gs {
 			var handlers []setup.HookHandler
 			for _, h := range g.Handlers {
-				handler := setup.HookHandler{Command: h.Command, Timeout: h.Timeout}
+				handler := setup.HookHandler{Command: h.Command, Timeout: h.Timeout, Status: h.Status}
 				if handler.Valid() == nil {
 					handlers = append(handlers, handler)
 				}

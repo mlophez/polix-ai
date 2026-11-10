@@ -35,6 +35,12 @@ func (h Hook) Valid() error {
 	return errors.Join(errs...)
 }
 
+// Remaining returns the number of events of the call after its i-th one (Evaluation.Remaining), 0 for the last; an
+// i outside the events counts as the last.
+func (h Hook) Remaining(i int) int {
+	return max(len(h.Events)-1-i, 0)
+}
+
 // Folder returns the folder the repository of the call is looked for from: dir when given, else the cwd of the
 // call, else "" (the working directory).
 func (h Hook) Folder(dir string) string {

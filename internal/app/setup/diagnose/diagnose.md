@@ -30,8 +30,11 @@ or one `ok` line, `<n> programs of requirements on the PATH`, when it runs them 
 with a workflow that cannot be used; a missing program never fails the report), the rules
 (`RuleProblems`, and `runProblems` of the logic: a check that a runner of `rules.run` runs is never reported as not
 executable nor without interpreter), the hooks of Claude Code (`logic_hooks.go`: the settings that cannot be read
-or are not JSON, every event, the matchers, the timeouts above the run budget, run once, the session start update,
-with `setup.HookHandler.Polix`, `Update` and `Legacy`), the plugin (the version of the manifest written,
+or are not JSON, every event of `setup.ClaudeHookEvents`, the matchers, the timeouts above the run budget, run once,
+the session start update, with `setup.HookHandler.Polix`, `Update` and `Legacy`; an event that does not run polix
+fails, but `PostToolUseFailure` and `SubagentStart`, which settings written by an older polix lack, only warn and
+ask to run `polix install`, since only the feedback of failed commands or the context at the start of subagents is
+lost), the plugin (the version of the manifest written,
 `setup.Plugin.Manifest`, against `setup.Plugin.ManifestVersion`, and without `--hook` what `claude plugin list`
 said), Codex, and the state.
 Codex is checked only when polix is registered for it, as `polix install --agent codex` leaves it: a Codex hooks

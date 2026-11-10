@@ -34,10 +34,10 @@ func TestValidRejects(t *testing.T) {
 		name, src, want string
 	}{
 		// AC3: the shape of the action.
-		{"no action", "version: 1\non:\n  pre_command:\n    - when: { branch: x }\n", "polix.yaml:4: the entry needs an action with one of run, inject, block"},
-		{"empty action", "version: 1\non:\n  pre_command:\n    - action: {}\n", "polix.yaml:4: the entry needs an action with one of run, inject, block"},
+		{"no action", "version: 1\non:\n  pre_command:\n    - when: { branch: x }\n", "polix.yaml:4: the entry needs an action with one of run, inject, block, notify"},
+		{"empty action", "version: 1\non:\n  pre_command:\n    - action: {}\n", "polix.yaml:4: the entry needs an action with one of run, inject, block, notify"},
 		{"two verbs", "version: 1\non:\n  pre_command:\n    - action: { block: x, run: ls }\n", "polix.yaml:4: the action has several verbs (run, block): use one entry per verb"},
-		{"unknown key in action", "version: 1\non:\n  pre_command:\n    - action: { block: x, warn: y }\n", `polix.yaml:4: unknown key "warn" in action (run, inject, block)`},
+		{"unknown key in action", "version: 1\non:\n  pre_command:\n    - action: { block: x, warn: y }\n", `polix.yaml:4: unknown key "warn" in action (run, inject, block, notify)`},
 		{"old verb in action", "version: 1\non:\n  pre_command:\n    - action: { deny: x }\n", `polix.yaml:4: unknown key "deny" in action: use block`},
 		{"verb without value", "version: 1\non:\n  pre_command:\n    - action: { block: }\n", "polix.yaml:4: block needs a value"},
 		{"unknown key in run", "version: 1\non:\n  stop:\n    - action: { run: { command: [ls], rule: x } }\n", `unknown key "rule" in run (always, command, rules, message)`},
@@ -46,6 +46,12 @@ func TestValidRejects(t *testing.T) {
 		{"once on run", "version: 1\non:\n  stop:\n    - action: { run: { command: ls, once: true } }\n", `unknown key "once" in run`},
 		{"once on inject", "version: 1\non:\n  prompt:\n    - action: { inject: { text: x, once: true } }\n", `unknown key "once" in inject`},
 		{"always on block", "version: 1\non:\n  prompt:\n    - action: { block: { message: x, always: true } }\n", `unknown key "always" in block`},
+		{"unknown key in notify", "version: 1\non:\n  prompt:\n    - action: { notify: { message: x, once: true } }\n", `unknown key "once" in notify (always, message)`},
+		{"notify without message", "version: 1\non:\n  prompt:\n    - action: { notify: { always: true } }\n", "polix.yaml:4: notify needs a message"},
+		{"empty notify", "version: 1\non:\n  prompt:\n    - action: { notify: \" \" }\n", "polix.yaml:4: notify needs a message"},
+		{"placeholder in a notify", "version: 1\non:\n  prompt:\n    - action: { notify: \"{kye}\" }\n", "unknown placeholder {kye}"},
+		// AC10: a notice before an entry that may block its event.
+		{"notify before a block", "version: 1\non:\n  pre_commit:\n    - action: { notify: x }\n    - when: { branch: y }" + block, "polix.yaml:4: the notice is not shown when the entry of line 5 blocks the event"},
 		// AC4: the events of each verb.
 		{"block on start", "version: 1\non:\n  start:\n    - action: { block: x }\n", "block cannot stop start, which already happened"},
 		{"block on post_edit", "version: 1\non:\n  post_edit:\n    - action: { block: x }\n", "block cannot stop post_edit"},
@@ -296,7 +302,7 @@ on:
 		"polix.yaml:4: block needs a message",
 		"polix.yaml:6: the action has several verbs (run, block): use one entry per verb",
 		"polix.yaml:8: block cannot stop post_edit, which already happened: use inject, or a run whose failure " +
-			"reaches the AI",
+			"reaches the AI (post_edit allows run, inject, notify)",
 	}, "\n")
 	if got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
@@ -353,9 +359,48 @@ on:
 func TestInjectProblemsOrder(t *testing.T) {
 	got := validate(t, "version: 1\non:\n  stop:\n    - action: { inject: { text: x, fiel: y } }\n")
 	want := "polix.yaml:4: unknown key \"fiel\" in inject (always, file, text, rules)\n" +
-		"polix.yaml:4: inject does not reach the agent on stop, which cannot receive context"
+		"polix.yaml:4: inject does not reach the agent on stop, which cannot receive context (stop allows run, block, " +
+		"notify)"
 	if got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// AC9: notify takes a short form, its message, and a long form, a map with message and always, on every event; an
+// always that is not true or false stops the parse with its line.
+func TestDecodeNotify(t *testing.T) {
+	var src strings.Builder
+	src.WriteString("version: 1\non:\n")
+	for _, ev := range workflow.Events {
+		src.WriteString("  " + ev + ":\n    - action: { notify: \"Rama {branch}\" }\n" +
+			"    - action: { notify: { message: \"Aviso\", always: true } }\n")
+	}
+	w, err := parse(t, src.String(), "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range workflow.Events {
+		es := w.On[ev]
+		if len(es) != 2 {
+			t.Fatalf("%s: %+v", ev, es)
+		}
+		if n := es[0].Action.Notify; n == nil || n.Message != "Rama {branch}" || n.Always || n.Keys != nil ||
+			es[0].Action.Verb() != workflow.VerbNotify {
+			t.Fatalf("%s: short form: %+v", ev, n)
+		}
+		if n := es[1].Action.Notify; n == nil || n.Message != "Aviso" || !n.Always ||
+			strings.Join(n.Keys, ",") != "message,always" {
+			t.Fatalf("%s: long form: %+v", ev, n)
+		}
+	}
+	var invalid workflow.InvalidError
+	for src, want := range map[string]string{
+		"version: 1\non:\n  prompt:\n    - action: { notify: { message: x, always: si } }\n": "polix.yaml: line 4: notify.always must be true or false",
+		"version: 1\non:\n  prompt:\n    - action: { notify: [x] }\n":                        "polix.yaml: line 4: notify takes a message or a map with message and always",
+	} {
+		if _, err := parse(t, src, "dev"); err == nil || errors.As(err, &invalid) || !strings.HasPrefix(err.Error(), want) {
+			t.Errorf("%q: got %v", src, err)
+		}
 	}
 }
 

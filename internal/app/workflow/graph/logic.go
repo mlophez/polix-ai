@@ -112,6 +112,11 @@ func label(e workflow.Entry) string {
 		if a.Inject.Always {
 			act += " (always)"
 		}
+	case workflow.VerbNotify:
+		act += ": " + a.Notify.Message
+		if a.Notify.Always {
+			act += " (always)"
+		}
 	}
 	parts = append(parts, act)
 	if e.From != "" {

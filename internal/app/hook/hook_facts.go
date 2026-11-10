@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/diff"
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/state"
@@ -48,14 +49,25 @@ type Facts struct {
 	TreeDiffs map[string][]string
 	TreeErrs  map[string]error
 	Warnings  []string // warnings of the call, such as an unknown content hash
+	// Blocked tells that an earlier event of the call blocked: the answer of the call is a block, so none of its
+	// messages for the user is shown (see Answered).
+	Blocked bool
+	// Pending are the observed lines of the earlier events of the call that are written only when the whole call
+	// does not block, by its last event (see Evaluation.Last): the notices of notify, which a blocked call never
+	// shows to the user. A block of the call drops them (see Answered).
+	Pending []state.Entry
 }
 
-// Valid tells why the facts are not facts: negative counts.
+// Valid tells why the facts are not facts: negative counts, or a pending line that could not be appended.
 func (f Facts) Valid() error {
 	if f.Epoch < 0 || f.StateAt < 0 {
 		return errors.New("the epoch and the steps of the facts cannot be negative")
 	}
-	return f.State.Valid()
+	errs := []error{f.State.Valid()}
+	for _, e := range f.Pending {
+		errs = append(errs, e.Valid())
+	}
+	return errors.Join(errs...)
 }
 
 // Carry returns the facts the next event of the call starts from: after epoch runs, with the log s as this event
@@ -66,6 +78,25 @@ func (f Facts) Carry(epoch int, s state.State) Facts {
 		f.State = s
 	}
 	f.StateAt = 0
+	return f
+}
+
+// Answered returns the facts after an event of the call answered a with the lines pending to write, for the next
+// event: the answers of the events are merged into one, so a block marks the call as blocked, and the messages for
+// the user of an answer that does not block become warnings of the call. A later event then knows the messages of
+// the call its block hides, and whether the block of an earlier one hides its own. An answer that does not block
+// keeps a copy of pending, in place of the lines the facts held (see Pending); a block drops them, since the user
+// never sees their notices.
+func (f Facts) Answered(a agent.Answer, pending []state.Entry) Facts {
+	if a.Block {
+		f.Blocked = true
+		f.Pending = nil
+		return f
+	}
+	f.Pending = slices.Clone(pending)
+	for _, w := range a.Warnings {
+		f = f.warned(w)
+	}
 	return f
 }
 

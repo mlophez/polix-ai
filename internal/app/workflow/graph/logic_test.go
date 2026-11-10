@@ -126,6 +126,26 @@ on:
 	}
 }
 
+// AC9: a notify is drawn with its message, and with always when it shows every time.
+func TestDecideNotify(t *testing.T) {
+	wf := workflow.Workflow{Version: 1, On: map[string][]workflow.Entry{
+		workflow.Prompt: {
+			{When: workflow.Cond{"branch": "^main$"}, Action: workflow.Action{Notify: &workflow.Notify{
+				Message: `Estás en "main"`}}},
+			{Action: workflow.Action{Notify: &workflow.Notify{Message: "Rama {branch}", Always: true}}},
+		},
+	}}
+	want := "flowchart TD\n" +
+		"  subgraph prompt\n" +
+		"    n0[\"when branch=^main$<br/>notify: Estás en 'main'\"]\n" +
+		"    n1[\"notify: Rama {branch} (always)\"]\n" +
+		"    n0 --> n1\n" +
+		"  end\n"
+	if out := Decide(wf, true); out.Mermaid != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", out.Mermaid, want)
+	}
+}
+
 func TestDecideEmpty(t *testing.T) {
 	if out := Decide(workflow.Workflow{Version: 1}, true); out.Mermaid != "flowchart TD\n" {
 		t.Fatalf("got %q", out.Mermaid)

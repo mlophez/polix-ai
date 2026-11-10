@@ -100,7 +100,7 @@ func TestGuardrailsProblems(t *testing.T) {
 		"polix.yaml:3: guardrails.protected_files: a path glob cannot be empty",
 		"polix.yaml:5: guardrails.run_on_stop: an item needs run",
 		`polix.yaml:6: unknown key "blok" (when, unless, action)`,
-		"polix.yaml:6: the entry needs an action with one of run, inject, block",
+		"polix.yaml:6: the entry needs an action with one of run, inject, block, notify",
 		"polix.yaml:7: guardrails.forbidden_commands: an item needs a pattern",
 		"polix.yaml:9: guardrails.protected_branches: a branch name cannot be empty",
 	}

@@ -1,6 +1,7 @@
 // Package state is the domain of the append-only log of polix in <git-dir>/polix/log.jsonl: what polix observed by
-// itself (a session started, a subagent finished, a check of polix passed, an entry blocked, an inject reached the
-// AI), tied to the content hash it was observed on when a query needs it, and every decision it takes, which also
+// itself (a session or a subagent started, a subagent finished, a check of polix passed, an entry blocked, an inject
+// reached the AI, a notice reached the user), tied to the content hash it was observed on when a query needs it, and
+// every decision it takes, which also
 // serves as evidence of the process each change followed. The repeat of the verbs, the loop guard and the condition
 // finished are queries over the observed entries.
 //

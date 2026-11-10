@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 )
@@ -25,6 +26,7 @@ type Action struct {
 	Run    *Run
 	Inject *Inject
 	Block  *Block
+	Notify *Notify
 	Keys   []string // the keys the file used, so Valid rejects unknown ones
 }
 
@@ -56,18 +58,27 @@ type Block struct {
 	Keys    []string
 }
 
+// Notify shows a message to the user, never to the agent: once per session and expanded text, whatever the actor,
+// or every time its entry applies with Always.
+type Notify struct {
+	Message string
+	Always  bool // show it every time, not once per session
+	Keys    []string
+}
+
 // Cond is a set of conditions that must all hold.
 type Cond map[string]any
 
 // EntryKeys are the keys of an entry.
 var EntryKeys = []string{"when", "unless", "action"}
 
-// RunKeys, InjectKeys and BlockKeys are the keys of the long form of each verb, in the order polix config fmt writes
-// them: the flags always and once first and the message last.
+// RunKeys, InjectKeys, BlockKeys and NotifyKeys are the keys of the long form of each verb, in the order polix config
+// fmt writes them: the flags always and once first and the message last.
 var (
 	RunKeys    = []string{"always", "command", "rules", "message"}
 	InjectKeys = []string{"always", "file", "text", "rules"}
 	BlockKeys  = []string{"once", "message"}
+	NotifyKeys = []string{"always", "message"}
 )
 
 // Valid tells why the entry is not valid on its own: unknown keys (the old ones with their new spelling), no verb
@@ -92,8 +103,8 @@ func (a Action) Valid() error {
 	return nil
 }
 
-// Verb names the verb the action holds (VerbRun, VerbInject or VerbBlock), the first one when it holds several, or
-// "" when it holds none.
+// Verb names the verb the action holds (VerbRun, VerbInject, VerbBlock or VerbNotify), the first one when it holds
+// several, or "" when it holds none.
 func (a Action) Verb() string {
 	for _, verb := range a.verbs() {
 		return verb
@@ -113,6 +124,9 @@ func (a Action) verbs() []string {
 	if a.Block != nil {
 		out = append(out, VerbBlock)
 	}
+	if a.Notify != nil {
+		out = append(out, VerbNotify)
+	}
 	return out
 }
 
@@ -129,7 +143,7 @@ func (r Run) Valid() error {
 // Valid tells why the inject is not valid: an unknown key or not exactly one of file, text or rules.
 func (c Inject) Valid() error {
 	v := &validator{}
-	v.inject("", 0, c)
+	v.inject(0, c)
 	if len(v.problems) > 0 {
 		return InvalidError(v.problems)
 	}
@@ -139,7 +153,17 @@ func (c Inject) Valid() error {
 // Valid tells why the block is not valid: an unknown key or no message.
 func (b Block) Valid() error {
 	v := &validator{}
-	v.block("", 0, b)
+	v.block(0, b)
+	if len(v.problems) > 0 {
+		return InvalidError(v.problems)
+	}
+	return nil
+}
+
+// Valid tells why the notify is not valid: an unknown key or no message.
+func (n Notify) Valid() error {
+	v := &validator{}
+	v.notify(0, n)
 	if len(v.problems) > 0 {
 		return InvalidError(v.problems)
 	}
@@ -191,10 +215,33 @@ func (v *validator) action(ev string, line int, a Action, old bool) {
 		v.run(line, *a.Run)
 	}
 	if a.Inject != nil {
-		v.inject(ev, line, *a.Inject)
+		v.inject(line, *a.Inject)
 	}
 	if a.Block != nil {
-		v.block(ev, line, *a.Block)
+		v.block(line, *a.Block)
+	}
+	if a.Notify != nil {
+		v.notify(line, *a.Notify)
+	}
+	v.allowed(ev, line, verbs)
+}
+
+// allowed reports, after the problems of each verb, every verb of verbs that the event ev does not allow
+// (EventVerbs): why, with the alternative, and the verbs the event allows. An empty ev skips it.
+func (v *validator) allowed(ev string, line int, verbs []string) {
+	allow, ok := EventVerbs[ev]
+	if !ok {
+		return
+	}
+	for _, verb := range verbs {
+		if slices.Contains(allow, verb) {
+			continue
+		}
+		why := fmt.Sprintf("%s is not allowed on %s", verb, ev)
+		if f, ok := refusals[verb]; ok {
+			why = fmt.Sprintf(f, ev)
+		}
+		v.add(line, "%s (%s allows %s)", why, ev, strings.Join(allow, ", "))
 	}
 }
 
@@ -230,13 +277,9 @@ func (v *validator) run(line int, r Run) {
 	v.placeholders(line, r.Message)
 }
 
-// inject reports the problems of c on event ev, in the order polix config check reports them (its keys, then the
-// event); an empty ev skips the event.
-func (v *validator) inject(ev string, line int, c Inject) {
+// inject reports the problems of c at line, its keys first; the event is checked by allowed.
+func (v *validator) inject(line int, c Inject) {
 	v.unknownKeys(line, "inject", c.Keys, InjectKeys)
-	if ev == Stop || ev == SubagentStop {
-		v.add(line, "inject does not reach the agent on %s, which cannot receive context", ev)
-	}
 	n := 0
 	for _, s := range []string{c.File, c.Text, c.Rules} {
 		if s != "" {
@@ -249,15 +292,20 @@ func (v *validator) inject(ev string, line int, c Inject) {
 	}
 }
 
-// block reports the problems of b on event ev, its keys first; an empty ev skips the event.
-func (v *validator) block(ev string, line int, b Block) {
+// block reports the problems of b at line, its keys first; the event is checked by allowed.
+func (v *validator) block(line int, b Block) {
 	v.unknownKeys(line, "block", b.Keys, BlockKeys)
-	if slices.Contains(Informed, ev) {
-		v.add(line, "block cannot stop %s, which already happened: use inject, or a run whose failure reaches the AI",
-			ev)
-	}
 	if strings.TrimSpace(b.Message) == "" {
 		v.add(line, "block needs a message")
 	}
 	v.placeholders(line, b.Message)
+}
+
+// notify reports the problems of n at line, its keys first; the event is checked by allowed.
+func (v *validator) notify(line int, n Notify) {
+	v.unknownKeys(line, "notify", n.Keys, NotifyKeys)
+	if strings.TrimSpace(n.Message) == "" {
+		v.add(line, "notify needs a message")
+	}
+	v.placeholders(line, n.Message)
 }

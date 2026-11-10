@@ -53,10 +53,11 @@ func (r *pass) guardrails() workflow.Workflow {
 }
 
 // deny refuses the event for a protection with reason, logged as a denial of from (builtinProtection or the shortcut
-// of guardrails) at line, the line of its item or 0.
+// of guardrails) at line, the line of its item or 0. The pending warnings of the call are logged as not shown (see
+// warn).
 func (r *pass) deny(from string, line int, reason string) (agent.Answer, bool) {
 	r.log(from, line, "deny", reason)
-	return agent.Answer{}.Refuse(reason), true
+	return r.warn(agent.Answer{}.Refuse(reason)), true
 }
 
 // mayWrite reports whether a command line may create, change or delete files, by the heuristic that guards the

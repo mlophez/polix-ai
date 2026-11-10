@@ -2,6 +2,7 @@ package setup
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -39,12 +40,50 @@ func TestHookTimeouts(t *testing.T) {
 	}
 }
 
+// Every handler polix registers, the update one included, shows polix while it runs, in both agents.
+func TestHookStatus(t *testing.T) {
+	for _, agent := range []string{Claude, Codex} {
+		hooks := (Setup{}).Hooks(agent)
+		if len(hooks) == 0 {
+			t.Fatalf("%s: no hooks", agent)
+		}
+		for ev, groups := range hooks {
+			for _, g := range groups {
+				for _, h := range g.Handlers {
+					if h.Status != StatusMessage || StatusMessage != "polix" {
+						t.Errorf("%s %s %q: status %q", agent, ev, h.Command, h.Status)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestHookEvents(t *testing.T) {
 	if _, ok := (Setup{}).Hooks(Claude)["PostToolUseFailure"]; !ok {
 		t.Fatal("Claude Code gets PostToolUseFailure")
 	}
 	if _, ok := (Setup{}).Hooks(Codex)["PostToolUseFailure"]; ok {
 		t.Fatal("only Claude Code gets PostToolUseFailure")
+	}
+	for _, agent := range []string{Claude, Codex} {
+		got := (Setup{}).Hooks(agent)["SubagentStart"]
+		if len(got) != 1 || got[0].Matcher != "" || len(got[0].Handlers) != 1 ||
+			got[0].Handlers[0].Command != "polix hook "+agent || got[0].Handlers[0].Status != StatusMessage {
+			t.Fatalf("%s gets SubagentStart: %+v", agent, got)
+		}
+	}
+	claude := make([]string, 0, len(ClaudeHookEvents))
+	for _, ev := range ClaudeHookEvents {
+		claude = append(claude, ev.Name)
+		if ev.Name == "SubagentStart" && len(ev.Tools) > 0 {
+			t.Fatalf("SubagentStart has no tools: %q", ev.Tools)
+		}
+	}
+	for _, events := range [][]string{HookEvents, claude} {
+		if i := slices.Index(events, "UserPromptSubmit"); i < 0 || slices.Index(events, "SubagentStart") != i+1 {
+			t.Fatalf("SubagentStart goes right after UserPromptSubmit: %q", events)
+		}
 	}
 	if got := (Setup{}).Hooks(Claude)["PreToolUse"]; len(got) != 1 || got[0].Matcher != claudeTools {
 		t.Fatalf("the tools polix governs: %+v", got)

@@ -117,8 +117,8 @@ func (r *pass) contextRules(line int, target string, once bool) string {
 
 // due reports whether a once-only inject of the entry at line with key is due for the actor of the event: it never
 // reached the actor in the session, or after it reached it a start of the session (a new or compacted
-// context) or, for a subagent, the end of a subagent of its type in the session (its next run starts with a new
-// context) was observed. A log that cannot be read makes it due every time, with a warning.
+// context, which resets every actor) or, for a subagent, the start or the end of a subagent of its type in the
+// session (a run with a new context) was observed. A log that cannot be read makes it due every time, with a warning.
 func (r *pass) due(line int, key string) bool {
 	st, err := r.currentState()
 	if r.waiting() {
@@ -130,9 +130,11 @@ func (r *pass) due(line int, key string) bool {
 	}
 	ev := r.ev.Event
 	injected := state.Query{Outcome: state.OutcomeInjected, Session: ev.Session, Actor: ev.Actor, Line: line, Key: key}
-	started := state.Query{Outcome: state.OutcomeStarted, Session: ev.Session}
+	started := state.Query{Outcome: state.OutcomeStarted, Session: ev.Session, Event: workflow.Start}
+	spawned := state.Query{Outcome: state.OutcomeStarted, Session: ev.Session, Event: workflow.SubagentStart,
+		Actor: ev.Actor}
 	finished := state.Query{Outcome: state.OutcomeFinished, Session: ev.Session, Key: ev.Actor}
-	if injected.Valid() != nil || started.Valid() != nil || finished.Valid() != nil {
+	if injected.Valid() != nil || started.Valid() != nil || spawned.Valid() != nil || finished.Valid() != nil {
 		return true
 	}
 	last := st.Index(injected)
@@ -141,7 +143,7 @@ func (r *pass) due(line int, key string) bool {
 	}
 	reset := st.Index(started)
 	if ev.Actor != agent.ActorSession {
-		reset = max(reset, st.Index(finished))
+		reset = max(reset, st.Index(spawned), st.Index(finished))
 	}
 	return reset > last
 }

@@ -192,6 +192,30 @@ func (y *blockYAML) UnmarshalYAML(n *yaml.Node) error {
 	}
 }
 
+// UnmarshalYAML reads the notify: a string is the message, and a map keeps its keys, so Valid can reject unknown
+// ones.
+func (y *notifyYAML) UnmarshalYAML(n *yaml.Node) error {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		*y = notifyYAML{Message: n.Value}
+		return nil
+	case yaml.MappingNode:
+		if err := (nodeYAML{n}).bools(workflow.VerbNotify, "always"); err != nil {
+			return err
+		}
+		type plain notifyYAML
+		var p plain
+		if err := n.Decode(&p); err != nil {
+			return err
+		}
+		*y = notifyYAML(p)
+		y.keys = nodeYAML{n}.keys()
+		return nil
+	default:
+		return fmt.Errorf("line %d: notify takes a message or a map with message and always", n.Line)
+	}
+}
+
 // UnmarshalYAML keeps the keys of rules, so Valid can reject unknown ones.
 func (y *rulesYAML) UnmarshalYAML(n *yaml.Node) error {
 	if n.Kind != yaml.MappingNode {

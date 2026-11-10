@@ -41,8 +41,8 @@ port:
    in `on`.
 4. The label of a node of an event joins with `<br/>`: its `when` and `unless` conditions, as `when key=value` and
    `unless key=value` ordered by key; the verb of its action: `block: <message>`, followed by `(once)` with
-   `once: true`; `run` with its command or `rules <target>`, and `inject` with `file <file>`, `rules <target>` or
-   `: <text>`, each followed by `(always)` with `always: true`; and `from <shortcut>` when the entry was expanded
+   `once: true`; `run` with its command or `rules <target>`, `inject` with `file <file>`, `rules <target>` or
+   `: <text>`, and `notify: <message>`, each followed by `(always)` with `always: true`; and `from <shortcut>` when the entry was expanded
    from a shortcut (`From`, as `guardrails.format_on_edit`), nothing for an entry written in `on`. In every label,
    double quotes become single ones, and the line breaks of a message become `<br/>`, so each statement keeps one
    line.

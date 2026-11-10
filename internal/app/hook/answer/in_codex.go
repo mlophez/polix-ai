@@ -22,8 +22,8 @@ var codexShellTools = map[string]bool{"Bash": true, "shell": true, "local_shell"
 var codexEditTools = map[string]bool{"apply_patch": true, "Edit": true, "Write": true}
 
 // codexContextEvents are the events of Codex whose JSON output can add context to the session.
-var codexContextEvents = contextEvents{"SessionStart": true, "UserPromptSubmit": true, "PreToolUse": true,
-	"PostToolUse": true}
+var codexContextEvents = contextEvents{"SessionStart": true, "UserPromptSubmit": true, "SubagentStart": true,
+	"PreToolUse": true, "PostToolUse": true}
 
 // codexPatchFile finds the files an apply_patch touches.
 var codexPatchFile = regexp.MustCompile(`(?m)^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$`)
@@ -42,6 +42,8 @@ func (c codex) parse(input []byte) (string, []agent.Event, error) {
 		events, err = in.single(agent.Codex, workflow.Start)
 	case "UserPromptSubmit":
 		events, err = in.single(agent.Codex, workflow.Prompt)
+	case "SubagentStart":
+		events, err = in.single(agent.Codex, workflow.SubagentStart)
 	case "Stop":
 		events, err = in.single(agent.Codex, workflow.Stop)
 	case "SubagentStop":

@@ -138,16 +138,19 @@ func TestDecideHooks(t *testing.T) {
 	if got := text(Decide(i, false)); !strings.Contains(got, "does not update itself") {
 		t.Fatalf("no update command:\n%s", got)
 	}
-	var doc map[string]map[string]any
-	_ = json.Unmarshal([]byte(settings), &doc)
-	delete(doc["hooks"], "PostToolUseFailure")
-	data, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	i.ClaudeHooks[file] = hooksOf(data)
-	if out := Decide(i, false); out.Failed || !strings.Contains(text(out), "warn hooks PostToolUseFailure does not run") {
-		t.Fatalf("old settings only warn:\n%s", text(out))
+	for _, ev := range []string{"PostToolUseFailure", "SubagentStart"} {
+		var doc map[string]map[string]any
+		_ = json.Unmarshal([]byte(settings), &doc)
+		delete(doc["hooks"], ev)
+		data, err := json.Marshal(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i.ClaudeHooks[file] = hooksOf(data)
+		out := Decide(i, false)
+		if out.Failed || !strings.Contains(text(out), "warn hooks "+ev+" does not run polix hook claude: run polix install") {
+			t.Fatalf("old settings without %s only warn:\n%s", ev, text(out))
+		}
 	}
 	i.ClaudeHooks[filepath.FromSlash("/h/.claude/settings.json")] = hooksOf([]byte(settings))
 	i.ClaudeHooks[file] = hooksOf([]byte(settings))

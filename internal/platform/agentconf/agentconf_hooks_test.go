@@ -14,10 +14,10 @@ var events = []string{"SessionStart", "PreToolUse", "Stop"}
 
 // want are the hooks the caller registers in these tests.
 var want = map[string][]Group{
-	"SessionStart": {{Handlers: []Handler{{Command: "polix hook claude", Timeout: 900}}},
-		{Matcher: "startup", Handlers: []Handler{{Command: "polix update --hook", Timeout: 180}}}},
-	"PreToolUse": {{Matcher: "Edit|Bash", Handlers: []Handler{{Command: "polix hook claude", Timeout: 900}}}},
-	"Stop":       {{Handlers: []Handler{{Command: "polix hook claude", Timeout: 900}}}},
+	"SessionStart": {{Handlers: []Handler{{Command: "polix hook claude", Timeout: 900, Status: "polix"}}},
+		{Matcher: "startup", Handlers: []Handler{{Command: "polix update --hook", Timeout: 180, Status: "polix"}}}},
+	"PreToolUse": {{Matcher: "Edit|Bash", Handlers: []Handler{{Command: "polix hook claude", Timeout: 900, Status: "polix"}}}},
+	"Stop":       {{Handlers: []Handler{{Command: "polix hook claude", Timeout: 900, Status: "polix"}}}},
 }
 
 // The hooks written in an empty file, each group on its line and the events in their order.
@@ -29,14 +29,14 @@ func TestMergeHooksCreates(t *testing.T) {
 	wantText := `{
   "hooks": {
     "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900 }] },
-      { "matcher": "startup", "hooks": [{ "type": "command", "command": "polix update --hook", "timeout": 180 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] },
+      { "matcher": "startup", "hooks": [{ "type": "command", "command": "polix update --hook", "timeout": 180, "statusMessage": "polix" }] }
     ],
     "PreToolUse": [
-      { "matcher": "Edit|Bash", "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900 }] }
+      { "matcher": "Edit|Bash", "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900 }] }
+      { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] }
     ]
   }
 }
@@ -136,6 +136,34 @@ func TestMergeHooksMixedGroup(t *testing.T) {
 	}
 }
 
+// A file written without the status gets it on merge, and another hook of the group keeps its own fields.
+func TestMergeHooksAddsTheStatus(t *testing.T) {
+	old := `{"hooks": {"Stop": [{"hooks": [
+  {"type": "command", "command": "polix hook claude", "timeout": 900},
+  {"type": "command", "command": "notify-send done", "timeout": 5, "statusMessage": "notifying"}
+]}]}}`
+	got, action, err := MergeHooks([]byte(old), true, want, events, ours)
+	if err != nil || action != "updated" {
+		t.Fatal(action, err)
+	}
+	h, _ := ReadHooks(got)
+	for ev, groups := range h {
+		for _, g := range groups {
+			for _, c := range g.Handlers {
+				if ours(c.Command) && c.Status != "polix" {
+					t.Errorf("%s: %q has no status: %+v", ev, c.Command, c)
+				}
+				if c.Command == "notify-send done" && c != (Handler{Command: "notify-send done", Timeout: 5, Status: "notifying"}) {
+					t.Errorf("the other hook keeps its fields: %+v", c)
+				}
+			}
+		}
+	}
+	if !strings.Contains(string(got), `"notify-send done", "timeout": 5, "statusMessage": "notifying"`) {
+		t.Fatalf("the other hook is kept as it was:\n%s", got)
+	}
+}
+
 // Every group of hooks is written on one line.
 func TestHooksGroupsInline(t *testing.T) {
 	got, _, _ := MergeHooks([]byte(`{"hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "prompt", "prompt": "p", "x": [1, {"a": {}}]}]}]}}`),
@@ -176,6 +204,13 @@ func TestParseHooks(t *testing.T) {
 	}
 	if len(stop) != 1 || len(stop[0].Handlers) != 2 || stop[0].Handlers[1].Command != "" {
 		t.Fatalf("a handler of another type has no command: %+v", stop)
+	}
+	status, err := ParseHooks([]byte(`{"hooks": {"Stop": [{"hooks": [
+		{"type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix"},
+		{"type": "command", "command": "echo hi"}]}]}}`))
+	if err != nil || len(status["Stop"]) != 1 || status["Stop"][0].Handlers[0].Status != "polix" ||
+		status["Stop"][0].Handlers[1].Status != "" {
+		t.Fatalf("the status of each handler: %+v, %v", status, err)
 	}
 	if got, err := ParseHooks([]byte(`{"permissions": {"allow": []}}`)); err != nil || len(got) != 0 {
 		t.Fatalf("no hooks: %+v, %v", got, err)
