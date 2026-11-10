@@ -48,6 +48,11 @@ guardrails:
 
 # Entries run in file order after guardrails, and the first block ends the evaluation.
 on:
+  # This project commits straight to main: the agent never opens a branch on its own.
+  start:
+    - action:
+        inject: "Commits in this project go directly to main: never create, switch to or push other branches."
+
   pre_commit:
     # A large or risky Go change needs a review of polix:reviewer before the main session commits it. Subagents are
     # left out: a command of theirs that only quotes a git commit (a probe of the reviewer) counts as a commit too.
