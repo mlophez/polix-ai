@@ -518,8 +518,9 @@ Conditions:
   heuristic as `protected_files` (see [Protections](#protections)); reading does not count. Only on `pre_command`, `post_command` and `pre_commit`.
 - `actor`: who acts, `session` or the subagent type. An agent of a plugin is named with its prefix, as
   `polix:rules-reviewer`; an agent of `.claude/agents/` by its bare name.
-- `finished`: a subagent type, or a list of them (all must hold), ended on this branch and the files of the scope
-  of the entry did not change since. See [What polix observes](#what-polix-observes-and-finished).
+- `finished`: a subagent type, or a list of them (all must hold), ended on this branch, or on another one with the
+  same HEAD commit, and the files of the scope of the entry did not change since. See
+  [What polix observes](#what-polix-observes-and-finished).
 - `not`: a map of nested conditions; it holds unless every one of them holds (with one nested condition, it is its
   negation).
 - `any`: a map of nested conditions; it holds when at least one of them holds. It may hold `not` and sit inside
@@ -640,9 +641,10 @@ enforcing it: try a new gate in a branch, and read its decisions with `polix log
   again, an edit outside does not, and another actor or a new session, which never saw it, is reminded on its own.
   A reminder is for a request the agent may rightly decline, such as checking whether the docs need an update;
   a gate that must hold has no `once`, since the agent would pass a reminder by trying again.
-- A `run` is not run again once it passed on the same branch and content: the second `stop` on unchanged files
-  runs nothing. The repeat is keyed by what it runs, the expanded arguments joined by spaces (`rules` and the
-  expanded target for `run: { rules }`), whoever's entry it is, so two entries that run `just test` share it and
+- A `run` is not run again once it passed on the same content, on the same branch or on another one with the same
+  HEAD commit: the second `stop` on unchanged files runs nothing, also after a `git checkout -b`. The repeat is
+  keyed by what it runs, the expanded arguments joined by spaces (`rules` and the expanded target for
+  `run: { rules }`), whoever's entry it is, so two entries that run `just test` share it and
   `{path}` in the command makes one key per path. A failing `run` runs again on the next event, and any edit makes
   it run again. `always: true` runs it every time, for a command whose result depends on more than the files of the
   repository (the network, the clock, a service).
@@ -668,7 +670,9 @@ an edit of `README.md` or `docs/` keeps a review of `changed: ["*.go"]` and a re
 
 polix does not keep facts declared by the workflow. It writes to its log an `observed` line only for what the
 workflow, or the evidence, asks about, each with the session, the agent, the actor, the event, the branch, the
-line of the entry, a key and one outcome:
+line of the entry, a key and one outcome. The lines about a content that are read by branch, a `finished` with a
+content hash, a `passed` and a `blocked`, also carry `head`, the commit HEAD pointed to when they were written, left
+out when the repository has no commit yet; the decisions and the other outcomes never carry it:
 
 - `finished`: a subagent ended and the answer to its `subagent_stop` did not refuse. It is written, with the
   content hash and the subagent type as key, when a `finished` of the workflow names that type; polix observes it
@@ -689,16 +693,21 @@ line of the entry, a key and one outcome:
   included).
 
 `finished: <subagent>` (or a list, all of them) holds when the latest `finished` line with a hash of that type on
-the current branch has a content equal to the current one on the scope of the entry: the files that differ between
-its tree and the current tree, if any, are all outside the scope. So a review of the Go code survives an edit of the
-docs, and any edit of a Go file asks for a new one. It never holds for another type, nor without a known content
-hash, nor when the `subagent_stop` of the subagent was refused: a subagent the loop guard let through after its
-blocks did not finish, and the `finished` line without hash it may get is never read by the condition. A tree git
-no longer has (pruned by `git gc`) or a comparison that fails counts as changed, with a `warn` decision that names
-the error: the gate asks again.
-The branch is compared exactly: on a detached HEAD, whose branch is empty, nothing written on a branch counts, and
-the lines written on a detached HEAD only match each other. The same holds for the repeat of `run` and for a `once`
-block.
+the current branch, or on the same HEAD commit, has a content equal to the current one on the scope of the entry:
+the files that differ between its tree and the current tree, if any, are all outside the scope. So a review of the
+Go code survives an edit of the docs, and any edit of a Go file asks for a new one. It never holds for another
+type, nor without a known content hash, nor when the `subagent_stop` of the subagent was refused: a subagent the
+loop guard let through after its blocks did not finish, and the `finished` line without hash it may get is never
+read by the condition. A tree git no longer has (pruned by `git gc`) or a comparison that fails counts as changed,
+with a `warn` decision that names the error: the gate asks again.
+A line counts when it was written on the current branch, or when its `head` is the current HEAD commit, both
+known: a branch made with `git checkout -b` sits on the same commit, so the review, the checks that passed and the
+reminders given before it still count there, and only an identical content on the scope carries over, since the
+tree is still compared. A branch on another commit does not see them. On the same branch a line keeps counting
+after a commit moves HEAD, so a reviewed change committed in two parts asks for no second review. A detached HEAD,
+whose branch is empty, sees the lines written on a branch at the same commit, and the lines written on a detached
+HEAD match each other. A line without `head`, written by an older polix, and a repository without commits, whose
+HEAD is unknown, match only by branch. The same holds for the repeat of `run` and for a `once` block.
 
 Only what polix sees by itself counts: its own runs and the end of a subagent. A command the AI runs is never
 recorded and never counts as passed, green or not: its text does not prove what ran (an alias, another folder, a
@@ -814,7 +823,8 @@ count: it fails open, lets the agent stop with a warning and records a `loop_gua
   reason, the evidence of the process each change followed. It carries the content hash only when the call already
   computed it, since computing it costs a pass over the whole tree.
 - `observed`: what polix saw by itself and the workflow asks about, with its outcome (`finished`, `passed`,
-  `blocked`, `injected` or `started`) and its key; see
+  `blocked`, `injected` or `started`), its key and, on a `finished` with hash, a `passed` and a `blocked`, the
+  `head` commit; see
   [What polix observes](#what-polix-observes-and-finished). Nothing else is recorded: an edit and a command of the
   AI leave no observed line, nor does the end of a subagent no `finished` names when no `inject` acts once.
 

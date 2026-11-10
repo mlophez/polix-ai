@@ -1,11 +1,14 @@
 package answer
 
 import (
+	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/state"
+	"github.com/mlophez/polix-ai/internal/platform/git"
 )
 
 // encodeLine caps the reason, so no line of the log comes near state.MaxLine, and the line decodes back.
@@ -48,5 +51,29 @@ func TestEncodeLineFields(t *testing.T) {
 	}
 	if _, err := a.encodeLine(state.Entry{}); err == nil {
 		t.Fatal("an entry without kind")
+	}
+}
+
+// AC6: Append writes the HEAD commit of an entry under the key head, right after the hash, and leaves it out when
+// the entry has none.
+func TestAppendHead(t *testing.T) {
+	a := &Adapter{Repo: &git.Repo{GitDir: t.TempDir()}}
+	ctx := context.Background()
+	if err := a.Append(ctx, state.Entry{At: "t", Kind: state.KindObserved, Branch: "main", Hash: "h", Head: "c1",
+		Key: "just test", Outcome: state.OutcomePassed}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Append(ctx, state.Entry{At: "t", Kind: state.KindDecision, Branch: "main", Hash: "h",
+		Outcome: "skip"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(a.logPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"at":"t","kind":"observed","branch":"main","hash":"h","head":"c1","key":"just test","outcome":"passed"}` +
+		"\n" + `{"at":"t","kind":"decision","branch":"main","hash":"h","outcome":"skip"}` + "\n"
+	if got := string(data); got != want {
+		t.Fatal(got)
 	}
 }

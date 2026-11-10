@@ -59,8 +59,8 @@ func (a *Adapter) Locate(_ context.Context, path, cwd string) (string, bool) {
 	return a.Repo.Rel(path, cwd)
 }
 
-// Branch returns the current branch.
-func (a *Adapter) Branch(ctx context.Context) string { return a.Repo.Branch(ctx) }
+// Head returns the current branch and the commit HEAD points to.
+func (a *Adapter) Head(ctx context.Context) (branch, commit string) { return a.Repo.Head(ctx) }
 
 // Hash returns the content hash, computed with a scratch index in the folder of the state.
 func (a *Adapter) Hash(ctx context.Context) (string, error) {

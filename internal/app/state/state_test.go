@@ -117,6 +117,40 @@ func TestObservedByBranchDetached(t *testing.T) {
 	}
 }
 
+// With ByBranch and a head, an entry is selected when it is of the same branch, whatever its head, or when it
+// carries the same head, whatever its branch; an entry of another branch with another head or without head is not.
+// A query without head selects only by branch, and on a detached HEAD the entries of a branch on the same commit
+// are selected too.
+func TestObservedByBranchOrHead(t *testing.T) {
+	sameBranch := Entry{Kind: KindObserved, Outcome: OutcomePassed, Branch: "main", Head: "c2", Key: "a", Hash: "h"}
+	sameHead := Entry{Kind: KindObserved, Outcome: OutcomePassed, Branch: "dev", Head: "c1", Key: "b", Hash: "h"}
+	otherHead := Entry{Kind: KindObserved, Outcome: OutcomePassed, Branch: "dev", Head: "c2", Key: "c", Hash: "h"}
+	noHead := Entry{Kind: KindObserved, Outcome: OutcomePassed, Branch: "dev", Key: "d", Hash: "h"}
+	s := State{Entries: []Entry{sameBranch, sameHead, otherHead, noHead}}
+	keys := func(q Query) string {
+		var out []string
+		for _, e := range s.Observed(q) {
+			out = append(out, e.Key)
+		}
+		return strings.Join(out, "")
+	}
+	if got := keys(Query{Outcome: OutcomePassed, Branch: "main", Head: "c1", ByBranch: true}); got != "ab" {
+		t.Fatalf("by branch or head: %q", got)
+	}
+	if i := s.Index(Query{Outcome: OutcomePassed, Branch: "main", Head: "c1", ByBranch: true}); i != 1 {
+		t.Fatalf("index %d", i)
+	}
+	if got := keys(Query{Outcome: OutcomePassed, Branch: "main", ByBranch: true}); got != "a" {
+		t.Fatalf("without head only the branch: %q", got)
+	}
+	if got := keys(Query{Outcome: OutcomePassed, Head: "c1", ByBranch: true}); got != "b" {
+		t.Fatalf("a detached HEAD on the same commit: %q", got)
+	}
+	if got := keys(Query{Outcome: OutcomePassed, Head: "c1"}); got != "abcd" {
+		t.Fatalf("without ByBranch the head is ignored: %q", got)
+	}
+}
+
 // Index is the position of the last entry the query selects, so two observations can be ordered; -1 for none, for
 // an empty hash and for a query that is not valid.
 func TestIndex(t *testing.T) {

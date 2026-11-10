@@ -54,9 +54,10 @@ func (e Evaluation) Fold() bool { return e.System == "darwin" || e.System == "wi
 // Windows reports whether the evaluation runs on Windows.
 func (e Evaluation) Windows() bool { return e.System == "windows" }
 
-// KnowBranch returns the evaluation knowing the current branch.
-func (e Evaluation) KnowBranch(branch string) Evaluation {
-	e.Facts = e.Facts.learnBranch(branch)
+// KnowBranch returns the evaluation knowing the current branch, "" on a detached HEAD, and the commit HEAD points
+// to, "" when unknown.
+func (e Evaluation) KnowBranch(branch, head string) Evaluation {
+	e.Facts = e.Facts.learnBranch(branch, head)
 	return e
 }
 

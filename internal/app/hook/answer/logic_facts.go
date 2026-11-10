@@ -46,6 +46,17 @@ func (r *pass) branch() string {
 	return ""
 }
 
+// head returns the commit HEAD points to, learned with the branch: "" when unknown, as on a repository without
+// commits.
+func (r *pass) head() string {
+	if r.ev.Facts.HasBranch {
+		return r.ev.Facts.Head
+	}
+	s := hook.Step{Branch: true}
+	r.ask(s, s.Valid())
+	return ""
+}
+
 // hash returns the content hash of this epoch and whether it is known.
 func (r *pass) hash() (string, bool) {
 	if h, known, computed := r.ev.Facts.Hash(r.epoch); computed {

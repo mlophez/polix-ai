@@ -27,6 +27,7 @@ import (
 // facts are the facts and outcomes a walk answers the steps with.
 type facts struct {
 	branch    string
+	head      string   // the commit HEAD points to, learned with the branch; "" for unknown
 	hashes    []string // the content hash at each epoch
 	hashErr   error
 	state     state.State
@@ -66,7 +67,7 @@ func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
 		steps = append(steps, s)
 		switch {
 		case s.Branch:
-			ev = ev.KnowBranch(f.branch)
+			ev = ev.KnowBranch(f.branch, f.head)
 		case s.Hash:
 			h := ""
 			if s.Epoch < len(f.hashes) {
@@ -1619,6 +1620,87 @@ on:
 			t.Fatalf("plain block %d: %+v %+v", i, out.Answer, steps)
 		}
 		g.state = logged(t, g.state, steps)
+	}
+}
+
+// AC5: a block with once that reminded the actor of a session on a branch does not block again on another branch on
+// the same HEAD commit while the files in its scope did not change, and blocks on a branch on another commit.
+func TestBlockOnceByHead(t *testing.T) {
+	ev := eval(t, `version: 1
+on:
+  pre_commit:
+    - when: { changed: "*.go" }
+      action: { block: { message: "Actualiza la documentación", once: true } }
+`, workflow.PreCommit)
+	reminded := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeBlocked,
+		Session: "s1", Event: workflow.PreCommit, Actor: agent.ActorSession, Line: 4, Branch: "main", Hash: "h",
+		Head: "c1"}}}
+	f := facts{branch: "feat/x", head: "c1", hashes: []string{"h2"}, state: reminded, changed: []string{"internal/a.go"},
+		trees: []string{"ai/reports/r.md"}}
+	out, steps := walk(t, ev, f)
+	if skips := decided(steps, "skip"); out.Answer.Block || len(skips) != 1 || skips[0].Line != 4 {
+		t.Fatalf("same head: %+v %+v", out.Answer, appended(steps))
+	}
+	f.head = "c2"
+	out, steps = walk(t, ev, f)
+	if got := observed(steps); !out.Answer.Block || len(got) != 1 || got[0].Outcome != state.OutcomeBlocked ||
+		got[0].Head != "c2" {
+		t.Fatalf("another head: %+v %+v", out.Answer, got)
+	}
+}
+
+// AC6: the observed lines about a content that are read by branch, finished with a hash, passed and blocked, carry
+// the HEAD commit; a finished without hash, an injected line and the decisions do not.
+func TestWritesHead(t *testing.T) {
+	yaml := `version: 1
+on:
+  pre_commit:
+    - unless: { finished: polix:reviewer }
+      action: { block: "Revisa" }
+  pre_edit:
+    - action: { inject: "Lee el plan" }
+  subagent_stop:
+    - when: { actor: polix:reviewer, branch: "^refuse$" }
+      action: { block: "Termina la revisión" }
+  stop:
+    - action: { run: just test }
+`
+	stop := eval(t, yaml, workflow.SubagentStop)
+	f := facts{branch: "main", head: "c1", hashes: []string{"h", "h"}}
+	heads := func(steps []hook.Step) map[string]string {
+		t.Helper()
+		got := map[string]string{}
+		for _, e := range appended(steps) {
+			if e.Kind == state.KindDecision && e.Head != "" {
+				t.Fatalf("a decision carries the head: %+v", e)
+			}
+			if e.Kind == state.KindObserved {
+				got[e.Outcome+" "+e.Hash] = e.Head
+			}
+		}
+		return got
+	}
+	cases := []struct {
+		name string
+		ev   hook.Evaluation
+		f    facts
+		want map[string]string
+	}{
+		{"finished with a hash", as(t, stop, "polix:reviewer"), f, map[string]string{"finished h": "c1"}},
+		{"finished without hash", as(t, stop, "acme:builder"), f, map[string]string{"finished ": ""}},
+		{"blocked", as(t, stop, "polix:reviewer"), facts{branch: "refuse", head: "c1", hashes: []string{"h"}},
+			map[string]string{"blocked h": "c1"}},
+		{"passed", eval(t, yaml, workflow.Stop), f, map[string]string{"passed h": "c1"}},
+		{"injected", edit(t, eval(t, yaml, workflow.PreEdit), workflow.PreEdit, "src/a.go", agent.ActorSession), f,
+			map[string]string{"injected ": ""}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, steps := walk(t, c.ev, c.f)
+			if got := heads(steps); !reflect.DeepEqual(got, c.want) {
+				t.Fatalf("heads %v, want %v: %+v", got, c.want, appended(steps))
+			}
+		})
 	}
 }
 

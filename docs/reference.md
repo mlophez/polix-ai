@@ -622,7 +622,8 @@ unless: { actor: [acme:builder, acme:builder-ui] }
 ### finished
 
 - Value: a subagent type, or a list of them.
-- Holds when every subagent of the list ended on this branch, its `subagent_stop` was not refused nor let through by
+- Holds when every subagent of the list ended on this branch, or on another one with the same HEAD commit (a branch
+  made with `git checkout -b` after the review), its `subagent_stop` was not refused nor let through by
   the loop guard, and the files of the [scope](#scope-of-an-entry) of the entry did not change since. polix observes
   the end of those subagents by itself: no entry on `subagent_stop` is needed. It never holds without a known
   content hash, so a broken git asks again.
@@ -727,7 +728,8 @@ Runs a command from the root without a shell (no pipes, redirections or globs), 
   - `always`: boolean, default `false`.
 - A failure answers with the message, a blank line and the last 15 lines of the output (the failing rule ids and
   their output for `rules`).
-- Repeat: a run that passed is not run again on the same branch and content, keyed by what it runs (so two entries
+- Repeat: a run that passed is not run again on the same content, on the same branch or on another one with the
+  same HEAD commit, keyed by what it runs (so two entries
   that run `just test` share it, and `{path}` makes one key per path); a failing run runs again on the next event.
   `always: true` runs it every time, for a result that depends on more than the files (network, clock).
 - Every run of one hook call shares a budget of 10 minutes.

@@ -34,9 +34,10 @@ The loader of the log and the domain decide the rest:
 ## Response
 
 `Response`: `Entries`, each entry to show as an `Entry` with the fields of a line of the log (`At`, `Kind`, `Agent`,
-`Session`, `Event`, `Actor`, `Branch`, `Hash`, `Rule`, `Fact`, `Action`, `Line`, `Key`, `Outcome` and `Reason`; `Rule`
-and `Fact` only come from the lines an older polix wrote, never from a new one), and `Skipped`, the lines of the log
-skipped for being too long.
+`Session`, `Event`, `Actor`, `Branch`, `Hash`, `Head`, `Rule`, `Fact`, `Action`, `Line`, `Key`, `Outcome` and
+`Reason`; `Head`, the HEAD commit, only on the observed lines finished with a hash, passed and blocked that know it;
+`Rule` and `Fact` only come from the lines an older polix wrote, never from a new one), and `Skipped`, the lines of
+the log skipped for being too long.
 
 The command writes to stderr `polix: <n> lines of the log are longer than <max> bytes and were skipped` when
 `Skipped` is not 0, then each entry to stdout: with `--json` as a JSON line, else as one line with the time, the

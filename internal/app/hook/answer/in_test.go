@@ -11,6 +11,7 @@ import (
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/diff"
+	"github.com/mlophez/polix-ai/internal/app/hook"
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
@@ -63,7 +64,10 @@ func (p *fakePort) Locate(_ context.Context, path, _ string) (string, bool) {
 	return rel, ok
 }
 
-func (p *fakePort) Branch(context.Context) string { return "main" }
+func (p *fakePort) Head(context.Context) (string, string) {
+	p.calls = append(p.calls, "Head")
+	return "main", "c0ffee"
+}
 
 func (p *fakePort) Hash(context.Context) (string, error) {
 	p.calls = append(p.calls, "Hash")
@@ -396,6 +400,16 @@ func TestComparesTrees(t *testing.T) {
 		if err != nil || res.Code != c.code || !slices.Contains(port.calls, "TreeDiff old h") {
 			t.Errorf("%s: %+v %v %q", name, res, err, port.calls)
 		}
+	}
+}
+
+// The shell answers the Branch step through the port with the branch and the HEAD commit, learned together.
+func TestCarriesTheHead(t *testing.T) {
+	port := &fakePort{}
+	ev := carry(context.Background(), port, hook.Evaluation{}, hook.Step{Branch: true})
+	f := ev.Facts
+	if f.Branch != "main" || f.Head != "c0ffee" || !f.HasBranch || !slices.Equal(port.calls, []string{"Head"}) {
+		t.Fatalf("carried: %+v %q", f, port.calls)
 	}
 }
 

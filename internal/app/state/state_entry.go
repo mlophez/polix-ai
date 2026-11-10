@@ -16,7 +16,11 @@ type Entry struct {
 	Actor   string
 	Branch  string
 	Hash    string // content hash; on decisions only when the call already computed it
-	Rule    string // the rule id of the lines of kind injected an older polix wrote, shown by polix log
+	// Head is the commit HEAD pointed to when the line was written, empty when unknown: written only on the observed
+	// lines about a content that are read by branch (finished with a hash, passed and blocked), so another branch on
+	// the same commit selects them too (see Query).
+	Head string
+	Rule string // the rule id of the lines of kind injected an older polix wrote, shown by polix log
 	// Fact is the name of the lines of kind fact an older polix wrote, kept only to show them in polix log: read
 	// from the log, never written (Valid rejects an entry that carries it).
 	Fact    string
@@ -36,7 +40,8 @@ const (
 // Outcomes of an observed entry.
 const (
 	// OutcomeFinished: a subagent ended and its answer did not refuse; Key is its type. With the hash when a
-	// `finished` of the workflow names the type, without it when it only makes the injects of the subagent due again.
+	// `finished` of the workflow names the type, without it when it only makes the injects of the subagent due again;
+	// with the hash, it also carries the HEAD commit when it is known.
 	OutcomeFinished = "finished"
 	// OutcomePassed: a run of polix passed on a content that did not change during it; Key is what it ran.
 	OutcomePassed = "passed"

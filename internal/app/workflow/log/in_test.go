@@ -65,6 +65,29 @@ func TestShellPrintsJSON(t *testing.T) {
 	}
 }
 
+// With --json the HEAD commit of an observed line is printed as head after the hash, and left out of a line
+// without it.
+func TestShellPrintsJSONHead(t *testing.T) {
+	port := fakePort{st: state.State{Entries: []state.Entry{
+		{At: "t1", Kind: state.KindObserved, Branch: "main", Hash: "h", Head: "c1", Key: "just test",
+			Outcome: state.OutcomePassed},
+		{At: "t2", Kind: state.KindObserved, Branch: "main", Hash: "h", Key: "just test",
+			Outcome: state.OutcomePassed},
+	}}}
+	res, err := run(context.Background(), port, Request{Tail: 20, JSON: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	res.print(&out, &errb, true)
+	want := `{"at":"t1","kind":"observed","branch":"main","hash":"h","head":"c1","key":"just test",` +
+		`"outcome":"passed"}` + "\n" +
+		`{"at":"t2","kind":"observed","branch":"main","hash":"h","key":"just test","outcome":"passed"}` + "\n"
+	if out.String() != want || errb.Len() != 0 {
+		t.Fatalf("got %q %q", out.String(), errb.String())
+	}
+}
+
 // The lines of the repeat rules: a verb spared as a skip decision with its verb, a passed line with what it ran, and
 // the old injected and stop_block lines with their kind, the rule of the injected one included, and an inject of a
 // text of several lines with its first line only.

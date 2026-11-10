@@ -17,6 +17,7 @@ import (
 // of runs carried out before them, since a run may rewrite files.
 type Facts struct {
 	Branch     string
+	Head       string // the commit HEAD points to, learned with the branch; "" when unknown, as without commits
 	HasBranch  bool
 	Hashes     map[int]string // content hash per epoch; "" when it could not be computed
 	Epoch      int            // runs carried out by the earlier events of the call
@@ -125,8 +126,8 @@ func (f Facts) learnFound(epoch int, patterns []string, text string, found bool)
 	return f
 }
 
-func (f Facts) learnBranch(branch string) Facts {
-	f.Branch, f.HasBranch = branch, true
+func (f Facts) learnBranch(branch, head string) Facts {
+	f.Branch, f.Head, f.HasBranch = branch, head, true
 	return f
 }
 

@@ -22,6 +22,11 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Fixed
 
+- A review (`finished`), a `run` that passed and a `once` reminder are no longer asked again on a branch made from
+  the commit they were recorded on, as `git checkout -b` after a review gives: they count on the current branch or on
+  another one with the same HEAD commit, the files of their scope still compared. The observed lines `finished` with
+  a hash, `passed` and `blocked` carry that commit as `head`, shown by `polix log --json`; older lines without it and
+  repositories without commits still match by branch only.
 - A commit in another repository, as `git -C ../other commit` run from a session in this one, no longer fires the
   entries of `pre_commit` of this repository; `protected_files` and `forbidden_commands` still apply to it.
   Only a line of plain `git [-C <folder>] add|commit` commands, with nothing the shell expands, whose commit folders

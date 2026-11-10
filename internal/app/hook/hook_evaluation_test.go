@@ -33,11 +33,11 @@ func TestEvaluationValid(t *testing.T) {
 // The facts fed back are kept without touching the evaluation they came from.
 func TestEvaluationKnow(t *testing.T) {
 	var ev Evaluation
-	got := ev.KnowBranch("main").KnowChanged([]string{"a"}).KnowFiles([]string{"b"}).
+	got := ev.KnowBranch("main", "c0ffee").KnowChanged([]string{"a"}).KnowFiles([]string{"b"}).
 		KnowRules(nil, errors.New("rules")).KnowIgnored("x", true).KnowReal([]string{"/a"}, []string{"/real/a"}).
 		KnowContent(0, "f", "data", nil).KnowContent(1, "f", "", errors.New("gone")).KnowHash(0, "h", nil)
 	f := got.Facts
-	if f.Branch != "main" || !f.HasBranch || f.Changed[0] != "a" || f.Files[0] != "b" || f.RulesErr == nil ||
+	if f.Branch != "main" || f.Head != "c0ffee" || !f.HasBranch || f.Changed[0] != "a" || f.Files[0] != "b" || f.RulesErr == nil ||
 		!f.Ignored["x"] || f.Reals["/a"] != "/real/a" {
 		t.Fatalf("facts: %+v", f)
 	}

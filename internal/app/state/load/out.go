@@ -22,6 +22,7 @@ type entryJSON struct {
 	Actor   string `json:"actor,omitempty"`
 	Branch  string `json:"branch,omitempty"`
 	Hash    string `json:"hash,omitempty"`
+	Head    string `json:"head,omitempty"`
 	Rule    string `json:"rule,omitempty"`
 	Fact    string `json:"fact,omitempty"`
 	Action  string `json:"action,omitempty"`

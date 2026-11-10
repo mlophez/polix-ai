@@ -13,7 +13,7 @@ import (
 type Step struct {
 	Compare  string   // the paths that differ between this tree, of an observed line, and Tree
 	Tree     string   // the tree of the current content, at the epoch of the evaluation
-	Branch   bool     // the current branch
+	Branch   bool     // the current branch and the HEAD commit
 	Hash     bool     // the content hash, at Epoch
 	Epoch    int      // the runs carried out before the fact of Hash or Read, which a run may change
 	Changed  bool     // the files not committed yet

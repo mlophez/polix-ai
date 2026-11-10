@@ -39,6 +39,7 @@ type Entry struct {
 	Actor   string `json:"actor,omitempty"`
 	Branch  string `json:"branch,omitempty"`
 	Hash    string `json:"hash,omitempty"`
+	Head    string `json:"head,omitempty"` // the HEAD commit of an observed line about a content
 	Rule    string `json:"rule,omitempty"` // the rule id of a line of kind injected an older polix wrote
 	Fact    string `json:"fact,omitempty"` // the name of a line of kind fact an older polix wrote
 	Action  string `json:"action,omitempty"`

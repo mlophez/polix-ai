@@ -233,7 +233,7 @@ func TestChangedSinceHead(t *testing.T) {
 	}
 }
 
-// Branch, Ignored, ContentHash and Rel on one repository.
+// Head, Ignored, ContentHash and Rel on one repository.
 func TestRepoFacts(t *testing.T) {
 	ctx := context.Background()
 	dir, git, write := gitRepo(t)
@@ -246,8 +246,9 @@ func TestRepoFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b := r.Branch(ctx); b != "main" {
-		t.Fatalf("Branch = %q", b)
+	head := git("rev-parse", "HEAD")
+	if b, c := r.Head(ctx); b != "main" || c != head {
+		t.Fatalf("Head = %q, %q, want main, %q", b, c, head)
 	}
 	if !r.Ignored(ctx, "build/x") || r.Ignored(ctx, "a.txt") {
 		t.Fatal("Ignored does not follow .gitignore")
@@ -274,8 +275,21 @@ func TestRepoFacts(t *testing.T) {
 		t.Fatal("an empty path is not ok")
 	}
 	git("checkout", "--quiet", "--detach")
-	if b := r.Branch(ctx); b != "" {
-		t.Fatalf("Branch on a detached HEAD = %q", b)
+	if b, c := r.Head(ctx); b != "" || c != head {
+		t.Fatalf("Head on a detached HEAD = %q, %q, want \"\", %q", b, c, head)
+	}
+}
+
+// Head knows neither the branch nor the commit on a repository without commits.
+func TestHeadWithoutCommits(t *testing.T) {
+	ctx := context.Background()
+	dir, _, _ := gitRepo(t)
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, c := r.Head(ctx); b != "" || c != "" {
+		t.Fatalf("Head without commits = %q, %q, want both empty", b, c)
 	}
 }
 
@@ -585,7 +599,7 @@ func TestOpenOutside(t *testing.T) {
 	}
 }
 
-// Branch and Ignored swallow the errors of git, so a context already done does not change their answer.
+// Head and Ignored swallow the errors of git, so a context already done does not change their answer.
 func TestSwallowingCallsIgnoreCancel(t *testing.T) {
 	dir, git, write := gitRepo(t)
 	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("build/\n"), 0o644); err != nil {
@@ -598,8 +612,8 @@ func TestSwallowingCallsIgnoreCancel(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if b := r.Branch(ctx); b != "main" {
-		t.Fatalf("Branch with a cancelled context = %q", b)
+	if b, c := r.Head(ctx); b != "main" || c == "" {
+		t.Fatalf("Head with a cancelled context = %q, %q", b, c)
 	}
 	if !r.Ignored(ctx, "build/x") {
 		t.Fatal("Ignored with a cancelled context lost the answer")

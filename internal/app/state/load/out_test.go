@@ -38,6 +38,23 @@ func TestAdapterReadLog(t *testing.T) {
 	}
 }
 
+// The key head decodes into Entry.Head; a line without it, such as one of an older polix, leaves it empty.
+func TestAdapterReadLogHead(t *testing.T) {
+	lines := []string{`{"kind":"observed","outcome":"passed","key":"k","branch":"main","hash":"h","head":"c1"}`,
+		`{"kind":"observed","outcome":"passed","key":"k","branch":"main","hash":"h"}`}
+	p := filepath.Join(t.TempDir(), "log.jsonl")
+	if err := os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entries, _, err := Adapter{}.ReadLog(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 || entries[0].Head != "c1" || entries[0].Hash != "h" || entries[1].Head != "" {
+		t.Fatalf("entries %+v", entries)
+	}
+}
+
 // A missing log has no lines and no error.
 func TestAdapterReadLogWithoutFile(t *testing.T) {
 	entries, skipped, err := Adapter{}.ReadLog(context.Background(), filepath.Join(t.TempDir(), "log.jsonl"))

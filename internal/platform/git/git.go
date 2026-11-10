@@ -1,6 +1,6 @@
-// Package git reads the facts of a repository: root, branch, changed files and a hash of the current content,
-// always through the git CLI with explicit arguments (never a shell), so it behaves the same on Windows and
-// Linux. Every call that runs git takes the context of the caller and is bounded by its own timeout too.
+// Package git reads the facts of a repository: root, branch, HEAD commit, changed files and a hash of the current
+// content, always through the git CLI with explicit arguments (never a shell), so it behaves the same on Windows
+// and Linux. Every call that runs git takes the context of the caller and is bounded by its own timeout too.
 package git
 
 import (
@@ -38,15 +38,25 @@ func Open(ctx context.Context, dir string) (*Repo, error) {
 	return &Repo{Root: filepath.Clean(root), GitDir: filepath.Clean(gitDir)}, nil
 }
 
-// Branch returns the current branch, or "" on a detached HEAD. It swallows the errors of git, so it runs
+// Head returns the current branch, "" on a detached HEAD, and the full commit HEAD points to, from one git call.
+// Both are "" when git fails, as on a repository without commits. It swallows the errors of git, so it runs
 // detached from the cancellation of ctx (bounded by the timeout of the package): a caller whose context is done
-// still gets the branch.
-func (r *Repo) Branch(ctx context.Context) string {
-	b, err := r.git(context.WithoutCancel(ctx), "rev-parse", "--abbrev-ref", "HEAD")
-	if err != nil || b == "HEAD" {
-		return ""
+// still gets the branch and the commit.
+func (r *Repo) Head(ctx context.Context) (branch, commit string) {
+	out, err := r.git(context.WithoutCancel(ctx), "rev-parse", "HEAD", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", ""
 	}
-	return b
+	// The commit, then the abbreviated name; Fields also drops the \r of a line ending of Windows.
+	fields := strings.Fields(out)
+	if len(fields) != 2 {
+		return "", ""
+	}
+	commit, branch = fields[0], fields[1]
+	if branch == "HEAD" {
+		branch = ""
+	}
+	return branch, commit
 }
 
 // Changed returns the repository relative paths that differ from ref, plus untracked files not ignored by
@@ -111,7 +121,7 @@ func (r *Repo) Files(ctx context.Context) ([]string, error) {
 // directory, its objects and its refs are each another file than ours, compared by identity (os.SameFile), so a
 // linked worktree of this repository, another spelling of its path or a repository whose objects or refs link into
 // ours is not foreign. A folder that does not exist, is in no repository or that git cannot read is not foreign
-// either. Like Branch, it runs detached from the cancellation of ctx, since an error reads as not foreign.
+// either. Like Head, it runs detached from the cancellation of ctx, since an error reads as not foreign.
 func (r *Repo) Foreign(ctx context.Context, dir string) bool {
 	ctx = context.WithoutCancel(ctx)
 	ours, err := storage(ctx, r.Root)
@@ -151,7 +161,7 @@ func storage(ctx context.Context, dir string) ([]fs.FileInfo, error) {
 	return infos, nil
 }
 
-// Ignored reports whether the repository relative path is ignored by git; tracked files never are. Like Branch,
+// Ignored reports whether the repository relative path is ignored by git; tracked files never are. Like Head,
 // it runs detached from the cancellation of ctx, since an error would read as not ignored.
 func (r *Repo) Ignored(ctx context.Context, rel string) bool {
 	_, err := r.git(context.WithoutCancel(ctx), "check-ignore", "--quiet", "--", rel)

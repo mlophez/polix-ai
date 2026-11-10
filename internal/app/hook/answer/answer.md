@@ -75,8 +75,8 @@ reaches it as fields of the pass: `informed`, set by `Decide` for the events of 
 `run` into context; `always`, set by `session` on `start`, makes every inject act every time; and `loop`, set by
 `stop`, sends every block through the loop guard.
 
-A `hook.Step` asks for one of: the branch, the content hash (of an epoch), the paths that differ between the tree of an
-observed line and the current one (`Compare` and `Tree`, kept in the facts per pair of trees), the changed files,
+A `hook.Step` asks for one of: the branch and the HEAD commit (`hook.Step.Branch`), the content hash (of an epoch),
+the paths that differ between the tree of an observed line and the current one (`Compare` and `Tree`, kept in the facts per pair of trees), the changed files,
 the diff (`Diff`: the
 added and deleted lines of each file not committed yet, the same files as the changed ones), the files, the rules, the
 log, whether git ignores a path, the real paths of some paths, which programs the PATH does not run (`Programs`, kept
@@ -133,16 +133,24 @@ The rules it follows, as before this use case:
    `post_command` (`workflow.Informed`), reaches the AI as context and is logged as `inform`; `inject` injects a
    text, a file or the rules of a path.
 6. Repeat rules, on the observed lines of the log (`state.KindObserved`, read with `state.Query`). A verb that does
-   not act because of them is logged as a `skip` decision of its entry and never blocks.
+   not act because of them is logged as a `skip` decision of its entry and never blocks. The three readers of the
+   lines by branch, the reminder of a `block` with `once`, the repeat of a `run` and `finished` (rule 8), select
+   the lines of the current branch or of the same HEAD commit (`state.Query.ByBranch` with `state.Query.Head`): a
+   branch made from the commit the line was written on, as `git checkout -b` gives, reads it too, and on the same
+   branch a line keeps counting after a commit moves HEAD. A line without HEAD commit (written by an older polix)
+   or an unknown current one (a repository without commits, git failing) matches only by branch; on a detached
+   HEAD, whose branch is empty, the lines written on a detached HEAD count, whatever their commit, and so do the
+   lines of a branch on the same commit. The lines about a content they read,
+   `finished` with a hash, `passed` and `blocked`, carry the HEAD commit (`state.Entry.Head`) when it is known; the
+   decisions and the other observed lines never do.
    - `block` blocks every time its entry applies. With `once: true` it is a reminder: it is skipped when the latest
-     `blocked` line of its session, actor and line on exactly the current branch (`state.Query.ByBranch`: on a
-     detached HEAD, whose branch is empty, the lines of a branch never count) has a tree whose files in the scope of
-     the entry did not change (see rule 8), and it writes `blocked`, with the hash, when it blocks. So the first
-     attempt of an actor in a session on a content is blocked and the next one goes through; another actor, a new
-     session and an edit inside the scope are reminded again, an edit outside it is not.
-   - `run` acts once by default: it is skipped when its key passed on exactly the current branch and content hash,
-     whoever's entry ran it. The key is what it runs: the expanded arguments joined by single spaces, or `rules` and the
-     expanded target, so a `{path}` repeats it per path. Any run of polix that passes, with or without `always`,
+     `blocked` line of its session, actor and line on the current branch or the same HEAD commit has a tree whose
+     files in the scope of the entry did not change (see rule 8), and it writes `blocked`, with the hash, when it
+     blocks. So the first attempt of an actor in a session on a content is blocked and the next one goes through;
+     another actor, a new session and an edit inside the scope are reminded again, an edit outside it is not.
+   - `run` acts once by default: it is skipped when its key passed on the current branch or the same HEAD commit,
+     and on the content hash, whoever's entry ran it. The key is what it runs: the expanded arguments joined by
+     single spaces, or `rules` and the expanded target, so a `{path}` repeats it per path. Any run of polix that passes, with or without `always`,
      writes `passed` with its key when the hash before and after it is the same; a run during which the content
      changed, or with an unknown hash, writes none, and the hash after it is computed only when the one before it is
      known. With `always: true` it runs on every event.
@@ -167,9 +175,9 @@ The rules it follows, as before this use case:
    entries before it reach the agent with the block. A block let through by the loop guard, an `inject`, a skipped
    verb, a passing `run` and a failing `run` on the events where it only informs never end it.
 8. `finished: <subagent>` (or a list, all of them) holds when the latest observed `finished` line of that type on
-   exactly the current branch, with a hash, has a tree whose paths that differ from the current content
-   (`hook.Step.Compare`, answered by `TreeDiff`) are all outside the scope of the entry: the globs of the nearest
-   `changed`, else of the `changed` of its `when`, else the whole tree, where any differing path counts. Equal trees
+   the current branch or the same HEAD commit (rule 6), with a hash, has a tree whose paths that differ from the
+   current content (`hook.Step.Compare`, answered by `TreeDiff`) are all outside the scope of the entry: the globs
+   of the nearest `changed`, else of the `changed` of its `when`, else the whole tree, where any differing path counts. Equal trees
    need no comparison. The log is read first: without such a line the content hash is not computed. A log that
    cannot be read (with the warning of rule 6) and an unknown hash never hold; a tree git no longer has or a
    comparison that fails does not hold either, with a `warn` decision that names the error. A `block` with `once` compares the tree of its latest `blocked` line the same way,
@@ -242,8 +250,10 @@ needs one method per fact.
   `LoadWorkflow` (`internal/app/workflow/load`) that `cmd/polix` builds once and passes to `Command`: whether it
   exists, and its error as data; without it, no workflow.
 - `Locate`: turns the path of an edit into one relative to the root, symlinks resolved.
-- `Branch`, `Hash`, `Changed`, `Files` and `Ignored`: the facts of git; `Changed` and `Files` read a failure as no
-  files and, like `Branch` and `Ignored`, run detached from the cancellation of the caller.
+- `Head`, `Hash`, `Changed`, `Files` and `Ignored`: the facts of git; `Head` gives the current branch, empty on a
+  detached HEAD, and the commit HEAD points to, from one `git rev-parse` (`git.Repo.Head`), both empty when git
+  fails, as on a repository without commits; `Changed` and `Files` read a failure as no files and, like `Head` and
+  `Ignored`, run detached from the cancellation of the caller.
 - `TreeDiff`: the paths that differ between two content hashes (`git.Repo.TreeDiff`, through `git diff-tree`); a
   tree git no longer has, pruned by `git gc`, is its error.
 - `Diff`: the added and deleted lines of each file not committed yet (`git.Repo.Stats` against HEAD, untracked

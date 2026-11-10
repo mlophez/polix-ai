@@ -39,9 +39,10 @@ loadState(ctx, path) state.Loaded
 
 - `ReadLog`: reads the log through `internal/platform/jsonl`, the lines over `state.MaxLine` skipped and counted,
   and decodes each line with the unexported type `entryJSON` (the names of the log, such as `at`, `kind`,
-  `outcome` and `reason`, the shape `AnswerHook` writes): every line that decodes is an entry, kept as it is, even
-  without kind; a line that does not decode is left out. A missing log has no lines and no error; a log that cannot
-  be read is the error.
+  `outcome` and `reason`, the shape `AnswerHook` writes, and `head`, the HEAD commit of an observed line about a
+  content, empty on the lines without it, those of an older polix included): every line that decodes is an entry,
+  kept as it is, even without kind; a line that does not decode is left out. A missing log has no lines and no
+  error; a log that cannot be read is the error.
 
 ## Errors
 

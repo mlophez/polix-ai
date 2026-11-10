@@ -17,3 +17,14 @@ func TestFactsCarry(t *testing.T) {
 		t.Fatal("a log not read stays unread")
 	}
 }
+
+// The branch and the HEAD commit are learned together, an unknown commit included, and both carry to the next event.
+func TestFactsLearnBranch(t *testing.T) {
+	f := Facts{}.learnBranch("feat/x", "c0ffee").Carry(1, state.State{})
+	if f.Branch != "feat/x" || f.Head != "c0ffee" || !f.HasBranch {
+		t.Fatalf("%+v", f)
+	}
+	if g := (Facts{}).learnBranch("", ""); g.Branch != "" || g.Head != "" || !g.HasBranch {
+		t.Fatalf("a detached HEAD without commit: %+v", g)
+	}
+}

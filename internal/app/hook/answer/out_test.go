@@ -1206,8 +1206,8 @@ func TestAdapter(t *testing.T) {
 	if _, present, err := a.LoadWorkflow(ctx, "dev"); !present || err == nil {
 		t.Fatalf("a broken polix.yaml: %v %v", present, err)
 	}
-	if b := a.Branch(ctx); b != "feature" {
-		t.Fatalf("Branch = %q", b)
+	if b, c := a.Head(ctx); b != "feature" || c == "" {
+		t.Fatalf("Head = %q, %q", b, c)
 	}
 	if rel, inside := a.Locate(ctx, filepath.Join(r.dir, "src", "a.go"), ""); rel != "src/a.go" || !inside {
 		t.Fatalf("Locate = %q %v", rel, inside)

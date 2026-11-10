@@ -55,8 +55,9 @@ type Port interface {
 	LoadWorkflow(ctx context.Context, running string) (wf workflow.Workflow, present bool, err error)
 	// Locate turns a path given by the agent from cwd into one relative to the root; inside is false outside it.
 	Locate(ctx context.Context, path, cwd string) (rel string, inside bool)
-	// Branch returns the current branch, "" on a detached HEAD.
-	Branch(ctx context.Context) string
+	// Head returns the current branch, "" on a detached HEAD, and the commit HEAD points to, "" when it points to
+	// none, as on a repository without commits; both are "" when git fails.
+	Head(ctx context.Context) (branch, commit string)
 	// Hash returns the hash of the current content of the working tree.
 	Hash(ctx context.Context) (string, error)
 	// TreeDiff returns the paths that differ between two content hashes, or why they cannot be compared.
@@ -232,7 +233,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 func carry(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook.Evaluation {
 	switch {
 	case s.Branch:
-		return ev.KnowBranch(port.Branch(ctx))
+		return ev.KnowBranch(port.Head(ctx))
 	case s.Hash:
 		hash, err := port.Hash(ctx)
 		return ev.KnowHash(s.Epoch, hash, err)

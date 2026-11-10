@@ -25,14 +25,17 @@ type State struct {
 
 // Query selects observed entries: those of its Outcome, and of each other field that is set. With ByHash, only the
 // entries of exactly Hash; an empty Hash then never matches, since an unknown content is no content. With ByBranch,
-// only the entries of exactly Branch, an empty one included: on a detached HEAD the branch is "", and the entries
-// of a branch are not its own.
+// only the entries of Branch, an empty one included (on a detached HEAD the branch is ""), or, when both the query
+// and the entry carry a Head, those of the same Head: another branch on the same commit, a detached HEAD included,
+// selects them, while an entry without Head (written by an older polix) or a query without one (no commit yet, git
+// failing) matches only by branch. Without ByBranch, Head is ignored.
 type Query struct {
 	Outcome  string
 	Session  string
 	Actor    string
 	Event    string
 	Branch   string
+	Head     string // the commit HEAD points to, "" when unknown; read only with ByBranch
 	Key      string
 	Line     int // the line of the workflow entry; 0 for any
 	Hash     string
@@ -124,6 +127,15 @@ func (s State) Index(q Query) int {
 // selects reports whether e matches every field the query sets, its outcome apart.
 func (q Query) selects(e Entry) bool {
 	return (q.Session == "" || e.Session == q.Session) && (q.Actor == "" || e.Actor == q.Actor) &&
-		(q.Event == "" || e.Event == q.Event) && (q.Branch == "" && !q.ByBranch || e.Branch == q.Branch) &&
+		(q.Event == "" || e.Event == q.Event) && q.selectsBranch(e) &&
 		(q.Key == "" || e.Key == q.Key) && (q.Line == 0 || e.Line == q.Line) && (!q.ByHash || e.Hash == q.Hash)
+}
+
+// selectsBranch reports whether e is of the branch of the query: of any branch without Branch nor ByBranch; with
+// ByBranch, of exactly Branch or of the same non empty Head.
+func (q Query) selectsBranch(e Entry) bool {
+	if !q.ByBranch {
+		return q.Branch == "" || e.Branch == q.Branch
+	}
+	return e.Branch == q.Branch || q.Head != "" && e.Head == q.Head
 }
