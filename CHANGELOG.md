@@ -22,8 +22,9 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   names it in its problems; `fmt` needs no repository and refuses the file together with `--dir`.
 - `polix config fmt` writes the flags `always` and `once` first in the long form of `run`, `inject` and `block`, and
   the message last; the unknown key problems of `polix config check` list the keys in the same order.
-- `polix config fmt` writes the condition `actor` first in `when` and `unless`, before `branch` and `changed`, so who
-  acts reads before what changed; the unknown condition problem of `polix config check` lists it first too.
+- `polix config fmt` writes the conditions `actor` and `finished` first in `when` and `unless`, before `branch` and
+  `changed`, so who acts reads before what changed; the unknown condition problem of `polix config check` lists them
+  first too.
 
 ## [0.2.0] - 2026-11-10
 

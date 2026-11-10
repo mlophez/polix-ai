@@ -123,8 +123,8 @@ var Events = []string{Start, Prompt, PreEdit, PostEdit, PreCommand, PostCommand,
 var Actions = []string{VerbRun, VerbInject, VerbBlock}
 
 // Conditions a `when` or `unless` can use.
-var Conditions = []string{"actor", "branch", "var", "path", "changed", "file", "contains", "command", "writes", "exit",
-	"finished", "not", "any", "changed_lines", "changed_files", "risk_score"}
+var Conditions = []string{"actor", "finished", "branch", "var", "path", "changed", "file", "contains", "command",
+	"writes", "exit", "not", "any", "changed_lines", "changed_files", "risk_score"}
 
 // Measures are the conditions that measure the uncommitted diff, over the files of the nearest `changed`.
 var Measures = []string{"changed_lines", "changed_files", "risk_score"}

@@ -45,7 +45,7 @@
 #   - path: pre_edit, post_edit;
 #   - command, writes: pre_command, post_command, pre_commit;
 #   - exit: post_command.
-#   Every other condition (actor, branch, var, changed, file, contains, finished, changed_lines, changed_files,
+#   Every other condition (actor, finished, branch, var, changed, file, contains, changed_lines, changed_files,
 #   risk_score, not, any) holds on any event.
 
 # Required. The only version is 1.
