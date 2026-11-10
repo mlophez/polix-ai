@@ -710,8 +710,8 @@ action:
   block: "No hay ticket: crea la rama con /ticket"
 action:
   block:
-    message: "Revisa si README.md y docs/ deben cambiar; si no, repite el commit."
     once: true
+    message: "Revisa si README.md y docs/ deben cambiar; si no, repite el commit."
 ```
 
 ### run
@@ -778,8 +778,8 @@ action:
     rules: "{path}"
 action:
   inject:
-    text: "Los tests fallan: arréglalos antes de seguir."
     always: true
+    text: "Los tests fallan: arréglalos antes de seguir."
 ```
 
 ## Placeholders

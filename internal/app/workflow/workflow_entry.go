@@ -62,11 +62,12 @@ type Cond map[string]any
 // EntryKeys are the keys of an entry.
 var EntryKeys = []string{"when", "unless", "action"}
 
-// RunKeys, InjectKeys and BlockKeys are the keys of the long form of each verb.
+// RunKeys, InjectKeys and BlockKeys are the keys of the long form of each verb, in the order polix config fmt writes
+// them: the flags always and once first and the message last.
 var (
-	RunKeys    = []string{"command", "rules", "message", "always"}
-	InjectKeys = []string{"file", "text", "rules", "always"}
-	BlockKeys  = []string{"message", "once"}
+	RunKeys    = []string{"always", "command", "rules", "message"}
+	InjectKeys = []string{"always", "file", "text", "rules"}
+	BlockKeys  = []string{"once", "message"}
 )
 
 // Valid tells why the entry is not valid on its own: unknown keys (the old ones with their new spelling), no verb

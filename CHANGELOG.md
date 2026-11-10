@@ -16,6 +16,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 - `requirements` also lists `git`, which polix itself runs: it is added at the end of a non-empty list that does
   not name it, so the OK line of `polix doctor` counts it. A missing git is still the `fail` of the area `git` of
   `polix doctor`, as the hook and the requirements look the programs up only once git runs.
+- `polix config fmt` writes the flags `always` and `once` first in the long form of `run`, `inject` and `block`, and
+  the message last; the unknown key problems of `polix config check` list the keys in the same order.
 
 ## [0.2.0] - 2026-11-10
 

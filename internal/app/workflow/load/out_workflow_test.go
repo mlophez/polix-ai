@@ -40,9 +40,9 @@ func TestValidRejects(t *testing.T) {
 		{"unknown key in action", "version: 1\non:\n  pre_command:\n    - action: { block: x, warn: y }\n", `polix.yaml:4: unknown key "warn" in action (run, inject, block)`},
 		{"old verb in action", "version: 1\non:\n  pre_command:\n    - action: { deny: x }\n", `polix.yaml:4: unknown key "deny" in action: use block`},
 		{"verb without value", "version: 1\non:\n  pre_command:\n    - action: { block: }\n", "polix.yaml:4: block needs a value"},
-		{"unknown key in run", "version: 1\non:\n  stop:\n    - action: { run: { command: [ls], rule: x } }\n", `unknown key "rule" in run (command, rules, message, always)`},
-		{"unknown key in inject", "version: 1\non:\n  prompt:\n    - action: { inject: { text: x, fiel: y } }\n", `unknown key "fiel" in inject (file, text, rules, always)`},
-		{"unknown key in block", "version: 1\non:\n  prompt:\n    - action: { block: { message: x, reason: y } }\n", `unknown key "reason" in block (message, once)`},
+		{"unknown key in run", "version: 1\non:\n  stop:\n    - action: { run: { command: [ls], rule: x } }\n", `unknown key "rule" in run (always, command, rules, message)`},
+		{"unknown key in inject", "version: 1\non:\n  prompt:\n    - action: { inject: { text: x, fiel: y } }\n", `unknown key "fiel" in inject (always, file, text, rules)`},
+		{"unknown key in block", "version: 1\non:\n  prompt:\n    - action: { block: { message: x, reason: y } }\n", `unknown key "reason" in block (once, message)`},
 		{"once on run", "version: 1\non:\n  stop:\n    - action: { run: { command: ls, once: true } }\n", `unknown key "once" in run`},
 		{"once on inject", "version: 1\non:\n  prompt:\n    - action: { inject: { text: x, once: true } }\n", `unknown key "once" in inject`},
 		{"always on block", "version: 1\non:\n  prompt:\n    - action: { block: { message: x, always: true } }\n", `unknown key "always" in block`},
@@ -339,7 +339,7 @@ on:
 	}
 	for _, p := range []string{
 		`polix.yaml:3: unknown key "an_option": some text`,
-		`polix.yaml:3: unknown key "context" in inject (file, text, rules, always)`,
+		`polix.yaml:3: unknown key "context" in inject (always, file, text, rules)`,
 		`polix.yaml:3: unknown condition "if": use when`,
 		"polix.yaml: version must be 1, got 2",
 	} {
@@ -352,7 +352,7 @@ on:
 // The problems of an inject on stop come in the order polix config check reports them: its keys, then the event.
 func TestInjectProblemsOrder(t *testing.T) {
 	got := validate(t, "version: 1\non:\n  stop:\n    - action: { inject: { text: x, fiel: y } }\n")
-	want := "polix.yaml:4: unknown key \"fiel\" in inject (file, text, rules, always)\n" +
+	want := "polix.yaml:4: unknown key \"fiel\" in inject (always, file, text, rules)\n" +
 		"polix.yaml:4: inject does not reach the agent on stop, which cannot receive context"
 	if got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)

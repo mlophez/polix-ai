@@ -371,9 +371,9 @@ on:
     # a content it passed on, unless `always` (here it depends on the machine, not on the files).
     - action:
         run:
+          always: true
           command: polix doctor --offline
           message: "polix no está bien instalado en este equipo; avisa al usuario:"
-          always: true
 
   # prompt: the user sends a prompt. A block rejects the prompt before the model sees it; an inject adds context to
   # it.
@@ -383,8 +383,8 @@ on:
     - unless: { var: key }
       action:
         inject:
-          text: "No hay ticket en la rama: créalo con /ticket antes de cambiar nada."
           always: true
+          text: "No hay ticket en la rama: créalo con /ticket antes de cambiar nada."
     # A variable without group: the whole branch name is the value.
     - when: { var: release }
       action:
@@ -394,8 +394,8 @@ on:
     - when: { branch: "^(main|dev)$" }
       action:
         block:
-          message: "Estás en {branch}: crea una rama con /ticket antes de pedir cambios, o repite el prompt si solo es una consulta."
           once: true
+          message: "Estás en {branch}: crea una rama con /ticket antes de pedir cambios, o repite el prompt si solo es una consulta."
 
   # pre_edit: before a file is edited, once per path. Conditions of the edit: path, actor.
   pre_edit:
@@ -441,8 +441,8 @@ on:
     - when: { path: ["**/*.gen.go", "**/generated/**"] }
       action:
         block:
-          message: "{path} es un fichero generado: cambia su fuente y regenéralo; si de verdad hay que tocarlo, repite la edición."
           once: true
+          message: "{path} es un fichero generado: cambia su fuente y regenéralo; si de verdad hay que tocarlo, repite la edición."
     # inject the rules whose scope matches the edited path, each one once per actor and session.
     - action:
         inject:
@@ -451,8 +451,8 @@ on:
     - when: { path: "src/auth/**" }
       action:
         inject:
-          text: "Código de autenticación: no registres secretos ni datos personales en los logs."
           always: true
+          text: "Código de autenticación: no registres secretos ni datos personales en los logs."
 
   # post_edit: after a file is edited, once per path. It cannot be blocked: block is rejected. A failing run
   # reaches the AI as context, its message first: feedback the AI acts on at once, not a gate.
@@ -484,9 +484,9 @@ on:
     - when: { path: "schemas/**/*.avsc" }
       action:
         run:
+          always: true
           command: "just schema-compat {path}"
           message: "{path} rompe la compatibilidad con el registro de esquemas:"
-          always: true
     # Long form with rules: the checks of the rules whose scope matches the edited path.
     - when: { path: "checks/**" }
       action:
@@ -539,8 +539,8 @@ on:
     - when: { command: "just test*", exit: 1 }
       action:
         inject:
-          text: "Los tests fallan: arréglalos antes de seguir."
           always: true
+          text: "Los tests fallan: arréglalos antes de seguir."
     # exit: 0 for what follows a command that worked. A run on post_command never blocks: when it fails, its message
     # and output reach the AI as context.
     - when: { command: ["npm install*", "npm i *"], exit: 0 }
@@ -596,8 +596,8 @@ on:
     - when: { changed: "src/**" }
       action:
         block:
-          message: "Revisa si README.md y docs/ deben cambiar con este diff; si no, repite el commit."
           once: true
+          message: "Revisa si README.md y docs/ deben cambiar con este diff; si no, repite el commit."
 
   # subagent_stop: a subagent is about to stop; actor is its type. A block keeps it working. Its entries never run
   # when the main session ends its turn. inject is rejected here.
@@ -627,12 +627,12 @@ on:
     - when: { changed: "src/**" }
       action:
         run:
-          command: just test-integration
           always: true
+          command: just test-integration
     # A reminder on stop, once per content: ask for the review at the end of the task.
     - when: { changed: "src/**" }
       unless: { finished: polix:reviewer }
       action:
         block:
-          message: "Lanza el subagente polix:reviewer sobre el diff actual"
           once: true
+          message: "Lanza el subagente polix:reviewer sobre el diff actual"

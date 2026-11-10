@@ -302,7 +302,7 @@ How it works:
   alias, another folder, a run still going in the background). Only the runs of polix spare a later one.
 - When the result depends on more than the files, as for integration tests against a service, write the entry in
   `on:` with `always: true` in the long form of `run`, which the shortcut does not take, so it runs on every stop:
-  `- action: { run: { command: just test-integration, always: true } }` under `stop`.
+  `- action: { run: { always: true, command: just test-integration } }` under `stop`.
 - `run` executes without a shell and shares a budget of 10 minutes per hook call. The hook timeout that
   `polix install` writes (900 seconds) is above it.
 - A check that should also gate the end of a subagent, or wait for a reviewer, is an entry of `on:`: see

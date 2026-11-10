@@ -19,12 +19,12 @@ on:
     - unless: { finished: polix:reviewer }
       action:
         block:
-          once: true
           message: "review"
+          once: true
       when:
         any: { risk_score: 25, changed_lines: 150 }
         changed: ["*.go"]
-    - action: { run: { always: true, command: go test ./... } }
+    - action: { run: { command: go test ./..., always: true } }
 guardrails:
   run_on_stop:
     - changed: ["*.go"]
@@ -64,9 +64,9 @@ on:
       unless: { finished: polix:reviewer }
       action:
         block:
-          message: "review"
           once: true
-    - action: { run: { command: go test ./..., always: true } }
+          message: "review"
+    - action: { run: { always: true, command: go test ./... } }
   stop:
     - when: { changed: "*.go" }
       action: { block: "stop" }
