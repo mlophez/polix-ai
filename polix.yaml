@@ -22,7 +22,9 @@ risk:
     "internal/platform/git/**": 2
 
 # The programs run_before_done and format_on_edit run: polix tells the AI on the first prompt when one is missing.
-requirements: [go, golangci-lint]
+requirements:
+  - go
+  - golangci-lint
 
 guardrails:
   # Only a person changes the instructions of the repository.

@@ -7,6 +7,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-10
+
 ### Added
 
 - The skill `/polix:build`, which implements a plan of the folder of plans with one `polix:builder` per task, several
@@ -82,5 +84,6 @@ Claude Code is the supported agent; Codex support is not implemented.
 - The condition `pr`, on the state of the pull request, is not implemented.
 - The rest of the known limits are in [docs/polix.md](docs/polix.md#known-limits).
 
-[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mlophez/polix-ai/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mlophez/polix-ai/releases/tag/v0.1.0
