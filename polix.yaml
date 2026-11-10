@@ -83,5 +83,5 @@ on:
       unless: { finished: polix:reviewer }
       action:
         block: |
-          This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score})
+          This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score}).
           Run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again.
