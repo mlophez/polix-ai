@@ -53,9 +53,20 @@ on:
   # This project commits straight to main: the agent never opens a branch on its own.
   start:
     - action:
-        inject: "Commits in this project go directly to main: never create, switch to or push other branches."
+        inject: |
+          - Commits in this project go directly to main: never create, switch to or push other branches.
+          - Always push to remote after commit.
 
   pre_commit:
+    # Remind once per content to update README.md and docs/ when the behaviour changes.
+    - when:
+        changed: ["*.go", "go.mod", "plugins/**", "examples/**", "polix.yaml", "install.sh", "install.ps1", "scripts/**"]
+        actor: session
+      action:
+        block:
+          message: "Before committing, check whether this change affects README.md or docs/ and update them. Only Update Markdown files. If it does not affect them, commit again."
+          once: true
+
     # A large or risky Go change needs a review of polix:reviewer before the main session commits it. Subagents are
     # left out: a command of theirs that only quotes a git commit (a probe of the reviewer) counts as a commit too.
     - when:
@@ -68,12 +79,3 @@ on:
       unless: { finished: polix:reviewer }
       action:
         block: "This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score}): run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again."
-
-    # Remind once per content to update README.md and docs/ when the behaviour changes.
-    - when:
-        changed: ["*.go", "go.mod", "plugins/**", "examples/**", "polix.yaml", "install.sh", "install.ps1", "scripts/**"]
-        actor: session
-      action:
-        block:
-          message: "Before committing, check whether this change affects README.md or docs/ and update them. If it does not affect them, commit again."
-          once: true
