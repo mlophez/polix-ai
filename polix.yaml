@@ -66,7 +66,10 @@ on:
       action:
         block:
           once: true
-          message: "Before committing, check whether this change affects README.md or docs/ and update them. Only Update Markdown files. If it does not affect them, commit again."
+          message: |
+            Before committing, check whether this change affects README.md, docs/**/*.md or internal/**/*.md and update them.
+            Only Update Markdown files.
+            If it does not affect them, commit again."
 
     # A large or risky Go change needs a review of polix:reviewer before the main session commits it. Subagents are
     # left out: a command of theirs that only quotes a git commit (a probe of the reviewer) counts as a commit too.
@@ -79,4 +82,6 @@ on:
           risk_score: 25
       unless: { finished: polix:reviewer }
       action:
-        block: "This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score}): run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again."
+        block: |
+          This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score})
+          Run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again.
