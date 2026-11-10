@@ -230,8 +230,9 @@ vars:
   `golangci-lint.exe`, which is missing on macOS and Linux). A shell alias or function, a script without extension
   that only Git Bash runs, and a program found only in the current folder count as missing.
 - `polix config check` reports a single name, a map and an item that is not a name at their line, with the form
-  the key takes (`requirements takes a list of program names, as [go, golangci-lint]`), and an empty name
-  (`requirements: a program name cannot be empty`).
+  the key takes (`requirements takes a list of program names, as [go, golangci-lint]`), an empty name
+  (`requirements: a program name cannot be empty`), a name with spaces around it, a path (`bin/tool`, which the
+  lookup would resolve against the working folder instead of the PATH) and a repeated name.
 - `polix config fmt` places it right before `guardrails`, keeping the order of its programs. A polix older than the
   key reports it as unknown: set `requires` to a release that knows it.
 

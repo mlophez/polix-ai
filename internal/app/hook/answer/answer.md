@@ -156,8 +156,9 @@ The rules it follows, as before this use case:
      new context. A placeholder that changes on every event (a measure, `{command}`) makes a new key each time, so the
      inject acts every time; `{path}` gives once per path.
      With `always: true` it injects on every event and writes nothing.
-   - On `start`, after the entries, polix writes `started` when the workflow has a once-only inject
-     (`workflow.Workflow.InjectsOnce`).
+   - On `start`, after the entries, polix writes `started` when the workflow has a once-only inject or
+     `requirements` (`workflow.Workflow.ObservesStart`); the end of a subagent is written only for a once-only inject
+     (`workflow.Workflow.InjectsOnce`), since the context of the requirements never goes to a subagent.
    - When the log cannot be read, every verb acts every time, `finished` never holds and the call warns: `polix
      cannot use its log (<cause>): run, inject and the blocks with once act every time, and finished does not hold`.
 7. One stop rule, whatever the verb: the first entry that actually blocks, a `block` or a failing `run` on an event
@@ -209,7 +210,7 @@ The rules it follows, as before this use case:
     the PATH, the AI gets one context: `These programs that polix.yaml requires are not on the PATH: <names>. Before
     doing anything else, install them, or ask the user to install them if you cannot.` It is a once-only inject of
     rule 6 at line 0, keyed by `requirements: ` and the missing names joined by `, `: it is due again after a
-    `started` of the session (`InjectsOnce` holds with requirements, so `start` writes it) or when the set of missing
+    `started` of the session (`ObservesStart` holds with requirements, so `start` writes it) or when the set of missing
     programs changes, its skip is logged as a `skip` decision of the action `requirements`, and a refused prompt does
     not write it. It never blocks. `start` never looks the programs up; without `requirements` nothing is looked up,
     and with every program found nothing is told.

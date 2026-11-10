@@ -398,8 +398,10 @@ missing on macOS and Linux. A shell alias or function, a script without extensio
 program found only in the current folder count as missing.
 
 `polix config check` reports a single name, a map or an item that is not a name, at its line, with the form the
-key takes (`requirements takes a list of program names, as [go, golangci-lint]`), and an empty name as
-`requirements: a program name cannot be empty`. `polix config fmt` places the key right before `guardrails`,
+key takes (`requirements takes a list of program names, as [go, golangci-lint]`), an empty name as
+`requirements: a program name cannot be empty`, and a name with spaces around it, a path (`bin/tool`, which the
+lookup would resolve against the working folder instead of the PATH) or a repeated name, each with its own message.
+`polix config fmt` places the key right before `guardrails`,
 keeping the order of its programs. A polix older than the key rejects it as an unknown key, so a file that uses it
 sets `requires` to a release that knows it. `polix graph` does not draw it, since it enforces nothing.
 

@@ -200,11 +200,7 @@ func (v *validator) settings(w Workflow) {
 			v.add(0, "base_branch: a branch name cannot be empty")
 		}
 	}
-	for _, p := range w.Requirements {
-		if strings.TrimSpace(p) == "" {
-			v.add(0, "requirements: a program name cannot be empty")
-		}
-	}
+	v.requirements(w.Requirements)
 	for _, g := range w.ProtectedFiles {
 		if strings.TrimSpace(g) == "" {
 			v.add(0, "guardrails.%s: a path glob cannot be empty", ShortcutProtectedFiles)
@@ -252,14 +248,37 @@ func (w Workflow) ObservedSubagents() []string {
 	return slices.Compact(out)
 }
 
+// requirements reports the problems of the program names of requirements: an empty name, a name with spaces around
+// it or with a path separator, which the lookup would resolve against the working folder instead of the PATH, and a
+// repeated name, each once.
+func (v *validator) requirements(names []string) {
+	seen := map[string]bool{}
+	for _, p := range names {
+		switch {
+		case strings.TrimSpace(p) == "":
+			v.add(0, "requirements: a program name cannot be empty")
+		case strings.TrimSpace(p) != p:
+			v.add(0, "requirements: %q has spaces around it: write the program name alone", p)
+		case strings.ContainsAny(p, `/\`):
+			v.add(0, "requirements: %q is a path: write the program name alone, as the PATH finds it", p)
+		case seen[p]:
+			v.add(0, "requirements: %q is repeated", p)
+		}
+		seen[p] = true
+	}
+}
+
+// ObservesStart reports whether polix writes the start of a session to its log, so what it tells once per session is
+// due again: when the workflow injects once (InjectsOnce), or has requirements, whose missing programs the hook tells
+// once on the first prompt of a session.
+func (w Workflow) ObservesStart() bool {
+	return len(w.Requirements) > 0 || w.InjectsOnce()
+}
+
 // InjectsOnce reports whether the workflow has a once-only inject: an inject without always on an event other than
-// start, which always injects, or requirements, whose context of the missing programs the hook injects once on the
-// first prompt of a session. Its injects are due again when a session starts or a subagent finishes, so polix then
+// start, which always injects. Its injects are due again when a session starts or a subagent finishes, so polix then
 // writes those events to its log.
 func (w Workflow) InjectsOnce() bool {
-	if len(w.Requirements) > 0 {
-		return true
-	}
 	for ev, entries := range w.On {
 		if ev == Start {
 			continue

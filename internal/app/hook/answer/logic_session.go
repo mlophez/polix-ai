@@ -52,7 +52,7 @@ func (r *pass) session() agent.Answer {
 	if r.waiting() {
 		return ans
 	}
-	if start && r.ev.Workflow.InjectsOnce() {
+	if start && r.ev.Workflow.ObservesStart() {
 		_ = r.write(state.KindObserved, "", 0, state.OutcomeStarted, "", "", "")
 	}
 	if r.waiting() {

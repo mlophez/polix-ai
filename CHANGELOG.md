@@ -17,7 +17,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   first prompt of a session the hook tells the AI which ones are missing and asks it to install them, or to ask the
   user to, before anything else; it tells it again after a start of the session or when the missing set changes.
   `polix doctor` warns once per missing program. Neither ever blocks. Names are written without extension: on
-  Windows the lookup tries the extensions of `PATHEXT`.
+  Windows the lookup tries the extensions of `PATHEXT`. `polix config check` rejects an empty name, a name with
+  spaces around it, a path and a repeated name.
 
 ### Fixed
 

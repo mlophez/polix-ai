@@ -586,6 +586,11 @@ on:
 	if _, steps := walk(t, plain, facts{branch: "main", hashes: []string{"h"}}); len(steps) != 0 {
 		t.Fatalf("nothing to observe: %+v", steps)
 	}
+	// Requirements alone tell nothing to a subagent, so its end is not observed either.
+	needs := as(t, eval(t, "version: 1\nrequirements: [go]\n", workflow.SubagentStop), "polix:reviewer")
+	if _, steps := walk(t, needs, facts{branch: "main", hashes: []string{"h"}}); len(steps) != 0 {
+		t.Fatalf("requirements alone: %+v", steps)
+	}
 }
 
 // AC16: finished holds after the subagent ended and after an edit outside the scope of the entry, not after an edit

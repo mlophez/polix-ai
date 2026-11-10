@@ -58,29 +58,44 @@ func TestInjectsOnce(t *testing.T) {
 }
 
 // The requirements inject once without any inject of on: the context of the missing programs on the first prompt.
-func TestInjectsOnceRequirements(t *testing.T) {
+func TestObservesStartRequirements(t *testing.T) {
 	w := Workflow{Version: 1, Requirements: []string{"go"}}
 	if err := w.Valid(); err != nil {
 		t.Fatal(err)
 	}
-	if !w.InjectsOnce() {
-		t.Fatal("requirements without injects: not once")
+	if !w.ObservesStart() {
+		t.Fatal("requirements without injects: start not observed")
 	}
-	if (Workflow{Version: 1, Requirements: []string{}}).InjectsOnce() {
-		t.Fatal("an empty list of requirements: once")
+	// The context of the requirements never goes to a subagent, so it does not make the workflow inject once, which
+	// would write the end of every subagent.
+	if w.InjectsOnce() {
+		t.Fatal("requirements without injects: once")
+	}
+	if (Workflow{Version: 1, Requirements: []string{}}).ObservesStart() {
+		t.Fatal("an empty list of requirements: start observed")
+	}
+	once := Workflow{Version: 1, On: map[string][]Entry{Prompt: {{Action: Action{Inject: &Inject{Text: "x"}}}}}}
+	if !once.ObservesStart() {
+		t.Fatal("a once-only inject: start not observed")
 	}
 }
 
-// An empty or blank program name of requirements is a problem of the whole file, once per name.
+// A program name of requirements that is empty, has spaces around it, is a path or is repeated is a problem of the
+// whole file, once per name.
 func TestRequirementsValid(t *testing.T) {
 	if err := (Workflow{Version: 1, Requirements: []string{"go", "golangci-lint"}}).Valid(); err != nil {
 		t.Fatal(err)
 	}
-	w := Workflow{Version: 1, Requirements: []string{"go", "", " "}}
+	w := Workflow{Version: 1, Requirements: []string{"go", "", " ", " go", "bin/tool", `bin\tool`, "go", "go"}}
 	want := "polix.yaml: requirements: a program name cannot be empty\n" +
-		"polix.yaml: requirements: a program name cannot be empty"
+		"polix.yaml: requirements: a program name cannot be empty\n" +
+		"polix.yaml: requirements: \" go\" has spaces around it: write the program name alone\n" +
+		"polix.yaml: requirements: \"bin/tool\" is a path: write the program name alone, as the PATH finds it\n" +
+		"polix.yaml: requirements: \"bin\\\\tool\" is a path: write the program name alone, as the PATH finds it\n" +
+		"polix.yaml: requirements: \"go\" is repeated\n" +
+		"polix.yaml: requirements: \"go\" is repeated"
 	if got := strings.Join(w.Problems(), "\n"); got != want {
-		t.Fatalf("problems: %q", got)
+		t.Fatalf("problems:\n%s\nwant:\n%s", got, want)
 	}
 }
 

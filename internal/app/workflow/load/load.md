@@ -62,7 +62,8 @@ with the domain:
      `requirementsYAML` of `out_requirements.go` reads the key `requirements` into `Workflow.Requirements`, the
      programs the repository requires on the PATH, in file order: only a list of names, else an error at the line of
      the node with the form it takes (`line 3: requirements takes a list of program names, as [go, golangci-lint]`);
-     a null item is an empty name, which `Workflow.Valid` reports, and left out or empty there is no requirement.
+     a null item is an empty name, which `Workflow.Valid` reports with the names that have spaces around them, are
+     paths or are repeated, and left out or empty there is no requirement.
   5. `guardrailsYAML` of `out_guardrails.go` reads the section guardrails into a `workflow.Guardrails`: each
      shortcut in its one form, else an error with the form it takes; each item with its line and the problems of
      its values (a key unknown or written twice, a text that is not one, no pattern, no run).
