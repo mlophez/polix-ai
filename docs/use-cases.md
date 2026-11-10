@@ -83,7 +83,7 @@ guardrails:
   protected_branches: [main, "release/*"]
   format_on_edit:
     - { run: "gofmt -w {path}", path: "*.go" }
-  run_before_done:
+  run_on_stop:
     - { run: "golangci-lint run ./...", changed: "*.go" }
     - { run: "go test ./...", changed: ["*.go", "go.mod", "go.sum"] }
 ```
@@ -276,7 +276,7 @@ Instead of asking the agent to run the tests, polix runs them when the agent tri
 
 ```yaml
 guardrails:
-  run_before_done:
+  run_on_stop:
     - { run: just test, changed: ["*.go", "go.mod", "go.sum"] }
 ```
 
@@ -286,7 +286,7 @@ without one:
 ```yaml
 on:
   stop:
-    # from guardrails.run_before_done
+    # from guardrails.run_on_stop
     - when: { changed: ["*.go", "go.mod", "go.sum"] }
       action: { run: just test }
 ```
@@ -709,7 +709,7 @@ the tests do not run on code the documenter is about to change, and a failing ru
 reviewer is not asked for before the tests are green.
 
 The basics stay in `guardrails:`; the order of the phases is the flow of the team, so it goes in `on:`. The tests
-are an entry of `on:` and not of `run_before_done`, since they wait for the documenter.
+are an entry of `on:` and not of `run_on_stop`, since they wait for the documenter.
 
 ```yaml
 version: 1

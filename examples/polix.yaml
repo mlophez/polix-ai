@@ -33,7 +33,7 @@
 #
 # Cheat sheet (each one is explained where it is first used below):
 # - Shortcuts of guardrails, each in its one form: protected_files and protected_branches take a list of strings;
-#   forbidden_commands, format_on_edit and run_before_done a list of maps.
+#   forbidden_commands, format_on_edit and run_on_stop a list of maps.
 # - Events, in lifecycle order: start, prompt, pre_edit, post_edit, pre_command, post_command, pre_commit,
 #   subagent_stop, stop.
 # - Verbs, exactly one per action:
@@ -56,7 +56,7 @@ version: 1
 # other options blocks edits and commands asking to run `polix update`, instead of reporting them as mistakes, and
 # the session start hook looks for the new release at once. A development build ignores it. `polix config check`
 # rejects a value that is not a version like 0.2.0. Known since polix 0.1.0: no earlier polix exists. This file needs
-# 0.3.0: `guardrails`, `base_branch` and `max_stop_retries` are unknown to an older polix.
+# 0.3.0: `guardrails.run_on_stop`, `base_branch` and `max_stop_retries` are unknown to an older polix.
 requires: 0.3.0
 
 # Optional, default main. The branch the change merges into, or a list of candidates, used only by
@@ -176,7 +176,7 @@ requirements: [go, golangci-lint]
 # in `polix graph` (with the name of their shortcut) as any entry; when one falls short, write its entries in `on`
 # and tune them. The flow of the team (tickets, plans, builders, reviewer subagents) and any other condition or verb
 # go to `on`.
-# In each event, the entries of protected_branches, format_on_edit and run_before_done come before those written in
+# In each event, the entries of protected_branches, format_on_edit and run_on_stop come before those written in
 # `on`, each group in file order. Each expanded entry takes the line of its item, so `polix config check`, the
 # log and the repeat rules tell them apart.
 # `polix config check` rejects a key of guardrails other than these five, an unknown key of an item, an empty glob,
@@ -244,7 +244,7 @@ guardrails:
     # A list of arguments, and a list of globs:
     - run: [npx, prettier, --write, --log-level, warn, "{path}"]
       path: ["*.ts", "*.tsx"]
-  # run_before_done: the commands that must pass before the main session ends its turn. A list of maps with:
+  # run_on_stop: the commands that must pass before the main session ends its turn. A list of maps with:
   # - run: required, the command, as in format_on_edit;
   # - changed: optional, a glob or a list, as the condition `changed`: the item runs only when some file not
   #   committed yet matches; without it, on every turn;
@@ -253,7 +253,7 @@ guardrails:
   # while it fails the turn does not end (up to max_stop_retries), and it does not run again on a content it passed
   # on. A subagent ends with subagent_stop, where these entries never run (see `on`). Put first the check whose
   # failure makes the later ones pointless, and the cheaper one: here the lint before the tests.
-  run_before_done:
+  run_on_stop:
     - run: golangci-lint run ./...
       changed: ["src/**", "go.mod", "go.sum"]
     - run: just test
@@ -272,7 +272,7 @@ guardrails:
 # The placeholders of rules.run ({file}, {dir}, {id}, {name}, {names}, {files}, {dirs}) only exist there.
 #
 # Path globs (`path`, `changed`, `file`, `writes`, the items of `protected_files`, the `path` of `format_on_edit`
-# and the `changed` of `run_before_done`, risk.weights, rule scopes) are relative to the root and use `/`: `*` and `?`
+# and the `changed` of `run_on_stop`, risk.weights, rule scopes) are relative to the root and use `/`: `*` and `?`
 # stay inside a segment, `**` crosses segments, a pattern without `/` also matches the base name anywhere (`*.md`
 # matches docs/guide.md), and a leading `/` anchors it to the root (`/polix.yaml` is not examples/polix.yaml), like
 # .gitignore. The whole path must match. On macOS and Windows the globs of `path` and `writes`, and those of
@@ -297,7 +297,7 @@ on:
   # A YAML comment above the entry is the place for its reason, for people; the message of a block or a run is the
   # reason the AI reads.
   #
-  # The shortcuts protected_branches, format_on_edit and run_before_done add their entries to these events, before
+  # The shortcuts protected_branches, format_on_edit and run_on_stop add their entries to these events, before
   # the entries written here (see `guardrails`); `polix graph` draws each event with all of them, each named by its
   # shortcut. protected_files and forbidden_commands are no entries: they apply before all of them.
   #
@@ -616,7 +616,7 @@ on:
 
   # stop: the main session is about to end its turn; actor is always `session`. A subagent ends with subagent_stop,
   # which never runs these entries. inject is rejected here and on subagent_stop: the agent cannot receive context
-  # when it stops. The checks of guardrails.run_before_done, the lint and the tests, come before these entries.
+  # when it stops. The checks of guardrails.run_on_stop, the lint and the tests, come before these entries.
   stop:
     # run: { rules: changed }: the checks of the rules whose scope matches the changed files.
     - when: { changed: "**" }

@@ -160,7 +160,7 @@ guardrails:
 // nothing.
 func TestDecodeGuardrails(t *testing.T) {
 	var invalid workflow.InvalidError
-	five := "protected_files, forbidden_commands, protected_branches, format_on_edit, run_before_done"
+	five := "protected_files, forbidden_commands, protected_branches, format_on_edit, run_on_stop"
 	for src, want := range map[string]string{
 		"version: 1\nguardrails:\n  protected_file: [.env]\n": `polix.yaml: line 3: unknown key "protected_file" in guardrails (` + five + ")",
 		"version: 1\nguardrails: [.env]\n":                    "polix.yaml: line 2: guardrails must be a map with " + five,

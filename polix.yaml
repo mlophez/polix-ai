@@ -21,7 +21,7 @@ risk:
     "internal/app/state/**": 3
     "internal/platform/git/**": 2
 
-# The programs run_before_done and format_on_edit run: polix tells the AI on the first prompt when one is missing.
+# The programs run_on_stop and format_on_edit run: polix tells the AI on the first prompt when one is missing.
 requirements:
   - go
   - golangci-lint
@@ -40,7 +40,7 @@ guardrails:
       path: polix.yaml
 
   # Before the turn ends, in order; each check runs again only on new content.
-  run_before_done:
+  run_on_stop:
     # Lint the whole module when Go code or the lint configuration changes.
     - run: golangci-lint run ./...
       changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"]
@@ -54,6 +54,7 @@ on:
   start:
     - action:
         inject: |
+          - Commit changes when work is done without ask user.
           - Commits in this project go directly to main: never create, switch to or push other branches.
           - Always push to remote after commit.
 

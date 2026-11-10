@@ -1046,11 +1046,11 @@ guardrails:
 	}
 }
 
-// AC8: run_before_done blocks the end of the turn while a check fails, and runs a check only when its changed holds.
-func TestRunBeforeDone(t *testing.T) {
+// AC8: run_on_stop blocks the end of the turn while a check fails, and runs a check only when its changed holds.
+func TestRunOnStop(t *testing.T) {
 	ev := eval(t, `version: 1
 guardrails:
-  run_before_done:
+  run_on_stop:
     - run: "go test ./..."
       changed: "*.go"
       message: "Tests fail"

@@ -17,7 +17,7 @@ type guardrailsYAML struct {
 	forbiddenCommands []forbiddenYAML
 	protectedBranches []itemYAML
 	formatOnEdit      []checkYAML
-	runBeforeDone     []checkYAML
+	runOnStop         []checkYAML
 }
 
 // itemYAML is an item of a shortcut that takes a list of strings, with the fields of workflow.GuardrailItem in its
@@ -36,7 +36,7 @@ type forbiddenYAML struct {
 	Problems []string
 }
 
-// checkYAML is an item of format_on_edit or run_before_done, with the fields of workflow.GuardrailCheck in its order,
+// checkYAML is an item of format_on_edit or run_on_stop, with the fields of workflow.GuardrailCheck in its order,
 // so it converts to one: Problems holds what is wrong with its values.
 type checkYAML struct {
 	Run      []string
@@ -90,11 +90,11 @@ func (y *guardrailsYAML) shortcut(k *yaml.Node, val nodeYAML) error {
 		for _, item := range items {
 			y.formatOnEdit = append(y.formatOnEdit, nodeYAML{item}.check(k.Value, workflow.FormatOnEditKeys))
 		}
-	case workflow.ShortcutRunBeforeDone:
+	case workflow.ShortcutRunOnStop:
 		var items []*yaml.Node
 		items, err = val.maps(k.Value, `{ run: "go test ./...", changed: "*.go" }`)
 		for _, item := range items {
-			y.runBeforeDone = append(y.runBeforeDone, nodeYAML{item}.check(k.Value, workflow.RunBeforeDoneKeys))
+			y.runOnStop = append(y.runOnStop, nodeYAML{item}.check(k.Value, workflow.RunOnStopKeys))
 		}
 	default:
 		return fmt.Errorf("line %d: unknown key %q in guardrails (%s)", k.Line, k.Value,
@@ -110,7 +110,7 @@ func (y *guardrailsYAML) guardrails() (workflow.Guardrails, error) {
 		ForbiddenCommands: y.forbidden(),
 		ProtectedBranches: y.items(y.protectedBranches),
 		FormatOnEdit:      y.checks(y.formatOnEdit),
-		RunBeforeDone:     y.checks(y.runBeforeDone),
+		RunOnStop:         y.checks(y.runOnStop),
 	}
 	return g, g.Valid()
 }
@@ -133,7 +133,7 @@ func (y *guardrailsYAML) forbidden() []workflow.GuardrailForbidden {
 	return out
 }
 
-// checks converts the items of format_on_edit or run_before_done; nil without them.
+// checks converts the items of format_on_edit or run_on_stop; nil without them.
 func (*guardrailsYAML) checks(items []checkYAML) []workflow.GuardrailCheck {
 	var out []workflow.GuardrailCheck
 	for _, c := range items {
@@ -202,7 +202,7 @@ func (n nodeYAML) forbidden() forbiddenYAML {
 	return y
 }
 
-// check reads the item n of format_on_edit or run_before_done (the shortcut key, whose items take keys), a map, with
+// check reads the item n of format_on_edit or run_on_stop (the shortcut key, whose items take keys), a map, with
 // the problems of its values. The command of run is a string split on spaces or a list of arguments, and the scope
 // keeps the value as written, which the validator checks as the condition it becomes.
 func (n nodeYAML) check(key string, keys []string) checkYAML {

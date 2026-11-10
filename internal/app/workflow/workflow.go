@@ -52,7 +52,7 @@ type Workflow struct {
 	ForbiddenCommands []ForbiddenCommand
 	Vars              map[string]Var
 	// On holds the entries of each event: those written in `on` and those the shortcuts of guardrails
-	// protected_branches, format_on_edit and run_before_done expand into.
+	// protected_branches, format_on_edit and run_on_stop expand into.
 	On       map[string][]Entry
 	Rules    Rules    // the folder of the rules and how their checks run
 	Plans    Folder   // the folder of the plans

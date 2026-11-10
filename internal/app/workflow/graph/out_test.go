@@ -93,10 +93,10 @@ func TestCommand(t *testing.T) {
 		t.Fatalf("graph: %d %q %q", code, stdout, stderr)
 	}
 	// The entries of a shortcut are drawn expanded, with their origin.
-	repo = newRepo(t, map[string]string{workflow.File: "version: 1\nguardrails:\n  run_before_done:\n" +
+	repo = newRepo(t, map[string]string{workflow.File: "version: 1\nguardrails:\n  run_on_stop:\n" +
 		"    - run: \"go test ./...\"\n"})
 	code, stdout, stderr = runCommand(t, repo, "graph")
-	if want := "flowchart TD\n  subgraph stop\n    n0[\"run go test ./...<br/>from guardrails.run_before_done\"]\n" +
+	if want := "flowchart TD\n  subgraph stop\n    n0[\"run go test ./...<br/>from guardrails.run_on_stop\"]\n" +
 		"  end\n"; code != 0 || stdout != want {
 		t.Fatalf("graph of guardrails: %d %q %q", code, stdout, stderr)
 	}

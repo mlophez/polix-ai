@@ -17,7 +17,7 @@ type Guardrails struct {
 	ForbiddenCommands []GuardrailForbidden // the items of forbidden_commands
 	ProtectedBranches []GuardrailItem      // the branch names of protected_branches
 	FormatOnEdit      []GuardrailCheck     // the items of format_on_edit
-	RunBeforeDone     []GuardrailCheck     // the items of run_before_done
+	RunOnStop         []GuardrailCheck     // the items of run_on_stop
 }
 
 // GuardrailItem is an item of a shortcut that takes a list of strings: a path glob of protected_files or a branch
@@ -36,8 +36,8 @@ type GuardrailForbidden struct {
 	Problems []string
 }
 
-// GuardrailCheck is an item of format_on_edit or run_before_done: the command to run, the globs that scope it (the
-// path of format_on_edit or the changed of run_before_done, as written, nil without them) and the message before
+// GuardrailCheck is an item of format_on_edit or run_on_stop: the command to run, the globs that scope it (the
+// path of format_on_edit or the changed of run_on_stop, as written, nil without them) and the message before
 // the output of a failure. Problems holds what is wrong with its values, reported at its line.
 type GuardrailCheck struct {
 	Run      []string
@@ -53,7 +53,7 @@ const (
 	ShortcutForbiddenCommands = "forbidden_commands"
 	ShortcutProtectedBranches = "protected_branches"
 	ShortcutFormatOnEdit      = "format_on_edit"
-	ShortcutRunBeforeDone     = "run_before_done"
+	ShortcutRunOnStop         = "run_on_stop"
 )
 
 // branchMessage is the message of the entry of protected_branches, in English since polix writes it.
@@ -61,14 +61,14 @@ const branchMessage = "{branch} is protected in " + File + ": create a branch fo
 
 // GuardrailsKeys are the shortcuts of the section guardrails, in the order they expand.
 var GuardrailsKeys = []string{ShortcutProtectedFiles, ShortcutForbiddenCommands, ShortcutProtectedBranches,
-	ShortcutFormatOnEdit, ShortcutRunBeforeDone}
+	ShortcutFormatOnEdit, ShortcutRunOnStop}
 
-// ForbiddenKeys, FormatOnEditKeys and RunBeforeDoneKeys are the keys of an item of forbidden_commands,
-// format_on_edit and run_before_done.
+// ForbiddenKeys, FormatOnEditKeys and RunOnStopKeys are the keys of an item of forbidden_commands,
+// format_on_edit and run_on_stop.
 var (
-	ForbiddenKeys     = []string{"pattern", "reason"}
-	FormatOnEditKeys  = []string{"run", "path", "message"}
-	RunBeforeDoneKeys = []string{"run", "changed", "message"}
+	ForbiddenKeys    = []string{"pattern", "reason"}
+	FormatOnEditKeys = []string{"run", "path", "message"}
+	RunOnStopKeys    = []string{"run", "changed", "message"}
 )
 
 // Valid tells why the section is not valid: the items that are not, each with why.
@@ -80,7 +80,7 @@ func (g Guardrails) Valid() error {
 	for _, f := range g.ForbiddenCommands {
 		errs = append(errs, f.Valid())
 	}
-	for _, c := range append(append([]GuardrailCheck(nil), g.FormatOnEdit...), g.RunBeforeDone...) {
+	for _, c := range append(append([]GuardrailCheck(nil), g.FormatOnEdit...), g.RunOnStop...) {
 		errs = append(errs, c.Valid())
 	}
 	return errors.Join(errs...)
@@ -114,13 +114,13 @@ func (c GuardrailCheck) Valid() error {
 	return nil
 }
 
-// Expand returns the entries of on with those the shortcuts protected_branches, format_on_edit and run_before_done
+// Expand returns the entries of on with those the shortcuts protected_branches, format_on_edit and run_on_stop
 // expand into, before the entries written in on in each event, each group in file order. An item with problems
 // expands into nothing: Problems reports them.
 //
 //   - protected_branches: an entry on pre_commit with branch, an anchored regular expression of the names.
 //   - format_on_edit: an entry on post_edit per item that runs its command, on the edits of its path when it has one.
-//   - run_before_done: an entry on stop per item that runs its command, when its changed holds if it has one.
+//   - run_on_stop: an entry on stop per item that runs its command, when its changed holds if it has one.
 //
 // Each entry takes the line of its item, the first one for an entry of several items, and the path of its shortcut.
 // protected_files and forbidden_commands expand into nothing: they are protections, not entries.
@@ -136,8 +136,8 @@ func (g Guardrails) Expand(on map[string][]Entry) map[string][]Entry {
 			regular[PostEdit] = append(regular[PostEdit], e)
 		}
 	}
-	for _, c := range g.RunBeforeDone {
-		if e, ok := c.entry(ShortcutRunBeforeDone, "changed"); ok {
+	for _, c := range g.RunOnStop {
+		if e, ok := c.entry(ShortcutRunOnStop, "changed"); ok {
 			regular[Stop] = append(regular[Stop], e)
 		}
 	}
@@ -200,7 +200,7 @@ func (g Guardrails) Problems(w Workflow) []string {
 			v.add(it.Line, "guardrails.%s: a branch name cannot be empty", ShortcutProtectedBranches)
 		}
 	}
-	for _, c := range append(append([]GuardrailCheck(nil), g.FormatOnEdit...), g.RunBeforeDone...) {
+	for _, c := range append(append([]GuardrailCheck(nil), g.FormatOnEdit...), g.RunOnStop...) {
 		for _, p := range c.Problems {
 			v.add(c.Line, "%s", p)
 		}

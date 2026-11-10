@@ -118,7 +118,7 @@ The rules it follows, as before this use case:
    link as git does. The hook skips only when every folder is outside the root, symlinks resolved, and inside
    another existing repository (`hook.Step.Foreign`, a linked worktree of this one excluded). Anything else is a commit
    of this repository. The other shortcuts of `guardrails` (`protected_branches`, `format_on_edit`,
-   `run_before_done`) reach the hook already expanded into entries (`workflow.Entry.From` names the shortcut),
+   `run_on_stop`) reach the hook already expanded into entries (`workflow.Entry.From` names the shortcut),
    before those written in `on`.
 4. On `start`, the session context (`workflow.Workflow.SessionContext`) is injected as one context first,
    so the contexts of the entries come after it: the template `templates/session_start.md.tmpl` rendered with the

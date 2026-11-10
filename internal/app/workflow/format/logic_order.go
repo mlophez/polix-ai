@@ -69,8 +69,8 @@ func orderShortcut(key string) []string {
 		return workflow.ForbiddenKeys
 	case workflow.ShortcutFormatOnEdit:
 		return workflow.FormatOnEditKeys
-	case workflow.ShortcutRunBeforeDone:
-		return workflow.RunBeforeDoneKeys
+	case workflow.ShortcutRunOnStop:
+		return workflow.RunOnStopKeys
 	}
 	return nil
 }

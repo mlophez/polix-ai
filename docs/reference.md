@@ -34,7 +34,7 @@ shortcuts of `guardrails` are only sugar: polix expands them into entries of `on
 
 ```yaml
 version: 1                       # required
-requires: 0.3.0                  # oldest polix that knows this file (guardrails needs it)
+requires: 0.3.0                  # oldest polix that knows this file (run_on_stop needs it)
 base_branch: [main, dev]         # branch the change merges into (polix rules check --changed)
 max_stop_retries: 3              # loop guard of stop and subagent_stop
 requirements: [go, golangci-lint]  # programs needed on the PATH, told to the AI on the first prompt
@@ -45,7 +45,7 @@ guardrails:                      # the basics every project wants
   protected_branches: [main, "release/*"]       # branches nobody commits on
   format_on_edit:                               # runs after each edit of its path
     - { run: "gofmt -w {path}", path: "*.go" }
-  run_before_done:                              # must pass before the agent ends its turn
+  run_on_stop:                                  # must pass before the agent ends its turn
     - { run: "go test ./...", changed: "*.go" }
 rules:
   path: ai/rules                 # folder of the rules
@@ -99,7 +99,7 @@ Only the new names are accepted: `polix config check` reports an old one with it
   blocks edits and commands asking to run `polix update`, instead of reporting the new options as mistakes, and
   not even the main session may edit `polix.yaml` meanwhile. A development build ignores it.
 - `polix config check` rejects a value that is not a version.
-- A file that uses `guardrails` needs a polix that knows it: set `requires` to the release you install, so an
+- A file that uses `guardrails.run_on_stop` needs a polix that knows it: set `requires` to the release you install, so an
   older polix asks to update instead of reporting it as an unknown key.
 
 ### base_branch
@@ -254,7 +254,7 @@ A map of [event](#events) to a list of [entries](#entries).
 - [`forbidden_commands`](#forbidden_commands): a list of maps with `pattern` and `reason`;
 - [`protected_branches`](#protected_branches): a list of branch names;
 - [`format_on_edit`](#format_on_edit): a list of maps with `run`, `path` and `message`;
-- [`run_before_done`](#run_before_done): a list of maps with `run`, `changed` and `message`.
+- [`run_on_stop`](#run_on_stop): a list of maps with `run`, `changed` and `message`.
 
 ```yaml
 guardrails:
@@ -266,7 +266,7 @@ guardrails:
   protected_branches: [main, "release/*"]
   format_on_edit:
     - { run: "gofmt -w {path}", path: "*.go" }
-  run_before_done:
+  run_on_stop:
     - { run: "golangci-lint run ./...", changed: "*.go" }
     - { run: "go test ./...", changed: ["*.go", go.mod, go.sum] }
 ```
@@ -277,7 +277,7 @@ files git ignores, to every actor, the main session included, without exceptions
 `guardrails.protected_files` or `guardrails.forbidden_commands`, and `polix graph` draws both lists in a subgraph
 `guardrails` before the events.
 
-`protected_branches`, `format_on_edit` and `run_before_done` are only sugar: when polix reads the file it expands
+`protected_branches`, `format_on_edit` and `run_on_stop` are only sugar: when polix reads the file it expands
 each one into ordinary entries of `on`, and from then on the hook, `polix graph`, the repeat rules and the loop
 guard see only entries. Each expanded entry takes the line of the item it comes from and the path of its shortcut
 as its origin (`guardrails.format_on_edit`), which `polix graph` labels `from guardrails.<shortcut>`. When a
@@ -286,7 +286,7 @@ shortcut falls short, write the entries it expands into in `on` and tune them.
 `polix config check` reports, each at the line of its item:
 
 - a value in another form than the one of its shortcut, with that form: a single string for `protected_files` or
-  `protected_branches`, or a string item in `forbidden_commands`, `format_on_edit` or `run_before_done`;
+  `protected_branches`, or a string item in `forbidden_commands`, `format_on_edit` or `run_on_stop`;
 - an unknown key inside `guardrails`, with the list of the five, and an unknown key of an item, with its keys;
 - an empty glob, pattern or branch name, an item without `pattern` or `run`, a `pattern`, `reason` or `message`
   that is not a text, a `run` that is not a command, and the problems of the entry an item expands into (an
@@ -382,7 +382,7 @@ on:
       action: { run: { command: "npx eslint {path}", message: "eslint:" } }
 ```
 
-### run_before_done
+### run_on_stop
 
 - Type: a list of maps, each with:
   - `run`: required, a command, as in `format_on_edit`;
@@ -397,7 +397,7 @@ on:
 
 ```yaml
 guardrails:
-  run_before_done:
+  run_on_stop:
     - { run: "go test ./...", changed: ["*.go", go.mod, go.sum], message: "The tests fail:" }
 # expands into
 on:
@@ -410,7 +410,7 @@ on:
 
 In each event the entries come in this order, each group in the order of the file:
 
-1. the entries of `protected_branches`, `format_on_edit` and `run_before_done`;
+1. the entries of `protected_branches`, `format_on_edit` and `run_on_stop`;
 2. the entries written in `on`.
 
 So the basics run before the flow of the team, and `protected_files` and `forbidden_commands`, which are no
@@ -801,7 +801,7 @@ there.
 ### Path globs
 
 Used by `path`, `changed`, `file`, `writes`, `guardrails.protected_files`, the `path` of `format_on_edit`, the
-`changed` of `run_before_done`, `risk.weights` and the scopes of the rules.
+`changed` of `run_on_stop`, `risk.weights` and the scopes of the rules.
 
 - Relative to the root, with `/`; the whole path must match.
 - `*` and `?` stay inside a segment; `**` crosses segments.
@@ -818,7 +818,7 @@ surrounding spaces trimmed:
 
 ## How an event is evaluated
 
-The shortcuts `protected_branches`, `format_on_edit` and `run_before_done` are already entries of `on` by then, in
+The shortcuts `protected_branches`, `format_on_edit` and `run_on_stop` are already entries of `on` by then, in
 the [order of the expanded entries](#order-of-the-expanded-entries).
 
 1. The built-in protection comes first: nobody writes the state of polix, even without a workflow.

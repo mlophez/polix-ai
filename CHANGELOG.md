@@ -9,6 +9,10 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- The shortcut `guardrails.run_before_done` is now `guardrails.run_on_stop`, named after the event `stop` its entries
+  go to. A `polix.yaml` that still writes `run_before_done` is an invalid workflow: `polix config check` reports the
+  unknown key and the hooks block edits and commands until it is renamed. Set `requires:` to this release in a file
+  that uses `run_on_stop`, so an older polix asks to update instead of reporting the key as unknown.
 - `requirements` also lists `git`, which polix itself runs: it is added at the end of a non-empty list that does
   not name it, so the OK line of `polix doctor` counts it. A missing git is still the `fail` of the area `git` of
   `polix doctor`, as the hook and the requirements look the programs up only once git runs.

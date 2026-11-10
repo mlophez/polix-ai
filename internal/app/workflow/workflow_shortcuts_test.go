@@ -22,7 +22,7 @@ func shortcutsSummary(e Entry) string {
 	return fmt.Sprintf("%s line=%d when=%v %s", e.From, e.Line, e.When, action)
 }
 
-// protected_branches, format_on_edit and run_before_done expand into entries before those written in on, in file
+// protected_branches, format_on_edit and run_on_stop expand into entries before those written in on, in file
 // order and with the line of their item; an empty name or an item with problems expands into nothing, and without
 // them on stays as it is.
 func TestGuardrailsExpand(t *testing.T) {
@@ -32,7 +32,7 @@ func TestGuardrailsExpand(t *testing.T) {
 		FormatOnEdit: []GuardrailCheck{{Run: []string{"gofmt", "-w", "{path}"}, Scope: "*.go", Line: 13},
 			{Run: []string{"x"}, Line: 14, Problems: []string{"guardrails.format_on_edit: message must be a text"}},
 			{Run: []string{"prettier"}, Message: "Format failed", Line: 15}},
-		RunBeforeDone: []GuardrailCheck{{Run: []string{"go", "test", "./..."}, Scope: []any{"*.go"}, Line: 18}},
+		RunOnStop: []GuardrailCheck{{Run: []string{"go", "test", "./..."}, Scope: []any{"*.go"}, Line: 18}},
 	}
 	want := map[string][]string{
 		PreCommit: {
@@ -43,7 +43,7 @@ func TestGuardrailsExpand(t *testing.T) {
 			`guardrails.format_on_edit line=13 when=map[path:*.go] run ["gofmt" "-w" "{path}"] ""`,
 			`guardrails.format_on_edit line=15 when=map[] run ["prettier"] "Format failed"`,
 		},
-		Stop: {`guardrails.run_before_done line=18 when=map[changed:[*.go]] run ["go" "test" "./..."] ""`},
+		Stop: {`guardrails.run_on_stop line=18 when=map[changed:[*.go]] run ["go" "test" "./..."] ""`},
 	}
 	on := g.Expand(written)
 	if len(on) != len(want) || len(written[PreCommit]) != 1 {
@@ -92,13 +92,13 @@ func TestGuardrailsProblems(t *testing.T) {
 		ProtectedFiles:    []GuardrailItem{{Text: "", Line: 3}},
 		ForbiddenCommands: []GuardrailForbidden{{Line: 7, Problems: []string{"guardrails.forbidden_commands: an item needs a pattern"}}},
 		ProtectedBranches: []GuardrailItem{{Text: "main", Line: 8}, {Text: "", Line: 9}},
-		RunBeforeDone:     []GuardrailCheck{{Line: 5, Problems: []string{"guardrails.run_before_done: an item needs run"}}},
+		RunOnStop:         []GuardrailCheck{{Line: 5, Problems: []string{"guardrails.run_on_stop: an item needs run"}}},
 	}
 	w := Workflow{Version: 2, On: map[string][]Entry{PreEdit: {{Line: 6, Keys: []string{"blok"}}}}}
 	want := []string{
 		"polix.yaml: version must be 1, got 2",
 		"polix.yaml:3: guardrails.protected_files: a path glob cannot be empty",
-		"polix.yaml:5: guardrails.run_before_done: an item needs run",
+		"polix.yaml:5: guardrails.run_on_stop: an item needs run",
 		`polix.yaml:6: unknown key "blok" (when, unless, action)`,
 		"polix.yaml:6: the entry needs an action with one of run, inject, block",
 		"polix.yaml:7: guardrails.forbidden_commands: an item needs a pattern",
@@ -125,7 +125,7 @@ func TestGuardrailsValid(t *testing.T) {
 		"empty branch":   {ProtectedBranches: []GuardrailItem{{Line: 3}}},
 		"no pattern":     {ForbiddenCommands: []GuardrailForbidden{{Line: 4}}},
 		"item problems":  {ForbiddenCommands: []GuardrailForbidden{{Pattern: "a", Problems: []string{"x"}}}},
-		"no run":         {RunBeforeDone: []GuardrailCheck{{Line: 5}}},
+		"no run":         {RunOnStop: []GuardrailCheck{{Line: 5}}},
 		"check problems": {FormatOnEdit: []GuardrailCheck{{Run: []string{"x"}, Problems: []string{"x"}}}},
 	} {
 		if g.Valid() == nil {

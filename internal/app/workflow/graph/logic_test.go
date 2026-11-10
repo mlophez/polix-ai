@@ -83,7 +83,7 @@ guardrails:
   format_on_edit:
     - run: "gofmt -w {path}"
       path: "*.go"
-  run_before_done:
+  run_on_stop:
     - run: "go test ./..."
       changed: "*.go"
 on:
@@ -119,7 +119,7 @@ on:
 		"create a branch for this change and commit there.<br/>from guardrails.protected_branches\"]\n" +
 		"  end\n" +
 		"  subgraph stop\n" +
-		"    n7[\"when changed=*.go<br/>run go test ./...<br/>from guardrails.run_before_done\"]\n" +
+		"    n7[\"when changed=*.go<br/>run go test ./...<br/>from guardrails.run_on_stop\"]\n" +
 		"  end\n"
 	if out := Decide(wf, true); out.Mermaid != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", out.Mermaid, want)

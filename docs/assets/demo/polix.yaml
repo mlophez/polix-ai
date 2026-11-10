@@ -18,7 +18,7 @@ guardrails:
       path: "*.go"
 
   # The agent cannot end its turn while a check fails.
-  run_before_done:
+  run_on_stop:
     - run: go test ./...
       changed: "*.go"
 

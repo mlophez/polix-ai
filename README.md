@@ -64,7 +64,7 @@ guardrails:
   protected_branches: [main]
 
   # The agent cannot end its turn while a check fails.
-  run_before_done:
+  run_on_stop:
     - run: go test ./...
       changed: "*.go"
 
@@ -78,7 +78,7 @@ on:
 ```
 
 `guardrails:` are the basics: the files and the commands are protections of the engine, applied before everything
-else, to every agent and also to the files git ignores; `protected_branches` and `run_before_done` are shortcuts
+else, to every agent and also to the files git ignores; `protected_branches` and `run_on_stop` are shortcuts
 that expand into ordinary entries of `on:`. `on:` is where your own flow goes, here a review before every commit:
 Polix sees the reviewer subagent end and remembers which content it saw, so editing a line afterwards asks for a new
 review.
@@ -308,7 +308,7 @@ $ polix log --tail 3
 `polix.yaml` has two layers:
 
 - **`guardrails:`**, the basics every project wants from the first minute, each a short list:
-  `protected_files`, `forbidden_commands`, `protected_branches`, `format_on_edit` and `run_before_done`.
+  `protected_files`, `forbidden_commands`, `protected_branches`, `format_on_edit` and `run_on_stop`.
 - **`on:`**, where the team orchestrates its flow: the review subagents, the builder, the plan, the ticket. It is
   a list of entries per event. Each entry says when it applies (`when`, `unless`) and what it does (`action`, with
   exactly one verb: `block`, `run` or `inject`).
@@ -337,7 +337,7 @@ guardrails:
   protected_branches: [main, "release/*"]                     # nobody commits there
   format_on_edit:                                             # right after each edit
     - { run: "gofmt -w {path}", path: "*.go" }
-  run_before_done:                                            # the agent cannot end its turn while one fails
+  run_on_stop:                                                # the agent cannot end its turn while one fails
     - { run: "golangci-lint run ./...", changed: "*.go" }
     - { run: "go test ./...", changed: ["*.go", go.mod, go.sum] }
 

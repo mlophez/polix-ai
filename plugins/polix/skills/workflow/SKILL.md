@@ -17,7 +17,7 @@ argument-hint: "[what to enforce, e.g. no commit without tests; empty to review 
 Turn what the user wants to enforce into `polix.yaml`, at the root of the repository, in two layers.
 First the shortcuts of `guardrails`, the basics every project wants, each a short list in its one form:
 `protected_files` and `protected_branches` (lists of strings), and `forbidden_commands` (`pattern`, `reason`),
-`format_on_edit` (`run`, `path`, `message`) and `run_before_done` (`run`, `changed`, `message`), lists of maps.
+`format_on_edit` (`run`, `path`, `message`) and `run_on_stop` (`run`, `changed`, `message`), lists of maps.
 Then the entries of `on`, for what no shortcut covers: the orchestration of subagents (builders, reviewers), the
 ticket and the plan, and any other condition or verb.
 `protected_files` and `forbidden_commands` are protections of the engine: they deny before every entry of `on`, for
@@ -48,9 +48,9 @@ of `.claude/agents/` goes by its bare name.
 - Write a wish a shortcut covers as an item of that shortcut, in its one form, never as an entry of `on`: a path no
   agent writes in `protected_files`, a command no agent runs in `forbidden_commands`, a branch nobody commits on in
   `protected_branches`, a formatter or linter of each edited file in `format_on_edit`, and a check that must pass
-  before the end of the turn in `run_before_done`.
+  before the end of the turn in `run_on_stop`.
 - Write an entry of `on` only for what no shortcut says: another event, condition or verb, an exception, a subagent.
-- When `protected_branches`, `format_on_edit` or `run_before_done` falls short, write the entries it stands for in
+- When `protected_branches`, `format_on_edit` or `run_on_stop` falls short, write the entries it stands for in
   `on` (see [reference.yaml](reference.yaml)), remove its items and tune the entries.
 - When a protected path or a forbidden command needs an exception (an actor, a branch), write it as a `block` in
   `on` with an `unless` instead of an item of `guardrails`, which has no exceptions.

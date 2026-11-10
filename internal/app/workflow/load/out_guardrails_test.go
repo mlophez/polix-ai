@@ -29,7 +29,7 @@ guardrails:
       path: "*.go"
     - run: [prettier, --write, "{path}"]
       message: "Format failed"
-  run_before_done:
+  run_on_stop:
     - run: "go test ./..."
       changed: ["*.go", go.mod]
     - run: just lint
@@ -52,7 +52,7 @@ func shortcutsSummary(e workflow.Entry) string {
 	return fmt.Sprintf("%s line=%d when=%v %s", e.From, e.Line, e.When, action)
 }
 
-// AC6, AC7, AC8, AC9: protected_branches, format_on_edit and run_before_done expand into the entries, events,
+// AC6, AC7, AC8, AC9: protected_branches, format_on_edit and run_on_stop expand into the entries, events,
 // conditions, messages, lines and origin of the decisions, before the entries written in on; AC16:
 // protected_files and forbidden_commands expand into no entry, and the workflow holds them as its protections, in
 // file order and with the line of each forbidden command.
@@ -74,8 +74,8 @@ func TestShortcutsExpand(t *testing.T) {
 			`guardrails.format_on_edit line=15 when=map[] run ["prettier" "--write" "{path}"] "Format failed"`,
 		},
 		workflow.Stop: {
-			`guardrails.run_before_done line=18 when=map[changed:[*.go go.mod]] run ["go" "test" "./..."] ""`,
-			`guardrails.run_before_done line=20 when=map[] run ["just" "lint"] ""`,
+			`guardrails.run_on_stop line=18 when=map[changed:[*.go go.mod]] run ["go" "test" "./..."] ""`,
+			`guardrails.run_on_stop line=20 when=map[] run ["just" "lint"] ""`,
 		},
 	}
 	if len(w.On) != len(want) {
@@ -127,12 +127,12 @@ func TestShortcutsProblems(t *testing.T) {
 		"unknown item key":  "version: 1\nguardrails:\n  forbidden_commands:\n    - { pattern: a, why: x }\n",
 		"repeated item key": "version: 1\nguardrails:\n  forbidden_commands:\n    - pattern: a\n      pattern: b\n",
 		"no run":            "version: 1\nguardrails:\n  format_on_edit:\n    - path: \"*.go\"\n",
-		"empty run":         "version: 1\nguardrails:\n  run_before_done:\n    - run: \"\"\n",
-		"run a map":         "version: 1\nguardrails:\n  run_before_done:\n    - run: { command: x }\n",
+		"empty run":         "version: 1\nguardrails:\n  run_on_stop:\n    - run: \"\"\n",
+		"run a map":         "version: 1\nguardrails:\n  run_on_stop:\n    - run: { command: x }\n",
 		"message not text":  "version: 1\nguardrails:\n  format_on_edit:\n    - { run: x, message: [a] }\n",
 		"unknown check key": "version: 1\nguardrails:\n  format_on_edit:\n    - { run: x, changed: \"*.go\" }\n",
-		"bad scope":         "version: 1\nguardrails:\n  run_before_done:\n    - { run: x, changed: { a: b } }\n",
-		"bad placeholder":   "version: 1\nguardrails:\n  run_before_done:\n    - { run: x, message: \"{kye}\" }\n",
+		"bad scope":         "version: 1\nguardrails:\n  run_on_stop:\n    - { run: x, changed: { a: b } }\n",
+		"bad placeholder":   "version: 1\nguardrails:\n  run_on_stop:\n    - { run: x, message: \"{kye}\" }\n",
 	}
 	want := map[string]string{
 		"empty glob": "polix.yaml:4: guardrails.protected_files: a path glob cannot be empty\n" +
@@ -144,8 +144,8 @@ func TestShortcutsProblems(t *testing.T) {
 		"unknown item key":  `polix.yaml:4: unknown key "why" in guardrails.forbidden_commands (pattern, reason)`,
 		"repeated item key": `polix.yaml:4: guardrails.forbidden_commands: key "pattern" already defined at line 4`,
 		"no run":            "polix.yaml:4: guardrails.format_on_edit: an item needs run",
-		"empty run":         "polix.yaml:4: guardrails.run_before_done: an item needs run",
-		"run a map":         "polix.yaml:4: guardrails.run_before_done: run takes a command, as a string or a list of arguments",
+		"empty run":         "polix.yaml:4: guardrails.run_on_stop: an item needs run",
+		"run a map":         "polix.yaml:4: guardrails.run_on_stop: run takes a command, as a string or a list of arguments",
 		"message not text":  "polix.yaml:4: guardrails.format_on_edit: message must be a text",
 		"unknown check key": `polix.yaml:4: unknown key "changed" in guardrails.format_on_edit (run, path, message)`,
 		"bad scope":         "polix.yaml:4: changed: expected a string or a list of strings, got map[a:b]",
@@ -200,7 +200,7 @@ func TestShortcutsForms(t *testing.T) {
 		"version: 1\nguardrails:\n  forbidden_commands:\n    - \"rm -rf /*\"\n":   `polix.yaml: line 4: an item of guardrails.forbidden_commands must be a map, as { pattern: "git push --force*", reason: "..." }`,
 		"version: 1\nguardrails:\n  forbidden_commands: { pattern: x }\n":         `polix.yaml: line 3: guardrails.forbidden_commands takes a list of maps, each as { pattern: "git push --force*", reason: "..." }`,
 		"version: 1\nguardrails:\n  format_on_edit:\n    - \"gofmt -w {path}\"\n": `polix.yaml: line 4: an item of guardrails.format_on_edit must be a map, as { run: "gofmt -w {path}", path: "*.go" }`,
-		"version: 1\nguardrails:\n  run_before_done:\n    - \"go test ./...\"\n":  `polix.yaml: line 4: an item of guardrails.run_before_done must be a map, as { run: "go test ./...", changed: "*.go" }`,
+		"version: 1\nguardrails:\n  run_on_stop:\n    - \"go test ./...\"\n":      `polix.yaml: line 4: an item of guardrails.run_on_stop must be a map, as { run: "go test ./...", changed: "*.go" }`,
 		"version: 1\nguardrails:\n  protected_files: []\n  protected_files: []\n": `polix.yaml: line 4: mapping key "protected_files" already defined at line 3`,
 	}
 	for src, want := range cases {
@@ -215,7 +215,7 @@ func TestShortcutsForms(t *testing.T) {
 // The section guardrails is decoded as written: each item with its line, and the problems of its values with it.
 func TestShortcutsDecodeAsWritten(t *testing.T) {
 	src := "version: 1\nguardrails:\n  protected_files: [.env, \"\"]\n  forbidden_commands:\n" +
-		"    - { pattern: a, why: x }\n  run_before_done:\n    - run: go test\n      changed: \"*.go\"\n"
+		"    - { pattern: a, why: x }\n  run_on_stop:\n    - run: go test\n      changed: \"*.go\"\n"
 	var y workflowYAML
 	if err := yaml.Unmarshal([]byte(src), &y); err != nil {
 		t.Fatal(err)
@@ -228,8 +228,8 @@ func TestShortcutsDecodeAsWritten(t *testing.T) {
 		strings.Join(f[0].Problems, "|") != `unknown key "why" in guardrails.forbidden_commands (pattern, reason)` {
 		t.Fatalf("forbidden commands: %+v", f)
 	}
-	if c := g.RunBeforeDone; len(c) != 1 || strings.Join(c[0].Run, " ") != "go test" || c[0].Scope != "*.go" ||
+	if c := g.RunOnStop; len(c) != 1 || strings.Join(c[0].Run, " ") != "go test" || c[0].Scope != "*.go" ||
 		c[0].Line != 7 || c[0].Problems != nil {
-		t.Fatalf("run before done: %+v", c)
+		t.Fatalf("run on stop: %+v", c)
 	}
 }

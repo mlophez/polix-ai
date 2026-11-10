@@ -26,7 +26,7 @@ on:
         changed: ["*.go"]
     - action: { run: { always: true, command: go test ./... } }
 guardrails:
-  run_before_done:
+  run_on_stop:
     - changed: ["*.go"]
       run: go vet ./...
   protected_files: [AGENTS.md]
@@ -52,7 +52,7 @@ risk:
     "a/**": 2
 guardrails:
   protected_files: [AGENTS.md]
-  run_before_done:
+  run_on_stop:
     - run: go vet ./...
       changed: ["*.go"]
 on:

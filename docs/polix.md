@@ -321,7 +321,7 @@ a test validates it. [reference.md](reference.md) describes every key, event, co
 
 ```yaml
 version: 1
-requires: 0.1.0       # oldest polix that knows every option of the file (optional, since 0.1.0)
+requires: 0.3.0       # oldest polix that knows every option of the file (optional, since 0.1.0)
 base_branch: [main, dev]  # branch, or candidates, a change merges into, for rules check --changed (default main)
 max_stop_retries: 3   # loop guard of every block on stop and subagent_stop, per entry (default 3)
 requirements: [go, golangci-lint]  # programs the repository needs on the PATH: told to the AI, never blocking
@@ -332,7 +332,7 @@ guardrails:           # the basics every project wants (optional)
   protected_branches: [main]                      # branches nobody commits on
   format_on_edit:                                 # runs on each edited file of its path; a failure informs
     - { run: "gofmt -w {path}", path: "*.go" }
-  run_before_done:                                # must pass before the agent ends its turn
+  run_on_stop:                                    # must pass before the agent ends its turn
     - { run: "go test ./...", changed: "*.go" }
 guidance:             # built-in instructions injected at session start (optional, all true by default)
   commit: true        # run each commit as a git commit of its own
@@ -410,7 +410,7 @@ sets `requires` to a release that knows it. `polix graph` does not draw it, sinc
 ### Guardrails
 
 `guardrails` holds the basics as five shortcuts, each with exactly one form: `protected_files` and
-`protected_branches` take a list of strings, and `forbidden_commands`, `format_on_edit` and `run_before_done` a
+`protected_branches` take a list of strings, and `forbidden_commands`, `format_on_edit` and `run_on_stop` a
 list of maps.
 
 Two of them are protections of the engine, which the workflow holds as lists (`workflow.Workflow.ProtectedFiles`
@@ -431,10 +431,10 @@ The other three are only sugar: the loading of polix.yaml (`internal/app/workflo
   `{branch} is protected in polix.yaml: create a branch for this change and commit there.`
 - `format_on_edit: [{ run, path, message }, ...]`: a regular entry on `post_edit` per item that runs its command,
   with the condition `path` when it has one (the edited file, not `changed`).
-- `run_before_done: [{ run, changed, message }, ...]`: a regular entry on `stop` per item that runs its command,
+- `run_on_stop: [{ run, changed, message }, ...]`: a regular entry on `stop` per item that runs its command,
   with the condition `changed` when it has one.
 
-In each event the entries of `protected_branches`, `format_on_edit` and `run_before_done` come first, then the
+In each event the entries of `protected_branches`, `format_on_edit` and `run_on_stop` come first, then the
 entries written in `on`, each group in the order of the file. Each expanded entry takes the line of its item, so
 the messages of `polix config check`, the keys of the repeat rules and the loop guard tell them apart, and the
 path of its shortcut (`workflow.Entry.From`), which `polix graph` names; `polix graph` draws `protected_files` and
@@ -755,7 +755,7 @@ For every event the [protections](#protections) come first, before any entry is 
 state, then, with a valid `polix.yaml`, `protected_files` and `forbidden_commands`, also on the edits of files git
 ignores; the first that denies ends the evaluation. Then, unless the edit or commit is outside the change, the
 entries of the event run one after the other, in the order of the file, never in parallel. The shortcuts
-`protected_branches`, `format_on_edit` and `run_before_done` are already entries by then, before the entries
+`protected_branches`, `format_on_edit` and `run_on_stop` are already entries by then, before the entries
 written in `on` (see [Guardrails](#guardrails)). An entry whose `when` does not hold, or whose `unless` holds, is
 skipped; one that applies carries out the verb of its action, unless the repeat rules of [How often each verb acts](#how-often-each-verb-acts)
 skip it. A `run` waits for its command to finish before the next entry starts, so a `stop` takes the sum of
@@ -785,7 +785,7 @@ What a block does depends on the event:
 - `start`, `post_edit`, `post_command`: they already happened, so nothing blocks there: `block` is rejected
   by `polix config check`, and a failing `run` reaches the agent as context, logged as an `inform` decision.
 
-The `stop` of this repository shows it. Its `guardrails.run_before_done` has two items, golangci-lint over the
+The `stop` of this repository shows it. Its `guardrails.run_on_stop` has two items, golangci-lint over the
 module and `go test ./...`, which expand into two plain `run` entries of `stop`, each with a `when` on the files it
 depends on. When the agent ends a turn after changing a Go file:
 
