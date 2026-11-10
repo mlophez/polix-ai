@@ -47,7 +47,7 @@ func (a Adapter) LoadRules(ctx context.Context, dir string) ([]rule.Rule, error)
 // a silent default. The problems of a workflow that parses (Invalid) are not errors here: the shell stops on those
 // of its runners, and polix config check reports the rest.
 func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, error) {
-	loaded := a.Workflow(ctx, a.Repo.Root, running)
+	loaded := a.Workflow(ctx, filepath.Join(a.Repo.Root, workflow.File), running)
 	if _, invalid := errors.AsType[workflow.InvalidError](loaded.Err); loaded.Err != nil && !invalid {
 		return workflow.Workflow{}, loaded.Err
 	}

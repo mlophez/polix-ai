@@ -135,7 +135,7 @@ func parseWorkflow(src, running string) (workflow.Workflow, error) {
 	if err := os.WriteFile(filepath.Join(root, workflow.File), []byte(src), 0o644); err != nil {
 		return workflow.Workflow{}, err
 	}
-	loaded := workflowload.Command()(context.Background(), root, running)
+	loaded := workflowload.Command()(context.Background(), filepath.Join(root, workflow.File), running)
 	return loaded.Workflow, loaded.Err
 }
 

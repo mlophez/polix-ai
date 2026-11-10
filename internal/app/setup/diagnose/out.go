@@ -136,7 +136,7 @@ func (a Adapter) OpenRepo(ctx context.Context, dir string) (string, string, erro
 // It asks git for the first of its base branches that exists, locally or on origin: baseErr tells why none does.
 func (a Adapter) LoadWorkflow(ctx context.Context, root, running string) (wf workflow.Workflow, found bool,
 	err, baseErr error) {
-	loaded := a.Workflow(ctx, root, running)
+	loaded := a.Workflow(ctx, filepath.Join(root, workflow.File), running)
 	return loaded.Workflow, loaded.Exists, loaded.Err, a.resolveBase(ctx, root, loaded.Workflow.BaseBranches())
 }
 

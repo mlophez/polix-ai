@@ -1,7 +1,7 @@
 # LoadWorkflow
 
-Loads polix.yaml, so every use case that reads the workflow shares one reading of its format and one result per
-repository and version of polix, and decides on its own what an absent file, a workflow with problems or a file that
+Loads polix.yaml, so every use case that reads the workflow shares one reading of its format and one result per file
+and version of polix, and decides on its own what an absent file, a workflow with problems or a file that
 cannot be used means to it.
 
 ## Trigger
@@ -10,17 +10,18 @@ Not a command: `cmd/polix` (`main`) calls `Command` once, which returns the load
 to the `Command` of every use case that reads polix.yaml: `AnswerHook`, `CheckRule`, `CheckSetup`, `DiagnoseSetup`,
 `GraphWorkflow`, `MeasureDiff` and `UpdateVersion`. Each puts it in a field of its adapter, `Workflow`, which calls
 it from the port method that loads the workflow (`LoadWorkflow`, or `WorkflowRejected` in `UpdateVersion`) with the
-root of the repository it opened and the version of polix it runs as:
+file of the workflow, the polix.yaml at the root of the repository it opened (`filepath.Join(root, workflow.File)`)
+or, for `CheckSetup`, the file its argument names, and the version of polix it runs as:
 
 ```
-workflow(ctx, root, running) workflow.Loaded
+workflow(ctx, path, running) workflow.Loaded
 ```
 
 ## Request
 
 `Request`, filled by the loader from its arguments:
 
-- `Root`, the root of the repository, with the separators of the system.
+- `Path`, the file of the workflow, polix.yaml of a repository or another one, with the separators of the system.
 - `Running`, the version of the running polix, which decides whether polix.yaml requires a newer one.
 
 ## Logic
@@ -45,7 +46,7 @@ with the domain:
 
 `Port`, implemented by `Adapter` in `out.go` and its siblings:
 
-- `ReadWorkflow`: reads polix.yaml of the root through `internal/platform/file` and decodes it for the version of
+- `ReadWorkflow`: reads the workflow file at the path through `internal/platform/file` and decodes it for the version of
   polix running; whether the file exists. A missing file has no workflow and no error; a file that cannot be read is
   the error. The decoding, in this order:
   1. `requires`, read before the rest: a release of polix older than it is a `workflow.TooOldError`, which an older
@@ -86,8 +87,8 @@ each use case reports as its own:
 ## Flow
 
 1. `Command` builds the loader around `Adapter` as the `Port`, once per process.
-2. The first call for a root and a version turns them into a `Request` and runs the shell: it reads polix.yaml
+2. The first call for a file and a version turns them into a `Request` and runs the shell: it reads polix.yaml
    through the port, calls `Decide` once and builds the response.
-3. The loader keeps the result for that root and version for the life of the process, and returns it to every
+3. The loader keeps the result for that file and version for the life of the process, and returns it to every
    later call without reading again: a use case that wrote polix.yaml and read it again in the same process would
    see the old one, which no use case does.

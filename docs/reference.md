@@ -7,7 +7,8 @@ limits), [polix.md](polix.md).
 
 Validate the file with `polix config check` and draw it with `polix graph`. `polix config check` rejects every
 unknown key, event, condition or verb, so a typo never turns into an entry that silently stops applying.
-`polix config fmt` formats it in place, keeping its comments: the keys of each section in the order of this
+`polix config fmt` formats it in place, keeping its comments (both take another workflow file as an argument, as
+`polix config fmt examples/polix.yaml`): the keys of each section in the order of this
 reference, with `requirements`, `guardrails` and `on` at the end; the items of a list and the keys you name (variables, globs of
 `risk.weights` and `rules.run`) keep their order.
 

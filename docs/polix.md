@@ -36,8 +36,10 @@ and judging the code stays with the `reviewer` subagent.
 polix hook claude          # entry point of the Claude Code hooks (event on stdin)
 polix hook codex           # entry point of the Codex hooks (not implemented)
 polix config check         # validate polix.yaml and the rules (ai/rules/ or rules.path)
+                           # (a file, as examples/polix.yaml, is validated in place of polix.yaml)
 polix config fmt           # format polix.yaml in place: keys in the order of the reference, comments kept
-                           # (--check only tells whether it is formatted, exiting with 1 when not)
+                           # (--check only tells whether it is formatted, exiting with 1 when not; a file,
+                           # as examples/polix.yaml, is formatted instead, without a repository nor --dir)
 polix rules check          # run the checks of every deterministic rule (for CI)
 polix rules check --changed  # only the rules whose scope matches the files changed by the branch
                              # (--base BRANCH, default the closest of base_branch in polix.yaml, else main;

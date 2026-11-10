@@ -449,8 +449,8 @@ Shell hooks are fine for one trivial check. Polix is for when guardrails are par
 ```text
 polix hook claude [-C dir]     entry point of the Claude Code hooks (event on stdin)
 polix hook codex [-C dir]      entry point of the Codex hooks (not implemented: untested)
-polix config check             validate polix.yaml and ai/rules/
-polix config fmt [--check]     format polix.yaml in place, or only tell whether it is formatted
+polix config check [file]      validate polix.yaml (or another workflow file) and ai/rules/
+polix config fmt [--check] [file]  format polix.yaml (or another workflow file) in place, or only tell whether it is formatted
 polix rules check [--changed]  run the checks of the deterministic rules (for CI)
 polix graph                    print the workflow as a Mermaid diagram
 polix log --tail 20 [--json]   print the last entries of the state log

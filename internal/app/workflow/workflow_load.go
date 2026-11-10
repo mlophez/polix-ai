@@ -7,11 +7,12 @@ import (
 	"reflect"
 )
 
-// Load loads polix.yaml of the repository at root for the polix of version running, which decides whether the
-// file requires a newer one (TooOldError). It is the loader of the use case LoadWorkflow (internal/app/workflow/load),
+// Load loads the workflow of the file at path, the polix.yaml of a repository (filepath.Join(root, File)) or another
+// file a command names, for the polix of version running, which decides whether the file requires a newer one
+// (TooOldError). It is the loader of the use case LoadWorkflow (internal/app/workflow/load),
 // which cmd/polix builds once and passes to every use case that reads polix.yaml. It never fails: what stops the
 // reading is data of its result.
-type Load func(ctx context.Context, root, running string) Loaded
+type Load func(ctx context.Context, path, running string) Loaded
 
 // Loaded is what Load read from polix.yaml. Each use case decides what an absent file, a workflow with problems or
 // a file that cannot be read means to it.

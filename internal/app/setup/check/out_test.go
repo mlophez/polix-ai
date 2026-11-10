@@ -25,7 +25,7 @@ func TestAdapter(t *testing.T) {
 	var asked []string
 	loaded := rule.Loaded{Rules: []rule.Rule{{ID: "A-2"}, {ID: "B-1", Description: "d"}}, Exists: true,
 		Problems: []string{"ai/rules/b.yaml A-2: no description"}}
-	a := Adapter{Repo: repo, Rules: func(_ context.Context, root, dir string) rule.Loaded {
+	a := Adapter{Repo: repo, Path: filepath.Join(repo.Root, workflow.File), Rules: func(_ context.Context, root, dir string) rule.Loaded {
 		asked = append(asked, root+" "+dir)
 		return loaded
 	}, Workflow: workflowload.Command()}

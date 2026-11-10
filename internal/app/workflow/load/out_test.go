@@ -24,7 +24,7 @@ func parse(t *testing.T, src, running string) (workflow.Workflow, error) {
 	if err := os.WriteFile(filepath.Join(root, workflow.File), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	loaded := Decide(Adapter{}.ReadWorkflow(context.Background(), root, running)).Loaded
+	loaded := Decide(Adapter{}.ReadWorkflow(context.Background(), filepath.Join(root, workflow.File), running)).Loaded
 	if !loaded.Exists {
 		t.Fatal("polix.yaml not found")
 	}
@@ -34,7 +34,7 @@ func parse(t *testing.T, src, running string) (workflow.Workflow, error) {
 // absentWorkflow loads the workflow of a root without polix.yaml, and its error.
 func absentWorkflow(t *testing.T) (workflow.Workflow, error) {
 	t.Helper()
-	loaded := Decide(Adapter{}.ReadWorkflow(context.Background(), t.TempDir(), "dev")).Loaded
+	loaded := Decide(Adapter{}.ReadWorkflow(context.Background(), filepath.Join(t.TempDir(), workflow.File), "dev")).Loaded
 	if loaded.Exists {
 		t.Fatal("polix.yaml found")
 	}
@@ -44,7 +44,7 @@ func absentWorkflow(t *testing.T) (workflow.Workflow, error) {
 // A polix.yaml is read and decoded with its guardrails as written; without it there is nothing and no error.
 func TestAdapterReadWorkflow(t *testing.T) {
 	root := t.TempDir()
-	if wf, g, exists, err := (Adapter{}).ReadWorkflow(context.Background(), root, "dev"); exists || err != nil ||
+	if wf, g, exists, err := (Adapter{}).ReadWorkflow(context.Background(), filepath.Join(root, workflow.File), "dev"); exists || err != nil ||
 		wf.Version != 0 || g.ProtectedFiles != nil {
 		t.Fatalf("no polix.yaml: %+v %+v %v %v", wf, g, exists, err)
 	}
@@ -52,7 +52,7 @@ func TestAdapterReadWorkflow(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, workflow.File), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wf, g, exists, err := Adapter{}.ReadWorkflow(context.Background(), root, "dev")
+	wf, g, exists, err := Adapter{}.ReadWorkflow(context.Background(), filepath.Join(root, workflow.File), "dev")
 	if !exists || err != nil || wf.Version != 1 || len(wf.ProtectedFiles) != 1 || len(g.ProtectedFiles) != 1 ||
 		g.ProtectedFiles[0] != (workflow.GuardrailItem{Text: ".env", Line: 3}) {
 		t.Fatalf("got %+v %+v %v %v", wf, g, exists, err)
@@ -70,7 +70,7 @@ func TestAdapterReadWorkflowUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(p, 0o644) })
-	wf, _, exists, err := Adapter{}.ReadWorkflow(context.Background(), root, "dev")
+	wf, _, exists, err := Adapter{}.ReadWorkflow(context.Background(), filepath.Join(root, workflow.File), "dev")
 	if !exists || err == nil || wf.Version != 0 {
 		t.Fatalf("got %+v %v %v", wf, exists, err)
 	}

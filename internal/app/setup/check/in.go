@@ -1,10 +1,12 @@
 // Package check is the use case CheckSetup, the command `polix config check`: it validates the workflow and the
-// rules of a repository and prints every problem.
+// rules of a repository, or another workflow file with those rules, and prints every problem.
 package check
 
 import (
 	"context"
+	"errors"
 	"io"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -20,16 +22,18 @@ import (
 // it from its flags.
 type Request struct {
 	Dir     string // any folder of the repository
+	File    string // the workflow file to check in place of polix.yaml, as the argument names it; empty for none
 	Version string // version of the running polix, which polix.yaml may require
 }
 
 // Response is what the use case CheckSetup gives back to the caller, in the shape of the transport: the
 // command serializes it to the console.
 type Response struct {
-	Problems  []string // every problem of polix.yaml and of the rules
+	File      string   // the workflow file, as the console names it: the argument, or polix.yaml
+	Problems  []string // every problem of the workflow file and of the rules
 	Hint      string   // the hint that the problems may come from a newer polix; empty for none
 	Warning   string   // the warning that rules check --changed would fail; empty for none
-	Found     bool     // whether polix.yaml exists
+	Found     bool     // whether the workflow file exists
 	Rules     int      // how many rules the folder of rules holds
 	RulesPath string   // the folder of the rules, relative to the root
 }
@@ -57,17 +61,26 @@ type Port interface {
 func Command(rules rule.Load, loadWorkflow workflow.Load) *cobra.Command {
 	req := Request{Version: build.Current()}
 	c := &cobra.Command{
-		Use:   "check",
+		Use:   "check [file]",
 		Short: "Validate polix.yaml and the rules",
 		Long: "Validate the workflow and the rules and print every problem: unknown events, conditions, actions and " +
-			"keys, undefined variables and conditions on events where they never hold.",
-		Args: cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
+			"keys, undefined variables and conditions on events where they never hold. With a file, relative to " +
+			"the working folder, it validates that workflow file in place of polix.yaml, as examples/polix.yaml, " +
+			"with the rules and branches of the repository.",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(c *cobra.Command, args []string) error {
 			repo, err := git.Open(c.Context(), req.Dir)
 			if err != nil {
 				return err
 			}
-			res, err := run(c.Context(), Adapter{Repo: repo, Rules: rules, Workflow: loadWorkflow}, req)
+			path := filepath.Join(repo.Root, workflow.File)
+			if len(args) == 1 {
+				if args[0] == "" {
+					return errors.New("the file cannot be empty: name a workflow file, or none for polix.yaml")
+				}
+				req.File, path = args[0], args[0]
+			}
+			res, err := run(c.Context(), Adapter{Repo: repo, Path: path, Rules: rules, Workflow: loadWorkflow}, req)
 			if err != nil {
 				return err
 			}
@@ -99,7 +112,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	if err := i.Valid(); err != nil {
 		return Response{}, err
 	}
-	return Response(Decide(i)), nil
+	return Response(Decide(i, req.File)), nil
 }
 
 // print serializes the response to the console and returns the exit code: every problem to stderr, with the hint
@@ -120,10 +133,10 @@ func (res Response) print(stdout, stderr io.Writer) int {
 	}
 	u := cli.NewUI(stdout)
 	if !res.Found {
-		u.Line("%s no %s (only the built-in protections apply) and %d rules of %s/", cli.OKText("ok:"), workflow.File,
+		u.Line("%s no %s (only the built-in protections apply) and %d rules of %s/", cli.OKText("ok:"), res.File,
 			res.Rules, res.RulesPath)
 		return 0
 	}
-	u.Line("%s %s and %d rules of %s/", cli.OKText("ok:"), workflow.File, res.Rules, res.RulesPath)
+	u.Line("%s %s and %d rules of %s/", cli.OKText("ok:"), res.File, res.Rules, res.RulesPath)
 	return 0
 }

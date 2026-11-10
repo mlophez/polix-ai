@@ -2,6 +2,7 @@ package measure
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/mlophez/polix-ai/internal/app/diff"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
@@ -18,7 +19,7 @@ type Adapter struct {
 // workflow, which has no weights; a file that cannot be read, does not parse, is not valid or requires a newer polix
 // is an error, with the workflow of a file that parses.
 func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, error) {
-	loaded := a.Workflow(ctx, a.Repo.Root, running)
+	loaded := a.Workflow(ctx, filepath.Join(a.Repo.Root, workflow.File), running)
 	return loaded.Workflow, loaded.Err
 }
 

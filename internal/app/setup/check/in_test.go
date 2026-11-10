@@ -68,11 +68,11 @@ func TestShellWithoutVersion(t *testing.T) {
 // runCommand runs the command of polix config check on dir through a root of internal/platform/cli, so the exit
 // codes are those of internal/platform/cli.Run; the command sits at the root here, not below config as in
 // cmd/polix. It builds the loaders of the rules and of polix.yaml as cmd/polix does, once per run.
-func runCommand(dir string) (int, string, string) {
+func runCommand(dir string, args ...string) (int, string, string) {
 	root := cli.Root("polix", "short", "long", "")
 	root.AddCommand(Command(ruleload.Command(), workflowload.Command()))
 	var out, errb bytes.Buffer
-	code := cli.Run(root, []string{"check", "--dir", dir}, nil, &out, &errb)
+	code := cli.Run(root, append([]string{"check", "--dir", dir}, args...), nil, &out, &errb)
 	return code, out.String(), errb.String()
 }
 
@@ -118,5 +118,30 @@ func TestCommand(t *testing.T) {
 	}
 	if code, _, stderr := runCommand(t.TempDir()); code != 1 || !strings.Contains(stderr, "not inside a git repository") {
 		t.Fatalf("outside a repository: %d %q", code, stderr)
+	}
+}
+
+// With a file, polix config check validates that workflow file in place of polix.yaml, with the rules of the
+// repository, and names it in its problems and its summary; a missing file is a problem.
+func TestCommandFile(t *testing.T) {
+	r := testenv.GitRepo(t)
+	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\n")
+	testenv.Write(t, filepath.Join(r, "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n")
+	other := filepath.Join(r, "examples", "reference.yaml")
+	testenv.Write(t, other, "version: 1\non:\n  pre_edit:\n    - action: { run: { rule: x } }\n")
+	if code, _, stderr := runCommand(r, other); code != 1 ||
+		!strings.Contains(stderr, other+`:4: unknown key "rule" in run`) {
+		t.Fatalf("the problems of the file: %d %q", code, stderr)
+	}
+	testenv.Write(t, other, "version: 1\n")
+	if code, stdout, stderr := runCommand(r, other); code != 0 || stdout != "ok: "+other+" and 1 rules of ai/rules/\n" {
+		t.Fatalf("a valid file: %d %q %q", code, stdout, stderr)
+	}
+	missing := filepath.Join(r, "missing.yaml")
+	if code, _, stderr := runCommand(r, missing); code != 1 || !strings.Contains(stderr, missing+" not found") {
+		t.Fatalf("a missing file: %d %q", code, stderr)
+	}
+	if code, _, stderr := runCommand(r, ""); code != 1 || !strings.Contains(stderr, "cannot be empty") {
+		t.Fatalf("an empty file: %d %q", code, stderr)
 	}
 }

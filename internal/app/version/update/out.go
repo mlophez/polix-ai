@@ -91,7 +91,7 @@ func (a Adapter) WorkflowRejected(ctx context.Context, running string) error {
 	if err != nil {
 		return nil //nolint:nilerr // outside a repository there is no workflow to reject
 	}
-	return a.Workflow(ctx, repo.Root, running).Err
+	return a.Workflow(ctx, filepath.Join(repo.Root, workflow.File), running).Err
 }
 
 // Latest asks the releases page for the latest release, within the timeout of the hook or of a person.

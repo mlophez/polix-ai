@@ -16,6 +16,10 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 - `requirements` also lists `git`, which polix itself runs: it is added at the end of a non-empty list that does
   not name it, so the OK line of `polix doctor` counts it. A missing git is still the `fail` of the area `git` of
   `polix doctor`, as the hook and the requirements look the programs up only once git runs.
+- `polix config fmt` and `polix config check` take a workflow file as an argument, as `examples/polix.yaml`, to
+  format or validate it in place of the `polix.yaml` of the repository: `--dir` names a repository, as `git -C`
+  does, so it never reached such a file. `check` validates it with the rules and branches of the repository and
+  names it in its problems; `fmt` needs no repository and refuses the file together with `--dir`.
 - `polix config fmt` writes the flags `always` and `once` first in the long form of `run`, `inject` and `block`, and
   the message last; the unknown key problems of `polix config check` list the keys in the same order.
 

@@ -47,7 +47,7 @@ func (a *Adapter) Open(ctx context.Context, dir string) (string, string, error) 
 // workflow and no error; a file that cannot be read, cannot be parsed, has problems or requires a newer polix
 // exists, with its error.
 func (a *Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, bool, error) {
-	loaded := a.Workflow(ctx, a.Repo.Root, running)
+	loaded := a.Workflow(ctx, filepath.Join(a.Repo.Root, workflow.File), running)
 	if !loaded.Exists {
 		return workflow.Workflow{}, false, nil
 	}

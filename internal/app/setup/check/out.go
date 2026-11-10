@@ -14,15 +14,16 @@ import (
 // it as the port; there is no constructor.
 type Adapter struct {
 	Repo     *git.Repo     // the repository whose workflow and rules are checked
+	Path     string        // the workflow file: polix.yaml at the root of the repository, or the file of the argument
 	Rules    rule.Load     // the loader of the rules (internal/app/rule/load), which cmd/polix builds once
 	Workflow workflow.Load // the loader of polix.yaml (internal/app/workflow/load), which cmd/polix builds once too
 }
 
-// LoadWorkflow loads polix.yaml of the repository through the loader of polix.yaml: the workflow, whether the file
+// LoadWorkflow loads the workflow file of the adapter (Path) through the loader of polix.yaml: the workflow, whether the file
 // exists, and the error of loading it, a workflow.InvalidError with the workflow when it parses; without the file, the
 // default workflow and false.
 func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, bool, error) {
-	loaded := a.Workflow(ctx, a.Repo.Root, running)
+	loaded := a.Workflow(ctx, a.Path, running)
 	return loaded.Workflow, loaded.Exists, loaded.Err
 }
 

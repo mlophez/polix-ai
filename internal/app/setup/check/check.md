@@ -1,28 +1,35 @@
 # CheckSetup
 
-Validates the workflow (polix.yaml) and the rules (the folder `rules.path`, `ai/rules/` by default) of a repository and prints every problem, so a
+Validates the workflow (polix.yaml, or the workflow file its argument names) and the rules (the folder `rules.path`, `ai/rules/` by default) of a repository and prints every problem, so a
 person or CI learns what polix would reject before a hook does.
 
 ## Trigger
 
 ```
-polix config check [--dir <dir>]
+polix config check [--dir <dir>] [file]
 ```
 
 - `--dir`: any folder of the repository; defaults to the current one.
+- `file`: a workflow file to validate in place of polix.yaml, relative to the working folder, as
+  `examples/polix.yaml`, with the rules, checks and base branches of the repository of `--dir`.
 
 ## Request
 
-`Request`, filled by the command from its flags:
+`Request`, filled by the command from its argument and flags:
 
 - `Dir`, from `--dir`.
+- `File`, from the argument; empty for polix.yaml of the repository.
 - `Version`, the version of the running polix (`build.Current`), which polix.yaml may require.
 
 ## Logic
 
-`Decide(i setup.Inspection) Output` takes what the shell observed, the part of a `setup.Inspection` about the
-workflow and the rules, with a `setup.Setup` of the running version, and gathers the problems with the methods of
-`setup.Inspection` of `internal/app/setup/setup_problems.go`, which `polix doctor` shares:
+`Decide(i setup.Inspection, file string) Output` takes what the shell observed, the part of a `setup.Inspection`
+about the workflow and the rules, with a `setup.Setup` of the running version, and `File` of the request. With a
+file, a missing one is the only problem, `<file> not found`; and the problems of the workflow and the warning of
+the base branch name the file where they name polix.yaml as a word of its own (at the start or after a space, and
+followed by a colon, a space or the end: `polix.yaml:4: ...`, `polix.yaml requires ...`), without changing the
+error they come from; a path that ends in polix.yaml, as in the error of a file that cannot be read, stays. It gathers the problems
+with the methods of `setup.Inspection` of `internal/app/setup/setup_problems.go`, which `polix doctor` shares:
 
 1. `WorkflowProblems`: the error of loading polix.yaml is one problem, or each problem of a workflow that parses
    (`workflow.InvalidError`, the runners of `rules.run` included), with whether they may come from a newer polix
@@ -36,17 +43,18 @@ workflow and the rules, with a `setup.Setup` of the running version, and gathers
 
 ## Response
 
-`Response` is the output: `Problems`, `Hint`, `Warning`, `Found` (whether polix.yaml exists), `Rules`
-(how many rules) and `RulesPath` (the folder they were read from, `Workflow.RulesPath`). The command prints each
+`Response` is the output: `File` (the file as the console names it: the argument, or polix.yaml), `Problems`,
+`Hint`, `Warning`, `Found` (whether the workflow file exists), `Rules` (how many rules) and `RulesPath` (the folder they were read from, `Workflow.RulesPath`). The command prints each
 problem to stderr and the hint as a warning, and exits with 1; else it prints the warning to stderr and
-`ok: polix.yaml and <n> rules of <rules path>/` (or `ok: no polix.yaml
+`ok: <file> and <n> rules of <rules path>/` (or `ok: no polix.yaml
 (only the built-in protections apply) and ...`) to stdout, and exits with 0.
 
 ## Port
 
 `Port`, implemented by `Adapter` on the repository:
 
-- `LoadWorkflow`: loads polix.yaml through the field `Workflow` of the adapter, the loader of `LoadWorkflow`
+- `LoadWorkflow`: loads the file of the field `Path` of the adapter (polix.yaml at the root, or the file of the
+  argument) through the field `Workflow` of the adapter, the loader of `LoadWorkflow`
   (`internal/app/workflow/load`) that `cmd/polix` builds once and passes to `Command`; without it, the default
   workflow and false; a workflow that parses with problems comes back with its `workflow.InvalidError`.
 - `LoadRules`: loads the rules of the folder it is given (`rules.path` of the workflow, `ai/rules/` by default)
@@ -59,14 +67,16 @@ problem to stderr and the hint as a warning, and exits with 1; else it prints th
 ## Errors
 
 - Outside a repository the command fails with the error of git and exits with 1.
+- An empty file argument fails, and exits with 1.
 - The errors of reading polix.yaml and the rules are problems of the output, never errors of the shell.
 - Without the version of the running polix there is no setup to inspect: the shell fails with the error of
   `setup.Setup.Valid`. The command always gives it (`build.Current`).
 
 ## Flow
 
-1. `Command` opens the repository of `--dir` and injects `Adapter{Repo: repo, Rules: rules, Workflow:
-   loadWorkflow}`, with the loaders of the rules and of polix.yaml it was given.
+1. `Command` opens the repository of `--dir` and injects `Adapter{Repo: repo, Path: path, Rules: rules, Workflow:
+   loadWorkflow}`, with the file of the argument or polix.yaml of the root, and the loaders of the rules and of
+   polix.yaml it was given.
 2. The shell reads the workflow, then the rules of its `rules.path`, whether each check exists and whether a base
    branch exists, and builds the `setup.Inspection` of it, validated.
 3. `Decide` decides the problems, the hint and the warning.

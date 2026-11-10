@@ -54,7 +54,7 @@ func runCommand(t *testing.T, repo *git.Repo, args ...string) (code int, stdout,
 func TestAdapter(t *testing.T) {
 	ctx := context.Background()
 	repo := newRepo(t, nil)
-	a := Adapter{Repo: repo}
+	a := Adapter{Path: filepath.Join(repo.Root, workflow.File)}
 	if data, found, err := a.ReadWorkflow(ctx); data != nil || found || err != nil {
 		t.Fatalf("without file: %q %v %v", data, found, err)
 	}
@@ -82,5 +82,52 @@ func TestCommand(t *testing.T) {
 	}
 	if code, _, stderr := runCommand(t, repo, "fmt", "--check"); code != 0 {
 		t.Fatalf("formatted: %d %q", code, stderr)
+	}
+}
+
+// With a file, polix config fmt formats that file, named from the working folder, and leaves polix.yaml of the
+// repository alone; it needs no repository, and refuses a file together with --dir.
+func TestCommandFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "reference.yaml")
+	if err := os.WriteFile(p, []byte("on:\n    stop: []\nversion: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fmtFile := func(args ...string) (int, string, string) {
+		root := cli.Root("polix", "", "", "")
+		root.AddCommand(Command())
+		var out, errb bytes.Buffer
+		code := cli.Run(root, append([]string{"fmt"}, args...), strings.NewReader(""), &out, &errb)
+		return code, out.String(), errb.String()
+	}
+	if code, _, stderr := fmtFile("--check", p); code != 1 ||
+		!strings.Contains(stderr, p+" is not formatted: run polix config fmt "+p) {
+		t.Fatalf("check: %d %q", code, stderr)
+	}
+	if code, stdout, stderr := fmtFile(p); code != 0 || !strings.Contains(stdout, "formatted "+p) {
+		t.Fatalf("fmt: %d %q %q", code, stdout, stderr)
+	}
+	if data, err := os.ReadFile(p); err != nil || string(data) != "version: 1\non:\n  stop: []\n" {
+		t.Fatalf("file: %q %v", data, err)
+	}
+	if code, _, stderr := fmtFile(filepath.Join(dir, "missing.yaml")); code != 1 || !strings.Contains(stderr, "not found") {
+		t.Fatalf("missing: %d %q", code, stderr)
+	}
+	if code, _, stderr := fmtFile(p, "--dir", dir); code != 1 || !strings.Contains(stderr, "cannot go together") {
+		t.Fatalf("file and --dir: %d %q", code, stderr)
+	}
+	if code, _, _ := fmtFile(p, p); code == 0 {
+		t.Fatal("two files: want a failure")
+	}
+	if code, _, stderr := fmtFile(""); code != 1 || !strings.Contains(stderr, "cannot be empty") {
+		t.Fatalf("empty file: %d %q", code, stderr)
+	}
+	spaced := filepath.Join(dir, "my workflow.yaml")
+	if err := os.WriteFile(spaced, []byte("version:   1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := fmtFile("--check", spaced); code != 1 ||
+		!strings.Contains(stderr, "run polix config fmt '"+spaced+"'") {
+		t.Fatalf("a file with a blank: %d %q", code, stderr)
 	}
 }

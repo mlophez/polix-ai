@@ -3,13 +3,14 @@ package load
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"slices"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 )
 
-// fakePort answers the reading of polix.yaml with what it is given, and records each root and version it was asked
+// fakePort answers the reading of polix.yaml with what it is given, and records each file and version it was asked
 // for.
 type fakePort struct {
 	wf     workflow.Workflow
@@ -18,20 +19,20 @@ type fakePort struct {
 	asked  []string
 }
 
-func (f *fakePort) ReadWorkflow(_ context.Context, root, running string) (workflow.Workflow, workflow.Guardrails,
+func (f *fakePort) ReadWorkflow(_ context.Context, path, running string) (workflow.Workflow, workflow.Guardrails,
 	bool, error) {
-	f.asked = append(f.asked, root+" "+running)
+	f.asked = append(f.asked, path+" "+running)
 	return f.wf, workflow.Guardrails{}, f.exists, f.err
 }
 
 // The shell reads polix.yaml of the request through the port and builds the response from the logic.
 func TestRun(t *testing.T) {
 	port := &fakePort{wf: workflow.Workflow{Version: 1, MaxStopRetries: 5}, exists: true}
-	res, err := run(context.Background(), port, Request{Root: "/repo", Running: "0.2.0"})
+	res, err := run(context.Background(), port, Request{Path: "/repo/polix.yaml", Running: "0.2.0"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(port.asked, []string{"/repo 0.2.0"}) {
+	if !slices.Equal(port.asked, []string{"/repo/polix.yaml 0.2.0"}) {
 		t.Fatalf("asked %v", port.asked)
 	}
 	if l := res.Loaded; !l.Exists || l.Err != nil || l.Workflow.MaxStopRetries != 5 {
@@ -42,14 +43,14 @@ func TestRun(t *testing.T) {
 // A file that cannot be read is data of the response, never an error of the shell.
 func TestRunNeverFails(t *testing.T) {
 	boom := errors.New("boom")
-	res, err := run(context.Background(), &fakePort{exists: true, err: boom}, Request{Root: "/repo", Running: "dev"})
+	res, err := run(context.Background(), &fakePort{exists: true, err: boom}, Request{Path: "/repo/polix.yaml", Running: "dev"})
 	if err != nil || !errors.Is(res.Loaded.Err, boom) || !res.Loaded.Exists {
 		t.Fatalf("got %+v %v", res, err)
 	}
 }
 
-// The loader reads polix.yaml once for the life of the process: a second call for the same root and version returns
-// the same result without reading again; another root, or another version, is read.
+// The loader reads polix.yaml once for the life of the process: a second call for the same file and version returns
+// the same result without reading again; another file, or another version, is read.
 func TestLoaderReadsOnce(t *testing.T) {
 	port := &fakePort{wf: workflow.Workflow{Version: 1, MaxStopRetries: 5}, exists: true}
 	l := &loader{port: port, seen: map[Request]workflow.Loaded{}}
@@ -70,7 +71,8 @@ func TestLoaderReadsOnce(t *testing.T) {
 // Command returns a loader, ready to be called.
 func TestCommand(t *testing.T) {
 	load := Command()
-	if got := load(context.Background(), t.TempDir(), "dev"); got.Exists || got.Err != nil || got.Workflow.Version != 1 {
-		t.Fatalf("a root without polix.yaml: %+v", got)
+	path := filepath.Join(t.TempDir(), workflow.File)
+	if got := load(context.Background(), path, "dev"); got.Exists || got.Err != nil || got.Workflow.Version != 1 {
+		t.Fatalf("a folder without polix.yaml: %+v", got)
 	}
 }

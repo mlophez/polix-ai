@@ -3,7 +3,6 @@ package load
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -17,11 +16,11 @@ import (
 // Adapter implements Port on the disk. The entry passes it as the port; there is no constructor.
 type Adapter struct{}
 
-// ReadWorkflow reads polix.yaml of root through internal/platform/file and decodes it for the polix of version
+// ReadWorkflow reads the workflow file at path through internal/platform/file and decodes it for the polix of version
 // running. A missing file has no workflow and no error; one that cannot be read is the error.
-func (a Adapter) ReadWorkflow(_ context.Context, root, running string) (workflow.Workflow, workflow.Guardrails,
+func (a Adapter) ReadWorkflow(_ context.Context, path, running string) (workflow.Workflow, workflow.Guardrails,
 	bool, error) {
-	data, exists, err := file.Read(filepath.Join(root, workflow.File))
+	data, exists, err := file.Read(path)
 	if err != nil {
 		return workflow.Workflow{}, workflow.Guardrails{}, true, err
 	}
