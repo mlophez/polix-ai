@@ -11,6 +11,7 @@ rules:
 
 guidance:
   edit: false
+  layout: false
 
 # Weight of each path in the risk score: the first matching glob wins, any other file weighs 1.
 risk:
