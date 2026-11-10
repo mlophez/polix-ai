@@ -45,7 +45,7 @@
 #   - path: pre_edit, post_edit;
 #   - command, writes: pre_command, post_command, pre_commit;
 #   - exit: post_command.
-#   Every other condition (branch, var, changed, file, contains, actor, finished, changed_lines, changed_files,
+#   Every other condition (actor, branch, var, changed, file, contains, finished, changed_lines, changed_files,
 #   risk_score, not, any) holds on any event.
 
 # Required. The only version is 1.
@@ -433,7 +433,7 @@ on:
     # except the main session adding a new one. A list in path holds when any glob matches.
     - when:
         path: ["db/migrations/**", "src/**/migrations/**"]
-        not: { file: "db/migrations/.allow-{key}", actor: session }
+        not: { actor: session, file: "db/migrations/.allow-{key}" }
       action:
         block: "Las migraciones publicadas no se editan: crea una nueva con el ticket {key}."
     # A reminder on pre_edit: the first edit of a generated file by each actor is blocked once, the next goes
@@ -603,7 +603,7 @@ on:
   # when the main session ends its turn. inject is rejected here.
   subagent_stop:
     # The builder does not finish until the tests pass: polix runs them, it never trusts that the builder ran them.
-    - when: { changed: "src/**", actor: acme:builder }
+    - when: { actor: acme:builder, changed: "src/**" }
       action:
         run:
           command: just test

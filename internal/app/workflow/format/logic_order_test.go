@@ -24,6 +24,7 @@ on:
       when:
         any: { risk_score: 25, changed_lines: 150 }
         changed: ["*.go"]
+        actor: session
     - action: { run: { command: go test ./..., always: true } }
 guardrails:
   run_on_stop:
@@ -59,6 +60,7 @@ on:
   # Before a commit.
   pre_commit:
     - when:
+        actor: session
         changed: ["*.go"]
         any: { changed_lines: 150, risk_score: 25 }
       unless: { finished: polix:reviewer }
