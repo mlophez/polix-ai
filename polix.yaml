@@ -69,7 +69,7 @@ on:
           message: |
             Before committing, check whether this change affects README.md, docs/**/*.md or internal/**/*.md and update them.
             Only Update Markdown files.
-            If it does not affect them, commit again."
+            If it does not affect them, commit again.
 
     # A large or risky Go change needs a review of polix:reviewer before the main session commits it. Subagents are
     # left out: a command of theirs that only quotes a git commit (a probe of the reviewer) counts as a commit too.
