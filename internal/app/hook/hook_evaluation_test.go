@@ -39,11 +39,11 @@ func TestEvaluationValid(t *testing.T) {
 // The facts fed back are kept without touching the evaluation they came from.
 func TestEvaluationKnow(t *testing.T) {
 	var ev Evaluation
-	got := ev.KnowBranch("main", "c0ffee").KnowChanged([]string{"a"}).KnowFiles([]string{"b"}).
+	got := ev.KnowBranch("main", "c0ffee").KnowRefs("5ta5h").KnowChanged([]string{"a"}).KnowFiles([]string{"b"}).
 		KnowRules(nil, errors.New("rules")).KnowIgnored("x", true).KnowReal([]string{"/a"}, []string{"/real/a"}).
 		KnowContent(0, "f", "data", nil).KnowContent(1, "f", "", errors.New("gone")).KnowHash(0, "h", nil)
 	f := got.Facts
-	if f.Branch != "main" || f.Head != "c0ffee" || !f.HasBranch || f.Changed[0] != "a" || f.Files[0] != "b" || f.RulesErr == nil ||
+	if f.Branch != "main" || f.Head != "c0ffee" || !f.HasBranch || f.Refs != "5ta5h" || !f.HasRefs || f.Changed[0] != "a" || f.Files[0] != "b" || f.RulesErr == nil ||
 		!f.Ignored["x"] || f.Reals["/a"] != "/real/a" {
 		t.Fatalf("facts: %+v", f)
 	}
@@ -107,8 +107,13 @@ func TestEvaluationKnowStateAndNote(t *testing.T) {
 // The comparison of two trees is kept per pair, whatever the epoch: its paths, or why it could not be done.
 func TestEvaluationKnowTreeDiff(t *testing.T) {
 	var ev Evaluation
-	got := ev.KnowTreeDiff("a", "b", []string{"x.go"}, nil).KnowTreeDiff("c", "b", nil, errors.New("bad object c"))
-	if paths, compared, err := got.Facts.TreeDiff("a", "b"); !compared || err != nil || !slices.Equal(paths, []string{"x.go"}) {
+	got := ev.KnowTreeDiff("a", "b", []string{"x.go", "y.go"}, []string{"y.go"}, nil).
+		KnowTreeDiff("c", "b", nil, nil, errors.New("bad object c"))
+	if removed := got.Facts.Removed("a", "b"); !slices.Equal(removed, []string{"y.go"}) {
+		t.Fatalf("Removed = %q", removed)
+	}
+	if paths, compared, err := got.Facts.TreeDiff("a", "b"); !compared || err != nil ||
+		!slices.Equal(paths, []string{"x.go", "y.go"}) {
 		t.Fatalf("a b: %q %v %v", paths, compared, err)
 	}
 	if _, compared, err := got.Facts.TreeDiff("c", "b"); !compared || err == nil {
@@ -117,7 +122,7 @@ func TestEvaluationKnowTreeDiff(t *testing.T) {
 	if _, compared, _ := got.Facts.TreeDiff("b", "a"); compared {
 		t.Fatal("b a was not compared")
 	}
-	if ev.Facts.TreeDiffs != nil || ev.Facts.TreeErrs != nil {
+	if ev.Facts.TreeDiffs != nil || ev.Facts.TreeErrs != nil || ev.Facts.TreeRemoved != nil {
 		t.Fatal("the original changed")
 	}
 }

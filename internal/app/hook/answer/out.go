@@ -67,9 +67,12 @@ func (a *Adapter) Hash(ctx context.Context) (string, error) {
 	return a.Repo.ContentHash(ctx, filepath.Join(a.Repo.GitDir, state.DirName))
 }
 
-// TreeDiff returns the paths that differ between two content hashes, through git; a tree git no longer has is the
-// error.
-func (a *Adapter) TreeDiff(ctx context.Context, from, to string) ([]string, error) {
+// Refs returns what git moves without moving HEAD, through git.
+func (a *Adapter) Refs(ctx context.Context) string { return a.Repo.Refs(ctx) }
+
+// TreeDiff returns the paths that differ between two content hashes and those the second no longer holds, through
+// git; a tree git no longer has is the error.
+func (a *Adapter) TreeDiff(ctx context.Context, from, to string) (paths, removed []string, err error) {
 	return a.Repo.TreeDiff(ctx, from, to)
 }
 
@@ -174,6 +177,12 @@ func (a *Adapter) RunCheck(ctx context.Context, run rule.Run) (string, error) {
 		check = filepath.Join(a.Repo.Root, filepath.FromSlash(run.Rules[0].Check))
 	}
 	return proc.RunCheck(ctx, a.Repo.Root, run.Argv, check, checkTimeout)
+}
+
+// Restore puts the paths back in the working tree as the tree source holds them, removing those it does not hold,
+// through git with a scratch index in the folder of the state, as Hash, so the real index is never touched.
+func (a *Adapter) Restore(ctx context.Context, source string, paths []string) error {
+	return a.Repo.Restore(ctx, filepath.Join(a.Repo.GitDir, state.DirName), source, paths)
 }
 
 // Contains reports whether a file git does not ignore, matching one of the patterns, holds text; a file that

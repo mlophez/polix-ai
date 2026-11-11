@@ -108,6 +108,9 @@ command that writes one with the path it writes, or the protected glob a folder 
 denial as `guardrails.protected_files`. Unlike an entry of `on:`, it also covers files git ignores, so an ignored
 `.env` stays out of reach too, but never an edit outside the repository. On macOS and Windows the globs ignore
 case, so `.ENV` is `.env` there.
+A command the check of its line misses (`python -c ...`, `bash -c '...'`) is caught after it runs: polix puts a
+protected file git does not ignore back as it was before the command and tells the agent (see
+[Files a command changed](polix.md#files-a-command-changed)).
 
 To keep only the subagents away and let the main session change a path, use regular entries of `on:`: `path` for
 the edits and `writes` for the commands. The authors of the plugin of polix keep their way in:

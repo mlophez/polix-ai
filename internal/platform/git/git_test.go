@@ -280,6 +280,90 @@ func TestRepoFacts(t *testing.T) {
 	}
 }
 
+// Refs is empty without a stash nor an operation stopped halfway, names the commit of refs/stash after a git stash,
+// and adds the merge a conflict stopped, with its commit.
+func TestRefs(t *testing.T) {
+	ctx := context.Background()
+	dir, git, write := gitRepo(t)
+	commit(git, write, "a.txt")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.Refs(ctx); got != "" {
+		t.Fatalf("Refs before any stash = %q", got)
+	}
+	change := func(content string) {
+		if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	change("stashed")
+	git("stash", "push", "--quiet")
+	stash := "stash " + git("rev-parse", "refs/stash")
+	if got := r.Refs(ctx); got != stash {
+		t.Fatalf("Refs = %q, want %q", got, stash)
+	}
+
+	main := git("rev-parse", "--abbrev-ref", "HEAD")
+	git("checkout", "--quiet", "-b", "other")
+	change("other")
+	git("commit", "--quiet", "-am", "other")
+	other := git("rev-parse", "HEAD")
+	git("checkout", "--quiet", main)
+	change("main")
+	git("commit", "--quiet", "-am", "main")
+	cmd := exec.Command("git", "-c", "user.name=t", "-c", "user.email=t@example.com", "merge", "--quiet", "other")
+	cmd.Dir = dir
+	if err := cmd.Run(); err == nil {
+		t.Fatal("the merge did not stop on its conflict")
+	}
+	if got, want := r.Refs(ctx), stash+", MERGE_HEAD "+other; got != want {
+		t.Fatalf("Refs during a merge = %q, want %q", got, want)
+	}
+}
+
+// On a file system that folds case, a path a command renamed only in case is put back under its own name, not
+// removed with the name the command gave it.
+func TestRestoreCaseRename(t *testing.T) {
+	ctx := context.Background()
+	dir, git, write := gitRepo(t)
+	commit(git, write, "a.txt")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upper, lower := filepath.Join(dir, "CLAUDE.md"), filepath.Join(dir, "claude.md")
+	if err := os.WriteFile(upper, []byte("rules"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(lower); err != nil {
+		t.Skip("the file system tells case apart")
+	}
+	scratch := filepath.Join(r.GitDir, "polix")
+	before, err := r.ContentHash(ctx, scratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(upper, lower); err != nil {
+		t.Fatal(err)
+	}
+	after, err := r.ContentHash(ctx, scratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, _, err := r.TreeDiff(ctx, before, after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Restore(ctx, scratch, before, paths); err != nil {
+		t.Fatalf("Restore %q: %v", paths, err)
+	}
+	if got, err := os.ReadFile(upper); err != nil || string(got) != "rules" {
+		t.Fatalf("CLAUDE.md = %q, %v", got, err)
+	}
+}
+
 // Head knows neither the branch nor the commit on a repository without commits.
 func TestHeadWithoutCommits(t *testing.T) {
 	ctx := context.Background()
@@ -316,17 +400,22 @@ func TestTreeDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if paths, err := r.TreeDiff(ctx, before, after); err != nil || !slices.Equal(paths, []string{"README.md", "src/a.go"}) {
-		t.Fatalf("TreeDiff = %q, %v", paths, err)
+	paths, removed, err := r.TreeDiff(ctx, before, after)
+	if err != nil || !slices.Equal(paths, []string{"README.md", "src/a.go"}) || len(removed) != 0 {
+		t.Fatalf("TreeDiff = %q, %q, %v", paths, removed, err)
 	}
-	if paths, err := r.TreeDiff(ctx, after, after); err != nil || len(paths) != 0 {
+	if paths, removed, err := r.TreeDiff(ctx, after, before); err != nil ||
+		!slices.Equal(paths, []string{"README.md", "src/a.go"}) || !slices.Equal(removed, []string{"README.md"}) {
+		t.Fatalf("TreeDiff back = %q, %q, %v", paths, removed, err)
+	}
+	if paths, _, err := r.TreeDiff(ctx, after, after); err != nil || len(paths) != 0 {
 		t.Fatalf("TreeDiff of equal trees = %q, %v", paths, err)
 	}
 	missing := strings.Repeat("1", len(before))
-	if _, err := r.TreeDiff(ctx, missing, after); err == nil {
+	if _, _, err := r.TreeDiff(ctx, missing, after); err == nil {
 		t.Fatal("a missing tree is an error")
 	}
-	if _, err := r.TreeDiff(ctx, "", after); err == nil {
+	if _, _, err := r.TreeDiff(ctx, "", after); err == nil {
 		t.Fatal("an empty tree is an error")
 	}
 }

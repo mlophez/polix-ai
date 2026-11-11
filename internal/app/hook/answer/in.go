@@ -60,8 +60,11 @@ type Port interface {
 	Head(ctx context.Context) (branch, commit string)
 	// Hash returns the hash of the current content of the working tree.
 	Hash(ctx context.Context) (string, error)
-	// TreeDiff returns the paths that differ between two content hashes, or why they cannot be compared.
-	TreeDiff(ctx context.Context, from, to string) ([]string, error)
+	// Refs returns what git moves without moving HEAD: the stash and an operation stopped halfway.
+	Refs(ctx context.Context) string
+	// TreeDiff returns the paths that differ between two content hashes and those of them the second no longer
+	// holds, or why they cannot be compared.
+	TreeDiff(ctx context.Context, from, to string) (paths, removed []string, err error)
 	// Changed returns the files not committed yet: changed since HEAD, or untracked.
 	Changed(ctx context.Context) []string
 	// Diff returns the size of the change of each file not committed yet, the same files as Changed, or why it
@@ -92,6 +95,9 @@ type Port interface {
 	// RunCheck runs one invocation of the checks of one or several rules from the root within the budget of the
 	// call and returns its output.
 	RunCheck(ctx context.Context, run rule.Run) (string, error)
+	// Restore puts the paths, relative to the root with slashes, back in the working tree as the tree source holds
+	// them, removing those it does not hold, without touching the index; the error names the first path that failed.
+	Restore(ctx context.Context, source string, paths []string) error
 	// Append appends an entry to the log, stamped with the time.
 	Append(ctx context.Context, e state.Entry) error
 }
@@ -118,6 +124,7 @@ type hookInput struct {
 	ToolResponse  json.RawMessage `json:"tool_response"`
 	Prompt        string          `json:"prompt"`
 	AgentType     string          `json:"agent_type"`
+	ToolUse       string          `json:"-"` // the id of the call of a tool, set by the format whose agent gives it
 }
 
 // formats are the formats of the agents, by the name of the agent.
@@ -174,11 +181,12 @@ func Command(rules rule.Load, loadWorkflow workflow.Load, loadState state.Load) 
 }
 
 // run is the shell, from request to response: it parses the input with the format of the agent, opens the
-// repository and loads the workflow through the port, and for each event locates its path and loops: it asks the
-// logic for the next step, carries it out through the port and feeds the result back to the evaluation, until
-// there is none; then it merges the answers of the events and renders them with the format of the agent. Outside a
-// repository, or without events, it lets everything through. It only sequences; the decisions are in the logic and
-// the domain.
+// repository and loads the workflow through the port, and evaluates the events from a queue, those of the hook
+// first: for each it locates its path and loops: it asks the logic for the next step, carries it out through the
+// port and feeds the result back to the evaluation, until there is none; the events the output follows with, the
+// edits a command made, join the queue. Then it merges the answers of the events and renders them with the format
+// of the agent. Outside a repository, or without events, it lets everything through. It only sequences; the
+// decisions are in the logic and the domain.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	ag := agent.Agent{Name: req.Agent}
 	if err := ag.Valid(); err != nil {
@@ -203,12 +211,14 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	wf, present, problem := port.LoadWorkflow(ctx, req.Version)
 	var facts hook.Facts
 	var answer agent.Answer
-	for i, e := range h.Events {
+	for queue := h.Events; len(queue) != 0; {
+		e := queue[0]
+		queue = queue[1:]
 		if e.Edits() {
 			e = e.Locate(port.Locate(ctx, e.AbsPath, e.Cwd))
 		}
 		ev := hook.Evaluation{Workflow: wf, Present: present, Invalid: problem, Root: root, GitDir: gitDir,
-			System: req.System, Event: e, Remaining: h.Remaining(i), Facts: facts}
+			System: req.System, Event: e, Remaining: len(queue), Facts: facts}
 		if err := ev.Valid(); err != nil {
 			return Response{}, err
 		}
@@ -223,23 +233,27 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		}
 		answer = answer.Merge(out.Answer)
 		facts = out.Facts
+		queue = append(queue, out.Follow...)
 	}
 	stdout, stderr, code := f.render(h.Native, answer)
 	return Response{Stdout: stdout, Stderr: stderr, Code: code}, nil
 }
 
 // carry carries out the step s of the evaluation ev through the port and feeds its result back to the
-// evaluation: the fact it asks for, or, for a step that acts, its outcome (act).
+// evaluation: the fact it asks for, of git here and of a path or a program through lookup, or, for a step that acts,
+// a restore of files among them, its outcome (act).
 func carry(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook.Evaluation {
 	switch {
 	case s.Branch:
 		return ev.KnowBranch(port.Head(ctx))
+	case s.Refs:
+		return ev.KnowRefs(port.Refs(ctx))
 	case s.Hash:
 		hash, err := port.Hash(ctx)
 		return ev.KnowHash(s.Epoch, hash, err)
 	case s.Compare != "":
-		paths, err := port.TreeDiff(ctx, s.Compare, s.Tree)
-		return ev.KnowTreeDiff(s.Compare, s.Tree, paths, err)
+		paths, removed, err := port.TreeDiff(ctx, s.Compare, s.Tree)
+		return ev.KnowTreeDiff(s.Compare, s.Tree, paths, removed, err)
 	case s.Changed:
 		return ev.KnowChanged(port.Changed(ctx))
 	case s.Diff:
@@ -250,6 +264,14 @@ func carry(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook
 		return ev.KnowRules(port.LoadRules(ctx, ev.Workflow.RulesPath()))
 	case s.State:
 		return ev.KnowState(port.LoadState(ctx))
+	}
+	return lookup(ctx, port, ev, s)
+}
+
+// lookup carries out the step s that asks for a fact of a path, a folder, the programs or the files holding a text,
+// through the port, and feeds it back to the evaluation ev; any other step is one that acts (act).
+func lookup(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook.Evaluation {
+	switch {
 	case s.Ignored != "":
 		return ev.KnowIgnored(s.Ignored, port.Ignored(ctx, s.Ignored))
 	case s.Real != nil:
@@ -267,14 +289,16 @@ func carry(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook
 	return act(ctx, port, ev, s)
 }
 
-// act carries out the step s that acts, a run, a check or an append to the log, through the port and notes its
-// outcome in the evaluation ev.
+// act carries out the step s that acts, a run, a check, a restore of files or an append to the log, through the
+// port and notes its outcome in the evaluation ev.
 func act(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook.Evaluation {
 	switch {
 	case s.Run != nil:
 		return ev.Note(port.Run(ctx, s.Run))
 	case s.Check != nil:
 		return ev.Note(port.RunCheck(ctx, *s.Check))
+	case s.Restore != nil:
+		return ev.Note("", port.Restore(ctx, s.Source, s.Restore))
 	case s.Append != nil:
 		return ev.Note("", port.Append(ctx, *s.Append))
 	}
@@ -310,15 +334,16 @@ func (in hookInput) exitCode() int {
 }
 
 // event returns the event name of the agent ag for the input, with abs, the path of an edit, and with command and
-// code, a command line and its exit code; the error tells why it is not valid. The stop of a turn (stop) is
-// always of the main session: a subagent stops with subagent_stop.
+// code, a command line and its exit code, and with the id of the call of the tool when the format set it; the error
+// tells why it is not valid. The stop of a turn (stop) is always of the main session: a subagent stops with
+// subagent_stop.
 func (in hookInput) event(ag, name, abs, command string, code int) (agent.Event, error) {
 	actor := in.actor()
 	if name == workflow.Stop {
 		actor = agent.ActorSession
 	}
 	ev := agent.Event{Name: name, Agent: ag, Session: in.SessionID, Actor: actor, AbsPath: abs, Command: command,
-		ExitCode: code, Prompt: in.Prompt, Cwd: in.Cwd}
+		ExitCode: code, Prompt: in.Prompt, Cwd: in.Cwd, ToolUse: in.ToolUse}
 	return ev, ev.Valid()
 }
 

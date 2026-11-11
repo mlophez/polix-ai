@@ -1230,10 +1230,14 @@ func TestAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if paths, err := a.TreeDiff(ctx, before, after); err != nil || !slices.Equal(paths, []string{"docs/guide.md"}) {
-		t.Fatalf("TreeDiff = %q %v", paths, err)
+	if paths, removed, err := a.TreeDiff(ctx, before, after); err != nil ||
+		!slices.Equal(paths, []string{"docs/guide.md"}) || len(removed) != 0 {
+		t.Fatalf("TreeDiff = %q %q %v", paths, removed, err)
 	}
-	if _, err := a.TreeDiff(ctx, strings.Repeat("1", len(before)), after); err == nil {
+	if a.Refs(ctx) != "" {
+		t.Fatal("Refs without a stash nor an operation of git")
+	}
+	if _, _, err := a.TreeDiff(ctx, strings.Repeat("1", len(before)), after); err == nil {
 		t.Fatal("TreeDiff of a missing tree")
 	}
 	if data, err := a.Read(ctx, "src/a.go"); err != nil || data != "package a\n" {
@@ -1262,6 +1266,77 @@ func TestAdapter(t *testing.T) {
 	}
 	if rules, err := a.LoadRules(ctx, "ai/rules"); err != nil || rules != nil {
 		t.Fatalf("no ai/rules: %v %v", rules, err)
+	}
+}
+
+// The adapter puts a protected file back as the content hash taken before held it, removes a file it did not hold,
+// and leaves the index of the person as it was.
+func TestAdapterRestore(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("AGENTS.md", "reglas\n")
+	r.git("add", "AGENTS.md")
+	ctx := context.Background()
+	a := &Adapter{Rules: ruleload.Command(), Workflow: workflowload.Command(), State: stateload.Command()}
+	if _, _, err := a.Open(ctx, r.dir); err != nil {
+		t.Fatal(err)
+	}
+	before, err := a.Hash(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := os.ReadFile(filepath.Join(r.dir, ".git", "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.write("AGENTS.md", "otra cosa\n")
+	r.write("CLAUDE.md", "nuevo\n")
+	if err := a.Restore(ctx, before, []string{"AGENTS.md", "CLAUDE.md"}); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(filepath.Join(r.dir, "AGENTS.md")); err != nil || string(data) != "reglas\n" {
+		t.Fatalf("AGENTS.md = %q %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(r.dir, "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Fatalf("CLAUDE.md was not removed: %v", err)
+	}
+	if after, err := os.ReadFile(filepath.Join(r.dir, ".git", "index")); err != nil || !bytes.Equal(after, index) {
+		t.Fatalf("the index changed: %v", err)
+	}
+	if err := a.Restore(ctx, strings.Repeat("1", len(before)), []string{"AGENTS.md"}); err == nil {
+		t.Fatal("a restore from a missing tree")
+	}
+}
+
+// End to end, a command that changes a protected file and another one finds the protected file put back and the
+// command refused after it ran, and the other file evaluated as an edit in the same call, paired by the id of the
+// call of the tool.
+func TestCommandEditsWatched(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("AGENTS.md", "reglas\n")
+	r.write("polix.yaml", "version: 1\nguardrails:\n  protected_files: [AGENTS.md]\n"+
+		"on:\n  pre_edit:\n    - action: { inject: { text: \"reglas de {path}\", always: true } }\n")
+	r.git("add", "--all")
+	r.git("commit", "--quiet", "-m", "polix")
+	command := "python3 gen.py"
+	bash := func(event string) (int, string, string) {
+		return r.hook("claude", map[string]any{"hook_event_name": event, "tool_name": "Bash", "tool_use_id": "toolu_1",
+			"tool_input": map[string]any{"command": command}, "tool_response": map[string]any{"stdout": "ok"}})
+	}
+	code, _, stderr := bash("PreToolUse")
+	expect(t, "pre_command", code, 0, stderr)
+	r.write("AGENTS.md", "otra cosa\n")
+	r.write("src/gen.go", "package src\n")
+	code, _, stderr = bash("PostToolUse")
+	expect(t, "post_command", code, 2, stderr)
+	if !strings.Contains(stderr, "AGENTS.md is protected in polix.yaml: a command changed it and polix put it back.") ||
+		!strings.Contains(stderr, "reglas de src/gen.go") {
+		t.Fatalf("stderr %q", stderr)
+	}
+	if data, err := os.ReadFile(filepath.Join(r.dir, "AGENTS.md")); err != nil || string(data) != "reglas\n" {
+		t.Fatalf("AGENTS.md = %q %v", data, err)
+	}
+	if !strings.Contains(r.log(), `"outcome":"snapshot"`) || !strings.Contains(r.log(), `"key":"toolu_1"`) {
+		t.Fatalf("log %s", r.log())
 	}
 }
 

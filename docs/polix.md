@@ -210,7 +210,9 @@ The use case `AnswerHook`, `internal/app/hook/answer` (layout in `docs/architect
    actor.
 2. The logic of AnswerHook (`internal/app/hook/answer`) applies the [protections](#protections): the built-in protection of the
    state, then `guardrails.protected_files` and `guardrails.forbidden_commands`; then the entries of the event in
-   order.
+   order. Around a command, when the workflow watches the edits, it records the content before it runs and, after
+   it, puts back the protected files it changed and evaluates the others as edits in the same call (see
+   [Files a command changed](#files-a-command-changed)).
 3. The format of the agent renders the answer: exit 2 with the reasons on stderr to block, or exit 0 with one JSON
    object on stdout, `hookSpecificOutput.additionalContext` to inject context and `systemMessage` for the messages
    for the user, each as `polix: <message>`.
@@ -261,7 +263,9 @@ evaluation of the event:
   `/polix.yaml` to protect only the file of the root. It covers the files git ignores, so `.env` is covered too,
   and it binds the skills as well: protecting `polix.yaml` or `ai/rules/` keeps the skills `workflow` and
   `add-rule` from writing them. For finer control, such as keeping only subagents away, use the condition
-  `writes` with `actor` in a `pre_command` entry and `path` in a `pre_edit` entry.
+  `writes` with `actor` in a `pre_command` entry and `path` in a `pre_edit` entry. A protected file that a command
+  changed anyway, past the check of its line, is put back after it runs (see
+  [Files a command changed](#files-a-command-changed)).
 - `guardrails.forbidden_commands` lists command patterns no actor runs: on `pre_command` and `pre_commit`, the
   first item in file order whose pattern matches any command of the line denies it, wherever it comes (`cd tmp &&
   rm -rf /`), with its `reason` or the default `This command is forbidden by polix.yaml: a person must run it.`,
@@ -290,7 +294,10 @@ Each command of the line is parsed with its quotes into the program it runs (pas
 Reading is allowed: `cat CLAUDE.md > notes.txt`, `ls ai 2>/dev/null` or `rg install ai` write nothing protected.
 On macOS and Windows the globs of `path` and `writes`, and those of `protected_files`, ignore case, so `.ENV` is
 `.env` there. It is a
-heuristic, aimed at accidents rather than at an agent determined to get around it. It does not see:
+heuristic, aimed at accidents rather than at an agent determined to get around it, and it only stops a command
+before it runs. It does not see the cases below; when the workflow watches the edits, the files those commands change
+are still caught after they run, a protected one put back and any other evaluated as an edit (see
+[Files a command changed](#files-a-command-changed)), except the files git ignores:
 
 - a program that writes through an interpreter or another command: `python -c "open(...)"`, `bash -c '...'`,
   `sh -c`, `find ai -delete` or `find ai -exec rm {} \;`;
@@ -303,6 +310,57 @@ heuristic, aimed at accidents rather than at an agent determined to get around i
 - quoting other than that of bash: a backslash before an ordinary character stays (for the paths of Windows, so
   `rm AGENT\S.md` is not `AGENTS.md`), `$'...'` is not decoded, and under PowerShell a quoted path that ends in a
   backslash (`"ai\rules\"`) is read as an escaped quote.
+
+### Files a command changed
+
+The check of the command line guesses; polix also looks at what a command actually did. It does so only when the
+workflow watches the edits: a valid `polix.yaml` with `guardrails.protected_files` or at least one entry on
+`pre_edit` or `post_edit`, `format_on_edit` included. Otherwise nothing of this section happens and a command costs
+nothing more.
+
+1. On a `pre_command` that no protection denied and no entry blocked, after its entries (so a `run` of them that
+   rewrites files is not taken for the command), polix computes the content hash (see [State](#state)) and writes
+   an observed `snapshot` line with it, the HEAD commit, what git moves without HEAD (the commit of `refs/stash` and
+   an operation stopped halfway, when there are) and a key. The key is the `tool_use_id` Claude Code gives the call
+   of the tool, the same before and after it, so two commands running at once each pair with their own snapshot;
+   Codex gives no id polix knows, so its key is the command line.
+2. On the `post_command`, after a command that succeeded or failed, since a failing command may have written files,
+   polix reads the latest `snapshot` of the session, the actor and the key, writes an observed `watched` line with
+   the same key, so that snapshot is compared only once, computes the hash again and lists the paths that differ
+   between both trees (`git diff-tree`). The entries of `post_command` run after this.
+3. Each path of `guardrails.protected_files` the command changed is put back as the snapshot holds it, content and
+   mode, or removed when the snapshot did not hold it, without touching the index of the person. The command is
+   refused once per path with `<path> is protected in polix.yaml: a command changed it and polix put it back.`,
+   logged as a `deny` decision of `guardrails.protected_files`: Claude Code shows it to the agent once the tool ran.
+   When a file cannot be put back, its refusal names the path and the error, and the user is warned to put that file
+   back by hand; the others are still put back.
+4. Each other path that still exists becomes a `pre_edit` and then a `post_edit` of that path, evaluated in the
+   same hook call after the events of the command, as if the agent had edited it with its edit tool: `format_on_edit`
+   formats it and an `inject: { rules: "{path}" }` brings its rules. A file the command removed, as `rm` or `git mv`
+   do, is not an edit, so no formatter runs on a missing file. As the edit already happened, a `block` and a failing
+   `run` on these edits reach the agent as context, logged as `inform`, and never refuse. The protections of an edit
+   are not applied again to them: step 3 already applied `protected_files`, and the state of polix lives in the git
+   directory, which no tree holds.
+
+Some commands are left alone:
+
+- When HEAD points to another commit than in the snapshot (a pull, a checkout, a reset, a rebase, a commit), or
+  `refs/stash` does (a `git stash`), or an operation of git stopped halfway started or ended (a merge, a pull, a
+  cherry-pick, a revert, a rebase or a `git am` stopped on its conflicts or with `--no-commit`, seen by `MERGE_HEAD`,
+  `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `rebase-merge` or `rebase-apply` in the git directory), the changes are git's:
+  nothing is put back nor evaluated, so a merge, a checkout or a stash is never undone, and the log records a `skip`
+  decision of the action `builtin` that names both values.
+- When a command changed more than 25 paths besides the protected ones, as a dependency install or a code generator
+  may, none becomes an edit: the agent gets one context with the count, logged as an `inform` decision of
+  `builtin`. The protected paths among them are still put back.
+- Without a `snapshot` (an unknown hash before the command, a workflow that started watching while it ran, a
+  `pre_command` that did not reach polix), when the latest one of the key was already compared (a `watched` line
+  comes after it) or with a log that cannot be read, the `post_command` answers as without this section. Two trees
+  that cannot be compared (one pruned by `git gc`, git failing) evaluate nothing and warn the user.
+
+The cost is two content hashes per command, about 25 ms each on this repository, and the comparison of the trees.
+The check of the command line still runs before every command, so `rm AGENTS.md` is denied before it runs, not
+repaired after.
 
 ### Failure policy
 
@@ -717,7 +775,9 @@ polix does not keep facts declared by the workflow. It writes to its log an `obs
 workflow, or the evidence, asks about, each with the session, the agent, the actor, the event, the branch, the
 line of the entry, a key and one outcome. The lines about a content that are read by branch, a `finished` with a
 content hash, a `passed` and a `blocked`, also carry `head`, the commit HEAD pointed to when they were written, left
-out when the repository has no commit yet; the decisions and the other outcomes never carry it:
+out when the repository has no commit yet, and so does a `snapshot`, so its `post_command` sees HEAD moved; the
+decisions and the other outcomes never carry it. A `snapshot` also carries `refs`, what git moves without HEAD (the
+commit of `refs/stash` and an operation stopped halfway), when there is one:
 
 - `finished`: a subagent ended and the answer to its `subagent_stop` did not refuse. It is written, with the
   content hash and the subagent type as key, when a `finished` of the workflow names that type; polix observes it
@@ -744,6 +804,11 @@ out when the repository has no commit yet; the decisions and the other outcomes 
   `pre_commit` blocks is logged as not shown and stays due, and shows again on the next call. Within one call a
   notice shows once: the second path of an edit of several does not show it again. Nothing makes it due again in
   the session. A line that cannot be written leaves the notice due again, never an error of the call.
+- `snapshot`: a command is about to run and the workflow watches the edits, with the content hash before it and, as
+  key, the `tool_use_id` of the call or else the command line. Its `post_command` compares it with the content after
+  the command (see [Files a command changed](#files-a-command-changed)); no condition reads it.
+- `watched`: a `post_command` found the `snapshot` of its key and compared it, with the same key and without hash,
+  so a later `post_command` of the same key does not compare that snapshot again.
 
 `finished: <subagent>` (or a list, all of them) holds when the latest `finished` line with a hash of that type on
 the current branch, or on the same HEAD commit, has a content equal to the current one on the scope of the entry:
@@ -762,8 +827,9 @@ whose branch is empty, sees the lines written on a branch at the same commit, an
 HEAD match each other. A line without `head`, written by an older polix, and a repository without commits, whose
 HEAD is unknown, match only by branch. The same holds for the repeat of `run` and for a `once` block.
 
-Only what polix sees by itself counts: its own runs and the end of a subagent. A command the AI runs is never
-recorded and never counts as passed, green or not: its text does not prove what ran (an alias, another folder, a
+Only what polix sees by itself counts: its own runs and the end of a subagent. A command the AI runs never counts
+as passed, green or not, and its `snapshot` only records the content before it, not what it ran nor its result:
+its text does not prove what ran (an alias, another folder, a
 wrapper), a command sent to the background reports success before it ends, and the command may change the files it
 checked. A check that must hold is a `run` of polix; the repeat of `run` already spares the AI a second run on a
 content polix saw green, and the order of the entries, with the single stop rule, keeps a later gate from running
@@ -809,8 +875,10 @@ of a `fact`): after the upgrade, the reminders, the injects and the loop guard s
 ### How the entries of an event are evaluated
 
 One hook call may produce several events: an edit of several paths gives one `pre_edit` per path, and a command
-with a `git commit` gives `pre_command` and `pre_commit`. Each event is answered on its own and the answers are
-merged: the call blocks when any of them blocks, with the reasons of all of them.
+with a `git commit` gives `pre_command` and `pre_commit`, and a `post_command` may add a `pre_edit` and a
+`post_edit` per file the command changed (see [Files a command changed](#files-a-command-changed)). Each event is
+answered on its own and the answers are merged: the call blocks when any of them blocks, with the reasons of all of
+them.
 
 For every event the [protections](#protections) come first, before any entry is read: the protection of the
 state, then, with a valid `polix.yaml`, `protected_files` and `forbidden_commands`, also on the edits of files git
@@ -839,7 +907,8 @@ extra turns cheap: on the next attempt the checks that passed on the same conten
 
 What a block does depends on the event:
 
-- `pre_edit`, `pre_command`, `pre_commit`: the tool call is denied and the agent receives the reasons.
+- `pre_edit`, `pre_command`, `pre_commit`: the tool call is denied and the agent receives the reasons. A `pre_edit`
+  of a file a command changed already happened, so its block reaches the agent as context, logged as `inform`.
 - `prompt`: the prompt is rejected before the agent reads it.
 - `stop`, `subagent_stop`: the main session, or the subagent, may not end its turn and receives the reasons to
   act on them, up to the loop guard.
@@ -881,17 +950,19 @@ count: it fails open, lets the agent stop with a warning and records a `loop_gua
 
 - `decision`: what it answered (`block`, `deny` for a protection, `inform`, `notify` for a notice shown to the user,
   `warn`, `skip` or `loop_guard`), the
-  action (the verb of the entry, `builtin` for the protection of the state, `guardrails.protected_files` or
+  action (the verb of the entry, `builtin` for the protection of the state and for a command whose changes polix
+  did not evaluate, after HEAD, the stash or an operation of git moved or past 25 paths, `guardrails.protected_files` or
   `guardrails.forbidden_commands` for those protections,
   `invalid` for an invalid workflow, `message` for a message for the user a blocked event did not show, and
   `finished` for the end of a subagent it could not observe or a tree it could not compare), the `line` of the entry
   and the reason, the evidence of the process each change followed. It carries the content hash only when the call already
   computed it, since computing it costs a pass over the whole tree.
 - `observed`: what polix saw by itself and the workflow asks about, with its outcome (`finished`, `passed`,
-  `blocked`, `injected`, `started` or `notified`), its key and, on a `finished` with hash, a `passed` and a `blocked`, the
-  `head` commit; see
-  [What polix observes](#what-polix-observes-and-finished). Nothing else is recorded: an edit and a command of the
-  AI leave no observed line, nor does the end of a subagent no `finished` names when no `inject` acts once.
+  `blocked`, `injected`, `started`, `notified`, `snapshot` or `watched`), its key and, on a `finished` with hash, a
+  `passed`, a `blocked` and a `snapshot`, the `head` commit, plus the `refs` on a `snapshot`; see
+  [What polix observes](#what-polix-observes-and-finished). Nothing else is recorded: an edit of the AI leaves no
+  observed line, a command leaves at most its `snapshot` and `watched`, when the workflow watches the edits, and the
+  end of a subagent no `finished` names leaves none when no `inject` acts once.
 
 Lines of the kinds `fact`, `injected` and `stop_block`, written by earlier builds, stay in the log, are ignored by
 every query and are shown by `polix log` with their kind (and the name of a `fact`).
@@ -913,8 +984,10 @@ without anyone invalidating anything.
 It is computed only when something needs it. Each `run` computes it before it runs, `always` included, and again
 after it passes when the first was known, so `passed` is written only when the run did not change the content;
 anything that needs it after a run computes it again, since a run may rewrite files. A `once` block and the loop
-guard compute it, and `finished` only when a `finished` line of that type exists. An `inject`, a `notify`, a
-`started` and a `notified` line never compute it.
+guard compute it, and `finished` only when a `finished` line of that type exists. When the workflow watches the
+edits, every command computes it before it runs and, when it has a `snapshot`, again after it; putting back a
+protected file counts as a run, so the hash is computed again after it. An `inject`, a `notify`, a `started` and a
+`notified` line never compute it.
 When it cannot be computed (an unreadable file, a broken index), nothing that needs it is observed nor holds:
 `finished` does not hold, a `run` is not skipped, a `once` block blocks, and the hook warns with the cause. The loop
 guard still counts the blocks of a stop made without a hash, as one content, so the agent can always stop.
@@ -1055,6 +1128,21 @@ may outlive the budget, since polix does not kill the whole process tree.
 - The condition `pr` (state of the pull request) is not implemented.
 - The log is appended without a lock; parallel subagents could in theory interleave lines.
 - Injected rules are not bounded: a project with many rules without scope gets all of them on its first edit.
+- The files a command changed are found by comparing two content hashes, which hold no file git ignores: a
+  protected file that git ignores, as `.env`, is only guarded by the check of the command line before it runs, and a
+  change to an ignored file is never evaluated as an edit.
+- What a command changed is judged with the `polix.yaml` read after it ran: a command that also leaves `polix.yaml`
+  invalid, or takes a path out of `protected_files`, gets past the restore of that path. Protecting `polix.yaml`
+  itself keeps the check of the command line before it runs, which catches the plain forms.
+- A command that moves HEAD after writing, as `python3 x.py && git commit -am x`, is left alone as any change of git,
+  so what it wrote is neither put back nor evaluated; `git stash apply` and `git cherry-pick -n` move no ref polix
+  sees, so what they bring is watched as if the agent wrote it.
+- Commands running at once in the same session mix their changes: each one sees every change made while it ran, so
+  an edit may be evaluated after the wrong command, or twice. A protected file is put back as the snapshot of the
+  command that ends holds it: when one command changed it before another one started, the later one may put the
+  changed content back. A person editing a protected file while a command of the agent runs may see it put back.
+- Codex pairs a command with its snapshot by the command line, since polix knows no id of its tool calls: two
+  identical command lines running at once share one snapshot.
 - No tests inside `polix.yaml` yet, and expiring entries with `review_by` is pending.
 - `finished` only says that a subagent ended on the content, not what it concluded: requiring the verdict of the
   reviewer needs its output in the input of the hook.

@@ -10,11 +10,15 @@ import (
 )
 
 // Output is the decision of the logic of AnswerHook for one event: the next step the shell carries out
-// or, once it is none, the answer to the event and the facts the next event of the call starts from.
+// or, once it is none, the answer to the event, the facts the next event of the call starts from and the events
+// the shell evaluates next in the same call.
 type Output struct {
 	Step   hook.Step
 	Answer agent.Answer
 	Facts  hook.Facts
+	// Follow are the events derived from this one that the shell evaluates next in the same call, in order: the
+	// edits a command made (see watch).
+	Follow []agent.Event
 }
 
 // pass is one pass of the evaluation of an event, from its start: the facts are read from the
@@ -28,9 +32,12 @@ type pass struct {
 	// entry is the entry being evaluated: the `changed` of its `when` scopes the measure placeholders and the
 	// content `finished` compares.
 	entry workflow.Entry
-	// informed tells that the event already happened (workflow.Informed): a failing run reaches the AI as context
-	// instead of blocking.
+	// informed tells that the event already happened (workflow.Informed), or is an edit a command made: a failing
+	// run reaches the AI as context instead of blocking.
 	informed bool
+	// byCommand tells that the event is an edit polix derived from the effect of a command (agent.Event.ByCommand):
+	// the edit already happened, so a block reaches the AI as context instead of refusing (see apply).
+	byCommand bool
 	// always tells that every inject of the event injects each time it applies, as on start (see session).
 	always bool
 	// loop tells that every block of the event goes through the loop guard of max_stop_retries (see stop).
@@ -49,6 +56,8 @@ type pass struct {
 	// of the call (hook.Facts.Pending), then those of this one, carried to the next event until the last one writes
 	// them (see settle).
 	pending []state.Entry
+	// follow are the edits a command made, which the shell evaluates next in the same call (see derive).
+	follow []agent.Event
 }
 
 // passInject is a once-only inject that reached the answer: the line of its entry and its key.
@@ -63,10 +72,12 @@ type passInject struct {
 // time it is asked, so the step it returns is the first one whose result the evaluation does not know yet; with
 // none, the event is answered, and the facts the next event starts from know the answer (hook.Facts.Answered), so
 // the messages for the user a block of the call hides are logged as not shown (see warn), and the lines written
-// only when the whole call does not block are carried to its last event (see settle).
+// only when the whole call does not block are carried to its last event (see settle). An edit a command made
+// already happened, so it is evaluated as informed.
 func Decide(ev hook.Evaluation) Output {
-	r := &pass{ev: ev, epoch: ev.Facts.Epoch, state: ev.Facts.State,
-		informed: slices.Contains(workflow.Informed, ev.Event.Name), pending: ev.Facts.Pending}
+	byCommand := ev.Event.ByCommand
+	r := &pass{ev: ev, epoch: ev.Facts.Epoch, state: ev.Facts.State, byCommand: byCommand,
+		informed: byCommand || slices.Contains(workflow.Informed, ev.Event.Name), pending: ev.Facts.Pending}
 	var ans agent.Answer
 	if family := route(ev.Event.Name); family != nil {
 		ans = family(r)
@@ -77,7 +88,7 @@ func Decide(ev hook.Evaluation) Output {
 	if r.step != nil {
 		return Output{Step: *r.step}
 	}
-	return Output{Answer: ans, Facts: ev.Facts.Carry(r.epoch, r.state).Answered(ans, r.pending)}
+	return Output{Answer: ans, Facts: ev.Facts.Carry(r.epoch, r.state).Answered(ans, r.pending), Follow: r.follow}
 }
 
 // route returns the family of the event name, the method of pass that answers it: session for start, prompt and

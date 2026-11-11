@@ -8,12 +8,15 @@ import (
 )
 
 // edit answers pre_edit and post_edit, an edit about to happen and one that happened. Before an edit come its
-// protections (see protectEdit). An unusable workflow fails closed before an edit, but for what fixing it needs (see
-// unusableEdit), and only warns after one. Without polix.yaml nothing else happens, and neither for an edit outside
-// the change (see outsideEdit). A failing run after an edit reaches the AI as context (workflow.Informed).
+// protections (see protectEdit), but for an edit a command made: post_command already put its protected files back
+// (see watch), and the state of polix lives in the git directory, which no tree holds. An unusable workflow fails
+// closed before an edit, but for what fixing it needs (see unusableEdit), and only warns after one. Without
+// polix.yaml nothing else happens, and neither for an edit outside the change (see outsideEdit). A failing run after
+// an edit reaches the AI as context (workflow.Informed), and so do a block and a failing run on an edit a command
+// made (see apply).
 func (r *pass) edit() agent.Answer {
 	pre := r.ev.Event.Name == workflow.PreEdit
-	if pre {
+	if pre && !r.byCommand {
 		if ans, denied := r.protectEdit(); r.waiting() || denied {
 			return ans
 		}

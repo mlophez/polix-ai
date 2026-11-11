@@ -191,7 +191,10 @@ guardrails:
   # ai/rules/**), never a read; a commit is stopped the same way. It also covers files git ignores (.env). Its
   # messages, in English: "<path> is protected in polix.yaml: only a person changes it.", and for a folder or a
   # wildcard that holds a protected path "<folder> holds <glob>, protected in polix.yaml: only a person changes
-  # it.". The log records the denial as `guardrails.protected_files`.
+  # it.". The log records the denial as `guardrails.protected_files`. A protected file a command changed anyway (a
+  # Python script, `bash -c`) is put back after it ran, and the command is refused naming it (see "Files a command
+  # changed" in docs/polix.md); this, like format_on_edit, pre_edit and post_edit, costs every command two content
+  # hashes, and files git ignores are not put back.
   # Protecting polix.yaml or ai/rules/ keeps the skills `workflow` and `add-rule` from writing them. A glob without
   # `/` matches the name in any folder (`.env` keeps every .env); a leading `/` anchors it to the root, as in
   # .gitignore (`/AGENTS.md` is only the one of the root); `**` protects a whole folder. To keep only the subagents
@@ -237,7 +240,7 @@ guardrails:
   #   without it, it runs on every edited file;
   # - message: optional, the text before the output of a failure (placeholders allowed).
   # Each item expands into one entry on post_edit with `run`: it runs once per path and content, and a failure
-  # reaches the AI as context, its message first.
+  # reaches the AI as context, its message first. It also runs on each file a command changed (see post_edit).
   format_on_edit:
     # A string, with a message:
     - run: "golangci-lint fmt {path}"
@@ -421,7 +424,9 @@ on:
       action:
         inject: "Revisa el diff contra las reglas de ai/rules/: cada hallazgo cita el id de la regla que incumple."
 
-  # pre_edit: before a file is edited, once per path. Conditions of the edit: path, actor.
+  # pre_edit: before a file is edited, once per path. Conditions of the edit: path, actor. It also applies, after
+  # the command, to each file a command changed (up to 25, see "Files a command changed" in docs/polix.md): there
+  # the edit already happened, so a block or a failing run only reaches the AI as context.
   pre_edit:
     # block: block the event with a message for the AI. The short form is the message (placeholders allowed); the
     # long form a map with `message` (required) and `once`. Valid on prompt, pre_edit, pre_command, pre_commit,
@@ -478,8 +483,9 @@ on:
           always: true
           text: "Código de autenticación: no registres secretos ni datos personales en los logs."
 
-  # post_edit: after a file is edited, once per path. It cannot be blocked: block is rejected. A failing run
-  # reaches the AI as context, its message first: feedback the AI acts on at once, not a gate.
+  # post_edit: after a file is edited, once per path, a file a command changed included (as pre_edit). It cannot
+  # be blocked: block is rejected. A failing run reaches the AI as context, its message first: feedback the AI acts
+  # on at once, not a gate.
   post_edit:
     # run: run a command from the root, without a shell (no pipes, redirections or globs). Every run of one hook
     # call shares a budget of 10 minutes; the timeout of the hook in the agent settings must be longer. The short

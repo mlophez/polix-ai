@@ -85,7 +85,8 @@ func (r *pass) unshown(ans agent.Answer) {
 // apply carries out the verb of the action of a matching entry and reports whether the evaluation of the event
 // stops there. One rule, whatever the verb: the first entry that actually blocks ends the evaluation, a `block` or
 // a failing `run` on an event where it blocks. A block let through by the loop guard, an inject, a notice, a skipped
-// verb, a passing run and a failing run on an event where it only informs let it go on.
+// verb, a passing run and a failing run on an event where it only informs let it go on, and so does a block on an
+// edit a command made, which already happened: its reason reaches the AI as context, logged as inform.
 func (r *pass) apply(e workflow.Entry, ans agent.Answer) (agent.Answer, bool) {
 	a := e.Action
 	switch a.Verb() {
@@ -104,6 +105,10 @@ func (r *pass) apply(e workflow.Entry, ans agent.Answer) (agent.Answer, bool) {
 		reason := r.expand(a.Block.Message)
 		if r.waiting() {
 			return ans, false
+		}
+		if r.byCommand {
+			r.log(workflow.VerbBlock, e.Line, "inform", reason)
+			return ans.Inform(reason), false
 		}
 		return r.block(e, ans, reason, "")
 	case workflow.VerbRun:

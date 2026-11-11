@@ -35,7 +35,10 @@ interface `format`, with `parse`, which turns the input into the native name of 
 `subagent_start` whose actor is its `agent_type`), and `render`, which turns an
 `agent.Answer` into stdout, stderr and the exit code for the native event. It has one implementation per agent:
 `claude` in `in_claude.go` and `codex` in `in_codex.go`, which share the fields of the input both agents write and
-the rendering of an answer, in `in.go`.
+the rendering of an answer, in `in.go`. The Claude format also reads `tool_use_id`, the id Claude Code gives the call
+of a tool, the same on `PreToolUse`, `PostToolUse` and `PostToolUseFailure`, into `agent.Event.ToolUse`, which pairs
+the snapshot of a command with its `post_command`; the Codex format leaves it empty, since polix knows no such id of
+Codex, so its commands pair by the command line.
 
 ## Logic
 
@@ -61,11 +64,12 @@ holds only what its events do and calls the engine as a library:
   4), the `started` line of `start` and `subagent_start` (rule 6), the context of the missing programs of
   `requirements` on `prompt` (rule 14), and the discard of the once-only injects of a refused `prompt` (rule 6).
   `subagent_start` gets neither the session context nor the requirements, which are told to the main session.
-- `edit` (`logic_edit.go`), for `pre_edit` and `post_edit`: the protections of an edit (rule 1), the edits an
-  unusable workflow lets through (rule 2) and the skip of the edits outside the change (rule 3).
+- `edit` (`logic_edit.go`), for `pre_edit` and `post_edit`: the protections of an edit (rule 1), but for an edit a
+  command made (rule 16), the edits an unusable workflow lets through (rule 2) and the skip of the edits outside the
+  change (rule 3).
 - `command` (`logic_command.go`), for `pre_command`, `post_command` and `pre_commit`: the protections of a command
-  (rule 1), the commands of polix an unusable workflow lets through (rule 2) and the commits outside the change of a
-  `pre_commit` (rule 3).
+  (rule 1), the commands of polix an unusable workflow lets through (rule 2), the snapshot of a `pre_command` and the
+  watch of a `post_command` (rule 16) and the commits outside the change of a `pre_commit` (rule 3).
 - `stop` (`logic_stop.go`), for `stop` and `subagent_stop`: the loop guard of `max_stop_retries` (rule 10) and the
   `finished` line of `subagent_stop` (rule 9).
 
@@ -73,23 +77,27 @@ The engine is the rest, in the `logic_<topic>.go` files, and has no `if` on the 
 and the readers of the facts (`logic_facts.go`), the protections (`logic_protect.go`), the walk of the entries and
 their verbs (`logic_entries.go`, `logic_run.go`, `logic_inject.go`, `logic_notify.go`), the conditions and the placeholders
 (`logic_condition.go`, `logic_placeholder.go`), the parsing of command lines, what they write and where their commits
-land (`logic_cmdline.go`, `logic_writes.go`, `logic_commit.go`), and the log (`logic_log.go`). What differs per event
-reaches it as fields of the pass: `informed`, set by `Decide` for the events of `workflow.Informed`, turns a failing
-`run` into context; `always`, set by `session` on `start` and `subagent_start`, makes every inject act every time;
-and `loop`, set by
-`stop`, sends every block through the loop guard.
+land (`logic_cmdline.go`, `logic_writes.go`, `logic_commit.go`), the files a command changed (`logic_watch.go`), and
+the log (`logic_log.go`). What differs per event reaches it as fields of the pass: `informed`, set by `Decide` for the
+events of `workflow.Informed` and for an edit a command made, turns a failing `run` into context; `byCommand`, set by
+`Decide` for an edit a command made (`agent.Event.ByCommand`), turns a `block` into context too; `always`, set by
+`session` on `start` and `subagent_start`, makes every inject act every time; and `loop`, set by `stop`, sends every
+block through the loop guard.
 
-A `hook.Step` asks for one of: the branch and the HEAD commit (`hook.Step.Branch`), the content hash (of an epoch),
-the paths that differ between the tree of an observed line and the current one (`Compare` and `Tree`, kept in the facts per pair of trees), the changed files,
+A `hook.Step` asks for one of: the branch and the HEAD commit (`hook.Step.Branch`), what git moves without
+moving HEAD (`Refs`: the commit of `refs/stash` and an operation stopped halfway), the content hash (of an epoch),
+the paths that differ between the tree of an observed line and the current one and those of them the current one no
+longer holds (`Compare` and `Tree`, kept in the facts per pair of trees), the changed files,
 the diff (`Diff`: the
 added and deleted lines of each file not committed yet, the same files as the changed ones), the files, the rules, the
 log, whether git ignores a path, the real paths of some paths, which programs the PATH does not run (`Programs`, kept
 in the facts as `Missing` once per call), the content of a file (of an epoch), or acts: runs
-a command, runs the checks of one or several rules (`rule.Run`, with the argv of its runner of `rules.run`) or
-appends an entry to the log. A check step may decide several rules: the runs come from `rule.Rules.Plan`, and a failed
+a command, runs the checks of one or several rules (`rule.Run`, with the argv of its runner of `rules.run`), puts paths
+back as a tree holds them (`Restore` and `Source`) or appends an entry to the log. A check step may decide several
+rules: the runs come from `rule.Rules.Plan`, and a failed
 shared run is rerun once per rule (`rule.Run.Settle`), each rerun a step of its own, so the block names only the
-rules whose own run fails. The epoch is the number of runs carried out before: any run may rewrite files, so the hash and the files
-read after it are those of a new epoch, read again.
+rules whose own run fails. The epoch is the number of runs carried out before, a restore counting as one: any run may
+rewrite files, so the hash and the files read after it are those of a new epoch, read again.
 
 The rules it follows, as before this use case:
 
@@ -106,7 +114,9 @@ The rules it follows, as before this use case:
    actor run a command of `guardrails.forbidden_commands` (`workflow.Workflow.ForbiddenCommands`, the first in file
    order whose pattern matches any command of the line, `forbidden`) on `pre_command` or `pre_commit`: the reason
    is its `reason`, or `reasonForbidden`, followed by the line, and it is logged as `guardrails.forbidden_commands`
-   with the line of its item.
+   with the line of its item. An edit a command made (rule 16) gets none of the protections of an edit: its
+   `post_command` already put the protected files back, and the state of polix lives in the git directory, which no
+   tree holds.
 2. A workflow that cannot be used (it cannot be read or parsed, has problems or requires a newer polix) blocks
    edits and commands with its problems, logged as `invalid`, except an edit outside the change, an edit of
    polix.yaml by the main session (not when it requires a newer polix) and the commands that only check the
@@ -137,7 +147,8 @@ The rules it follows, as before this use case:
    `post_command` (`workflow.Informed`), reaches the AI as context and is logged as `inform`; `inject` injects a
    text, a file or the rules of a path; `notify` adds its expanded message to the messages for the user (rule 15),
    never to the AI, logged as a `notify` decision with the text, and a message that expands to nothing shows
-   nothing.
+   nothing. On an edit a command made (rule 16), which already happened, a `block` and a failing `run` reach the AI
+   as context, logged as `inform`, and the evaluation goes on.
 6. Repeat rules, on the observed lines of the log (`state.KindObserved`, read with `state.Query`). A verb that does
    not act because of them is logged as a `skip` decision of its entry and never blocks. The three readers of the
    lines by branch, the reminder of a `block` with `once`, the repeat of a `run` and `finished` (rule 8), select
@@ -147,8 +158,9 @@ The rules it follows, as before this use case:
    or an unknown current one (a repository without commits, git failing) matches only by branch; on a detached
    HEAD, whose branch is empty, the lines written on a detached HEAD count, whatever their commit, and so do the
    lines of a branch on the same commit. The lines about a content they read,
-   `finished` with a hash, `passed` and `blocked`, carry the HEAD commit (`state.Entry.Head`) when it is known; the
-   decisions and the other observed lines never do.
+   `finished` with a hash, `passed` and `blocked`, carry the HEAD commit (`state.Entry.Head`) when it is known, and so
+   does a `snapshot` (rule 16), whose `post_command` compares it, with what git moves without HEAD
+   (`state.Entry.Refs`) too; the decisions and the other observed lines never do.
    - `block` blocks every time its entry applies. With `once: true` it is a reminder: it is skipped when the latest
      `blocked` line of its session, actor and line on the current branch or the same HEAD commit has a tree whose
      files in the scope of the entry did not change (see rule 8), and it writes `blocked`, with the hash, when it
@@ -223,7 +235,8 @@ The rules it follows, as before this use case:
     `max_stop_retries` the agent may stop with a warning and the next entries run, and when the log cannot be read or
     written the guard fails open.
 11. The content hash is computed only when something needs it: the repeat of a `run` and its `passed` line (before
-    and after the run), a `block` with `once`, the loop guard, `finished` and its observed line. An `inject`, a
+    and after the run), a `block` with `once`, the loop guard, `finished` and its observed line, and, when the
+    workflow watches, the `snapshot` of a `pre_command` and the watch of a `post_command` (rule 16). An `inject`, a
     `notify`, the `injected`, `started` and `notified` lines and a `finished` that only resets injects never compute
     it. When it cannot be
     computed nothing that needs it is observed nor holds, nothing is skipped, and the call warns once: `polix
@@ -260,9 +273,42 @@ The rules it follows, as before this use case:
     (`hook.Facts.Answered`), where the messages of an answer that does not block become warnings of the call and a
     block sets `hook.Facts.Blocked`. A later event that blocks logs the messages of the earlier ones, and one that
     does not block logs its own after an earlier block; a warning of the call may then be logged once per event.
+16. The files a command changed (`logic_watch.go`), found by their effect rather than by the command line. The
+    workflow watches (`watches`) when it is valid and has `guardrails.protected_files` or an entry on `pre_edit` or
+    `post_edit`, `format_on_edit` already expanded into them; otherwise nothing below happens and no hash is
+    computed for it. The key of a command (`commandKey`) is `agent.Event.ToolUse`, else the command line.
+    - `snapshot`: a `pre_command` whose protections passed and whose entries did not block it writes, after its
+      entries, an observed `snapshot` line with the content hash of the epoch they left (so a `run` of them that
+      rewrites files is not taken for the command), the HEAD commit, the refs git moves without HEAD and the key; an
+      unknown hash writes none, with the warning of rule 11.
+    - `watch`: a `post_command`, also after a failed command, first reads the latest `snapshot` line of its session,
+      actor and key (`state.State.Index`); without one, when an observed `watched` line of the same session, actor
+      and key comes after it, or with a log that cannot be read, nothing happens. Otherwise it writes that `watched`
+      line, so a snapshot is compared once: a later `post_command` of the same command line whose `pre_command` did
+      not reach polix finds no snapshot. When HEAD is another commit than the one of the snapshot (a pull, a
+      checkout, a reset, a commit), or the refs git moves without HEAD changed (a `git stash`, a merge, a
+      cherry-pick, a revert, a rebase or a `git am` stopped on its conflicts or with `--no-commit`, which rewrite the
+      working tree without moving HEAD), the changes are git's: nothing is restored nor evaluated, and a `skip`
+      decision of `builtin` names both values (`gitMoved`). Otherwise it computes the current hash and asks for the
+      paths that differ from the tree of the snapshot (`hook.Step.Compare`), and splits them with `anyPathFold` into
+      those of `guardrails.protected_files` and the others, each in the order of the comparison.
+    - Each protected path goes to a `Restore` step of its own with the tree of the snapshot as `Source`, so each
+      gets its own outcome, the paths the command removed last: on a file system that folds case, a path the command
+      renamed only in case is removed before its own name is written back. The restores start one new epoch, and the
+      command is refused once per path, `<path> is protected in polix.yaml: a command changed it and polix put it
+      back.`, each logged as a `deny` of `guardrails.protected_files`. The restore is not bounded.
+    - The other paths the current content still holds, a removed one left out, up to `maxCommandEdits` (25), become
+      `Output.Follow` (`derive`): a `pre_edit` and then a
+      `post_edit` per path, with `agent.Event.ByCommand`, the session, the actor, the agent and the cwd of the
+      `post_command` and the path located inside the root, which the shell evaluates next in the same call (rules 1
+      and 5 say how they differ from an edit of the edit tool). Past 25 paths none is derived: the AI gets one context,
+      `A command changed <n> files, more than 25: polix did not evaluate them as edits, so the entries of pre_edit and
+      post_edit did not apply to them.`, logged as an `inform` of `builtin`.
+    - The entries of the `post_command` run after the watch, its refusals and context merged before theirs.
 
 The engine holds the protections and the heuristics of the command lines (`lineWrites`, `namesState`, `within`,
-`anyPathFold`, `forbidden`, `matchingCommands`, `commitDirs`), the placeholders (`expandPlaceholders`,
+`anyPathFold`, `forbidden`, `matchingCommands`, `commitDirs`), the watch of the commands (`watches`, `commandKey`,
+`maxCommandEdits`), the placeholders (`expandPlaceholders`,
 `measureValues`, `branchVars`) and the measures (`measureHolds`). The domain decides the rest: `agent.Answer.Merge`,
 `diff.Diff`, `state.State` (`Observed`, `Latest`, `Index`) with `state.Query`, `workflow.Workflow.ObservedSubagents`
 and `InjectsOnce`, `rule.Rules` (`Matching` and `Plan`), `rule.Results.Failed`, `rule.Result.Tail` and
@@ -281,7 +327,7 @@ otherwise. The command writes them as they are and exits with `Code`.
 ## Port
 
 `Port`, declared in `in.go` and implemented by `Adapter` in
-`out.go` and, for the log, `out_log.go`. With 20 methods it passes the maximum of 19 of `interfacebloat`, silenced on
+`out.go` and, for the log, `out_log.go`. With 22 methods it passes the maximum of 19 of `interfacebloat`, silenced on
 its declaration with a `//nolint` and its reason: the hook reads every fact through this one port, and the step shape
 needs one method per fact.
 
@@ -295,8 +341,13 @@ needs one method per fact.
   detached HEAD, and the commit HEAD points to, from one `git rev-parse` (`git.Repo.Head`), both empty when git
   fails, as on a repository without commits; `Changed` and `Files` read a failure as no files and, like `Head` and
   `Ignored`, run detached from the cancellation of the caller.
-- `TreeDiff`: the paths that differ between two content hashes (`git.Repo.TreeDiff`, through `git diff-tree`); a
-  tree git no longer has, pruned by `git gc`, is its error.
+- `Refs`: what git moves without moving HEAD, as one text (`git.Repo.Refs`): the commit `refs/stash` points to,
+  through `git rev-parse`, and each operation stopped halfway, by its file in the git directory (`MERGE_HEAD`,
+  `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `rebase-merge`, `rebase-apply`) and the commit it names; empty when there is
+  neither or git fails. Like `Head`, it runs detached from the cancellation of the caller.
+- `TreeDiff`: the paths that differ between two content hashes and those of them the second no longer holds
+  (`git.Repo.TreeDiff`, through `git diff-tree --name-status`); a tree git no longer has, pruned by `git gc`, is its
+  error.
 - `Diff`: the added and deleted lines of each file not committed yet (`git.Repo.Stats` against HEAD, untracked
   files read whole), as a validated `diff.Diff`; a failure of git or an invalid diff is its error, kept in the
   facts as a warning. Like `Changed`, it runs detached from the cancellation of the caller.
@@ -326,6 +377,10 @@ needs one method per fact.
   program is `bash`, `sh`, `python`, `python3` or `py` runs the program of that name the PATH finds (an active
   virtualenv wins), unless it is an alias of the Store or, for `bash` and `sh`, the bash of WSL in the Windows folder;
   then the interpreter of its kind (`proc.Command`), with the arguments of the runner kept.
+- `Restore`: puts paths back in the working tree as a content hash holds them, removing those it does not hold
+  (`git.Repo.Restore`, through a scratch index in the folder of the state, as `Hash`, so the real index of the person
+  is never touched); it removes the paths the tree does not hold before writing the others, and its error names
+  the first path that failed; a tree git no longer has is an error.
 - `Append`: appends an entry to the log, stamped with the time (RFC 3339), encoded as one line by the unexported
   method `encodeLine` with the encoding type `logLine` of `out_log.go`, its reason cut to `state.MaxReason`: the
   shape `LoadState` decodes.
@@ -345,6 +400,13 @@ The failure policy of the hook, so a broken polix never traps the agent:
   used lets a stop through and makes every verb act every time, a file
   that cannot be read gives no context, a failing command or check blocks with its output, or informs on the
   events that already happened.
+- The watch of a command (Logic, rule 16) never blocks for its own failures: without a snapshot, with one already
+  compared, with an unknown hash or with a log that cannot be read, the `post_command` answers as without it; two
+  trees that cannot be compared (a tree pruned by `git gc`, git failing) evaluate nothing and warn: `polix cannot
+  compare the content before and after the command (<cause>): it did not check the files it changed`. A path that
+  could not be put back is refused with its error, `<path> is protected in polix.yaml: a command changed it and polix
+  could not put it back (<cause>).`, logs the `deny` with it and warns, for that path alone: `polix could not put
+  back <path>, protected in polix.yaml, after a command changed it (<cause>): put it back by hand`.
 
 ## Flow
 
@@ -355,14 +417,18 @@ The failure policy of the hook, so a broken polix never traps the agent:
    it into a `hook.Hook`; without events it answers nothing.
 3. It opens the repository from `hook.Hook.Folder` and loads the workflow through the port; outside a repository it
    answers nothing.
-4. For each event, it locates the path of an edit through the port and builds its `hook.Evaluation` with the facts the
-   previous event left and the events after it (`hook.Hook.Remaining`), its problems told for the running polix
-   (`hook.Evaluation.Running`); then it loops from one
-   call site: it asks `Decide` for the next step, carries it out through the port and feeds the result back to the
-   evaluation (`Know*` for a fact, `Note` for an outcome), until the step is none; the unexported functions `carry`
-   (the facts) and `act` (the steps that act) of `in.go` carry out each step. Each pass routes the event to its
-   family, which walks its protections, whether git ignores an edited path or where the commits of a `pre_commit`
-   land, and the entries, in that order (Logic, rules 1 to 5).
+4. It evaluates the events from a queue, those of the hook first. For each event, it locates the path of an edit
+   through the port and builds its `hook.Evaluation` with the facts the previous event left and the events left in
+   the queue (`hook.Evaluation.Remaining`), its problems told for the running polix (`hook.Evaluation.Running`); then
+   it loops from one call site: it asks `Decide` for the next step, carries it out through the port and feeds the
+   result back to the evaluation (`Know*` for a fact, `Note` for an outcome), until the step is none; the unexported
+   functions `carry` (the facts of git), `lookup` (the facts of a path, a folder or the programs) and `act` (the
+   steps that act, the `Restore` of protected files a command changed among them) of `in.go` carry out each step.
+   Each pass routes the event to its family, which walks its protections, whether git ignores an edited path or
+   where the commits of a `pre_commit` land, and the entries, in that order (Logic, rules 1 to 5). The events of
+   `Output.Follow`, the `pre_edit` and `post_edit` of each file a command changed, join the end of the queue, so
+   they are located and evaluated in the same call, their answers merged with the others; they never block, so the
+   lines a call writes only when it does not block are written by the last event of the queue.
 5. It merges the answers of the events (`agent.Answer.Merge`) and renders them with the `format` of the agent
    into the `Response`.
 6. `Command` writes stdout and stderr and exits with the code.

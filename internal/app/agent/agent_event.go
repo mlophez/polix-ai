@@ -21,18 +21,26 @@ type Event struct {
 	ExitCode int    // post_command
 	Prompt   string // prompt
 	Cwd      string
+	ToolUse  string // the id the agent gives the call of a tool, the same before and after it; empty when it gives none
+	// ByCommand is set on a pre_edit or post_edit that polix derived from the effect of a command, not on one of the
+	// edit tool: the edit already happened.
+	ByCommand bool
 }
 
 // ActorSession is the actor of the main session; subagents use their own type (builder, reviewer...).
 const ActorSession = "session"
 
-// Valid tells why the event is not one polix evaluates: its name is not a neutral event.
+// Valid tells why the event is not one polix evaluates: its name is not a neutral event, it has no agent, or it is
+// derived from a command without being an edit with its path.
 func (e Event) Valid() error {
 	if !slices.Contains(workflow.Events, e.Name) {
 		return fmt.Errorf("unknown event %q", e.Name)
 	}
 	if e.Agent == "" {
 		return errors.New("an event needs its agent")
+	}
+	if e.ByCommand && (!e.Edits() || e.Path == "") {
+		return errors.New("only an edit with its path is derived from a command")
 	}
 	return nil
 }

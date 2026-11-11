@@ -28,6 +28,21 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   `polix log` lists, and a notice that did not show because its hook call was blocked, by its own event or by
   another one of the call such as the commit of a command, stays due. `polix config fmt`
   writes `always` before `message`, and `polix workflow graph` draws it with its message.
+- polix finds the files a command changed by its effect, not only by its command line, so a Python script, a `bash -c`
+  or a `find -delete` no longer slips past the workflow. When `polix.yaml` has `guardrails.protected_files` or an entry
+  on `pre_edit` or `post_edit` (`format_on_edit` included), a `pre_command` its entries let run writes, after them, an
+  observed `snapshot` line with the content hash, the HEAD commit, what git moves without HEAD and the `tool_use_id` of
+  the call (the command line on Codex), and its `post_command`, also after a failed command, compares the content with
+  it. A protected file the command changed is put back, or removed when it did not exist, each on its own, and the
+  command is refused naming it, logged as a `deny` of `guardrails.protected_files`. Any other changed file is evaluated
+  in the same call as a `pre_edit` and a `post_edit`: it is formatted and its rules reach the agent, while a `block` or
+  a failing `run` there only informs, since the edit already happened; a file the command removed is not evaluated. A
+  command that moves HEAD (a pull, a checkout, a commit), `refs/stash` (a `git stash`) or an operation stopped halfway
+  (a merge, a cherry-pick, a revert, a rebase or `git am` stopped on its conflicts) is left alone, logged as a `skip` of
+  `builtin`, and past 25 changed files the agent only gets the count. Each snapshot is compared once: the `post_command`
+  writes an observed `watched` line with its key, so a later command of the same line never pairs with an old snapshot.
+  It costs two content hashes per command, only in a repository whose workflow watches the edits; the check of the
+  command line before it runs is unchanged, and files git ignores are still guarded only by it.
 
 ### Changed
 

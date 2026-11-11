@@ -57,6 +57,16 @@ func (r *pass) head() string {
 	return ""
 }
 
+// refs returns what git moves without moving HEAD, the stash and an operation stopped halfway (hook.Facts.Refs).
+func (r *pass) refs() string {
+	if r.ev.Facts.HasRefs {
+		return r.ev.Facts.Refs
+	}
+	s := hook.Step{Refs: true}
+	r.ask(s, s.Valid())
+	return ""
+}
+
 // hash returns the content hash of this epoch and whether it is known.
 func (r *pass) hash() (string, bool) {
 	if h, known, computed := r.ev.Facts.Hash(r.epoch); computed {
@@ -198,6 +208,22 @@ func (r *pass) read(p string) (string, bool) {
 	s := hook.Step{Read: p, Epoch: r.epoch}
 	r.ask(s, s.Valid())
 	return "", false
+}
+
+// treeDiff returns the paths that differ between the trees from and to, none when they are equal, those of them to
+// no longer holds, removed, and why they could not be compared (a tree git no longer has, or git failing). It asks
+// for the comparison it lacks.
+func (r *pass) treeDiff(from, to string) (paths, removed []string, err error) {
+	if from == to {
+		return nil, nil, nil
+	}
+	paths, compared, err := r.ev.Facts.TreeDiff(from, to)
+	if !compared {
+		s := hook.Step{Compare: from, Tree: to}
+		r.ask(s, s.Valid())
+		return nil, nil, nil
+	}
+	return paths, r.ev.Facts.Removed(from, to), err
 }
 
 // sameScope reports whether the files in scope are the same in the trees from and to: the trees are equal, or no

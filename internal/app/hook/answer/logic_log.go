@@ -10,23 +10,30 @@ func (r *pass) log(action string, line int, outcome, reason string) {
 	_ = r.write(state.KindDecision, action, line, outcome, reason, "", "")
 }
 
-// write appends to the log an entry of kind about the event and returns the error of appending it. The content
-// hash costs a git call over the whole tree, so a decision only carries the one this call already computed; an
-// observed entry carries the hash it is given, none for those that are not about a content (injected, started and
-// a finished that only makes injects due again). The observed entries about a content that are read by branch
-// (finished with a hash, passed and blocked) also carry the HEAD commit, so another branch on the same commit
-// reads them too; every other entry goes without it.
+// write appends to the log an entry of kind about the event (see writeEntry) and returns the error of appending it.
 func (r *pass) write(kind, action string, line int, outcome, reason, key, hash string) error {
-	e, valid := r.entryOf(kind, action, line, outcome, reason, key, hash)
+	return r.writeEntry(kind, action, line, outcome, reason, key, hash, "")
+}
+
+// writeEntry appends to the log an entry of kind about the event (see entryOf) and returns the error of appending
+// it.
+func (r *pass) writeEntry(kind, action string, line int, outcome, reason, key, hash, refs string) error {
+	e, valid := r.entryOf(kind, action, line, outcome, reason, key, hash, refs)
 	if r.waiting() {
 		return nil
 	}
 	return r.appendEntry(e, valid)
 }
 
-// entryOf builds the entry of kind about the event that write appends, and the error of an entry that is not valid
-// to append; the branch it carries may be a step the pass waits for.
-func (r *pass) entryOf(kind, action string, line int, outcome, reason, key, hash string) (state.Entry, error) {
+// entryOf builds the entry of kind about the event that writeEntry appends, and the error of an entry that is not
+// valid to append; the branch it carries may be a step the pass waits for. The content hash costs a git call over
+// the whole tree, so a decision only carries the one this call already computed; an observed entry carries the hash
+// it is given, none for those that are not about a content (injected, started, notified, watched and a finished that
+// only makes injects due again). The observed entries about a content that are read by branch (finished with a
+// hash, passed and blocked) also carry the HEAD commit, so another branch on the same commit reads them too, and so
+// does a snapshot, so its post_command sees HEAD moved; every other entry goes without it. Only a snapshot carries
+// refs, what git moves without moving HEAD, so its post_command sees a git stash or a merge stopped on its conflicts.
+func (r *pass) entryOf(kind, action string, line int, outcome, reason, key, hash, refs string) (state.Entry, error) {
 	ev := r.ev.Event
 	branch, head := r.branch(), r.head()
 	if hash == "" && kind == state.KindDecision {
@@ -36,7 +43,7 @@ func (r *pass) entryOf(kind, action string, line int, outcome, reason, key, hash
 		head = ""
 	}
 	e := state.Entry{Kind: kind, Agent: ev.Agent, Session: ev.Session, Event: ev.Name, Actor: ev.Actor,
-		Branch: branch, Hash: hash, Head: head, Action: action, Line: line, Key: key, Outcome: outcome,
+		Branch: branch, Hash: hash, Head: head, Refs: refs, Action: action, Line: line, Key: key, Outcome: outcome,
 		Reason: reason}
 	return e, e.Valid()
 }
@@ -60,13 +67,14 @@ func (r *pass) appendEntry(e state.Entry, valid error) error {
 }
 
 // readByHead reports whether an entry of kind and outcome with hash is an observed line about a content that is read
-// by branch or by HEAD commit (finished with a hash, passed and blocked), so it carries the HEAD commit.
+// by branch or by HEAD commit (finished with a hash, passed and blocked), or a snapshot, whose post_command compares
+// HEAD (see watch), so it carries the HEAD commit.
 func readByHead(kind, outcome, hash string) bool {
 	if kind != state.KindObserved || hash == "" {
 		return false
 	}
 	switch outcome {
-	case state.OutcomeFinished, state.OutcomePassed, state.OutcomeBlocked:
+	case state.OutcomeFinished, state.OutcomePassed, state.OutcomeBlocked, state.OutcomeSnapshot:
 		return true
 	}
 	return false

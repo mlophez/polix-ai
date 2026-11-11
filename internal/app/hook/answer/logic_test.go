@@ -26,25 +26,30 @@ import (
 
 // facts are the facts and outcomes a walk answers the steps with.
 type facts struct {
-	branch    string
-	head      string   // the commit HEAD points to, learned with the branch; "" for unknown
-	hashes    []string // the content hash at each epoch
-	hashErr   error
-	state     state.State
-	stateErr  error
-	appendErr error
-	runErr    error // the outcome of every run and check
-	changed   []string
-	diff      diff.Diff
-	diffErr   error
-	rules     []rule.Rule
-	found     bool              // whether a file holds the text of a search
-	trees     []string          // the paths that differ between two trees
-	treeErr   error             // why two trees cannot be compared
-	ignored   map[string]bool   // the paths git ignores
-	reals     map[string]string // the real path of a path, when it differs from the path
-	foreign   map[string]bool   // the folders inside another git repository
-	missing   []string          // the programs the PATH does not run
+	branch     string
+	head       string   // the commit HEAD points to, learned with the branch; "" for unknown
+	hashes     []string // the content hash at each epoch
+	hashErr    error
+	state      state.State
+	stateErr   error
+	appendErr  error
+	runErr     error // the outcome of every run and check
+	restoreErr error // the outcome of every restore
+	// restoreErrs, when set, decides each restore of one path instead of restoreErr
+	restoreErrs map[string]error
+	changed     []string
+	diff        diff.Diff
+	diffErr     error
+	rules       []rule.Rule
+	found       bool              // whether a file holds the text of a search
+	trees       []string          // the paths that differ between two trees
+	removed     []string          // those of trees the second tree no longer holds
+	refs        string            // what git moves without moving HEAD
+	treeErr     error             // why two trees cannot be compared
+	ignored     map[string]bool   // the paths git ignores
+	reals       map[string]string // the real path of a path, when it differs from the path
+	foreign     map[string]bool   // the folders inside another git repository
+	missing     []string          // the programs the PATH does not run
 
 	// checkFails, when set, decides each check instead of runErr: it fails when it covers one of these rules
 	checkFails map[string]bool
@@ -68,6 +73,8 @@ func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
 		switch {
 		case s.Branch:
 			ev = ev.KnowBranch(f.branch, f.head)
+		case s.Refs:
+			ev = ev.KnowRefs(f.refs)
 		case s.Hash:
 			h := ""
 			if s.Epoch < len(f.hashes) {
@@ -75,7 +82,7 @@ func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
 			}
 			ev = ev.KnowHash(s.Epoch, h, f.hashErr)
 		case s.Compare != "":
-			ev = ev.KnowTreeDiff(s.Compare, s.Tree, f.trees, f.treeErr)
+			ev = ev.KnowTreeDiff(s.Compare, s.Tree, f.trees, f.removed, f.treeErr)
 		case s.Changed:
 			ev = ev.KnowChanged(f.changed)
 		case s.Diff:
@@ -115,6 +122,10 @@ func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
 			ev = ev.Note("salida", err)
 		case s.Run != nil, s.Check != nil:
 			ev = ev.Note("salida", f.runErr)
+		case s.Restore != nil && f.restoreErrs != nil:
+			ev = ev.Note("", f.restoreErrs[s.Restore[0]])
+		case s.Restore != nil:
+			ev = ev.Note("", f.restoreErr)
 		case s.Append != nil:
 			ev = ev.Note("", f.appendErr)
 		}

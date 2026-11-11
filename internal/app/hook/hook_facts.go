@@ -17,9 +17,13 @@ import (
 // it, and kept for the next events of the call. The content hash and the files read are kept per epoch, the number
 // of runs carried out before them, since a run may rewrite files.
 type Facts struct {
-	Branch     string
-	Head       string // the commit HEAD points to, learned with the branch; "" when unknown, as without commits
-	HasBranch  bool
+	Branch    string
+	Head      string // the commit HEAD points to, learned with the branch; "" when unknown, as without commits
+	HasBranch bool
+	// Refs is what git moves without moving HEAD, as one text: the commit of refs/stash and the operation stopped
+	// halfway (a merge, a cherry-pick, a revert, a rebase or git am); "" when there is neither.
+	Refs       string
+	HasRefs    bool
 	Hashes     map[int]string // content hash per epoch; "" when it could not be computed
 	Epoch      int            // runs carried out by the earlier events of the call
 	Changed    []string
@@ -45,10 +49,12 @@ type Facts struct {
 	Unreadable map[string]bool   // per epoch and path, see contentKey
 	Searches   map[string]bool   // per epoch, patterns and text: whether a matching file holds the text
 	// TreeDiffs and TreeErrs are, per pair of trees (see treeKey), the paths that differ between them or why they
-	// could not be compared; a tree identifies its content, so the answer holds at any epoch.
-	TreeDiffs map[string][]string
-	TreeErrs  map[string]error
-	Warnings  []string // warnings of the call, such as an unknown content hash
+	// could not be compared, and TreeRemoved those of the paths the second tree no longer holds; a tree identifies
+	// its content, so the answer holds at any epoch.
+	TreeDiffs   map[string][]string
+	TreeRemoved map[string][]string
+	TreeErrs    map[string]error
+	Warnings    []string // warnings of the call, such as an unknown content hash
 	// Blocked tells that an earlier event of the call blocked: the answer of the call is a block, so none of its
 	// messages for the user is shown (see Answered).
 	Blocked bool
@@ -122,6 +128,10 @@ func (f Facts) Found(epoch int, patterns []string, text string) (found, known bo
 	return found, known
 }
 
+// Removed returns the paths that differ between the trees from and to that to no longer holds, none when they were
+// not compared.
+func (f Facts) Removed(from, to string) []string { return f.TreeRemoved[f.treeKey(from, to)] }
+
 // TreeDiff returns the paths that differ between the trees from and to, whether they were compared at all, and
 // why they could not be.
 func (f Facts) TreeDiff(from, to string) (paths []string, compared bool, err error) {
@@ -133,7 +143,7 @@ func (f Facts) TreeDiff(from, to string) (paths []string, compared bool, err err
 	return paths, compared, nil
 }
 
-func (f Facts) learnTreeDiff(from, to string, paths []string, err error) Facts {
+func (f Facts) learnTreeDiff(from, to string, paths, removed []string, err error) Facts {
 	key := f.treeKey(from, to)
 	if err != nil {
 		m := make(map[string]error, len(f.TreeErrs)+1)
@@ -146,6 +156,15 @@ func (f Facts) learnTreeDiff(from, to string, paths []string, err error) Facts {
 	maps.Copy(m, f.TreeDiffs)
 	m[key] = slices.Clone(paths)
 	f.TreeDiffs = m
+	gone := make(map[string][]string, len(f.TreeRemoved)+1)
+	maps.Copy(gone, f.TreeRemoved)
+	gone[key] = slices.Clone(removed)
+	f.TreeRemoved = gone
+	return f
+}
+
+func (f Facts) learnRefs(refs string) Facts {
+	f.Refs, f.HasRefs = refs, true
 	return f
 }
 

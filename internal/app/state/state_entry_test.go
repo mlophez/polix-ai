@@ -31,6 +31,9 @@ func TestObservedEntryValid(t *testing.T) {
 		{Kind: KindObserved, Outcome: OutcomeBlocked, Line: 4, Hash: "h"},
 		{Kind: KindObserved, Outcome: OutcomeInjected, Key: "x"},
 		{Kind: KindObserved, Outcome: OutcomeStarted},
+		{Kind: KindObserved, Outcome: OutcomeSnapshot, Key: "toolu_1", Hash: "h", Head: "c"},
+		{Kind: KindObserved, Outcome: OutcomeSnapshot, Key: "toolu_1", Hash: "h", Head: "c", Refs: "s"},
+		{Kind: KindObserved, Outcome: OutcomeWatched, Key: "toolu_1"},
 	}
 	for _, e := range valid {
 		if err := e.Valid(); err != nil {
@@ -42,6 +45,9 @@ func TestObservedEntryValid(t *testing.T) {
 		{Kind: KindObserved, Outcome: "fact"},
 		{Kind: KindObserved, Outcome: OutcomePassed, Key: "just test"},
 		{Kind: KindObserved, Outcome: OutcomeBlocked, Line: 4},
+		{Kind: KindObserved, Outcome: OutcomeSnapshot, Key: "toolu_1", Head: "c"},
+		{Kind: KindObserved, Outcome: OutcomeWatched, Key: "toolu_1", Refs: "s"},
+		{Kind: KindDecision, Outcome: "deny", Refs: "s"},
 	}
 	for _, e := range invalid {
 		if err := e.Valid(); err == nil {

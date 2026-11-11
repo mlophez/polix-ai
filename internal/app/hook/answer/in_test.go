@@ -30,8 +30,11 @@ type fakePort struct {
 	readErr   error
 	diffErr   error
 	treeErr   error
+	restErr   error // the error Restore gives
 	state     state.State
 	trees     []string        // the paths TreeDiff gives
+	removed   []string        // those of trees TreeDiff gives as removed
+	refs      string          // what Refs gives
 	foreign   map[string]bool // the folders inside another git repository
 	absent    map[string]bool // the programs the PATH does not run
 	rules     []rule.Rule
@@ -77,9 +80,11 @@ func (p *fakePort) Hash(context.Context) (string, error) {
 	return "h", nil
 }
 
-func (p *fakePort) TreeDiff(_ context.Context, from, to string) ([]string, error) {
+func (p *fakePort) Refs(context.Context) string { return p.refs }
+
+func (p *fakePort) TreeDiff(_ context.Context, from, to string) ([]string, []string, error) {
 	p.calls = append(p.calls, "TreeDiff "+from+" "+to)
-	return p.trees, p.treeErr
+	return p.trees, p.removed, p.treeErr
 }
 
 func (p *fakePort) Changed(context.Context) []string { return []string{"src/a.go"} }
@@ -147,6 +152,11 @@ func (p *fakePort) RunCheck(_ context.Context, run rule.Run) (string, error) {
 	}
 	p.calls = append(p.calls, "RunCheck "+strings.Join(ids, " "))
 	return "salida", p.runErr
+}
+
+func (p *fakePort) Restore(_ context.Context, source string, paths []string) error {
+	p.calls = append(p.calls, "Restore "+source+" "+strings.Join(paths, " "))
+	return p.restErr
 }
 
 func (p *fakePort) Append(_ context.Context, e state.Entry) error {
@@ -436,6 +446,72 @@ func TestComparesTrees(t *testing.T) {
 	}
 }
 
+// snapshotState is a log with the snapshot of the command of the call toolUse, taken on the tree old and the commit
+// HEAD of the fake points to.
+func snapshotState(toolUse string) state.State {
+	return state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeSnapshot,
+		Agent: agent.Claude, Session: "s1", Event: workflow.PreCommand, Actor: agent.ActorSession, Branch: "main",
+		Key: toolUse, Hash: "old", Head: "c0ffee"}}}
+}
+
+// postCommand is the input of Claude Code after the command line ran, in the call toolUse of the session s1.
+func postCommand(line, toolUse string) string {
+	return `{"hook_event_name":"PostToolUse","tool_name":"Bash","cwd":"/repo","session_id":"s1","tool_use_id":"` +
+		toolUse + `","tool_input":{"command":"` + line + `"},"tool_response":{"stdout":"ok"}}`
+}
+
+// The edits a command made, which the output of its post_command follows with, are evaluated in the same call, each
+// located through the port, and their contexts merge into the answer of the call.
+func TestEvaluatesFollowedEvents(t *testing.T) {
+	port := &fakePort{yaml: "version: 1\non:\n  pre_edit:\n    - action: { inject: { text: \"reglas de {path}\", " +
+		"always: true } }\n  post_edit:\n    - action: { inject: { text: \"editado {path}\", always: true } }\n",
+		state: snapshotState("toolu_1"), trees: []string{"src/a.go", "docs/b.md"}}
+	res, err := run(context.Background(), port, claudeRequest(postCommand("python3 gen.py", "toolu_1")))
+	if err != nil || res.Code != 0 {
+		t.Fatalf("response %+v %v", res, err)
+	}
+	var out struct {
+		HookSpecificOutput struct {
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal([]byte(res.Stdout), &out); err != nil {
+		t.Fatalf("stdout %q: %v", res.Stdout, err)
+	}
+	want := "reglas de src/a.go\n\neditado src/a.go\n\nreglas de docs/b.md\n\neditado docs/b.md"
+	if out.HookSpecificOutput.AdditionalContext != want {
+		t.Fatalf("context %q", out.HookSpecificOutput.AdditionalContext)
+	}
+	if !slices.Contains(port.calls, "TreeDiff old h") || !slices.Contains(port.calls, "Locate /repo/src/a.go") ||
+		!slices.Contains(port.calls, "Locate /repo/docs/b.md") {
+		t.Fatalf("calls %q", port.calls)
+	}
+}
+
+// A Restore step reaches the port with the tree of the snapshot and the protected paths, and its error reaches the
+// logic, which refuses with it and warns the user.
+func TestCarriesTheRestore(t *testing.T) {
+	yaml := "version: 1\nguardrails:\n  protected_files: [AGENTS.md]\n"
+	port := &fakePort{yaml: yaml, state: snapshotState("toolu_1"), trees: []string{"AGENTS.md"}}
+	res, err := run(context.Background(), port, claudeRequest(postCommand("python3 x.py", "toolu_1")))
+	if err != nil || res.Code != 2 || !slices.Contains(port.calls, "Restore old AGENTS.md") ||
+		!strings.Contains(res.Stderr, "AGENTS.md is protected in polix.yaml: a command changed it and polix put it back.") {
+		t.Fatalf("restored: %+v %v %q", res, err, port.calls)
+	}
+
+	port = &fakePort{yaml: yaml, state: snapshotState("toolu_1"), trees: []string{"AGENTS.md"},
+		restErr: errors.New("boom")}
+	res, err = run(context.Background(), port, claudeRequest(postCommand("python3 x.py", "toolu_1")))
+	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, "could not put it back (boom)") {
+		t.Fatalf("failed restore: %+v %v", res, err)
+	}
+
+	ev := act(context.Background(), port, hook.Evaluation{}, hook.Step{Restore: []string{"AGENTS.md"}, Source: "old"})
+	if len(ev.Journal) != 1 || ev.Journal[0].Err == nil || ev.Journal[0].Err.Error() != "boom" {
+		t.Fatalf("journal %+v", ev.Journal)
+	}
+}
+
 // The shell answers the Branch step through the port with the branch and the HEAD commit, learned together.
 func TestCarriesTheHead(t *testing.T) {
 	port := &fakePort{}
@@ -465,10 +541,10 @@ func TestMeasuresTheDiff(t *testing.T) {
 
 // Parse and render go through the format of the agent: PostToolUseFailure gives context to Claude Code only.
 func TestFormats(t *testing.T) {
-	input := []byte(`{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"ls"}}`)
-	for _, name := range []string{agent.Claude, agent.Codex} {
+	input := []byte(`{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_use_id":"toolu_1","tool_input":{"command":"ls"}}`)
+	for name, toolUse := range map[string]string{agent.Claude: "toolu_1", agent.Codex: ""} {
 		native, evs, err := formats[name].parse(input)
-		if err != nil || native != "PostToolUse" || len(evs) != 1 || evs[0].Agent != name {
+		if err != nil || native != "PostToolUse" || len(evs) != 1 || evs[0].Agent != name || evs[0].ToolUse != toolUse {
 			t.Errorf("%s: %q %+v %v", name, native, evs, err)
 		}
 	}

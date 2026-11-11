@@ -11,6 +11,13 @@ import (
 // claude is the format of the hooks of Claude Code, registered in .claude/settings.json.
 type claude struct{}
 
+// claudeInput is the input of a hook of Claude Code: the fields both agents share, and the id Claude Code gives the
+// call of a tool, the same on PreToolUse and PostToolUse, which pairs the snapshot of a command with its end.
+type claudeInput struct {
+	hookInput
+	ToolUseID string `json:"tool_use_id"`
+}
+
 // claudeEditTools are the tools of Claude Code that change files.
 var claudeEditTools = map[string]bool{"Edit": true, "Write": true, "MultiEdit": true, "NotebookEdit": true}
 
@@ -18,12 +25,14 @@ var claudeEditTools = map[string]bool{"Edit": true, "Write": true, "MultiEdit": 
 var claudeContextEvents = contextEvents{"SessionStart": true, "UserPromptSubmit": true, "SubagentStart": true,
 	"PreToolUse": true, "PostToolUse": true, "PostToolUseFailure": true}
 
-// parse reads the input of a hook of Claude Code.
+// parse reads the input of a hook of Claude Code, the id of the call of a tool included.
 func (c claude) parse(input []byte) (string, []agent.Event, error) {
-	var in hookInput
-	if err := json.Unmarshal(input, &in); err != nil {
+	var raw claudeInput
+	if err := json.Unmarshal(input, &raw); err != nil {
 		return "", nil, fmt.Errorf("claude hook input: %w", err)
 	}
+	in := raw.hookInput
+	in.ToolUse = raw.ToolUseID
 	native := in.HookEventName
 	var events []agent.Event
 	var err error

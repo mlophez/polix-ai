@@ -10,7 +10,9 @@ import (
 // command answers pre_command, post_command and pre_commit, a command line about to run, one that ran and, with
 // pre_command, a line about to commit. Before a command come its protections (see protectCommand). An unusable
 // workflow fails closed before a command, but for the commands of polix that fixing it needs (see unusableCommand),
-// and only warns after one. Without polix.yaml nothing else happens, and neither for a pre_commit whose commits all
+// and only warns after one. Without polix.yaml nothing else happens. A pre_command whose protections and entries
+// let it run records the content before it runs (see snapshot), and a post_command first finds what the command
+// changed and puts back the protected files (see watch), before its entries. The entries do not apply to a pre_commit whose commits all
 // happen in another repository (see commitsOutside). A failing run after a command reaches the AI as context
 // (workflow.Informed).
 func (r *pass) command() agent.Answer {
@@ -30,12 +32,23 @@ func (r *pass) command() agent.Answer {
 	if !r.ev.Present {
 		return agent.Answer{}
 	}
+	var ans agent.Answer
+	if name == workflow.PostCommand {
+		ans = r.watch()
+	}
+	if r.waiting() {
+		return ans
+	}
 	if name == workflow.PreCommit {
 		if outside := r.commitsOutside(); r.waiting() || outside {
 			return agent.Answer{}
 		}
 	}
-	return r.evaluate(agent.Answer{})
+	ans = r.evaluate(ans)
+	if name == workflow.PreCommand && !ans.Block && !r.waiting() {
+		r.snapshot()
+	}
+	return ans
 }
 
 // protectCommand applies the protections of a command line about to run, which come before the entries of the

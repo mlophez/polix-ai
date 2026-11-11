@@ -147,10 +147,17 @@ func (e Evaluation) KnowFound(epoch int, patterns []string, text string, found b
 	return e
 }
 
-// KnowTreeDiff returns the evaluation knowing the paths that differ between the trees from and to, or why they
-// could not be compared (a tree git no longer has, or git failing): then the trees count as different.
-func (e Evaluation) KnowTreeDiff(from, to string, paths []string, err error) Evaluation {
-	e.Facts = e.Facts.learnTreeDiff(from, to, paths, err)
+// KnowTreeDiff returns the evaluation knowing the paths that differ between the trees from and to, those of them to
+// no longer holds, removed, or why they could not be compared (a tree git no longer has, or git failing): then the
+// trees count as different.
+func (e Evaluation) KnowTreeDiff(from, to string, paths, removed []string, err error) Evaluation {
+	e.Facts = e.Facts.learnTreeDiff(from, to, paths, removed, err)
+	return e
+}
+
+// KnowRefs returns the evaluation knowing what git moves without moving HEAD (Facts.Refs), "" when nothing.
+func (e Evaluation) KnowRefs(refs string) Evaluation {
+	e.Facts = e.Facts.learnRefs(refs)
 	return e
 }
 

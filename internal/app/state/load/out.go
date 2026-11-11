@@ -23,6 +23,7 @@ type entryJSON struct {
 	Branch  string `json:"branch,omitempty"`
 	Hash    string `json:"hash,omitempty"`
 	Head    string `json:"head,omitempty"`
+	Refs    string `json:"refs,omitempty"`
 	Rule    string `json:"rule,omitempty"`
 	Fact    string `json:"fact,omitempty"`
 	Action  string `json:"action,omitempty"`

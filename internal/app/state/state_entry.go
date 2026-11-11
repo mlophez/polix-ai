@@ -18,8 +18,12 @@ type Entry struct {
 	Hash    string // content hash; on decisions only when the call already computed it
 	// Head is the commit HEAD pointed to when the line was written, empty when unknown: written only on the observed
 	// lines about a content that are read by branch (finished with a hash, passed and blocked), so another branch on
-	// the same commit selects them too (see Query).
+	// the same commit selects them too (see Query), and on the snapshot lines, so a post_command sees HEAD moved.
 	Head string
+	// Refs is what git moved without moving HEAD when a snapshot line was written, the commit of refs/stash and the
+	// operation stopped halfway, empty when there was neither: written only on the snapshot lines, so a post_command
+	// sees a git stash or a merge stopped on its conflicts, which rewrite the working tree without moving HEAD.
+	Refs string
 	Rule string // the rule id of the lines of kind injected an older polix wrote, shown by polix log
 	// Fact is the name of the lines of kind fact an older polix wrote, kept only to show them in polix log: read
 	// from the log, never written (Valid rejects an entry that carries it).
@@ -55,6 +59,13 @@ const (
 	// OutcomeNotified: a notice of the verb notify reached the user, in an answer that did not block; Key is its
 	// expanded text. It is never due again in the session, whatever the actor and the starts.
 	OutcomeNotified = "notified"
+	// OutcomeSnapshot: the content right before a command ran, which its post_command compares with the content
+	// after it; with the hash and the HEAD commit when it is known. Key is the id of the tool call, or the command
+	// line when the agent gives none.
+	OutcomeSnapshot = "snapshot"
+	// OutcomeWatched: a post_command found the snapshot of its key, so that snapshot is used and no later
+	// post_command compares with it; Key is the key of the snapshot.
+	OutcomeWatched = "watched"
 )
 
 // UnknownHash is the hash of a blocked entry written on a stop whose content hash could not be computed, so the loop
@@ -64,14 +75,14 @@ const UnknownHash = "unknown"
 
 // Outcomes lists the outcomes of an observed entry.
 var Outcomes = []string{OutcomeFinished, OutcomePassed, OutcomeBlocked, OutcomeInjected, OutcomeStarted,
-	OutcomeNotified}
+	OutcomeNotified, OutcomeSnapshot, OutcomeWatched}
 
 // hashed are the outcomes that are about a content, so their entries need its hash.
-var hashed = []string{OutcomePassed, OutcomeBlocked}
+var hashed = []string{OutcomePassed, OutcomeBlocked, OutcomeSnapshot}
 
 // Valid tells why the entry is not valid to be appended: it has no kind or a negative line, it carries the fact or
 // the rule of the lines an older polix wrote, or it is observed without a known outcome, or without the hash its
-// outcome is about. A kind this polix does not know is accepted,
+// outcome is about, or it carries refs without being a snapshot. A kind this polix does not know is accepted,
 // as a log may hold lines of a newer polix. The lines read from the log are kept whatever they hold (see Load).
 func (e Entry) Valid() error {
 	var errs []error
@@ -91,6 +102,9 @@ func (e Entry) Valid() error {
 		case slices.Contains(hashed, e.Outcome) && e.Hash == "":
 			errs = append(errs, fmt.Errorf("an observed entry %s needs the hash of the content", e.Outcome))
 		}
+	}
+	if e.Refs != "" && (e.Kind != KindObserved || e.Outcome != OutcomeSnapshot) {
+		errs = append(errs, errors.New("only a snapshot line carries the refs"))
 	}
 	return errors.Join(errs...)
 }

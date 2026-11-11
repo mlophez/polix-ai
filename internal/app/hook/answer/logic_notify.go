@@ -92,7 +92,7 @@ func (r *pass) settle(ans agent.Answer) {
 	}
 	pending := slices.Clone(r.pending)
 	for _, n := range r.notices {
-		e, err := r.entryOf(state.KindObserved, "", n.line, state.OutcomeNotified, "", n.text, "")
+		e, err := r.entryOf(state.KindObserved, "", n.line, state.OutcomeNotified, "", n.text, "", "")
 		if r.waiting() {
 			return
 		}

@@ -8,12 +8,14 @@ import (
 )
 
 // Step is what the evaluation of an event needs from the outside before it can go on: read one fact of the
-// repository, run a command or the check of a rule, or append an entry to the log. The zero Step is none: the
-// answer is ready. Exactly one of its fields asks; Epoch goes with Hash and Read, Tree with Compare.
+// repository, run a command or the check of a rule, put files back, or append an entry to the log. The zero Step is
+// none: the answer is ready. Exactly one of its fields asks; Epoch goes with Hash and Read, Tree with Compare, Source
+// with Restore.
 type Step struct {
 	Compare  string   // the paths that differ between this tree, of an observed line, and Tree
 	Tree     string   // the tree of the current content, at the epoch of the evaluation
 	Branch   bool     // the current branch and the HEAD commit
+	Refs     bool     // what git moves without moving HEAD: the stash and an operation stopped halfway
 	Hash     bool     // the content hash, at Epoch
 	Epoch    int      // the runs carried out before the fact of Hash or Read, which a run may change
 	Changed  bool     // the files not committed yet
@@ -31,10 +33,14 @@ type Step struct {
 	Run      []string     // run this command from the root
 	Check    *rule.Run    // run this invocation of the checks of one or several rules from the root
 	Append   *state.Entry // append this entry to the log
+	// Restore puts these paths, relative to the root with slashes, back in the working tree as Source holds them,
+	// removing those it does not hold.
+	Restore []string
+	Source  string // the tree Restore takes the paths from
 }
 
-// Outcome is the result of a step that acts (Run, Check or Append): what it printed and why it failed, nil when
-// it did not.
+// Outcome is the result of a step that acts (Run, Check, Restore or Append): what it printed and why it failed, nil
+// when it did not.
 type Outcome struct {
 	Output string
 	Err    error
@@ -51,6 +57,8 @@ func (s Step) Valid() error {
 		return errors.New("a search needs its text")
 	case (s.Compare == "") != (s.Tree == ""):
 		return errors.New("a comparison needs both trees")
+	case (s.Restore != nil || s.Source != "") && (len(s.Restore) == 0 || s.Source == ""):
+		return errors.New("a restore needs its paths and the tree they come from")
 	case s.Run != nil && len(s.Run) == 0:
 		return errors.New("a run needs a command")
 	case s.Programs != nil && len(s.Programs) == 0:
@@ -65,9 +73,9 @@ func (s Step) None() bool { return s.asks() == 0 }
 // asks counts the things the step asks for: one for a step, none when the answer is ready.
 func (s Step) asks() int {
 	n := 0
-	for _, asks := range []bool{s.Branch, s.Hash, s.Changed, s.Diff, s.Files, s.Rules, s.State, s.Ignored != "",
+	for _, asks := range []bool{s.Branch, s.Refs, s.Hash, s.Changed, s.Diff, s.Files, s.Rules, s.State, s.Ignored != "",
 		s.Real != nil, s.Foreign != "", s.Programs != nil, s.Contains != nil, s.Read != "", s.Run != nil,
-		s.Check != nil, s.Append != nil, s.Compare != ""} {
+		s.Check != nil, s.Append != nil, s.Compare != "", s.Restore != nil} {
 		if asks {
 			n++
 		}

@@ -19,6 +19,27 @@ func TestClaudePostToolUseFailure(t *testing.T) {
 	}
 }
 
+// The id Claude Code gives the call of a tool lands in ToolUse before the command, after it and after it failed, so
+// the snapshot of a command pairs with its end; an event without it has none.
+func TestClaudeToolUse(t *testing.T) {
+	for _, native := range []string{"PreToolUse", "PostToolUse", "PostToolUseFailure"} {
+		_, evs, err := claude{}.parse([]byte(`{"hook_event_name":"` + native +
+			`","tool_name":"Bash","tool_use_id":"toolu_1","tool_input":{"command":"git commit -m x"}}`))
+		if err != nil || len(evs) == 0 {
+			t.Fatalf("%s: %+v %v", native, evs, err)
+		}
+		for _, ev := range evs {
+			if ev.ToolUse != "toolu_1" {
+				t.Errorf("%s: event %+v", native, ev)
+			}
+		}
+	}
+	_, evs, err := claude{}.parse([]byte(`{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"}}`))
+	if err != nil || len(evs) != 1 || evs[0].ToolUse != "" {
+		t.Fatalf("without an id: %+v %v", evs, err)
+	}
+}
+
 // Each event of Claude Code turns into its neutral event, with the actor of the subagent; a stop is always of the
 // main session.
 func TestParseClaude(t *testing.T) {
