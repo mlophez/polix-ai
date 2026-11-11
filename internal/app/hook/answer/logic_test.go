@@ -3,6 +3,7 @@ package answer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,8 +34,9 @@ type facts struct {
 	state      state.State
 	stateErr   error
 	appendErr  error
-	runErr     error // the outcome of every run and check
-	restoreErr error // the outcome of every restore
+	runErr     error  // the outcome of every run and check
+	runOut     string // the output of every run, "salida" when empty
+	restoreErr error  // the outcome of every restore
 	// restoreErrs, when set, decides each restore of one path instead of restoreErr
 	restoreErrs map[string]error
 	changed     []string
@@ -120,6 +122,8 @@ func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
 				}
 			}
 			ev = ev.Note("salida", err)
+		case s.Run != nil && f.runOut != "":
+			ev = ev.Note(f.runOut, f.runErr)
 		case s.Run != nil, s.Check != nil:
 			ev = ev.Note("salida", f.runErr)
 		case s.Restore != nil && f.restoreErrs != nil:
@@ -583,6 +587,27 @@ func TestRun(t *testing.T) {
 		runErr: errors.New("exit status 1")})
 	if !out.Answer.Block || !strings.HasPrefix(out.Answer.Reasons[0], "just test failed: exit status 1\n  salida") {
 		t.Fatalf("a failing run blocks with its output: %+v", out.Answer)
+	}
+}
+
+// A failing run whose output is longer than the lines its reason keeps says how many it kept of how many.
+func TestRunCut(t *testing.T) {
+	ev := eval(t, "version: 1\non:\n  stop:\n    - action: { run: just test }\n", workflow.Stop)
+	var lines []string
+	for i := range 40 {
+		lines = append(lines, fmt.Sprintf("line %d", i+1))
+	}
+	out, _ := walk(t, ev, facts{branch: "main", hashes: []string{"h"}, runErr: errors.New("exit status 1"),
+		runOut: strings.Join(lines, "\n") + "\n"})
+	reason := out.Answer.Reasons[0]
+	if !out.Answer.Block || !strings.HasPrefix(reason, "just test failed: exit status 1 (last 15 of 40 lines)\n  line 26\n") ||
+		!strings.HasSuffix(reason, "  line 40") {
+		t.Fatalf("a cut output says so: %+v", out.Answer)
+	}
+	out, _ = walk(t, ev, facts{branch: "main", hashes: []string{"h"}, runErr: errors.New("exit status 1"),
+		runOut: strings.Join(lines[:15], "\n") + "\n"})
+	if !strings.HasPrefix(out.Answer.Reasons[0], "just test failed: exit status 1\n  line 1\n") {
+		t.Fatalf("an output that fits says nothing: %+v", out.Answer)
 	}
 }
 

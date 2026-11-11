@@ -756,8 +756,11 @@ on the event, so `polix.yaml` means the same in each (`workflow.EventVerbs`).
 `polix config check` reports any other verb as a problem at the line of its entry, naming the event, the verb, why
 and the verbs the event allows.
 
-A failing `run` answers with its `message`, a blank line and the last 15 lines of the output (the failing rules and
-their output for `rules`). What it does depends on the event:
+A failing `run` answers with its `message`, a blank line, the line `<command> failed: <error>` (as `just test
+failed: exit status 1`) and the last 15 lines of the output, indented (the failing rules and their output for
+`rules`). When the output is longer, the line says how much it keeps, as `just test failed: exit status 1 (last 15
+of 412 lines)`, so the AI knows it sees a part and can run the command to read the rest. What it does depends on
+the event:
 
 - On `prompt`, `pre_edit`, `pre_command`, `pre_commit`, `stop` and `subagent_stop` it blocks, as a `block`
   does, and ends the evaluation of the event (up to the [loop guard](#loop-guard) on the two stops).

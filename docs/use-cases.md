@@ -296,8 +296,8 @@ on:
 
 How it works:
 
-- When the run fails, the stop is blocked and the agent gets the last 15 lines of the output, so it goes back to
-  fix them. When it passes, polix writes a `passed` line for `just test` on that branch and content, and the next
+- When the run fails, the stop is blocked and the agent gets `just test failed: <error>` and the last 15 lines of
+  the output (with `(last 15 of <n> lines)` when there are more), so it goes back to fix them. When it passes, polix writes a `passed` line for `just test` on that branch and content, and the next
   stop does not run it again; any edit makes it run again.
 - The items run in their order and the first that fails ends the evaluation, so list the lint before the tests:
   the agent gets one failure per answer, and the tests do not run on code that does not pass the lint.

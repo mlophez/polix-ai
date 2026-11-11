@@ -114,8 +114,19 @@ func (r *pass) run(run workflow.Run, args []string) string {
 	if r.waiting() || o.Err == nil {
 		return ""
 	}
-	return fmt.Sprintf("%s failed: %v\n%s", strings.Join(args, " "), o.Err,
+	return fmt.Sprintf("%s failed: %v%s\n%s", strings.Join(args, " "), o.Err, cut(o.Output),
 		indent(text.LastLines(o.Output, outputLines, rule.MaxLineLen)))
+}
+
+// cut tells how much of output a reason keeps when it keeps only its last outputLines lines, as
+// " (last 15 of 412 lines)", so the AI knows it sees a part and can run the command to read the rest; "" when the
+// whole output fits.
+func cut(output string) string {
+	n := strings.Count(strings.TrimRight(output, "\n"), "\n") + 1
+	if n <= outputLines {
+		return ""
+	}
+	return fmt.Sprintf(" (last %d of %d lines)", outputLines, n)
 }
 
 // runRules runs the checks of the rules that apply to the changed files (`changed`) or to a path, through the

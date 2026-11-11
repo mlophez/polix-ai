@@ -786,8 +786,9 @@ Runs a command from the root without a shell (no pipes, redirections or globs), 
   plus:
   - `message`: the text before the output of a failure (placeholders allowed);
   - `always`: boolean, default `false`.
-- A failure answers with the message, a blank line and the last 15 lines of the output (the failing rule ids and
-  their output for `rules`).
+- A failure answers with the message, a blank line, `<command> failed: <error>` and the last 15 lines of the
+  output, indented (the failing rule ids and their output for `rules`); a longer output adds `(last 15 of <n>
+  lines)` to that line.
 - Repeat: a run that passed is not run again on the same content, on the same branch or on another one with the
   same HEAD commit, keyed by what it runs (so two entries
   that run `just test` share it, and `{path}` makes one key per path); a failing run runs again on the next event.

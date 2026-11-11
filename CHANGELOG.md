@@ -7,6 +7,12 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- A failing `run` whose output is longer than the 15 lines its answer keeps says so in the line of the command, as
+  `just test failed: exit status 1 (last 15 of 412 lines)`, so the AI knows it sees a part and can run the command
+  to read the rest. The docs now name that line, `<command> failed: <error>`, in what a failure answers.
+
 ## [0.6.0] - 2026-11-11
 
 ### Changed

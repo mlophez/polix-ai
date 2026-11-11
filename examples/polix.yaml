@@ -539,9 +539,10 @@ on:
     # - rules: `changed` (the changed files) or a path such as "{path}": runs the check of every deterministic
     #   rule with a check whose scope matches; a failure names the rule ids and their output;
     # plus `message`, the text before the output of a failure (placeholders allowed), and `always`.
-    # A failure answers with the message, a blank line and the last 15 lines of the output. On prompt, pre_edit,
-    # pre_command, pre_commit, stop and subagent_stop it blocks, as a block does; on start, post_edit and
-    # post_command it reaches the AI as context.
+    # A failure answers with the message, a blank line, `<command> failed: <error>` and the last 15 lines of the
+    # output, with `(last 15 of <n> lines)` when there are more. On prompt, pre_edit, pre_command, pre_commit, stop
+    # and subagent_stop it blocks, as a block does; on start, post_edit and post_command it reaches the AI as
+    # context.
     # The formatters and linters of each edited file go to guardrails.format_on_edit, which expands into entries
     # like these; write an entry here for anything else after an edit, or when it needs more than a path: another
     # condition, `always` or the checks of the rules.
