@@ -50,7 +50,8 @@ with the sequence that `spaced` separates:
 - `rules` goes first at the top, the other keys after it in their order in the source.
 - The keys of each rule follow `id`, `description`, `scope`, `deterministic`, `check` and `reason`; an unknown key
   goes after them, in its order in the source. The rules never move.
-- Exactly one blank line before each rule but the first, above the comments of the rule when it has them, and none
+- Exactly one blank line before each rule but the first, above the comments of the rule when it has them, unless
+  both rules are written in flow style on one line each, without comments above or below them; and none
   between `rules:` and the first rule; the blank lines inside a rule stay as they are, and no other sequence (the
   `scope` of a rule in block style) is separated. A rule that ends in a block scalar with `+` (`|+`, `>+`) gets no
   blank line after it, which would be part of the scalar: its own blank lines separate it.

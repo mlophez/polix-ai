@@ -7,6 +7,22 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- `polix config fmt` writes the keys of the long form of `run` as `command` (or `rules`), `message` and `always`,
+  so the command reads first and the flag last; `always` still goes first in `inject` and `notify`.
+- `polix config fmt` separates two entries of an event of `on`, and two items of `forbidden_commands`,
+  `format_on_edit` and `run_on_stop`, with one blank line, above the comments of the later one. Two items written on
+  one line each, without comments above or below them (a comment at the end of the line is allowed), stay together,
+  as a list of patterns does; the lists of texts and the lists
+  inside an entry are not spaced, and the blank lines of the source are kept. A `polix.yaml` formatted with 0.5.0
+  fails `polix config fmt --check` until it is formatted again.
+- `polix rules fmt` keeps together two rules written in flow style on one line each, without comments above or
+  below them, as the layout it shares with `polix config fmt` does; any other two rules keep one blank line between
+  them.
+- The skill `workflow` always keeps in `format_on_edit` the items that run `polix config fmt` on `polix.yaml` and
+  `polix rules fmt` on the rules files, and adds them to a new `polix.yaml`; `examples/polix.yaml` carries them.
+
 ## [0.5.0] - 2026-11-11
 
 ### Added

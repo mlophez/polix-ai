@@ -50,6 +50,21 @@ of `.claude/agents/` goes by its bare name.
   agent writes in `protected_files`, a command no agent runs in `forbidden_commands`, a branch nobody commits on in
   `protected_branches`, a formatter or linter of each edited file in `format_on_edit`, and a check that must pass
   before the end of the turn in `run_on_stop`.
+- Always keep in `format_on_edit` the two items that keep the files of polix in its canonical format, with
+  `rules.path` (`ai/rules` by default) in the glob of the second, and add them when missing, also to a new
+  `polix.yaml`:
+
+  ```yaml
+  - run: polix config fmt
+    path: polix.yaml
+    message: "polix config fmt could not format polix.yaml:"
+
+  # The rules and the workflow keep the canonical format of polix.
+  - run: polix rules fmt
+    path: ai/rules/*.yaml
+    message: "polix rules fmt could not format the rules:"
+  ```
+
 - Write an entry of `on` only for what no shortcut says: another event, condition or verb, an exception, a subagent.
 - When `protected_branches`, `format_on_edit` or `run_on_stop` falls short, write the entries it stands for in
   `on` (see [reference.yaml](reference.yaml)), remove its items and tune the entries.

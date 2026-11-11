@@ -73,9 +73,10 @@ type Cond map[string]any
 var EntryKeys = []string{"when", "unless", "action"}
 
 // RunKeys, InjectKeys, BlockKeys and NotifyKeys are the keys of the long form of each verb, in the order polix config
-// fmt writes them: the flags always and once first and the message last.
+// fmt writes them: the flags always and once first and the message last, but for run, whose command and message
+// come before always.
 var (
-	RunKeys    = []string{"always", "command", "rules", "message"}
+	RunKeys    = []string{"command", "rules", "message", "always"}
 	InjectKeys = []string{"always", "file", "text", "rules"}
 	BlockKeys  = []string{"once", "message"}
 	NotifyKeys = []string{"always", "message"}

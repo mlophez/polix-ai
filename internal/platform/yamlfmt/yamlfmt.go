@@ -3,8 +3,9 @@
 // flow collections on one line ({ a: b } and [a, b]), one space before a line comment and at most one blank line in
 // a row. The keys of each mapping follow the order a caller gives; the items of a sequence never move. The items of
 // the block sequences a caller chooses are separated by exactly one blank line, above the comments of each item and
-// never before the first one; an item that ends in a block scalar with the indicator + (|+, >+) keeps its own blank
-// lines instead, since one more would be part of the scalar.
+// never before the first one, unless both items are written on one line, without comments above or below them (a
+// comment at the end of the line is allowed); an item that ends in a block scalar with the indicator + (|+, >+)
+// keeps its own blank lines instead, since one more would be part of the scalar.
 //
 // The comments and the blank lines are read from the source lines, not from the comments yaml.v3 attaches to the
 // nodes, which it spreads between head, line and foot comments in ways that do not survive a reorder. A comment or
@@ -35,7 +36,9 @@ import (
 type Order func(path []string) []string
 
 // Spaced tells whether the items of the block sequence at path, the keys from the root to the sequence with "-" for
-// the item of a sequence as in Order, are separated by one blank line. Nil separates no sequence.
+// the item of a sequence as in Order, are separated by one blank line. Two items written on one line each, without
+// comments above or below them (a comment at the end of the line is allowed), stay together. Nil separates no
+// sequence.
 type Spaced func(path []string) bool
 
 // line is a comment or blank line of the source: its text without the indentation (empty for a blank line) and its
@@ -73,7 +76,8 @@ type printer struct {
 var ErrUnsupported = errors.New("not supported by the formatter")
 
 // Format formats the YAML document src, ordering the keys of each mapping with order (nil keeps them all) and
-// separating the items of the block sequences that spaced accepts with one blank line (nil separates none). A
+// separating the items of the block sequences that spaced accepts with one blank line, unless both are written on
+// one line (nil separates none). A
 // document without content (empty, or only comments) comes back as it is. Line breaks \r\n are kept.
 func Format(src []byte, order Order, spaced Spaced) ([]byte, error) {
 	crlf := bytes.Contains(src, []byte("\r\n"))

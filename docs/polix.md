@@ -37,7 +37,8 @@ polix hook claude          # entry point of the Claude Code hooks (event on stdi
 polix hook codex           # entry point of the Codex hooks (not implemented)
 polix config check         # validate polix.yaml and the rules (ai/rules/ or rules.path)
                            # (a file, as examples/polix.yaml, is validated in place of polix.yaml)
-polix config fmt           # format polix.yaml in place: keys in the order of the reference, comments kept
+polix config fmt           # format polix.yaml in place: keys in the order of the reference, comments kept,
+                           # one blank line between two entries of an event or items of a shortcut
                            # (--check only tells whether it is formatted, exiting with 1 when not; a file,
                            # as examples/polix.yaml, is formatted instead, without a repository nor --dir)
 polix rules check          # run the checks of every deterministic rule (for CI)
@@ -84,7 +85,9 @@ check failed.
 `retired.yaml` included, with the layout of `polix config fmt`: two spaces of indentation, flow collections on one
 line, the comments and the blank lines kept. `rules` goes first, the keys of each rule follow `id`, `description`,
 `scope`, `deterministic`, `check` and `reason`, with any other key after them in its order, and the rules never
-move. Exactly one blank line separates two rules, above the comments of the later one, and none follows `rules:`;
+move. Exactly one blank line separates two rules, above the comments of the later one (two rules written in flow
+style on one line each, as `- { id: X-1, description: "One.", deterministic: false }`, without comments above or
+below them, stay together), and none follows `rules:`;
 a rule that ends in a block scalar with `+` (`|+`, `>+`) keeps its own blank lines, which belong to the scalar.
 It prints `ok: formatted <file>` for each file it writes, or `ok: the rules are formatted` when none changes; with
 `--check` it writes nothing, prints `<file> is not formatted: run polix rules fmt` to stderr for each file that

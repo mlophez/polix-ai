@@ -17,13 +17,30 @@ var (
 	rulesKeys = []string{"path", "run"}
 )
 
-// formatData formats the data of polix.yaml: two spaces of indentation, the comments and the blank lines kept, and the
-// keys of each section in the order of the reference, with guardrails and on at the end. The items of a list and
-// the keys a user names (variables, globs of risk.weights and rules.run) keep their order. It only needs YAML: a
+// formatData formats the data of polix.yaml: two spaces of indentation, the comments and the blank lines kept, the
+// keys of each section in the order of the reference, with guardrails and on at the end, and one blank line between
+// two items of a list of maps (the entries of an event and the items of a shortcut). The items of a list and the
+// keys a user names (variables, globs of risk.weights and rules.run) keep their order. It only needs YAML: a
 // workflow with problems is formatted as well. The error tells why the data cannot be formatted (broken YAML, or
 // what yamlfmt does not support).
 func formatData(data []byte) ([]byte, error) {
-	return yamlfmt.Format(data, order, nil)
+	return yamlfmt.Format(data, order, spaced)
+}
+
+// spaced tells whether the items of the sequence at path are separated by one blank line: the entries of each event
+// of on and the items of the shortcuts of guardrails that take a list of maps. The lists of texts stay together.
+func spaced(path []string) bool {
+	if len(path) != 2 {
+		return false
+	}
+	switch path[0] {
+	case "on":
+		return true
+	case "guardrails":
+		return path[1] == workflow.ShortcutForbiddenCommands || path[1] == workflow.ShortcutFormatOnEdit ||
+			path[1] == workflow.ShortcutRunOnStop
+	}
+	return false
 }
 
 // order returns the order of the keys of the mapping of polix.yaml at path, nil to keep the source order.

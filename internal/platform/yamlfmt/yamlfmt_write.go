@@ -75,14 +75,16 @@ func (p *printer) mapping(n *yaml.Node, indent int, first string) {
 
 // sequence writes the block sequence n at indent, its items indented below their key; a non-empty first replaces
 // the indentation of its first line. A spaced sequence gets one blank line before each item but the first, above
-// its comments, unless the item before it ends in a block scalar that keeps its final blank lines.
+// its comments, unless the item before it ends in a block scalar that keeps its final blank lines or both items
+// are written on one line.
 func (p *printer) sequence(n *yaml.Node, indent int, first string) {
 	if n.Style&yaml.FlowStyle != 0 || len(n.Content) == 0 {
 		p.line(prefix(indent, first)+p.inline(n), p.comment(n))
 		return
 	}
 	for i, it := range n.Content {
-		if i > 0 && p.spaced[n] && !p.keeps(n.Content[i-1]) {
+		if i > 0 && p.spaced[n] && !p.keeps(n.Content[i-1]) &&
+			(!p.oneLine(n.Content[i-1]) || !p.oneLine(it)) {
 			p.lines([]line{{}}, indent, true)
 		}
 		p.lines(p.lead[it], leadIndent(indent, first, i), i > 0)
@@ -281,6 +283,30 @@ func (p *printer) keeps(n *yaml.Node) bool {
 	}
 	b, ok := p.bodies[n]
 	return ok && strings.Contains(b.header, "+")
+}
+
+// oneLine tells whether the item n of a sequence is written on one line: no comment above or below it (a line
+// comment is allowed), and a scalar that is not a block scalar, a flow collection, or a block mapping of one key
+// whose value is one of those two. The key of such a mapping starts on the line of the dash, so no comment of its
+// own goes above or below it.
+func (p *printer) oneLine(n *yaml.Node) bool {
+	if hasComment(p.lead[n]) || hasComment(p.trail[n]) {
+		return false
+	}
+	if n.Kind == yaml.MappingNode && block(n) && len(n.Content) == 2 {
+		n = n.Content[1]
+	}
+	return !block(n) && !p.isBody(n)
+}
+
+// hasComment tells whether ls holds a comment, not only blank lines.
+func hasComment(ls []line) bool {
+	for _, l := range ls {
+		if l.text != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // block tells whether n is a block collection with items.

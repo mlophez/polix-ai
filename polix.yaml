@@ -33,8 +33,10 @@ guardrails:
   format_on_edit:
     - run: golangci-lint fmt {path}
       path: "*.go"
+
     - run: polix config fmt
       path: polix.yaml
+
     - run: polix rules fmt
       path: "ai/rules/*.yaml"
 
@@ -43,6 +45,7 @@ guardrails:
     # Lint the whole module when Go code or the lint configuration changes.
     - run: golangci-lint run ./...
       changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"]
+
     # Run every test when Go code, the install scripts or scripts/ change.
     - run: go test ./...
       changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"]

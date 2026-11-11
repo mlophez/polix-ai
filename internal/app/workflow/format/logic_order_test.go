@@ -68,7 +68,8 @@ on:
         block:
           once: true
           message: "review"
-    - action: { run: { always: true, command: go test ./... } }
+
+    - action: { run: { command: go test ./..., always: true } }
   stop:
     - when: { changed: "*.go" }
       action: { block: "stop" }
@@ -142,6 +143,7 @@ on:
         notify:
           always: true
           message: "Rama {branch}"
+
     - action: { notify: { always: false, message: x } }
 `
 	got, err := formatData([]byte(src))
@@ -153,6 +155,80 @@ on:
 	}
 	if got := order([]string{"on", "prompt", "-", "action"}); got[len(got)-1] != "notify" {
 		t.Fatalf("the verbs: %q", got)
+	}
+}
+
+// The entries of an event and the items of the shortcuts that take maps get one blank line between them, above the
+// comments of the later one, unless both are written on one line; the lists of texts and the lists inside an entry
+// stay together, and the keys of a long run follow workflow.RunKeys, always after the message.
+func TestFormatSpaced(t *testing.T) {
+	src := `version: 1
+guardrails:
+  protected_files:
+    - AGENTS.md
+    - CLAUDE.md
+  forbidden_commands:
+    - pattern: "git reset --hard*"
+    - pattern: "git clean -f*"
+  run_on_stop:
+    - run: go vet ./...
+    - run: go test ./...
+      changed: ["*.go"]
+on:
+  start:
+    - action:
+        run:
+          always: true
+          message: "failed"
+          command: git config --local core.hooksPath .githooks
+    # The second one.
+    - action: { inject: x }
+  pre_commit:
+    - when:
+        any:
+          - changed_lines: 150
+          - risk_score: 25
+      action: { block: "review" }
+`
+	want := `version: 1
+guardrails:
+  protected_files:
+    - AGENTS.md
+    - CLAUDE.md
+  forbidden_commands:
+    - pattern: "git reset --hard*"
+    - pattern: "git clean -f*"
+  run_on_stop:
+    - run: go vet ./...
+
+    - run: go test ./...
+      changed: ["*.go"]
+on:
+  start:
+    - action:
+        run:
+          command: git config --local core.hooksPath .githooks
+          message: "failed"
+          always: true
+
+    # The second one.
+    - action: { inject: x }
+  pre_commit:
+    - when:
+        any:
+          - changed_lines: 150
+          - risk_score: 25
+      action: { block: "review" }
+`
+	got, err := formatData([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	if again, err := formatData(got); err != nil || string(again) != want {
+		t.Fatalf("not idempotent: %v\n%s", err, again)
 	}
 }
 

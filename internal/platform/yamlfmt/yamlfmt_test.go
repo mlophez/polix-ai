@@ -169,6 +169,67 @@ func TestFormatSpaced(t *testing.T) {
 	}
 }
 
+// Two items of a spaced sequence written on one line each stay together; a blank line goes between them only when one
+// of the two takes more lines or has a comment, and a blank line of the source between them stays.
+func TestFormatSpacedOneLine(t *testing.T) {
+	src := `items:
+  - a: 1
+  - b
+  - { c: 3 }
+  - d: 4
+    e: 5
+  - f: 6
+  - g: 7 # line comment
+  # about h
+  - h: 8
+  - i: 9
+
+  - j: 10
+  - k: |
+      body
+  - l: 11
+  - m: 12
+    # deeper, below m
+  - n: 13
+`
+	want := `items:
+  - a: 1
+  - b
+  - { c: 3 }
+
+  - d: 4
+    e: 5
+
+  - f: 6
+  - g: 7 # line comment
+
+  # about h
+  - h: 8
+
+  - i: 9
+
+  - j: 10
+
+  - k: |
+      body
+
+  - l: 11
+
+  - m: 12
+    # deeper, below m
+
+  - n: 13
+`
+	spaced := func(path []string) bool { return strings.Join(path, "/") == "items" }
+	got, err := Format([]byte(src), nil, spaced)
+	if err != nil || string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s\n%v", got, want, err)
+	}
+	if twice, err := Format(got, nil, spaced); err != nil || string(twice) != want {
+		t.Fatalf("not idempotent:\n%s\n%v", twice, err)
+	}
+}
+
 // A formatted document comes back as it is, line breaks \r\n included.
 func TestFormatIdempotent(t *testing.T) {
 	src := "a:\r\n  - b # c\r\n"

@@ -272,7 +272,7 @@ validate it:
 
 ```bash
 polix config check     # validate polix.yaml and ai/rules/
-polix config fmt       # format polix.yaml: keys in the order of the reference, comments kept
+polix config fmt       # format polix.yaml: keys in the order of the reference, one blank line between entries, comments kept
 polix rules fmt        # format the rules files of ai/rules/: one blank line between rules, comments kept
 polix graph            # draw the workflow as a Mermaid diagram, each entry with the shortcut it comes from
 polix doctor           # check that this machine and repository are ready

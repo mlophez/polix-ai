@@ -52,7 +52,12 @@ vocabulary of the domain:
   the keys of an entry (`when`, `unless`, `action`), the conditions (`workflow.Conditions`, also inside `any` and
   `not`), the verbs of an action (`workflow.Actions`), and the keys of each verb (`workflow.RunKeys`,
   `workflow.InjectKeys`, `workflow.BlockKeys` and `workflow.NotifyKeys`, so `always` goes before the `message` of a
-  `notify`). An unknown key goes after the known ones, in its order in the source.
+  `notify` and after the `command` and the `message` of a `run`). An unknown key goes after the known ones, in its
+  order in the source.
+- One blank line separates two entries of an event of `on`, and two items of `forbidden_commands`, `format_on_edit`
+  and `run_on_stop`, above the comments of the later one, unless both are written on one line each, without comments
+  above or below them (a comment at the end of the line is allowed), as `- pattern: "git clean -f*"`. The lists of texts (`protected_files`, `requirements`) and the lists inside an
+  entry stay together, and the blank lines of the source are kept.
 - The items of a list never move, nor the keys a user names: the variables of `vars`, the globs of `risk.weights`
   and of `rules.run`, whose order decides which one matches first.
 - A leading document start marker (`---`) stays, with the comments above it. It refuses anchors, aliases, explicit
