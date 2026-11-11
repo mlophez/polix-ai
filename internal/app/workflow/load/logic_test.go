@@ -8,13 +8,13 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 )
 
-// Without polix.yaml the workflow is the default one: version 1, the default loop guard, every switch of guidance on
-// and no entries.
+// Without polix.yaml the workflow is the default one: version 1, the default loop guard, the guidance on commits
+// only and no entries.
 func TestDecideWithoutTheFile(t *testing.T) {
 	got := Decide(workflow.Workflow{}, workflow.Guardrails{}, false, nil).Loaded
 	w := got.Workflow
 	if got.Exists || got.Err != nil || w.Version != 1 || w.MaxStopRetries != workflow.DefaultMaxStopRetries ||
-		!w.Guidance.Commit || !w.Guidance.Edit || !w.Guidance.Layout || len(w.On) != 0 {
+		!w.Guidance.Commit || w.Guidance.Edit || w.Guidance.Layout || len(w.On) != 0 {
 		t.Fatalf("got %+v", got)
 	}
 }

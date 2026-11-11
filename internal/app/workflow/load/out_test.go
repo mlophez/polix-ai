@@ -320,28 +320,30 @@ func TestDecodeErrorsNameDomainTypes(t *testing.T) {
 	}
 }
 
-// A switch of guidance left out is on, with or without polix.yaml; false turns it off.
+// commit left out is on and edit and layout left out are off, with or without polix.yaml; a value sets each one.
 func TestDecodeGuidance(t *testing.T) {
 	cases := []struct {
-		name, src    string
-		commit, edit bool
+		name, src            string
+		commit, edit, layout bool
 	}{
-		{"omitted", "version: 1\n", true, true},
-		{"empty", "version: 1\nguidance: {}\n", true, true},
-		{"null", "version: 1\nguidance:\n", true, true},
-		{"commit off", "version: 1\nguidance: { commit: false }\n", false, true},
-		{"edit off", "version: 1\nguidance: { edit: false }\n", true, false},
-		{"both off", "version: 1\nguidance: { commit: false, edit: false }\n", false, false},
+		{"omitted", "version: 1\n", true, false, false},
+		{"empty", "version: 1\nguidance: {}\n", true, false, false},
+		{"null", "version: 1\nguidance:\n", true, false, false},
+		{"commit off", "version: 1\nguidance: { commit: false }\n", false, false, false},
+		{"edit on", "version: 1\nguidance: { edit: true }\n", true, true, false},
+		{"layout on", "version: 1\nguidance: { layout: true }\n", true, false, true},
+		{"all set", "version: 1\nguidance: { commit: false, edit: true, layout: true }\n", false, true, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			w, err := parse(t, c.src, "dev")
-			if err != nil || w.Guidance.Commit != c.commit || w.Guidance.Edit != c.edit {
+			g := w.Guidance
+			if err != nil || g.Commit != c.commit || g.Edit != c.edit || g.Layout != c.layout {
 				t.Fatalf("got %v %+v", err, w.Guidance)
 			}
 		})
 	}
-	if w, err := absentWorkflow(t); err != nil || !w.Guidance.Commit || !w.Guidance.Edit {
+	if w, err := absentWorkflow(t); err != nil || !w.Guidance.Commit || w.Guidance.Edit || w.Guidance.Layout {
 		t.Fatalf("without polix.yaml: %v %+v", err, w.Guidance)
 	}
 }
@@ -431,8 +433,8 @@ func TestDecodeLayout(t *testing.T) {
 	if w.RulesPath() != "docs/rules" || w.PlansPath() != "docs/plans" || w.ReportsPath() != "docs/reports" {
 		t.Fatalf("%q %q %q", w.RulesPath(), w.PlansPath(), w.ReportsPath())
 	}
-	if !w.Guidance.Layout {
-		t.Fatal("the layout is injected unless guidance.layout is false")
+	if w.Guidance.Layout {
+		t.Fatal("the layout is injected only when guidance.layout is true")
 	}
 	cases := map[string]string{
 		"version: 1\nrules: { path: /etc }\n":       `rules.path "/etc" must be relative`,

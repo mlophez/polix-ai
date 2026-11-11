@@ -116,17 +116,18 @@ rules:
     "*.sh": [bash, "{files}"]                                                    # hypothetical: one bash for all
 
 # Optional. The folders of the plans (written by the skill plan) and of the reports (audits, reviews), relative to
-# the root, with the same limits as rules.path. polix does not read them: it tells the agent where they are
-# (guidance.layout), and the skills write there.
+# the root, with the same limits as rules.path. polix does not read them: with guidance.layout: true it tells the
+# agent where they are, and the skills write there.
 plans:
   path: ai/plans
 reports:
   path: ai/reports
 
-# Optional, every switch true by default. Built-in instructions polix injects into the agent on every start
-# (startup, resume, clear, compaction), in English, as one context before those of the start entries. Its text is
-# the template templates/session_start.md.tmpl of the binary. They ask for cooperation and block nothing. Injected
-# only with a valid polix.yaml; a switch left out is on, false turns it off, and an unknown key is rejected.
+# Optional; commit is true by default, edit and layout false. Built-in instructions polix injects into the agent on
+# every start (startup, resume, clear, compaction), in English, as one context before those of the start entries.
+# Its text is the template templates/session_start.md.tmpl of the binary. They ask for cooperation and block
+# nothing. Injected only with a valid polix.yaml; a switch left out takes its default, a value sets it, and an
+# unknown key is rejected.
 # - commit: run each commit as a git commit command of its own, not chained with &&, ; or | nor wrapped in sh -c,
 #   so pre_commit sees it.
 # - edit: create and change files with the edit tool of the agent, not from the shell (sed -i, redirections, tee,

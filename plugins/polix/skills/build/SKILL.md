@@ -19,7 +19,7 @@ Run a plan to its end: one `polix:builder` subagent implements every task, in or
 Then the docs are brought up to date, the change is reviewed against the plan and fixed, each acceptance criterion
 is checked, and the run is merged into the plan.
 You orchestrate, document and verify; the builder writes the code and the reviewer judges it.
-The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it; polix names it at session start.
+The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it.
 
 ## Requirements
 

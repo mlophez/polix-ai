@@ -9,10 +9,6 @@ rules:
   path: ai/rules
   run: { "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"] }
 
-guidance:
-  edit: false
-  layout: false
-
 # Weight of each path in the risk score: the first matching glob wins, any other file weighs 1.
 risk:
   weights:

@@ -405,7 +405,7 @@ guardrails:           # the basics every project wants (optional)
     - { run: "gofmt -w {path}", path: "*.go" }
   run_on_stop:                                    # must pass before the agent ends its turn
     - { run: "go test ./...", changed: "*.go" }   # waits for running subagents unless wait_agents: false
-guidance:             # built-in instructions injected at session start (optional, all true by default)
+guidance:             # instructions injected at session start (optional; by default commit on, edit and layout off)
   commit: true        # run each commit as a git commit of its own
   edit: true          # change files with the edit tool of the agent, not the shell
   layout: true        # the folders of rules, plans and reports
@@ -531,8 +531,8 @@ shortcuts rejects `guardrails` as an unknown key, so a file that uses them sets 
 reads, injects and checks, the plans the skill `plan` writes and the reports of audits and reviews. Each defaults
 to its folder below `ai/`, and is cleaned (slashes, no `./` nor trailing slash). `polix config check` reports an
 absolute path, the root itself, a path out of the root (`..`), a glob or an unknown key. polix reads only the folder
-of the rules, its `*.yaml` but `retired.yaml` and not its subfolders; the other two reach the agent through
-`guidance.layout`, so the skills write where the repository says.
+of the rules, its `*.yaml` but `retired.yaml` and not its subfolders; with `guidance.layout: true` the three reach
+the agent on `start`, and the skills otherwise read them from `polix.yaml`, so they write where the repository says.
 
 `rules.run` maps a glob, matched against the `check` of a rule as the globs of `scope` are (without `/` against its
 base name, with `/` against its path relative to the root, `**` crossing folders), to the argv that runs it from the
@@ -567,12 +567,12 @@ not chained with `&&`, `;` or `|` nor wrapped in `sh -c`, so `pre_commit` sees i
 the files of the repository with the edit tool of the agent instead of the shell (`sed -i`, redirections, `tee`,
 heredocs), since `pre_edit`, `post_edit` and the rules they inject only see what goes through that tool. `layout`
 tells the agent the folders of `rules.path`, `plans.path` and `reports.path`, so it and the skills use them instead
-of assuming `ai/`. Every switch is on when the key, or the switch, is left out, and `false` turns one off. The text
-is the template `templates/session_start.md.tmpl`, embedded in the binary (`text/template`, one block per switch),
-rendered as one context. It is injected only with a valid `polix.yaml`, on every source of the event (startup,
-resume, clear and compaction), before the contexts of the `start` entries, and in English. It asks the
-agent to cooperate and blocks nothing. `polix config check` reports an unknown key, and a value that is not a
-boolean, or a `guidance` that is not a map, stops the parse.
+of assuming `ai/`. When the key, or a switch, is left out, `commit` is on and `edit` and `layout` are off; `true` or
+`false` sets each one. The text is the template `templates/session_start.md.tmpl`, embedded in the binary
+(`text/template`, one block per switch), rendered as one context. It is injected only with a valid `polix.yaml`,
+on every source of the event (startup, resume, clear and compaction), before the contexts of the `start` entries,
+and in English. It asks the agent to cooperate and blocks nothing. `polix config check` reports an unknown key,
+and a value that is not a boolean, or a `guidance` that is not a map, stops the parse.
 
 Events: `start`, `prompt`, `subagent_start`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
 `subagent_stop` and `stop`.

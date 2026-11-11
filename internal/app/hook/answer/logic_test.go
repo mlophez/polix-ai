@@ -900,8 +900,8 @@ func TestGuidance(t *testing.T) {
 		want              []string
 	}{
 		{"defaults", "version: 1\n", workflow.Start, defaults},
-		{"only edit", "version: 1\nguidance: { commit: false, layout: false }\n", workflow.Start,
-			session("version: 1\nguidance: { commit: false, layout: false }\n")},
+		{"only edit", "version: 1\nguidance: { commit: false, edit: true }\n", workflow.Start,
+			session("version: 1\nguidance: { commit: false, edit: true }\n")},
 		{"all off", "version: 1\nguidance: { commit: false, edit: false, layout: false }\n", workflow.Start, nil},
 		{"before the entries", "version: 1\non:\n  start:\n    - action: { inject: repo }\n",
 			workflow.Start, append(slices.Clone(defaults), "repo")},
@@ -916,7 +916,7 @@ func TestGuidance(t *testing.T) {
 			}
 		})
 	}
-	edit := session("version: 1\nguidance: { commit: false, layout: false }\n")[0]
+	edit := session("version: 1\nguidance: { commit: false, edit: true }\n")[0]
 	if !strings.HasPrefix(edit, "This project is managed by polix.\nFollow these rules:\n- Create and change files") ||
 		strings.Contains(edit, "git commit") {
 		t.Fatalf("only the guidance on edits: %q", edit)

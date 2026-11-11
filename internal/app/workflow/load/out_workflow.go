@@ -112,7 +112,7 @@ type folderYAML struct {
 	keys []string
 }
 
-// guidanceYAML is the key guidance: a switch left out is on.
+// guidanceYAML is the key guidance: commit left out is on, edit and layout left out are off.
 type guidanceYAML struct {
 	Commit *bool `yaml:"commit"`
 	Edit   *bool `yaml:"edit"`
@@ -294,10 +294,10 @@ func (y folderYAML) folder() (workflow.Folder, error) {
 	return f, f.Valid()
 }
 
-// guidance builds the guidance of the file, with every switch left out turned on.
+// guidance builds the guidance of the file: commit left out is on, edit and layout left out are off.
 func (y guidanceYAML) guidance() (workflow.Guidance, error) {
-	g := workflow.Guidance{Commit: y.Commit == nil || *y.Commit, Edit: y.Edit == nil || *y.Edit,
-		Layout: y.Layout == nil || *y.Layout, Keys: y.keys}
+	g := workflow.Guidance{Commit: y.Commit == nil || *y.Commit, Edit: y.Edit != nil && *y.Edit,
+		Layout: y.Layout != nil && *y.Layout, Keys: y.keys}
 	return g, g.Valid()
 }
 

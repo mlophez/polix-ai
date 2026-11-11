@@ -163,7 +163,8 @@ a longer argument.
 
 - `plans.path`, default `ai/plans`: the folder of the plans the skill `plan` writes.
 - `reports.path`, default `ai/reports`: the folder of the reports of audits and reviews.
-- Same limits as `rules.path`. polix does not read them: it tells the agent where they are (`guidance.layout`).
+- Same limits as `rules.path`. polix does not read them: with `guidance.layout: true` it tells the agent where they
+  are.
 
 ### risk
 
@@ -188,8 +189,8 @@ risk:
 ### guidance
 
 Built-in instructions polix injects on every `start` (startup, resume, clear, compaction), in English, before the
-injects of the `start` entries, and only with a valid file. They ask for cooperation and block nothing. Every switch
-is `true` when left out; `false` turns it off.
+injects of the `start` entries, and only with a valid file. They ask for cooperation and block nothing. Left out,
+`commit` is `true` and `edit` and `layout` are `false`; a value sets each one.
 
 - `commit`: run each commit as a `git commit` of its own, not chained with `&&`, `;` or `|` nor wrapped in `sh -c`,
   so `pre_commit` sees it.

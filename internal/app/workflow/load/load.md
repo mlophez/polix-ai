@@ -30,7 +30,8 @@ workflow(ctx, path, running) workflow.Loaded
 with the domain:
 
 1. Without the file (and without `err`), the default workflow: version 1, `max_stop_retries` 3
-   (`workflow.DefaultMaxStopRetries`) and every switch of guidance on, with the error of its `Valid`.
+   (`workflow.DefaultMaxStopRetries`) and the default guidance (commit on, edit and layout off), with the error of
+   its `Valid`.
 2. When the values of the shortcuts of guardrails have problems (`Guardrails.Problems`), those problems and the
    rest of the problems of the workflow, in the order of the file, are the error, as one `workflow.InvalidError`;
    otherwise `err` stays: nil, the `workflow.InvalidError` of `Workflow.Valid`, or an error that stops the reading.
@@ -60,7 +61,8 @@ with the domain:
      map uses, the line of each entry, of each event of `on` and of each runner, the runners of `rules.run` and the
      weights of `risk.weights` in file order. A value of the wrong kind is an error with its line, and the errors of
      yaml name the types of the domain (`workflow.Workflow`, `workflow.Entry`...), never those of the decoding.
-     `max_stop_retries` left out is `workflow.DefaultMaxStopRetries`; a switch of guidance left out is on.
+     `max_stop_retries` left out is `workflow.DefaultMaxStopRetries`; commit left out of guidance is on, edit and
+     layout left out are off.
      `requirementsYAML` of `out_requirements.go` reads the key `requirements` into `Workflow.Requirements`, the
      programs the repository requires on the PATH, in file order: only a list of names, else an error at the line of
      the node with the form it takes (`line 3: requirements takes a list of program names, as [go, golangci-lint]`);

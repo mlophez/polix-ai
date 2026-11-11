@@ -7,6 +7,12 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- The switches `edit` and `layout` of `guidance` are off by default: a `polix.yaml` that leaves them out no longer
+  injects the instructions on edits nor the folders of the AI on `start`; `true` turns each one on. `commit` stays on
+  by default.
+
 ## [0.4.0] - 2026-11-11
 
 ### Added
