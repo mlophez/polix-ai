@@ -31,10 +31,10 @@ func commandKey(ev agent.Event) string {
 	return ev.Command
 }
 
-// snapshot records the content right before a command runs, on a pre_command whose protections passed, when the
-// valid workflow watches and its entries did not block it: an observed `snapshot` line with the content hash of the
-// epoch the entries left, the HEAD commit, the refs git moves without HEAD (hook.Facts.Refs) and the key of the
-// command. An unknown hash writes none, with the warning of the call.
+// snapshot records the content right before a command runs, on the last event before it of the call (see
+// lastBefore), when the valid workflow watches and nothing blocked the line: an observed `snapshot` line with the
+// content hash of the epoch the entries left, the HEAD commit, the refs git moves without HEAD (hook.Facts.Refs)
+// and the key of the command. An unknown hash writes none, with the warning of the call.
 func (r *pass) snapshot() {
 	key := commandKey(r.ev.Event)
 	if key == "" || !watches(r.guardrails()) {

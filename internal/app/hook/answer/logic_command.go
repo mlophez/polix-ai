@@ -10,10 +10,11 @@ import (
 // command answers pre_command, post_command and pre_commit, a command line about to run, one that ran and, with
 // pre_command, a line about to commit. Before a command come its protections (see protectCommand). An unusable
 // workflow fails closed before a command, but for the commands of polix that fixing it needs (see unusableCommand),
-// and only warns after one. Without polix.yaml nothing else happens. A pre_command whose protections and entries
-// let it run records the content before it runs (see snapshot), and a post_command first finds what the command
-// changed and puts back the protected files (see watch), before its entries. The entries do not apply to a pre_commit whose commits all
-// happen in another repository (see commitsOutside). A failing run after a command reaches the AI as context
+// and only warns after one. Without polix.yaml nothing else happens. The last event before a command line runs, the
+// pre_command or the pre_commit of a line that commits, records the content before it runs when nothing blocked the
+// line (see lastBefore), and a post_command first finds what the command changed and puts back the protected files
+// (see watch), before its entries. The entries do not apply to a pre_commit whose commits all happen in another
+// repository (see commitsOutside). A failing run after a command reaches the AI as context
 // (workflow.Informed).
 func (r *pass) command() agent.Answer {
 	name := r.ev.Event.Name
@@ -41,11 +42,18 @@ func (r *pass) command() agent.Answer {
 	}
 	if name == workflow.PreCommit {
 		if outside := r.commitsOutside(); r.waiting() || outside {
-			return agent.Answer{}
+			return r.lastBefore(agent.Answer{})
 		}
 	}
-	ans = r.evaluate(ans)
-	if name == workflow.PreCommand && !ans.Block && !r.waiting() {
+	return r.lastBefore(r.evaluate(ans))
+}
+
+// lastBefore returns ans, the answer of an event about a command line, after recording the content before the line
+// runs (see snapshot) when the event is the last before it of the call (hook.Evaluation.Last), the pre_commit of a
+// line that commits, and neither ans nor an earlier event of the call (hook.Facts.Blocked) blocks it: the snapshot
+// then holds what every entry of the line left, and a line some entry refused leaves none.
+func (r *pass) lastBefore(ans agent.Answer) agent.Answer {
+	if r.ev.Event.Name != workflow.PostCommand && r.ev.Last() && !ans.Block && !r.ev.Facts.Blocked && !r.waiting() {
 		r.snapshot()
 	}
 	return ans

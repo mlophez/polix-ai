@@ -32,6 +32,13 @@ func command(t *testing.T, yaml, name, line, toolUse string) hook.Evaluation {
 	return ev
 }
 
+// following returns ev with one more event of the call after it, as the pre_commit after the pre_command of a line
+// that commits.
+func following(ev hook.Evaluation) hook.Evaluation {
+	ev.Remaining = 1
+	return ev
+}
+
 // invalid returns ev with a workflow that cannot be used.
 func invalid(ev hook.Evaluation) hook.Evaluation {
 	ev.Invalid = errors.New("guardrails: unknown key")
@@ -57,7 +64,8 @@ func asked(steps []hook.Step, match func(hook.Step) bool) []hook.Step {
 
 // AC1, AC9, AC10: a pre_command that no protection denies writes one snapshot line, with the hash, the HEAD commit
 // and the key, the id of the call or else the command line, when the workflow watches; without a watching
-// workflow, with an invalid one, on a denied command or on a pre_commit nothing is hashed nor written.
+// workflow, with an invalid one, on a denied command or on a pre_command a pre_commit follows nothing is hashed nor
+// written.
 func TestWatchSnapshot(t *testing.T) {
 	f := facts{branch: "main", head: "c1", hashes: []string{"h0"}}
 	for name, c := range map[string]struct {
@@ -79,9 +87,9 @@ func TestWatchSnapshot(t *testing.T) {
 	for name, ev := range map[string]hook.Evaluation{
 		"not watching": command(t, "version: 1\non:\n  pre_command:\n    - action: { inject: { text: x, always: true } }\n",
 			workflow.PreCommand, "ls", "toolu_1"),
-		"invalid":   invalid(command(t, watchYAML, workflow.PreCommand, "ls", "toolu_1")),
-		"denied":    command(t, watchYAML, workflow.PreCommand, "rm AGENTS.md", "toolu_1"),
-		"precommit": command(t, watchYAML, workflow.PreCommit, "git commit -m x", "toolu_1"),
+		"invalid":           invalid(command(t, watchYAML, workflow.PreCommand, "ls", "toolu_1")),
+		"denied":            command(t, watchYAML, workflow.PreCommand, "rm AGENTS.md", "toolu_1"),
+		"before pre_commit": following(command(t, watchYAML, workflow.PreCommand, "git commit -m x", "toolu_1")),
 	} {
 		out, steps := walk(t, ev, f)
 		if hashed := asked(steps, func(s hook.Step) bool { return s.Hash }); len(hashed) > 0 || len(observed(steps)) > 0 {
@@ -501,5 +509,42 @@ func TestWatchSnapshotAfterEntries(t *testing.T) {
 	if obs := observed(steps); out.Answer.Block || len(obs) != 1 || obs[0].Outcome != state.OutcomeSnapshot ||
 		obs[0].Hash != "h1" {
 		t.Fatalf("answer %+v, observed %+v", out.Answer, obs)
+	}
+}
+
+// On a line that commits, the snapshot is written by its pre_commit, the last event before it runs, and only when
+// neither the pre_commit nor the pre_command before it blocks: the pre_command alone writes none. A pre_commit whose
+// commits all happen in another repository, to which the entries do not apply, still writes it.
+func TestWatchSnapshotOnCommit(t *testing.T) {
+	ran := "version: 1\nguardrails:\n  protected_files: [AGENTS.md]\n"
+	blocked := ran + "on:\n  pre_commit:\n    - action: { block: \"No hay plan\" }\n"
+	f := facts{branch: "main", head: "c1", hashes: []string{"h0"}}
+	line := "git " + "commit -m x"
+
+	pre := following(command(t, ran, workflow.PreCommand, line, "toolu_1"))
+	if out, steps := walk(t, pre, f); out.Answer.Block || len(observed(steps)) > 0 {
+		t.Fatalf("pre_command before a pre_commit: answer %+v, observed %+v", out.Answer, observed(steps))
+	}
+	out, steps := walk(t, command(t, ran, workflow.PreCommit, line, "toolu_1"), f)
+	if obs := observed(steps); out.Answer.Block || len(obs) != 1 || obs[0].Outcome != state.OutcomeSnapshot ||
+		obs[0].Key != "toolu_1" || obs[0].Hash != "h0" {
+		t.Fatalf("pre_commit: answer %+v, observed %+v", out.Answer, obs)
+	}
+	if out, steps := walk(t, command(t, blocked, workflow.PreCommit, line, "toolu_1"), f); !out.Answer.Block ||
+		len(observed(steps)) > 0 {
+		t.Fatalf("blocking pre_commit: answer %+v, observed %+v", out.Answer, observed(steps))
+	}
+	outside := command(t, blocked, workflow.PreCommit, "git -C ../other commit -m x", "toolu_2")
+	of := facts{branch: "main", head: "c1", hashes: []string{"h0"},
+		foreign: map[string]bool{filepath.FromSlash("/repo/../other"): true}}
+	out, steps = walk(t, outside, of)
+	if obs := observed(steps); out.Answer.Block || len(obs) != 1 || obs[0].Outcome != state.OutcomeSnapshot ||
+		obs[0].Key != "toolu_2" {
+		t.Fatalf("pre_commit outside: answer %+v, observed %+v", out.Answer, obs)
+	}
+	after := command(t, ran, workflow.PreCommit, line, "toolu_1")
+	after.Facts = after.Facts.Answered(agent.Answer{Block: true}, nil)
+	if out, steps := walk(t, after, f); len(observed(steps)) > 0 {
+		t.Fatalf("pre_commit after a blocking pre_command: answer %+v, observed %+v", out.Answer, observed(steps))
 	}
 }

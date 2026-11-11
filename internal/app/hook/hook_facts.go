@@ -21,7 +21,7 @@ type Facts struct {
 	Head      string // the commit HEAD points to, learned with the branch; "" when unknown, as without commits
 	HasBranch bool
 	// Refs is what git moves without moving HEAD, as one text: the commit of refs/stash and the operation stopped
-	// halfway (a merge, a cherry-pick, a revert, a rebase or git am); "" when there is neither.
+	// halfway (a merge, a cherry-pick, a revert, a rebase, git am or a merge --squash); "" when there is neither.
 	Refs       string
 	HasRefs    bool
 	Hashes     map[int]string // content hash per epoch; "" when it could not be computed

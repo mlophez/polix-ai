@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -320,6 +321,73 @@ func TestRefs(t *testing.T) {
 	}
 	if got, want := r.Refs(ctx), stash+", MERGE_HEAD "+other; got != want {
 		t.Fatalf("Refs during a merge = %q, want %q", got, want)
+	}
+}
+
+// Each operation that leaves the working tree changed without moving HEAD shows in Refs: a merge --squash, which
+// makes no commit, a rebase stopped on its conflict (rebase-merge) and a git am stopped on its conflict
+// (rebase-apply); aborting it clears it.
+func TestRefsOperations(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name, want string
+		run        []string
+		abort      []string
+	}{
+		{"squash", "SQUASH_MSG ", []string{"merge", "--squash", "--quiet", "other"}, []string{"reset", "--quiet", "--hard"}},
+		{"rebase", "rebase-merge", []string{"rebase", "other"}, []string{"rebase", "--abort"}},
+		{"am", "rebase-apply", []string{"am", "patch"}, []string{"am", "--abort"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir, git, write := gitRepo(t)
+			commit(git, write, "a.txt")
+			change := func(rel, content string) {
+				if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			git("checkout", "--quiet", "-b", "other")
+			change("a.txt", "other")
+			git("commit", "--quiet", "-am", "other")
+			patch := git("format-patch", "-1", "--stdout", "HEAD")
+			git("checkout", "--quiet", "main")
+			if c.name != "squash" {
+				change("a.txt", "main")
+				git("commit", "--quiet", "-am", "main")
+				change("patch", patch+"\n")
+			}
+			r, err := Open(ctx, dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			head := git("rev-parse", "HEAD")
+			cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com"}, c.run...)...)
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull,
+				"GIT_EDITOR=true")
+			out, err := cmd.CombinedOutput()
+			if c.name != "squash" && err == nil {
+				t.Fatalf("git %v did not stop on its conflict:\n%s", c.run, out)
+			}
+			if got := git("rev-parse", "HEAD"); c.name != "rebase" && got != head {
+				t.Fatalf("git %v moved HEAD from %s to %s", c.run, head, got)
+			}
+			got := r.Refs(ctx)
+			if !strings.HasPrefix(got, c.want) {
+				t.Fatalf("Refs during git %v = %q, want it to start with %q\n%s", c.run, got, c.want, out)
+			}
+			if again := r.Refs(ctx); again != got {
+				t.Fatalf("Refs during git %v changed with nothing done: %q, then %q", c.run, got, again)
+			}
+			if c.name == "squash" && !regexp.MustCompile(`^SQUASH_MSG [0-9a-f]{64}$`).MatchString(got) {
+				t.Fatalf("Refs during a merge --squash = %q, want SQUASH_MSG and the sha256 of its message", got)
+			}
+			git(c.abort...)
+			if got := r.Refs(ctx); got != "" {
+				t.Fatalf("Refs after git %v = %q", c.abort, got)
+			}
+		})
 	}
 }
 

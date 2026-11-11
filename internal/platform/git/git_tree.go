@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -118,13 +119,15 @@ func (r *Repo) TreeDiff(ctx context.Context, from, to string) (paths, removed []
 }
 
 // operations are the files git keeps in the git directory while an operation that rewrites the working tree is
-// stopped halfway, as on conflicts or with --no-commit: a merge, a cherry-pick, a revert, a rebase or git am.
-var operations = []string{"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"}
+// stopped halfway, as on conflicts or with --no-commit: a merge, a revert, a cherry-pick stopped on its conflicts, a
+// rebase or git am; and SQUASH_MSG, the message a merge --squash leaves for the commit it does not make.
+var operations = []string{"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "SQUASH_MSG", "rebase-merge", "rebase-apply"}
 
 // Refs returns, as one text, what git moves without moving HEAD: the commit refs/stash points to, as
 // `stash <commit>`, and each operation stopped halfway, by the name of its file in the git directory followed by
-// the commit that file names, or alone for a folder; joined by ", ", and "" when there is neither. Like Head, it runs
-// detached from the cancellation of ctx, and a git that fails reads as no stash.
+// the commit that file names (the sha256 of its content for SQUASH_MSG, a message), or alone for a folder; joined by
+// ", ", and "" when there is neither. Like Head, it runs detached from the cancellation of ctx, and a git that fails
+// reads as no stash.
 func (r *Repo) Refs(ctx context.Context) string {
 	var refs []string
 	out, err := r.git(context.WithoutCancel(ctx), "rev-parse", "--verify", "--quiet", "refs/stash")
@@ -134,6 +137,8 @@ func (r *Repo) Refs(ctx context.Context) string {
 	for _, name := range operations {
 		data, err := os.ReadFile(filepath.Join(r.GitDir, name))
 		switch {
+		case err == nil && name == "SQUASH_MSG":
+			refs = append(refs, fmt.Sprintf("%s %x", name, sha256.Sum256(data)))
 		case err == nil:
 			refs = append(refs, strings.TrimSpace(name+" "+strings.TrimSpace(string(data))))
 		case !errors.Is(err, fs.ErrNotExist):

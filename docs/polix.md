@@ -323,7 +323,8 @@ nothing more.
    an observed `snapshot` line with it, the HEAD commit, what git moves without HEAD (the commit of `refs/stash` and
    an operation stopped halfway, when there are) and a key. The key is the `tool_use_id` Claude Code gives the call
    of the tool, the same before and after it, so two commands running at once each pair with their own snapshot;
-   Codex gives no id polix knows, so its key is the command line.
+   Codex gives no id polix knows, so its key is the command line. On a line that commits, the snapshot waits for
+   the `pre_commit` after it: polix writes it after the entries of `pre_commit`, and none when they block the commit.
 2. On the `post_command`, after a command that succeeded or failed, since a failing command may have written files,
    polix reads the latest `snapshot` of the session, the actor and the key, writes an observed `watched` line with
    the same key, so that snapshot is compared only once, computes the hash again and lists the paths that differ
@@ -346,8 +347,9 @@ Some commands are left alone:
 
 - When HEAD points to another commit than in the snapshot (a pull, a checkout, a reset, a rebase, a commit), or
   `refs/stash` does (a `git stash`), or an operation of git stopped halfway started or ended (a merge, a pull, a
-  cherry-pick, a revert, a rebase or a `git am` stopped on its conflicts or with `--no-commit`, seen by `MERGE_HEAD`,
-  `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `rebase-merge` or `rebase-apply` in the git directory), the changes are git's:
+  revert, a rebase or a `git am` stopped on its conflicts, a merge or a revert with `--no-commit`, a cherry-pick
+  stopped on its conflicts, a merge or a pull with `--squash`, seen by `MERGE_HEAD`, `CHERRY_PICK_HEAD`,
+  `REVERT_HEAD`, `SQUASH_MSG`, `rebase-merge` or `rebase-apply` in the git directory), the changes are git's:
   nothing is put back nor evaluated, so a merge, a checkout or a stash is never undone, and the log records a `skip`
   decision of the action `builtin` that names both values.
 - When a command changed more than 25 paths besides the protected ones, as a dependency install or a code generator
@@ -1135,8 +1137,10 @@ may outlive the budget, since polix does not kill the whole process tree.
   invalid, or takes a path out of `protected_files`, gets past the restore of that path. Protecting `polix.yaml`
   itself keeps the check of the command line before it runs, which catches the plain forms.
 - A command that moves HEAD after writing, as `python3 x.py && git commit -am x`, is left alone as any change of git,
-  so what it wrote is neither put back nor evaluated; `git stash apply` and `git cherry-pick -n` move no ref polix
-  sees, so what they bring is watched as if the agent wrote it.
+  so what it wrote is neither put back nor evaluated; `git stash apply` and `git cherry-pick -n`, also when it
+  stops on its conflicts, move no ref polix sees, so what they bring is watched as if the agent wrote it.
+- `refs/stash` is shared by every worktree of the repository: a `git stash` in another worktree while a command runs
+  here leaves that command alone, so what it changed is neither put back nor evaluated.
 - Commands running at once in the same session mix their changes: each one sees every change made while it ran, so
   an edit may be evaluated after the wrong command, or twice. A protected file is put back as the snapshot of the
   command that ends holds it: when one command changed it before another one started, the later one may put the

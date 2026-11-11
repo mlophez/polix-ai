@@ -68,8 +68,9 @@ holds only what its events do and calls the engine as a library:
   command made (rule 16), the edits an unusable workflow lets through (rule 2) and the skip of the edits outside the
   change (rule 3).
 - `command` (`logic_command.go`), for `pre_command`, `post_command` and `pre_commit`: the protections of a command
-  (rule 1), the commands of polix an unusable workflow lets through (rule 2), the snapshot of a `pre_command` and the
-  watch of a `post_command` (rule 16) and the commits outside the change of a `pre_commit` (rule 3).
+  (rule 1), the commands of polix an unusable workflow lets through (rule 2), the snapshot of the last event
+  before a command line runs and the watch of a `post_command` (rule 16) and the commits outside the change of a
+  `pre_commit` (rule 3).
 - `stop` (`logic_stop.go`), for `stop` and `subagent_stop`: the loop guard of `max_stop_retries` (rule 10) and the
   `finished` line of `subagent_stop` (rule 9).
 
@@ -124,7 +125,8 @@ The rules it follows, as before this use case:
    newer polix hint to run `polix update` (`hook.Evaluation.Running`, which the shell asks); a name of the old
    vocabulary, reported with its new spelling, does not.
 3. Without polix.yaml, for an edit outside the repository or of a file git ignores, and for a `pre_commit` whose
-   commits all happen in another repository (`git -C ../other commit`), only the protections apply: the
+   commits all happen in another repository (`git -C ../other commit`), only the protections apply, and for that
+   `pre_commit` the `snapshot` of rule 16, since the rest of its line may still change this repository: the
    entries govern the change, what a commit may hold, so a build output, a local `.env` or a commit in another
    repository never fires them. The check is a strict allowlist: `commitDirs` places the line only when every
    command of it is `git [-C dir]... add|commit` and bash expands nothing in it (`placeable`); each commit folder is
@@ -236,7 +238,8 @@ The rules it follows, as before this use case:
     written the guard fails open.
 11. The content hash is computed only when something needs it: the repeat of a `run` and its `passed` line (before
     and after the run), a `block` with `once`, the loop guard, `finished` and its observed line, and, when the
-    workflow watches, the `snapshot` of a `pre_command` and the watch of a `post_command` (rule 16). An `inject`, a
+    workflow watches, the `snapshot` of the last event before a command line runs (the `pre_command`, or the
+    `pre_commit` of a line that commits) and the watch of a `post_command` (rule 16). An `inject`, a
     `notify`, the `injected`, `started` and `notified` lines and a `finished` that only resets injects never compute
     it. When it cannot be
     computed nothing that needs it is observed nor holds, nothing is skipped, and the call warns once: `polix
@@ -277,20 +280,22 @@ The rules it follows, as before this use case:
     workflow watches (`watches`) when it is valid and has `guardrails.protected_files` or an entry on `pre_edit` or
     `post_edit`, `format_on_edit` already expanded into them; otherwise nothing below happens and no hash is
     computed for it. The key of a command (`commandKey`) is `agent.Event.ToolUse`, else the command line.
-    - `snapshot`: a `pre_command` whose protections passed and whose entries did not block it writes, after its
-      entries, an observed `snapshot` line with the content hash of the epoch they left (so a `run` of them that
+    - `snapshot`: the last event of the call before a command line runs (`lastBefore`, `hook.Evaluation.Last`),
+      the `pre_command` or, on a line that commits, its `pre_commit`, writes, when its protections passed and
+      neither it nor an earlier event of the call (`hook.Facts.Blocked`) blocked, after its entries, an observed
+      `snapshot` line with the content hash of the epoch they left (so a `run` of them that
       rewrites files is not taken for the command), the HEAD commit, the refs git moves without HEAD and the key; an
       unknown hash writes none, with the warning of rule 11.
     - `watch`: a `post_command`, also after a failed command, first reads the latest `snapshot` line of its session,
-      actor and key (`state.State.Index`); without one, when an observed `watched` line of the same session, actor
-      and key comes after it, or with a log that cannot be read, nothing happens. Otherwise it writes that `watched`
-      line, so a snapshot is compared once: a later `post_command` of the same command line whose `pre_command` did
-      not reach polix finds no snapshot. When HEAD is another commit than the one of the snapshot (a pull, a
-      checkout, a reset, a commit), or the refs git moves without HEAD changed (a `git stash`, a merge, a
-      cherry-pick, a revert, a rebase or a `git am` stopped on its conflicts or with `--no-commit`, which rewrite the
-      working tree without moving HEAD), the changes are git's: nothing is restored nor evaluated, and a `skip`
-      decision of `builtin` names both values (`gitMoved`). Otherwise it computes the current hash and asks for the
-      paths that differ from the tree of the snapshot (`hook.Step.Compare`), and splits them with `anyPathFold` into
+      actor and key (`state.State.Index`); without one, when an observed `watched` line of the same session, actor and
+      key comes after it, or with a log that cannot be read, nothing happens. Otherwise it writes that `watched` line,
+      so a snapshot is compared once: a later `post_command` of the same command line whose `pre_command` did not reach
+      polix finds no snapshot. When HEAD is another commit than the one of the snapshot (a pull, a checkout, a reset, a
+      commit), or the refs git moves without HEAD changed (a `git stash`; a merge, a revert, a cherry-pick, a rebase or
+      a `git am` stopped on its conflicts; a merge or a revert with `--no-commit`; a merge with `--squash`; all of which
+      rewrite the working tree without moving HEAD), the changes are git's: nothing is restored nor evaluated, and a
+      `skip` decision of `builtin` names both values (`gitMoved`). Otherwise it computes the current hash and asks for
+      the paths that differ from the tree of the snapshot (`hook.Step.Compare`), and splits them with `anyPathFold` into
       those of `guardrails.protected_files` and the others, each in the order of the comparison.
     - Each protected path goes to a `Restore` step of its own with the tree of the snapshot as `Source`, so each
       gets its own outcome, the paths the command removed last: on a file system that folds case, a path the command
@@ -343,8 +348,9 @@ needs one method per fact.
   `Ignored`, run detached from the cancellation of the caller.
 - `Refs`: what git moves without moving HEAD, as one text (`git.Repo.Refs`): the commit `refs/stash` points to,
   through `git rev-parse`, and each operation stopped halfway, by its file in the git directory (`MERGE_HEAD`,
-  `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `rebase-merge`, `rebase-apply`) and the commit it names; empty when there is
-  neither or git fails. Like `Head`, it runs detached from the cancellation of the caller.
+  `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `SQUASH_MSG`, `rebase-merge`, `rebase-apply`) and the commit it names, the
+  sha256 of the message for `SQUASH_MSG`; empty when there is neither or git fails. Like `Head`, it runs detached
+  from the cancellation of the caller.
 - `TreeDiff`: the paths that differ between two content hashes and those of them the second no longer holds
   (`git.Repo.TreeDiff`, through `git diff-tree --name-status`); a tree git no longer has, pruned by `git gc`, is its
   error.
