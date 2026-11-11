@@ -49,19 +49,35 @@ The same binary answers every hook in milliseconds and keeps an append-only log 
 Save this as `polix.yaml` at the root of the repository:
 
 ```yaml
+---
 version: 1
+
+requirements:
+  - go
+  - golangci-lint
 
 guardrails:
   # No agent writes these files, the main session included.
-  protected_files: [".env", "*.pem"]
+  protected_files:
+    - AGENTS.md
+    - CLAUDE.md
+    - .env
 
   # No agent runs these commands; the reason goes back to the agent.
   forbidden_commands:
+    - pattern: "*rm -rf /*"
+
     - pattern: "git push*--force*"
       reason: "Force pushes rewrite shared history: ask a person to run it."
 
   # Nobody commits on these branches.
-  protected_branches: [main]
+  protected_branches:
+    - main
+
+  # Format on edit
+  format_on_edit:
+    - run: golangci-lint fmt {path}
+      path: "*.go"
 
   # The agent cannot end its turn while a check fails.
   run_on_stop:
@@ -72,14 +88,14 @@ on:
   pre_commit:
     # A commit needs the reviewer subagent to have seen the diff as it is now.
     - unless:
-        finished: polix:reviewer
+        finished: reviewer
       action:
-        block: "Review the diff with the polix:reviewer subagent, then commit again."
+        block: "Review the diff with the reviewer subagent, then commit again."
 ```
 
 `guardrails:` are the basics: the files and the commands are protections of the engine, applied before everything
-else, to every agent and also to the files git ignores; `protected_branches` and `run_on_stop` are shortcuts
-that expand into ordinary entries of `on:`. `on:` is where your own flow goes, here a review before every commit:
+else, to every agent and also to the files git ignores; `protected_branches`, `format_on_edit` and `run_on_stop` are
+shortcuts that expand into ordinary entries of `on:`. `on:` is where your own flow goes, here a review before every commit:
 Polix sees the reviewer subagent end and remembers which content it saw, so editing a line afterwards asks for a new
 review.
 
