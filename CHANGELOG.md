@@ -7,6 +7,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-11
+
 ### Added
 
 - The condition `agents_are_running: true|false` tells whether subagents of the session, of any type, are still
@@ -226,7 +228,8 @@ Claude Code is the supported agent; Codex support is not implemented.
 - The condition `pr`, on the state of the pull request, is not implemented.
 - The rest of the known limits are in [docs/polix.md](docs/polix.md#known-limits).
 
-[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/mlophez/polix-ai/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mlophez/polix-ai/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mlophez/polix-ai/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mlophez/polix-ai/releases/tag/v0.1.0
