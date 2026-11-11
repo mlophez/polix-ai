@@ -95,7 +95,9 @@ on:
 
 `guardrails:` are the basics: the files and the commands are protections of the engine, applied before everything
 else, to every agent and also to the files git ignores; `protected_branches`, `format_on_edit` and `run_on_stop` are
-shortcuts that expand into ordinary entries of `on:`. `on:` is where your own flow goes, here a review before every commit:
+shortcuts that expand into ordinary entries of `on:`. `run_on_stop` waits for the subagents still running: while one
+runs, in the background or interrupted, its checks are skipped, the user is told why, and they run on the next stop
+after the subagents end (`wait_agents: false` keeps an item running). `on:` is where your own flow goes, here a review before every commit:
 Polix sees the reviewer subagent end and remembers which content it saw, so editing a line afterwards asks for a new
 review.
 
@@ -358,7 +360,7 @@ guardrails:
   format_on_edit:                                             # right after each edit
     - { run: "gofmt -w {path}", path: "*.go" }
   run_on_stop:                                                # the agent cannot end its turn while one fails
-    - { run: "golangci-lint run ./...", changed: "*.go" }
+    - { run: "golangci-lint run ./...", changed: "*.go", wait_agents: false }  # also while subagents run
     - { run: "go test ./...", changed: ["*.go", go.mod, go.sum] }
 
 on:
@@ -386,7 +388,8 @@ on:
 verbs Claude Code and Codex both support on it, so `polix.yaml` means the same in each agent.
 
 **Conditions:** `branch`, `var`, `path`, `changed`, `file` (optionally with `contains`), `command`, `exit`,
-`writes`, `actor`, `finished` (a subagent ended on the files of the entry as they are now), `not`, `any`, and the
+`writes`, `actor`, `finished` (a subagent ended on the files of the entry as they are now), `agents_are_running`
+(subagents of the session are still running, on any event), `not`, `any`, and the
 measures `changed_lines`, `changed_files` and `risk_score` (a number: at least that much). In the hooks, `changed`
 is what is not committed yet (changed since HEAD, or untracked).
 

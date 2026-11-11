@@ -37,6 +37,7 @@ type Entry struct {
 	Session string `json:"session,omitempty"`
 	Event   string `json:"event,omitempty"`
 	Actor   string `json:"actor,omitempty"`
+	AgentID string `json:"agent_id,omitempty"` // the id of the subagent that acted, when the agent gives one
 	Branch  string `json:"branch,omitempty"`
 	Hash    string `json:"hash,omitempty"`
 	Head    string `json:"head,omitempty"` // the HEAD commit of an observed line about a content

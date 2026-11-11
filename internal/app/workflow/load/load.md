@@ -68,10 +68,16 @@ with the domain:
      paths or are repeated, and left out or empty there is no requirement.
   5. `guardrailsYAML` of `out_guardrails.go` reads the section guardrails into a `workflow.Guardrails`: each
      shortcut in its one form, else an error with the form it takes; each item with its line and the problems of
-     its values (a key unknown or written twice, a text that is not one, no pattern, no run).
+     its values (a key unknown or written twice, a text that is not one, no pattern, no run, a `wait_agents` that is
+     not true or false). An item of `run_on_stop` waits for the subagents still running
+     (`workflow.GuardrailCheck.Waits`) unless its `wait_agents` is `false`; one of `format_on_edit` never does, and
+     `wait_agents` is an unknown key there.
   6. The workflow takes the protections of the section (`Guardrails.Protected`, `Guardrails.Forbidden`) and the
-     entries its other shortcuts expand into, before those written in `on` (`Guardrails.Expand`); the error is the
-     one of its `Valid`.
+     entries its other shortcuts expand into, before those written in `on` (`Guardrails.Expand`): an item of
+     `run_on_stop` that waits runs only under `agents_are_running: false`, and, when one waits, a `notify` with
+     `always` goes last on `stop`, under `agents_are_running: true` and a `changed` with the globs of every item
+     that waits (none when one of them has none), with the text `run_on_stop waits for the subagents still running:
+     its checks run on the next stop after they end.`; the error is the one of its `Valid`.
 
 ## Errors
 

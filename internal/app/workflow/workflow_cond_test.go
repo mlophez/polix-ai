@@ -47,3 +47,27 @@ func TestNestedAndStrings(t *testing.T) {
 		t.Fatal("a number")
 	}
 }
+
+// AC8: agents_are_running takes true or false on every event, nested ones included; any other value is a problem at
+// the line of its entry.
+func TestCondAgentsAreRunning(t *testing.T) {
+	block := Action{Block: &Block{Message: "x"}, Keys: []string{VerbBlock}}
+	for _, ev := range []string{PreCommit, PreEdit, Stop} {
+		for _, c := range []Cond{{"agents_are_running": true}, {"agents_are_running": false},
+			{"not": map[string]any{"agents_are_running": true}}} {
+			w := Workflow{Version: 1, On: map[string][]Entry{ev: {{When: c, Action: block, Keys: []string{"when",
+				"action"}, Line: 5}}}}
+			if p := w.Problems(); len(p) > 0 {
+				t.Errorf("%s %v: %q", ev, c, p)
+			}
+		}
+	}
+	for _, value := range []any{"yes", 1, nil, []any{true}} {
+		w := Workflow{Version: 1, On: map[string][]Entry{PreCommit: {{Unless: Cond{"agents_are_running": value},
+			Action: block, Keys: []string{"unless", "action"}, Line: 7}}}}
+		want := "polix.yaml:7: agents_are_running needs true or false"
+		if got := strings.Join(w.Problems(), "\n"); got != want {
+			t.Errorf("%v: %q", value, got)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/diff"
 	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
@@ -56,10 +57,22 @@ func (r *pass) condition(k string, all workflow.Cond, scope []string) bool {
 		return ok
 	case "exit":
 		return r.condExit(all)
+	}
+	return r.condAgents(k, all, scope)
+}
+
+// condAgents evaluates the condition k of all that is about the agents: the actor, the subagents that finished and
+// those still running; any other k does not hold.
+func (r *pass) condAgents(k string, all workflow.Cond, scope []string) bool {
+	switch k {
 	case "actor":
 		return slices.Contains(r.list(all, k), r.ev.Event.Actor)
 	case "finished":
 		return r.condFinished(all, scope)
+	case "agents_are_running":
+		want, _ := all[k].(bool)
+		running := r.agentsRunning()
+		return !r.waiting() && running == want
 	}
 	return false
 }
@@ -244,6 +257,48 @@ func (r *pass) finished(name string, scope []string) bool {
 	return same
 }
 
+// agentsRunning reports whether subagents of the session other than the one that acts are still running: by the
+// subagents in flight the agent listed on a stop, when it gave the list (othersInFlight), else by the starts and ends
+// of subagents in the log (state.State.RunningOthers), without reading it when the list is known. The actor is left
+// out by its id, else by its type, except on its subagent_start, whose own start is not written yet. A log that
+// cannot be read counts as no subagent running, with a warning.
+func (r *pass) agentsRunning() bool {
+	ev := r.ev.Event
+	if ev.InFlightKnown {
+		return len(othersInFlight(ev)) > 0
+	}
+	st, err := r.currentState()
+	if r.waiting() {
+		return false
+	}
+	if err != nil {
+		r.warnLog(err)
+		return false
+	}
+	if ev.Actor == agent.ActorSession || ev.Name == workflow.SubagentStart {
+		return len(st.Running(ev.Session)) > 0
+	}
+	return len(st.RunningOthers(ev.Session, ev.AgentID, ev.Actor)) > 0
+}
+
+// othersInFlight returns the subagents in flight of the event ev without the one that acts: the one of its id, or,
+// when it has none, the first of its type; all of them for the main session.
+func othersInFlight(ev agent.Event) []agent.Subagent {
+	if ev.Actor == agent.ActorSession {
+		return ev.InFlight
+	}
+	var i int
+	if ev.AgentID != "" {
+		i = slices.IndexFunc(ev.InFlight, func(s agent.Subagent) bool { return s.ID == ev.AgentID })
+	} else {
+		i = slices.IndexFunc(ev.InFlight, func(s agent.Subagent) bool { return s.Type == ev.Actor })
+	}
+	if i < 0 {
+		return ev.InFlight
+	}
+	return slices.Delete(slices.Clone(ev.InFlight), i, i+1)
+}
+
 // keys returns the conditions of c, cheapest first, then in the order of their names.
 func keys(c workflow.Cond) []string {
 	keys := make([]string, 0, len(c))
@@ -271,7 +326,7 @@ func cost(k string) int {
 		return 3
 	case "changed_lines", "changed_files", "risk_score":
 		return 4
-	case "finished":
+	case "finished", "agents_are_running":
 		return 5
 	}
 	return 6 // not and any, which may read anything

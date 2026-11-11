@@ -1,6 +1,6 @@
 # Condition agents_are_running, and run_on_stop waits for the subagents still running
 
-- Status: planned
+- Status: built
 - Risk: high: it adds fields and an outcome to the log, reads new fields of the hook input, and changes the schema
   of polix.yaml and the behaviour of run_on_stop.
 - Reference: none.
@@ -199,10 +199,36 @@ or no `changed` when one of them has none; it takes the line of the first waitin
 
 ## Progress
 
-- [ ] Task 1: agents_are_running from the starts and ends of subagents in the log
-- [ ] Task 2: Reconcile the log with background_tasks on stop and subagent_stop
-- [ ] Task 3: run_on_stop waits for the subagents still running, with wait_agents and a notice
-- [ ] Task 4: Docs, examples and changelog of agents_are_running and wait_agents
+- [x] Task 1: agents_are_running from the starts and ends of subagents in the log. Evidence: new tests failed (build:
+  no `AgentID`, `Running`, `CountsAgents`, `Source`) and then passed: TestRunningByAgentID, TestRunningUnknownID,
+  TestRunningByType, TestRunningSessionStart, TestRunningOthers, TestRunningOnlyTheSession,
+  TestAdapterReadLogAgentID, TestClaudeAgentIDAndSource, TestCondAgentsAreRunning, TestCountsAgents,
+  TestAgentsAreRunningOnCommit, TestAgentsAreRunningOnSubagentStop, TestAgentsAreRunningAfterSessionStart;
+  TestAgentsNotCountedWithoutTheCondition (AC13) holds before and after; `just test -run
+  'State|Running|Claude|Codex|Cond|Session|Stop|Commit|Log'` passes, golangci-lint 0 issues; differential check
+  against `HEAD` (11 hook calls, this polix.yaml without run_on_stop): stdout, stderr and exit codes equal, log lines
+  equal with `at`, `agent_id` and the key of the `started` of `start` aside.
+- [x] Task 2: Reconcile the log with background_tasks on stop and subagent_stop. Evidence: new tests failed (build:
+  no `OutcomeEnded`, `InFlight`, `InFlightKnown`) and then passed: TestClaudeBackgroundTasks, TestParseCodex (the
+  list unknown), TestRunningEnded, TestAgentsAreRunningReconciled (AC4), TestAgentsAreRunningWithoutTasks (AC5, the
+  fallback to the log, which the code of Task 1 already had), TestAgentsAreRunningOnSubagentStopReconciled (AC6),
+  TestAgentsNotCountedWithoutTheCondition (no `ended` without the condition); the loop guard and `finished` tests
+  stay green; `just test -run 'Claude|Codex|Stop|Running|Commit'` passes, golangci-lint 0 issues; differential check
+  against `HEAD` (stops without, with a string, with a mixed array and with an object as `background_tasks`, this
+  polix.yaml without run_on_stop): stdout, stderr and exit codes equal, no `ended` line, log lines equal with `at`
+  and the fields of Task 1 (`agent_id`, the key of the `started` of `start`) aside.
+- [x] Task 3: run_on_stop waits for the subagents still running, with wait_agents and a notice. Evidence: new tests
+  failed and then passed: TestGuardrailsExpandWaits, TestShortcutsWaitAgents, the cases `wait_agents text` and
+  `wait_agents list` of TestShortcutsProblems (AC12), TestRunOnStopWaitsForAgents (AC9, AC11), TestRunOnStopDoesNotWait
+  (AC10), TestRunOnStopNoticeOnce (AC11); the expected strings of TestGuardrailsExpand, TestShortcutsExpand,
+  TestDecideGuardrailsAndOrigin and TestCommand of graph updated to the new `when` and the notify; `polix config
+  check` (scratch binary) on this polix.yaml and on examples/polix.yaml reports nothing; `just test -run
+  'Shortcut|Guardrail|Stop|Graph'` passes, golangci-lint 0 issues; differential check against `HEAD`: a lone Stop
+  gives equal stdout, stderr and exit code; after a SubagentStart the base blocks with the failure and the working
+  tree exits 0 with the notice.
+- [x] Task 4: Docs, examples and changelog of agents_are_running and wait_agents. Evidence: the existing tests that
+  keep reference.yaml equal to examples/polix.yaml and validate the example stay green (`just test -run
+  'Reference|Example'` passes); `polix config check` (scratch binary) on the new examples/polix.yaml reports nothing.
 
 ## Tasks
 
@@ -398,4 +424,30 @@ or no `changed` when one of them has none; it takes the line of the first waitin
 
 ## Iterations
 
-none
+### Iteration 01: 2026-11-11
+
+- **Tasks**: Task 1 done; Task 2 done; Task 3 done; Task 4 done.
+- **Departures**: `hookInput` moved to `internal/app/hook/answer/in_input.go` (GO-4); `internal/app/workflow/log/in.go`
+  and `log.md` gain `AgentID` so the module builds; `derive` of `logic_watch.go` copies `AgentID` into derived edits
+  (AC6); an actor without id is left out by type (`State.RunningOthers`); new `agent.Event.Valid` invariants without a
+  direct negative test; a non-object task or a subagent without id and type makes the whole `background_tasks`
+  unknown; the notify of `run_on_stop` goes last on `stop`, after the entries of `on`, since right after the runs
+  `workflow_order.go` reported it unreachable and made `examples/polix.yaml` invalid; graph tests updated outside the
+  files of Task 3; the globs of the notify de-duplicated in file order; the README demo block, a copy of
+  `docs/assets/demo/polix.yaml`, left unchanged.
+- **Docs**: `docs/reference.md` (guardrails list, `run_on_stop` with `wait_agents` and its expansion, order of the
+  expanded entries, new section `agents_are_running`), `docs/polix.md` (a line reflowed),
+  `plugins/polix/skills/workflow/SKILL.md` (`wait_agents` among the keys of `run_on_stop`, from the finding of rev01).
+- **Review rev01**: approved with comments; one minor finding (the skill `workflow` did not list `wait_agents`),
+  fixed in the docs step; none skipped nor left open.
+- **Acceptance**: AC1 met (`TestAgentsAreRunningOnCommit`); AC2 met (`TestRunningByAgentID`); AC3 met
+  (`TestRunningByType`); AC4 met (`TestAgentsAreRunningReconciled`); AC5 met (`TestAgentsAreRunningWithoutTasks`);
+  AC6 met (`TestAgentsAreRunningOnSubagentStop`, `TestAgentsAreRunningOnSubagentStopReconciled`); AC7 met
+  (`TestRunningSessionStart`, `TestAgentsAreRunningAfterSessionStart`); AC8 met (`workflow_cond.go`
+  `agents_are_running needs true or false`, `workflow_cond_test.go`); AC9 met (`TestRunOnStopWaitsForAgents`); AC10
+  met (`TestRunOnStopDoesNotWait`); AC11 met (`TestRunOnStopNoticeOnce`); AC12 met (`TestShortcutsWaitAgents`); AC13
+  met (`TestAgentsNotCountedWithoutTheCondition` and the differential check of Task 1); AC14 met (`docs/polix.md`,
+  `docs/reference.md`, `examples/polix.yaml`, `reference.yaml`, `README.md`, `CHANGELOG.md`); `just test`,
+  `golangci-lint run ./...` (0 issues), `claude plugin validate plugins/polix`, and `config check`, `config fmt
+  --check`, `rules check` (35 checks, 0 failed) and `doctor --offline` with a scratch binary in place of `just check`.
+- **Status**: built.

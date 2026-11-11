@@ -55,6 +55,26 @@ func TestAdapterReadLogHead(t *testing.T) {
 	}
 }
 
+// The key agent_id decodes into Entry.AgentID; a line without it, such as one of an older polix, leaves it empty
+// and reads as before.
+func TestAdapterReadLogAgentID(t *testing.T) {
+	lines := []string{
+		`{"kind":"observed","outcome":"started","session":"s","event":"subagent_start","actor":"builder","agent_id":"a1"}`,
+		`{"kind":"observed","outcome":"started","session":"s","event":"subagent_start","actor":"builder"}`}
+	p := filepath.Join(t.TempDir(), "log.jsonl")
+	if err := os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entries, _, err := Adapter{}.ReadLog(context.Background(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 || entries[0].AgentID != "a1" || entries[0].Actor != "builder" || entries[1].AgentID != "" ||
+		entries[1].Actor != "builder" || entries[1].Outcome != state.OutcomeStarted {
+		t.Fatalf("entries %+v", entries)
+	}
+}
+
 // A missing log has no lines and no error.
 func TestAdapterReadLogWithoutFile(t *testing.T) {
 	entries, skipped, err := Adapter{}.ReadLog(context.Background(), filepath.Join(t.TempDir(), "log.jsonl"))

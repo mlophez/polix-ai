@@ -18,8 +18,64 @@ func shortcutsSummary(e Entry) string {
 		action = "block " + fmt.Sprintf("%q", e.Action.Block.Message)
 	case e.Action.Run != nil:
 		action = fmt.Sprintf("run %q %q", e.Action.Run.Command, e.Action.Run.Message)
+	case e.Action.Notify != nil:
+		action = fmt.Sprintf("notify %q always=%v", e.Action.Notify.Message, e.Action.Notify.Always)
 	}
 	return fmt.Sprintf("%s line=%d when=%v %s", e.From, e.Line, e.When, action)
+}
+
+// The notify of run_on_stop while subagents run, as the tests expect it after the when of its entry.
+const waitNotice = `notify "run_on_stop waits for the subagents still running: its checks run on the next stop after they end." always=true`
+
+// An item of run_on_stop that waits runs only when no subagent is running, and the items that wait add one notify,
+// last on stop after the entries written in on, while subagents run, on the globs of all of them; an item that does
+// not wait expands as before and adds none; a waiting item without changed leaves the notify without changed.
+func TestGuardrailsExpandWaits(t *testing.T) {
+	cases := []struct {
+		name   string
+		items  []GuardrailCheck
+		runs   []string
+		notice string
+	}{
+		{"waits", []GuardrailCheck{
+			{Run: []string{"go", "test", "./..."}, Scope: []any{"*.go", "go.mod"}, Waits: true, Line: 4},
+			{Run: []string{"just", "lint"}, Scope: "*.go", Waits: true, Line: 6},
+			{Run: []string{"x"}, Waits: true, Line: 7, Problems: []string{"guardrails.run_on_stop: message must be a text"}},
+		}, []string{
+			`guardrails.run_on_stop line=4 when=map[agents_are_running:false changed:[*.go go.mod]] run ["go" "test" "./..."] ""`,
+			`guardrails.run_on_stop line=6 when=map[agents_are_running:false changed:*.go] run ["just" "lint"] ""`,
+		}, `guardrails.run_on_stop line=4 when=map[agents_are_running:true changed:[*.go go.mod]] ` + waitNotice},
+		{"does not wait", []GuardrailCheck{{Run: []string{"go", "test"}, Scope: "*.go", Line: 4}}, []string{
+			`guardrails.run_on_stop line=4 when=map[changed:*.go] run ["go" "test"] ""`,
+		}, ""},
+		{"one waits without changed", []GuardrailCheck{
+			{Run: []string{"go", "test"}, Scope: "*.go", Line: 4},
+			{Run: []string{"go", "vet"}, Scope: "*.go", Waits: true, Line: 5},
+			{Run: []string{"just", "lint"}, Waits: true, Line: 6},
+		}, []string{
+			`guardrails.run_on_stop line=4 when=map[changed:*.go] run ["go" "test"] ""`,
+			`guardrails.run_on_stop line=5 when=map[agents_are_running:false changed:*.go] run ["go" "vet"] ""`,
+			`guardrails.run_on_stop line=6 when=map[agents_are_running:false] run ["just" "lint"] ""`,
+		}, `guardrails.run_on_stop line=5 when=map[agents_are_running:true] ` + waitNotice},
+	}
+	for _, c := range cases {
+		on := Guardrails{RunOnStop: c.items}.Expand(map[string][]Entry{Stop: {{Action: Action{Block: &Block{
+			Message: "regular"}}, Line: 30}}})
+		var got []string
+		for _, e := range on[Stop] {
+			got = append(got, shortcutsSummary(e))
+			if err := e.Valid(); err != nil {
+				t.Errorf("%s: %v", c.name, err)
+			}
+		}
+		want := append(slices.Clone(c.runs), ` line=30 when=map[] block "regular"`)
+		if c.notice != "" {
+			want = append(want, c.notice)
+		}
+		if strings.Join(got, "\n") != strings.Join(want, "\n") {
+			t.Errorf("%s:\n%s\nwant:\n%s", c.name, strings.Join(got, "\n"), strings.Join(want, "\n"))
+		}
+	}
 }
 
 // protected_branches, format_on_edit and run_on_stop expand into entries before those written in on, in file
@@ -32,7 +88,8 @@ func TestGuardrailsExpand(t *testing.T) {
 		FormatOnEdit: []GuardrailCheck{{Run: []string{"gofmt", "-w", "{path}"}, Scope: "*.go", Line: 13},
 			{Run: []string{"x"}, Line: 14, Problems: []string{"guardrails.format_on_edit: message must be a text"}},
 			{Run: []string{"prettier"}, Message: "Format failed", Line: 15}},
-		RunOnStop: []GuardrailCheck{{Run: []string{"go", "test", "./..."}, Scope: []any{"*.go"}, Line: 18}},
+		RunOnStop: []GuardrailCheck{{Run: []string{"go", "test", "./..."}, Scope: []any{"*.go"}, Waits: true,
+			Line: 18}},
 	}
 	want := map[string][]string{
 		PreCommit: {
@@ -43,7 +100,10 @@ func TestGuardrailsExpand(t *testing.T) {
 			`guardrails.format_on_edit line=13 when=map[path:*.go] run ["gofmt" "-w" "{path}"] ""`,
 			`guardrails.format_on_edit line=15 when=map[] run ["prettier"] "Format failed"`,
 		},
-		Stop: {`guardrails.run_on_stop line=18 when=map[changed:[*.go]] run ["go" "test" "./..."] ""`},
+		Stop: {
+			`guardrails.run_on_stop line=18 when=map[agents_are_running:false changed:[*.go]] run ["go" "test" "./..."] ""`,
+			`guardrails.run_on_stop line=18 when=map[agents_are_running:true changed:[*.go]] ` + waitNotice,
+		},
 	}
 	on := g.Expand(written)
 	if len(on) != len(want) || len(written[PreCommit]) != 1 {

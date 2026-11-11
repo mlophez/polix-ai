@@ -60,8 +60,8 @@ func TestParseCodex(t *testing.T) {
 		}
 	}
 	if _, evs, _ := (codex{}).parse([]byte(`{"hook_event_name":"Stop"}`)); evs[0].Name != workflow.Stop ||
-		evs[0].Actor != agent.ActorSession {
-		t.Fatalf("the stop of a turn: %+v", evs)
+		evs[0].Actor != agent.ActorSession || evs[0].InFlightKnown || len(evs[0].InFlight) != 0 {
+		t.Fatalf("the stop of a turn, without the subagents in flight: %+v", evs)
 	}
 	if _, evs, _ := (codex{}).parse([]byte(`{"hook_event_name":"PreToolUse","tool_name":"web_search"}`)); len(evs) != 0 {
 		t.Fatalf("unknown tool: %+v", evs)

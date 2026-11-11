@@ -149,7 +149,8 @@ func (r *pass) protected(paths []string) (protected, others []string) {
 
 // derive turns the paths a command changed that are not protected and still exist into the edits the shell evaluates next in the
 // same call, from ans: a pre_edit and then a post_edit of each path, in order, made by the command
-// (agent.Event.ByCommand) in the session, by the actor and the agent of the post_command, located inside the root.
+// (agent.Event.ByCommand) in the session, by the actor, with its agent id, and the agent of the post_command, located
+// inside the root.
 // Past maxCommandEdits paths, as after an install or a generator, none is derived: the agent gets the count as
 // context instead, logged as an inform of builtin.
 func (r *pass) derive(paths []string, ans agent.Answer) agent.Answer {
@@ -163,8 +164,8 @@ func (r *pass) derive(paths []string, ans agent.Answer) agent.Answer {
 	ev := r.ev.Event
 	for _, p := range paths {
 		for _, name := range []string{workflow.PreEdit, workflow.PostEdit} {
-			e := agent.Event{Name: name, Agent: ev.Agent, Session: ev.Session, Actor: ev.Actor, Cwd: ev.Cwd,
-				AbsPath: absolute(r.ev.Root, "", filepath.FromSlash(p)), ByCommand: true}
+			e := agent.Event{Name: name, Agent: ev.Agent, Session: ev.Session, Actor: ev.Actor, AgentID: ev.AgentID,
+				Cwd: ev.Cwd, AbsPath: absolute(r.ev.Root, "", filepath.FromSlash(p)), ByCommand: true}
 			e = e.Locate(p, true)
 			if e.Valid() == nil {
 				r.follow = append(r.follow, e)

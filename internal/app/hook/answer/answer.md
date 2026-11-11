@@ -35,7 +35,16 @@ interface `format`, with `parse`, which turns the input into the native name of 
 `subagent_start` whose actor is its `agent_type`), and `render`, which turns an
 `agent.Answer` into stdout, stderr and the exit code for the native event. It has one implementation per agent:
 `claude` in `in_claude.go` and `codex` in `in_codex.go`, which share the fields of the input both agents write and
-the rendering of an answer, in `in.go`. The Claude format also reads `tool_use_id`, the id Claude Code gives the call
+the rendering of an answer, in `in.go` and `in_input.go`. Both read `agent_id`, the id of the subagent that acts,
+into `agent.Event.AgentID`, only when the actor is a subagent (a `stop` is always of the main session), and the
+`source` of `SessionStart` (`startup`, `resume`, `clear`, `compact`) into `agent.Event.Source`, only on `start`; a
+missing one is empty, and a value that is not a text (`looseText`) is empty too, without failing the input. On
+`stop` and `subagent_stop` they read `background_tasks`, the tasks in flight of the session Claude Code lists, into
+`agent.Event.InFlight`, one `agent.Subagent` (its `id` and its `agent_type`) per task of `type` `subagent`,
+whatever its `status`, the other tasks left out, and `agent.Event.InFlightKnown`: a missing array, `null`, a value
+that is not an array of objects (`backgroundTask`) or a subagent with neither id nor type leaves the list unknown,
+without failing the input; an empty array is known and empty. Codex gives no such array, so its list is always
+unknown. The Claude format also reads `tool_use_id`, the id Claude Code gives the call
 of a tool, the same on `PreToolUse`, `PostToolUse` and `PostToolUseFailure`, into `agent.Event.ToolUse`, which pairs
 the snapshot of a command with its `post_command`; the Codex format leaves it empty, since polix knows no such id of
 Codex, so its commands pair by the command line.
@@ -71,8 +80,9 @@ holds only what its events do and calls the engine as a library:
   (rule 1), the commands of polix an unusable workflow lets through (rule 2), the snapshot of the last event
   before a command line runs and the watch of a `post_command` (rule 16) and the commits outside the change of a
   `pre_commit` (rule 3).
-- `stop` (`logic_stop.go`), for `stop` and `subagent_stop`: the loop guard of `max_stop_retries` (rule 10) and the
-  `finished` line of `subagent_stop` (rule 9).
+- `stop` (`logic_stop.go`), for `stop` and `subagent_stop`: the reconciliation of the log with the subagents in
+  flight before the entries (rule 17), the loop guard of `max_stop_retries` (rule 10) and the `finished` line of
+  `subagent_stop` (rule 9).
 
 The engine is the rest, in the `logic_<topic>.go` files, and has no `if` on the name of an event: the step machinery
 and the readers of the facts (`logic_facts.go`), the protections (`logic_protect.go`), the walk of the entries and
@@ -162,7 +172,8 @@ The rules it follows, as before this use case:
    lines of a branch on the same commit. The lines about a content they read,
    `finished` with a hash, `passed` and `blocked`, carry the HEAD commit (`state.Entry.Head`) when it is known, and so
    does a `snapshot` (rule 16), whose `post_command` compares it, with what git moves without HEAD
-   (`state.Entry.Refs`) too; the decisions and the other observed lines never do.
+   (`state.Entry.Refs`) too; the decisions and the other observed lines never do. Every line of an event of a
+   subagent, decisions included, carries its id (`state.Entry.AgentID`) when the agent gives one.
    - `block` blocks every time its entry applies. With `once: true` it is a reminder: it is skipped when the latest
      `blocked` line of its session, actor and line on the current branch or the same HEAD commit has a tree whose
      files in the scope of the entry did not change (see rule 8), and it writes `blocked`, with the hash, when it
@@ -187,10 +198,12 @@ The rules it follows, as before this use case:
      inject acts every time; `{path}` gives once per path.
      With `always: true` it injects on every event and writes nothing.
    - On `start` and `subagent_start`, after the entries, polix writes `started`, with the actor of the event (the
-     subagent type on `subagent_start`), when the workflow has a once-only inject or `requirements`
-     (`workflow.Workflow.ObservesStart`); the end of a subagent is written only for a once-only inject
-     (`workflow.Workflow.InjectsOnce`, which skips the injects of `start` and `subagent_start`), since the context of
-     the requirements never goes to a subagent.
+     subagent type on `subagent_start`, with its id), when the workflow has a once-only inject, `requirements` or an
+     `agents_are_running` (`workflow.Workflow.ObservesStart`); the `started` of `start` has the `source` of the start
+     as its key, empty when the agent gives none. The end of a subagent is written only for a once-only inject
+     (`workflow.Workflow.InjectsOnce`, which skips the injects of `start` and `subagent_start`) or an
+     `agents_are_running` (`workflow.Workflow.CountsAgents`, rule 17), since the context of the requirements never
+     goes to a subagent.
    - `notify` acts once by default: keyed by the session, the line of its entry and the expanded text, whatever the
      actor, it is skipped, with a `skip` decision, when the log has a `notified` line of that key, or an earlier
      event of the call already showed it (`passNotice`, `notified`). Nothing makes it due again in the session: a
@@ -225,12 +238,14 @@ The rules it follows, as before this use case:
    guard, polix writes an observed line `finished`, the key the type of the subagent: with the content hash when a
    `finished` of the workflow names the type (`workflow.Workflow.ObservedSubagents`), so the condition can hold;
    without it, and without computing it, for any subagent when the workflow has a once-only inject, so its injects
-   are due again. A type both observed and reset gets one line, with the hash. Without a known hash the `finished`
-   condition gets nothing, with a `warn` decision, and the line goes without hash only when the workflow injects
-   once. A stop the loop guard let through did not end as asked: it writes `finished` without hash, and only when
-   the workflow injects once, so the next run of the subagent gets its injects again but the `finished` condition,
-   which ignores the lines without hash, never holds for it. Commands of the AI are never observed and never count as
-   passed.
+   are due again, or an `agents_are_running`, so it no longer counts as running (rule 17). A type both observed and
+   reset gets one line, with the hash. Without a known hash the `finished` condition gets nothing, with a `warn`
+   decision, and the line goes without hash only when the workflow injects once or uses `agents_are_running`. A stop
+   the loop guard let through did not end as asked: it writes `finished` without hash, and only when the workflow
+   injects once or uses `agents_are_running`, so the next run of the subagent gets its injects again and it no longer
+   counts as running, but the `finished` condition, which ignores the lines without hash, never holds for it. The
+   line carries the id of the subagent. A refused `subagent_stop` writes nothing: the subagent goes on. Commands of
+   the AI are never observed and never count as passed.
 10. Loop guard: every block of `stop` or `subagent_stop`, a `block` or a failing `run`, writes an observed
     `blocked` line with the content hash, and the guard counts those lines per session, event, actor, entry and
     whole hash; an unknown hash is written as `state.UnknownHash`, so those blocks count together. After
@@ -240,7 +255,7 @@ The rules it follows, as before this use case:
     and after the run), a `block` with `once`, the loop guard, `finished` and its observed line, and, when the
     workflow watches, the `snapshot` of the last event before a command line runs (the `pre_command`, or the
     `pre_commit` of a line that commits) and the watch of a `post_command` (rule 16). An `inject`, a
-    `notify`, the `injected`, `started` and `notified` lines and a `finished` that only resets injects never compute
+    `notify`, the `injected`, `started`, `notified` and `ended` lines and a `finished` without hash never compute
     it. When it cannot be
     computed nothing that needs it is observed nor holds, nothing is skipped, and the call warns once: `polix
     cannot hash the content (<cause>): nothing observed is recorded, finished does not hold, and run and the blocks
@@ -304,19 +319,42 @@ The rules it follows, as before this use case:
       back.`, each logged as a `deny` of `guardrails.protected_files`. The restore is not bounded.
     - The other paths the current content still holds, a removed one left out, up to `maxCommandEdits` (25), become
       `Output.Follow` (`derive`): a `pre_edit` and then a
-      `post_edit` per path, with `agent.Event.ByCommand`, the session, the actor, the agent and the cwd of the
+      `post_edit` per path, with `agent.Event.ByCommand`, the session, the actor, its agent id, the agent and the cwd of the
       `post_command` and the path located inside the root, which the shell evaluates next in the same call (rules 1
       and 5 say how they differ from an edit of the edit tool). Past 25 paths none is derived: the AI gets one context,
       `A command changed <n> files, more than 25: polix did not evaluate them as edits, so the entries of pre_edit and
       post_edit did not apply to them.`, logged as an `inform` of `builtin`.
     - The entries of the `post_command` run after the watch, its refusals and context merged before theirs.
+17. `agents_are_running: true|false` holds when whether subagents of the session other than the one that acts are
+    still running is its value, on any event (`agentsRunning`), ranked with `finished` among the conditions. On a
+    `stop` or `subagent_stop` whose list of subagents in flight is known (`agent.Event.InFlightKnown`), it counts
+    that list without reading the log, the actor left out by its id, or, without one, by its type
+    (`othersInFlight`). Otherwise it reads the log: `state.State.Running` walks the observed lines of the session in
+    order, a `started` of `subagent_start` opens a subagent, a `finished` or an `ended` closes the one of its id,
+    else the oldest open one of its type (without id when the line has one), so the lines without id, of Codex or of
+    an older Claude Code or polix, pair by type, and a `started` of `start` whose key is not `compact` (a new session,
+    a resume, a clear, or a start without source) closes every one. The actor is left out by its id, else by its type
+    (`state.State.RunningOthers`), except on its own `subagent_start`, whose `started` is written after the entries;
+    the main session, on `stop` too, counts every subagent. A log that cannot be read counts as no subagent running,
+    with the warning of rule 6. polix writes the lines it reads only when the workflow uses the condition
+    (`workflow.Workflow.CountsAgents`, rules 6 and 9).
+    - Reconciliation (`reconcile`): on `stop` and `subagent_stop`, before the entries, when the workflow uses the
+      condition and the list is known, each subagent the log has open in the session that the list does not list,
+      the actor aside, gets an observed `ended` line (`state.OutcomeEnded`): about the event, with the type of that
+      subagent as the actor and its id, without key nor hash (`writeEnded`). A line with an id is listed by a
+      subagent of that id, then each line without id by a subagent of its type not taken yet (`unlisted`). So a
+      subagent whose end never reached polix, interrupted, stops counting; without the list, or with one that does
+      not decode, the log stays as it is and such a subagent counts until a later stop that lists, or a new session.
+      A log that cannot be read reconciles nothing, with the warning of rule 6. The entries never depend on these
+      lines: with the list known the condition reads the list.
 
 The engine holds the protections and the heuristics of the command lines (`lineWrites`, `namesState`, `within`,
 `anyPathFold`, `forbidden`, `matchingCommands`, `commitDirs`), the watch of the commands (`watches`, `commandKey`,
 `maxCommandEdits`), the placeholders (`expandPlaceholders`,
-`measureValues`, `branchVars`) and the measures (`measureHolds`). The domain decides the rest: `agent.Answer.Merge`,
-`diff.Diff`, `state.State` (`Observed`, `Latest`, `Index`) with `state.Query`, `workflow.Workflow.ObservedSubagents`
-and `InjectsOnce`, `rule.Rules` (`Matching` and `Plan`), `rule.Results.Failed`, `rule.Result.Tail` and
+`measureValues`, `branchVars`), the measures (`measureHolds`) and the subagents in flight (`othersInFlight`,
+`unlisted`). The domain decides the rest: `agent.Answer.Merge`,
+`diff.Diff`, `state.State` (`Observed`, `Latest`, `Index`, `Running`, `RunningOthers`) with `state.Query`,
+`workflow.Workflow.ObservedSubagents`, `InjectsOnce` and `CountsAgents`, `rule.Rules` (`Matching` and `Plan`), `rule.Results.Failed`, `rule.Result.Tail` and
 `rule.Run.Settle`.
 
 ## Response
@@ -389,7 +427,7 @@ needs one method per fact.
   the first path that failed; a tree git no longer has is an error.
 - `Append`: appends an entry to the log, stamped with the time (RFC 3339), encoded as one line by the unexported
   method `encodeLine` with the encoding type `logLine` of `out_log.go`, its reason cut to `state.MaxReason`: the
-  shape `LoadState` decodes.
+  shape `LoadState` decodes, the id of a subagent as `agent_id`, left out when empty.
 
 ## Errors
 

@@ -7,7 +7,24 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- The condition `agents_are_running: true|false` tells whether subagents of the session, of any type, are still
+  running, the one that acts aside, on every event: a commit, an edit or the end of a turn can wait until every
+  subagent has ended. polix writes to its log when each subagent starts and ends, with the `agent_id` of the
+  subagent, so two of one type are told apart, and the `source` of a session start as the key of its `started`
+  line. On each `stop` and `subagent_stop` of Claude Code that carries `background_tasks`, polix corrects the log
+  with it: a subagent missing from the list, as an interrupted one, gets an `ended` line and no longer counts. A new
+  session, a resume or a clear closes every subagent left open; a compaction does not. Codex sends no such list, so
+  it counts by the log alone. `polix config check` reports a value that is not `true` or `false`.
+
 ### Changed
+
+- The items of `guardrails.run_on_stop` wait for the subagents still running by default: while a subagent of the
+  session runs, their checks are skipped, every stop that holds one back tells the user `run_on_stop waits for the
+  subagents still running: its checks run on the next stop after they end.`, and they run on the next stop after
+  the subagents end. `wait_agents: false` keeps an item running as before. A workflow with `run_on_stop` now writes
+  the start and the end of every subagent to its log.
 
 - The skill plan writes plans for one executor that runs every task in order, in one go: tasks have no
   `Depends on:` and may share files. A plan is written wholly in English, whatever the language of the session: it

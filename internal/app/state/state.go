@@ -2,8 +2,8 @@
 // itself (a session or a subagent started, a subagent finished, a check of polix passed, an entry blocked, an inject
 // reached the AI, a notice reached the user), tied to the content hash it was observed on when a query needs it, and
 // every decision it takes, which also
-// serves as evidence of the process each change followed. The repeat of the verbs, the loop guard and the condition
-// finished are queries over the observed entries.
+// serves as evidence of the process each change followed. The repeat of the verbs, the loop guard, the condition
+// finished and the subagents still running (Running) are queries over the observed entries.
 //
 // Only polix writes it, from events it has seen; the agent never declares that something is done, and a command
 // the agent runs is never observed. Reading and writing the file, and the format of its lines, are the job of the

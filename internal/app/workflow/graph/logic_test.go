@@ -119,7 +119,10 @@ on:
 		"create a branch for this change and commit there.<br/>from guardrails.protected_branches\"]\n" +
 		"  end\n" +
 		"  subgraph stop\n" +
-		"    n7[\"when changed=*.go<br/>run go test ./...<br/>from guardrails.run_on_stop\"]\n" +
+		"    n7[\"when agents_are_running=false, changed=*.go<br/>run go test ./...<br/>from guardrails.run_on_stop\"]\n" +
+		"    n8[\"when agents_are_running=true, changed=[*.go]<br/>notify: run_on_stop waits for the subagents still " +
+		"running: its checks run on the next stop after they end. (always)<br/>from guardrails.run_on_stop\"]\n" +
+		"    n7 --> n8\n" +
 		"  end\n"
 	if out := Decide(wf, true); out.Mermaid != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", out.Mermaid, want)

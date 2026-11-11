@@ -4,12 +4,9 @@ package answer
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os/exec"
-	"path/filepath"
-	"regexp"
 	"runtime"
 
 	"github.com/spf13/cobra"
@@ -114,27 +111,8 @@ type format interface {
 	render(native string, ans agent.Answer) (stdout, stderr string, code int)
 }
 
-// hookInput is the part of the input of a hook both agents share.
-type hookInput struct {
-	HookEventName string          `json:"hook_event_name"`
-	SessionID     string          `json:"session_id"`
-	Cwd           string          `json:"cwd"`
-	ToolName      string          `json:"tool_name"`
-	ToolInput     map[string]any  `json:"tool_input"`
-	ToolResponse  json.RawMessage `json:"tool_response"`
-	Prompt        string          `json:"prompt"`
-	AgentType     string          `json:"agent_type"`
-	ToolUse       string          `json:"-"` // the id of the call of a tool, set by the format whose agent gives it
-}
-
 // formats are the formats of the agents, by the name of the agent.
 var formats = map[string]format{agent.Claude: claude{}, agent.Codex: codex{}}
-
-// gitCommit recognises a git commit anywhere in a command line (`cd x && git commit -m ...`), after global
-// options of git, those with a separate value included (`git -C dir commit`, `git -c k=v commit`), and inside a
-// quoted command (`bash -c "git commit ..."`). It errs on the side of a gate: the text of a commit inside quotes
-// also counts.
-var gitCommit = regexp.MustCompile(`(^|[;&|(\s'"])git(\s+(-[cC]|--git-dir|--work-tree|--namespace|--config-env)\s+\S+|\s+-\S+)*\s+commit(\s|$|['"])`)
 
 // Command is the command `polix hook <claude|codex>`, the entry of the use case AnswerHook: it turns
 // the argument, the flag and stdin into a Request, injects the adapter with the loaders rules, loadWorkflow and
@@ -303,98 +281,4 @@ func act(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook.E
 		return ev.Note("", port.Append(ctx, *s.Append))
 	}
 	return ev
-}
-
-// actor is the subagent type when the call comes from a subagent, the main session otherwise.
-func (in hookInput) actor() string {
-	if in.AgentType != "" {
-		return in.AgentType
-	}
-	return agent.ActorSession
-}
-
-// str returns the text of the input of the tool under key, "" when it has none.
-func (in hookInput) str(key string) string {
-	s, _ := in.ToolInput[key].(string)
-	return s
-}
-
-// exitCode reads the exit code of a command from the tool response, 0 when it does not say.
-func (in hookInput) exitCode() int {
-	var resp map[string]any
-	if json.Unmarshal(in.ToolResponse, &resp) != nil {
-		return 0
-	}
-	for _, k := range []string{"exit_code", "exitCode", "returncode"} {
-		if n, ok := resp[k].(float64); ok {
-			return int(n)
-		}
-	}
-	return 0
-}
-
-// event returns the event name of the agent ag for the input, with abs, the path of an edit, and with command and
-// code, a command line and its exit code, and with the id of the call of the tool when the format set it; the error
-// tells why it is not valid. The stop of a turn (stop) is always of the main session: a subagent stops with
-// subagent_stop.
-func (in hookInput) event(ag, name, abs, command string, code int) (agent.Event, error) {
-	actor := in.actor()
-	if name == workflow.Stop {
-		actor = agent.ActorSession
-	}
-	ev := agent.Event{Name: name, Agent: ag, Session: in.SessionID, Actor: actor, AbsPath: abs, Command: command,
-		ExitCode: code, Prompt: in.Prompt, Cwd: in.Cwd, ToolUse: in.ToolUse}
-	return ev, ev.Valid()
-}
-
-// single returns the one event name of the agent ag for an input that is neither an edit nor a command.
-func (in hookInput) single(ag, name string) ([]agent.Event, error) {
-	ev, err := in.event(ag, name, "", "", 0)
-	if err != nil {
-		return nil, err
-	}
-	return []agent.Event{ev}, nil
-}
-
-// edits returns one event name of the agent ag per edited path. A relative path (apply_patch gives them) is taken
-// from the cwd of the call, so AbsPath is absolute whenever the cwd is known.
-func (in hookInput) edits(ag, name string, paths []string) ([]agent.Event, error) {
-	var events []agent.Event
-	for _, p := range paths {
-		if !filepath.IsAbs(p) && in.Cwd != "" {
-			p = filepath.Join(in.Cwd, p)
-		}
-		ev, err := in.event(ag, name, p, "", 0)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, ev)
-	}
-	return events, nil
-}
-
-// commands returns the event name of the agent ag of the command line command: after it ran (post_command), with
-// the exit code of its response, 1 when the agent says it failed without one; about to run (pre_command), plus
-// pre_commit when it commits.
-func (in hookInput) commands(ag, name, command string, failed bool) ([]agent.Event, error) {
-	code := 0
-	if name == workflow.PostCommand {
-		code = in.exitCode()
-		if failed && code == 0 {
-			code = 1
-		}
-	}
-	names := []string{name}
-	if name == workflow.PreCommand && gitCommit.MatchString(command) {
-		names = append(names, workflow.PreCommit)
-	}
-	var events []agent.Event
-	for _, n := range names {
-		ev, err := in.event(ag, n, "", command, code)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, ev)
-	}
-	return events, nil
 }

@@ -14,6 +14,10 @@ type Entry struct {
 	Session string
 	Event   string
 	Actor   string
+	// AgentID is the id the agent gives the subagent that acted, empty for the main session and when the agent gives
+	// none (Codex, an older Claude Code) or the line was written by an older polix: it tells two subagents of one type
+	// apart (see Running).
+	AgentID string
 	Branch  string
 	Hash    string // content hash; on decisions only when the call already computed it
 	// Head is the commit HEAD pointed to when the line was written, empty when unknown: written only on the observed
@@ -45,7 +49,8 @@ const (
 const (
 	// OutcomeFinished: a subagent ended and its answer did not refuse; Key is its type. With the hash when a
 	// `finished` of the workflow names the type, without it when it only makes the injects of the subagent due again;
-	// with the hash, it also carries the HEAD commit when it is known.
+	// with the hash, it also carries the HEAD commit when it is known. Without the hash also when the workflow counts
+	// the subagents still running (see Running).
 	OutcomeFinished = "finished"
 	// OutcomePassed: a run of polix passed on a content that did not change during it; Key is what it ran.
 	OutcomePassed = "passed"
@@ -54,7 +59,9 @@ const (
 	// OutcomeInjected: a once-only inject reached the AI; Key is its expanded text, file or rule id.
 	OutcomeInjected = "injected"
 	// OutcomeStarted: a session started or its context was compacted, so its once-only injects are due again for
-	// every actor; or, on subagent_start, a subagent started, its type the actor, so they are due again for that type.
+	// every actor, Key the source the agent gives (startup, resume, clear, compact), empty when it gives none; or, on
+	// subagent_start, a subagent started, its type the actor, so they are due again for that type and it runs until
+	// it finishes (see Running).
 	OutcomeStarted = "started"
 	// OutcomeNotified: a notice of the verb notify reached the user, in an answer that did not block; Key is its
 	// expanded text. It is never due again in the session, whatever the actor and the starts.
@@ -66,6 +73,10 @@ const (
 	// OutcomeWatched: a post_command found the snapshot of its key, so that snapshot is used and no later
 	// post_command compares with it; Key is the key of the snapshot.
 	OutcomeWatched = "watched"
+	// OutcomeEnded: a subagent the log had open was missing from the subagents in flight the agent listed on a stop,
+	// so it ended without its end reaching polix (an interrupted subagent); its type the actor, with its id, keyed by
+	// nothing and without hash (see Running).
+	OutcomeEnded = "ended"
 )
 
 // UnknownHash is the hash of a blocked entry written on a stop whose content hash could not be computed, so the loop
@@ -75,7 +86,7 @@ const UnknownHash = "unknown"
 
 // Outcomes lists the outcomes of an observed entry.
 var Outcomes = []string{OutcomeFinished, OutcomePassed, OutcomeBlocked, OutcomeInjected, OutcomeStarted,
-	OutcomeNotified, OutcomeSnapshot, OutcomeWatched}
+	OutcomeNotified, OutcomeSnapshot, OutcomeWatched, OutcomeEnded}
 
 // hashed are the outcomes that are about a content, so their entries need its hash.
 var hashed = []string{OutcomePassed, OutcomeBlocked, OutcomeSnapshot}

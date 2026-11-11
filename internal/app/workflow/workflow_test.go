@@ -32,6 +32,28 @@ func TestObservedSubagents(t *testing.T) {
 	}
 }
 
+// A workflow whose only use of the log is an agents_are_running nested in an any of an unless observes the starts
+// and counts the subagents; one without it does neither.
+func TestCountsAgents(t *testing.T) {
+	block := Action{Block: &Block{Message: "x"}, Keys: []string{VerbBlock}}
+	w := Workflow{Version: 1, On: map[string][]Entry{PreCommit: {{Unless: Cond{"any": map[string]any{
+		"branch": "main", "agents_are_running": false}}, Action: block, Keys: []string{"unless", "action"}, Line: 4}}}}
+	if err := w.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	if !w.CountsAgents() || !w.ObservesStart() {
+		t.Fatalf("counts %v, observes the start %v", w.CountsAgents(), w.ObservesStart())
+	}
+	if w.InjectsOnce() {
+		t.Fatal("the condition does not inject once")
+	}
+	plain := Workflow{Version: 1, On: map[string][]Entry{PreCommit: {{When: Cond{"not": map[string]any{
+		"branch": "main"}}, Action: block, Keys: []string{"when", "action"}, Line: 4}}}}
+	if plain.CountsAgents() || plain.ObservesStart() {
+		t.Fatal("a workflow without the condition counts the subagents")
+	}
+}
+
 // A workflow injects once when an inject without always is on an event other than start.
 func TestInjectsOnce(t *testing.T) {
 	inject := func(c Inject) Action { return Action{Inject: &c, Keys: []string{VerbInject}} }

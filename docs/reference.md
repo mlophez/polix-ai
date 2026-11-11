@@ -255,7 +255,7 @@ A map of [event](#events) to a list of [entries](#entries).
 - [`forbidden_commands`](#forbidden_commands): a list of maps with `pattern` and `reason`;
 - [`protected_branches`](#protected_branches): a list of branch names;
 - [`format_on_edit`](#format_on_edit): a list of maps with `run`, `path` and `message`;
-- [`run_on_stop`](#run_on_stop): a list of maps with `run`, `changed` and `message`.
+- [`run_on_stop`](#run_on_stop): a list of maps with `run`, `changed`, `message` and `wait_agents`.
 
 ```yaml
 guardrails:
@@ -389,11 +389,20 @@ on:
   - `run`: required, a command, as in `format_on_edit`;
   - `changed`: optional, a path glob or a list of them: the check runs only when a file not committed yet matches
     (the condition [`changed`](#changed), which also sets the [scope](#scope-of-an-entry) of the entry);
-  - `message`: optional, the text before the output of a failure.
+  - `message`: optional, the text before the output of a failure;
+  - `wait_agents`: optional, `true` or `false`, `true` when left out: the check waits for the subagents of the
+    session still running (the condition [`agents_are_running`](#agents_are_running)).
 - The checks that must pass before the agent ends its turn. A failure blocks the `stop` with its output, up to the
   loop guard, and the first one that fails ends the evaluation, so list the cheaper or more basic check first. A
   check that passed is not run again on the same content.
 - Expansion: one regular entry on `stop` per item, with `run`, and with the condition `changed` when it has one.
+  An item that waits also gets `agents_are_running: false`: while a subagent of the session runs, its check is
+  skipped, and it runs on the next `stop` after the subagents end. When at least one item waits, one more entry
+  goes last on `stop`, after the entries written in `on`: a `notify` with `always`, under
+  `agents_are_running: true` and a `changed` with the globs of every item that waits (none when one of them has
+  none), with the text
+  `run_on_stop waits for the subagents still running: its checks run on the next stop after they end.`
+  `wait_agents: false` expands as before.
   For `always`, the end of a subagent or a condition such as `finished`, write the entry in `on`.
 
 ```yaml
@@ -403,8 +412,14 @@ guardrails:
 # expands into
 on:
   stop:
-    - when: { changed: ["*.go", go.mod, go.sum] }
+    - when: { changed: ["*.go", go.mod, go.sum], agents_are_running: false }
       action: { run: { command: "go test ./...", message: "The tests fail:" } }
+    # ... the entries written in on ...
+    - when: { changed: ["*.go", go.mod, go.sum], agents_are_running: true }
+      action:
+        notify:
+          message: "run_on_stop waits for the subagents still running: its checks run on the next stop after they end."
+          always: true
 ```
 
 ### Order of the expanded entries
@@ -412,7 +427,8 @@ on:
 In each event the entries come in this order, each group in the order of the file:
 
 1. the entries of `protected_branches`, `format_on_edit` and `run_on_stop`;
-2. the entries written in `on`.
+2. the entries written in `on`;
+3. the `notify` of the items of `run_on_stop` that wait, when there is one.
 
 So the basics run before the flow of the team, and `protected_files` and `forbidden_commands`, which are no
 entries, before both.
@@ -656,6 +672,22 @@ unless: { actor: [acme:builder, acme:builder-ui] }
 ```yaml
 unless: { finished: polix:reviewer }
 unless: { finished: [polix:reviewer, acme:security-reviewer] }
+```
+
+### agents_are_running
+
+- Value: `true` or `false`.
+- Holds when whether subagents of the session, of any type, are still running equals the value. The subagent that
+  acts never counts itself, so on `subagent_stop` the last subagent to stop sees `false`. polix counts them from the
+  starts and ends of subagents in its log; on a `stop` or `subagent_stop` of Claude Code it reads the list of work in
+  flight the agent sends (`background_tasks`) and closes in the log the subagents missing from it, so an interrupted
+  subagent stops counting. A new session, a resume or a clear closes every open subagent; a compaction does not.
+  Codex counts by the log alone. A log that cannot be read counts as no subagent running.
+- Events: all.
+
+```yaml
+when: { actor: session, agents_are_running: true }
+unless: { agents_are_running: true }
 ```
 
 ### changed_lines, changed_files, risk_score

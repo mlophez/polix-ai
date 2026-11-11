@@ -46,8 +46,8 @@
 #   - path: pre_edit, post_edit;
 #   - command, writes: pre_command, post_command, pre_commit;
 #   - exit: post_command.
-#   Every other condition (actor, finished, branch, var, changed, file, contains, changed_lines, changed_files,
-#   risk_score, not, any) holds on any event.
+#   Every other condition (actor, finished, agents_are_running, branch, var, changed, file, contains, changed_lines,
+#   changed_files, risk_score, not, any) holds on any event.
 
 # Required. The only version is 1.
 version: 1
@@ -179,7 +179,7 @@ requirements: [go, golangci-lint]
 # and tune them. The flow of the team (tickets, plans, builders, reviewer subagents) and any other condition or verb
 # go to `on`.
 # In each event, the entries of protected_branches, format_on_edit and run_on_stop come before those written in
-# `on`, each group in file order. Each expanded entry takes the line of its item, so `polix config check`, the
+# `on`, each group in file order, but for the notice of run_on_stop, which comes last on stop. Each expanded entry takes the line of its item, so `polix config check`, the
 # log and the repeat rules tell them apart.
 # `polix config check` rejects a key of guardrails other than these five, an unknown key of an item, an empty glob,
 # pattern, branch or command, and a shortcut written in another form than its own (a single string where a list
@@ -253,14 +253,22 @@ guardrails:
   # - run: required, the command, as in format_on_edit;
   # - changed: optional, a glob or a list, as the condition `changed`: the item runs only when some file not
   #   committed yet matches; without it, on every turn;
-  # - message: optional, the text before the output of a failure (placeholders allowed).
+  # - message: optional, the text before the output of a failure (placeholders allowed);
+  # - wait_agents: optional, true by default: while subagents of the session are still running (in the background,
+  #   or interrupted without their end reaching polix), the item is skipped and runs on the next stop after they
+  #   end; false runs it whatever the subagents do. Another value is rejected by `polix config check`.
   # Each item expands into one entry on stop with `run`, in file order, before the entries of stop written in `on`:
   # while it fails the turn does not end (up to max_stop_retries), and it does not run again on a content it passed
-  # on. A subagent ends with subagent_stop, where these entries never run (see `on`). Put first the check whose
+  # on. An item that waits also gets `agents_are_running: false` in its `when`, and, when one waits, one `notify`
+  # with `always` goes last on stop, after the entries written in `on`: every stop that holds a check back tells the
+  # user once "run_on_stop waits for the subagents still running: its checks run on the next stop after they end."
+  # A subagent ends with subagent_stop, where these entries never run (see `on`). Put first the check whose
   # failure makes the later ones pointless, and the cheaper one: here the lint before the tests.
   run_on_stop:
+    # The lint is quick and its failures are worth fixing at once: it runs while subagents run too.
     - run: golangci-lint run ./...
       changed: ["src/**", "go.mod", "go.sum"]
+      wait_agents: false
     - run: just test
       changed: "src/**"
       message: "Los tests no pasan: arréglalos antes de terminar."
@@ -289,6 +297,13 @@ guardrails:
 #
 # Conditions that take a list (path, changed, file, command, writes, actor) hold when any item matches; those of
 # finished and var hold when every item does. A single string is a list of one.
+#
+# agents_are_running: true or false, whether subagents of the session, of any type, are still running, the one that
+# acts aside (on subagent_stop the subagent that stops does not count itself). It holds on any event, so a commit or
+# the end of a turn can wait for every subagent: `when: { agents_are_running: false }`. polix counts them from the
+# starts and ends of subagents in its log, corrected on each stop of Claude Code with the list of work still in
+# flight it sends (an interrupted subagent missing from it counts as ended); a new session, a resume or a clear
+# closes them all, a compaction does not. Codex sends no such list, so it counts by the log alone.
 
 on:
   # Events, in lifecycle order. Each holds a list of entries, and an entry has two parts, when it applies and what
@@ -345,8 +360,9 @@ on:
   # What polix remembers: its log (<git-dir>/polix/log.jsonl, read with `polix log`) holds a decision for each
   # answer, and an `observed` line only for what this file asks about: the end of a subagent a `finished` names,
   # a run of polix that passed, a block of a `once` entry or of a stop, an inject made once, a notice shown once and
-  # the start of a session or of a subagent. When an inject acts once, the end of any subagent is also written,
-  # without hash, so its next run gets the inject again; `finished` never reads those lines. A command the AI runs is
+  # the start of a session or of a subagent. When an inject acts once, or the file uses agents_are_running (an item
+  # of run_on_stop that waits does), the end of any subagent is also written, without hash, so its next run gets the
+  # inject again and it stops counting as running; `finished` never reads those lines. A command the AI runs is
   # never recorded and never counts as passed: polix cannot know what it really ran (an alias, another folder, a
   # command still running in the background). A check that must hold is a `run` of polix.
   #
@@ -646,7 +662,8 @@ on:
 
   # stop: the main session is about to end its turn; actor is always `session`. A subagent ends with subagent_stop,
   # which never runs these entries. inject is rejected here and on subagent_stop: the agent cannot receive context
-  # when it stops. The checks of guardrails.run_on_stop, the lint and the tests, come before these entries.
+  # when it stops. The checks of guardrails.run_on_stop, the lint and the tests, come before these entries, and its
+  # notice for the stops that hold the tests back while subagents run comes after them.
   stop:
     # run: { rules: changed }: the checks of the rules whose scope matches the changed files.
     - when: { changed: "**" }

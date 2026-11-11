@@ -17,7 +17,8 @@ argument-hint: "[what to enforce, e.g. no commit without tests; empty to review 
 Turn what the user wants to enforce into `polix.yaml`, at the root of the repository, in two layers.
 First the shortcuts of `guardrails`, the basics every project wants, each a short list in its one form:
 `protected_files` and `protected_branches` (lists of strings), and `forbidden_commands` (`pattern`, `reason`),
-`format_on_edit` (`run`, `path`, `message`) and `run_on_stop` (`run`, `changed`, `message`), lists of maps.
+`format_on_edit` (`run`, `path`, `message`) and `run_on_stop` (`run`, `changed`, `message`, `wait_agents`), lists of
+maps; an item of `run_on_stop` waits for the subagents still running unless `wait_agents: false`.
 Then the entries of `on`, for what no shortcut covers: the orchestration of subagents (builders, reviewers), the
 ticket and the plan, and any other condition or verb.
 `protected_files` and `forbidden_commands` are protections of the engine: they deny before every entry of `on`, for

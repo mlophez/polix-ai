@@ -48,8 +48,53 @@ func shortcutsSummary(e workflow.Entry) string {
 		action = "block " + fmt.Sprintf("%q", e.Action.Block.Message)
 	case e.Action.Run != nil:
 		action = fmt.Sprintf("run %q %q", e.Action.Run.Command, e.Action.Run.Message)
+	case e.Action.Notify != nil:
+		action = fmt.Sprintf("notify %q always=%v", e.Action.Notify.Message, e.Action.Notify.Always)
 	}
 	return fmt.Sprintf("%s line=%d when=%v %s", e.From, e.Line, e.When, action)
+}
+
+// waitNotice is the notify of run_on_stop while subagents run, as shortcutsSummary describes it.
+const waitNotice = `notify "run_on_stop waits for the subagents still running: its checks run on the next stop after they end." always=true`
+
+// AC12: wait_agents of an item of run_on_stop is true or false, true when left out; an item with wait_agents: false
+// expands as before, and the others wait and add the notify.
+func TestShortcutsWaitAgents(t *testing.T) {
+	src := "version: 1\nguardrails:\n  run_on_stop:\n    - { run: go test, changed: \"*.go\", wait_agents: false }\n" +
+		"    - { run: go vet, changed: \"*.go\", wait_agents: true }\n    - { run: just lint }\n"
+	var y workflowYAML
+	if err := yaml.Unmarshal([]byte(src), &y); err != nil {
+		t.Fatal(err)
+	}
+	g, err := y.Guardrails.guardrails()
+	if err != nil || len(g.RunOnStop) != 3 || g.RunOnStop[0].Waits || !g.RunOnStop[1].Waits || !g.RunOnStop[2].Waits {
+		t.Fatalf("run on stop: %+v %v", g.RunOnStop, err)
+	}
+	w, err := parse(t, src, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		`guardrails.run_on_stop line=4 when=map[changed:*.go] run ["go" "test"] ""`,
+		`guardrails.run_on_stop line=5 when=map[agents_are_running:false changed:*.go] run ["go" "vet"] ""`,
+		`guardrails.run_on_stop line=6 when=map[agents_are_running:false] run ["just" "lint"] ""`,
+		`guardrails.run_on_stop line=5 when=map[agents_are_running:true] ` + waitNotice,
+	}
+	var got []string
+	for _, e := range w.On[workflow.Stop] {
+		got = append(got, shortcutsSummary(e))
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("stop:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if !w.CountsAgents() {
+		t.Fatal("the items that wait count the subagents")
+	}
+	src = "version: 1\nguardrails:\n  format_on_edit:\n    - { run: x, wait_agents: false }\n"
+	if _, err := parse(t, src, "dev"); err == nil || !strings.Contains(err.Error(),
+		`polix.yaml:4: unknown key "wait_agents" in guardrails.format_on_edit (run, path, message)`) {
+		t.Fatalf("format_on_edit: %v", err)
+	}
 }
 
 // AC6, AC7, AC8, AC9: protected_branches, format_on_edit and run_on_stop expand into the entries, events,
@@ -74,8 +119,9 @@ func TestShortcutsExpand(t *testing.T) {
 			`guardrails.format_on_edit line=15 when=map[] run ["prettier" "--write" "{path}"] "Format failed"`,
 		},
 		workflow.Stop: {
-			`guardrails.run_on_stop line=18 when=map[changed:[*.go go.mod]] run ["go" "test" "./..."] ""`,
-			`guardrails.run_on_stop line=20 when=map[] run ["just" "lint"] ""`,
+			`guardrails.run_on_stop line=18 when=map[agents_are_running:false changed:[*.go go.mod]] run ["go" "test" "./..."] ""`,
+			`guardrails.run_on_stop line=20 when=map[agents_are_running:false] run ["just" "lint"] ""`,
+			`guardrails.run_on_stop line=18 when=map[agents_are_running:true] ` + waitNotice,
 		},
 	}
 	if len(w.On) != len(want) {
@@ -134,6 +180,8 @@ func TestShortcutsProblems(t *testing.T) {
 		"unknown check key": "version: 1\nguardrails:\n  format_on_edit:\n    - { run: x, changed: \"*.go\" }\n",
 		"bad scope":         "version: 1\nguardrails:\n  run_on_stop:\n    - { run: x, changed: { a: b } }\n",
 		"bad placeholder":   "version: 1\nguardrails:\n  run_on_stop:\n    - { run: x, message: \"{kye}\" }\n",
+		"wait_agents text":  "version: 1\nguardrails:\n  run_on_stop:\n    - { run: x, wait_agents: \"no\" }\n",
+		"wait_agents list":  "version: 1\nguardrails:\n  run_on_stop:\n    - run: x\n      wait_agents: [false]\n",
 	}
 	want := map[string]string{
 		"empty glob": "polix.yaml:4: guardrails.protected_files: a path glob cannot be empty\n" +
@@ -151,6 +199,8 @@ func TestShortcutsProblems(t *testing.T) {
 		"unknown check key": `polix.yaml:4: unknown key "changed" in guardrails.format_on_edit (run, path, message)`,
 		"bad scope":         "polix.yaml:4: changed: expected a string or a list of strings, got map[a:b]",
 		"bad placeholder":   "polix.yaml:4: unknown placeholder {kye} (built in:",
+		"wait_agents text":  "polix.yaml:4: guardrails.run_on_stop: wait_agents must be true or false",
+		"wait_agents list":  "polix.yaml:4: guardrails.run_on_stop: wait_agents must be true or false",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {

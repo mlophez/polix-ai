@@ -2,6 +2,7 @@ package answer
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/state"
@@ -10,9 +11,9 @@ import (
 
 // stop answers stop and subagent_stop, the end of the turn of the main session or of a subagent. They come with no
 // protection, and an unusable workflow only warns: a blocked stop would keep the agent in a loop it cannot leave.
-// Without polix.yaml nothing happens. Every block of their entries goes through the loop guard (see loopGuard). With
-// the answer known, a subagent_stop the answer does not refuse writes that the subagent finished (see
-// observeFinished).
+// Without polix.yaml nothing happens. Before the entries, the log is reconciled with the subagents in flight the
+// agent listed (see reconcile). Every block of their entries goes through the loop guard (see loopGuard). With the
+// answer known, a subagent_stop the answer does not refuse writes that the subagent finished (see observeFinished).
 func (r *pass) stop() agent.Answer {
 	if r.ev.Invalid != nil {
 		return r.warnUnusable()
@@ -21,6 +22,10 @@ func (r *pass) stop() agent.Answer {
 		return agent.Answer{}
 	}
 	r.loop = true
+	r.reconcile()
+	if r.waiting() {
+		return agent.Answer{}
+	}
 	ans := r.entries(agent.Answer{})
 	if r.waiting() {
 		return ans
@@ -65,15 +70,18 @@ func (r *pass) loopGuard(e workflow.Entry, st state.State, err error, hash strin
 
 // observeFinished writes that the subagent of a subagent_stop the answer does not refuse finished, its type as the
 // key: with the content hash when a `finished` of the workflow names the type, so the condition can hold; without
-// it, and without computing it, when the workflow only injects once, so the injects of that subagent are due again.
+// it, and without computing it, when the workflow only injects once, so the injects of that subagent are due again,
+// or counts the subagents still running (workflow.Workflow.CountsAgents), so it no longer counts as running.
 // Without a known hash, whose cause the facts already keep as a warning, the condition gets nothing, with a warn
-// decision, and the line is written without hash only when the workflow injects once. A stop the loop guard let
-// through did not end as asked: it is written without hash, only when the workflow injects once, so the subagent
-// never counts as finished but its next run, with a new context, gets the injects again.
+// decision, and the line is written without hash only when the workflow injects once or counts the subagents. A stop
+// the loop guard let through did not end as asked: it is written without hash, only when the workflow injects once or
+// counts the subagents, so the subagent never counts as finished but its next run, with a new context, gets the
+// injects again, and it no longer counts as running. Either line carries the id of the subagent.
 func (r *pass) observeFinished() {
 	ev := r.ev.Event
+	ends := r.ev.Workflow.InjectsOnce() || r.ev.Workflow.CountsAgents()
 	if r.guarded {
-		if r.ev.Workflow.InjectsOnce() {
+		if ends {
 			_ = r.write(state.KindObserved, "", 0, state.OutcomeFinished, "", ev.Actor, "")
 		}
 		return
@@ -85,7 +93,6 @@ func (r *pass) observeFinished() {
 	if r.waiting() {
 		return
 	}
-	once := r.ev.Workflow.InjectsOnce()
 	hash := ""
 	if observed {
 		h, known := r.hash()
@@ -98,9 +105,84 @@ func (r *pass) observeFinished() {
 		}
 		hash = h
 	}
-	if hash != "" || once {
+	if hash != "" || ends {
 		_ = r.write(state.KindObserved, "", 0, state.OutcomeFinished, "", ev.Actor, hash)
 	}
+}
+
+// reconcile writes an ended line for each subagent the log has open in the session (state.State.Running) that the
+// subagents in flight of the event do not list (unlisted), the actor aside, so a subagent whose end never reached
+// polix, an interrupted one, stops counting as running. It acts only when the workflow counts the subagents
+// (workflow.Workflow.CountsAgents) and the agent gave the list: without it, or with one that does not decode, the
+// log stays as it is. A log that cannot be read reconciles nothing, with a warning. The entries of the event never
+// depend on these lines: with the list known, agents_are_running reads the list (see agentsRunning).
+func (r *pass) reconcile() {
+	ev := r.ev.Event
+	if !ev.InFlightKnown || !r.ev.Workflow.CountsAgents() {
+		return
+	}
+	st, err := r.currentState()
+	if r.waiting() {
+		return
+	}
+	if err != nil {
+		r.warnLog(err)
+		return
+	}
+	open := st.Running(ev.Session)
+	if ev.Actor != agent.ActorSession {
+		open = st.RunningOthers(ev.Session, ev.AgentID, ev.Actor)
+	}
+	for _, e := range unlisted(open, ev.InFlight) {
+		r.writeEnded(e)
+		if r.waiting() {
+			return
+		}
+	}
+}
+
+// writeEnded appends the ended line of the open subagent of the started line open: about the event, with the type
+// and the id of that subagent, without key nor hash.
+func (r *pass) writeEnded(open state.Entry) {
+	ev := r.ev.Event
+	branch := r.branch()
+	if r.waiting() {
+		return
+	}
+	e := state.Entry{Kind: state.KindObserved, Agent: ev.Agent, Session: ev.Session, Event: ev.Name, Actor: open.Actor,
+		AgentID: open.AgentID, Branch: branch, Outcome: state.OutcomeEnded}
+	_ = r.appendEntry(e, e.Valid())
+}
+
+// unlisted returns the started lines of open whose subagent inFlight does not list: a line with an id is listed by
+// a subagent of that id; then each line without id by a subagent of its type not taken yet, in order.
+func unlisted(open []state.Entry, inFlight []agent.Subagent) []state.Entry {
+	taken := make([]bool, len(inFlight))
+	listed := make([]bool, len(open))
+	for i, e := range open {
+		j := slices.IndexFunc(inFlight, func(s agent.Subagent) bool { return e.AgentID != "" && s.ID == e.AgentID })
+		if j >= 0 {
+			listed[i], taken[j] = true, true
+		}
+	}
+	for i, e := range open {
+		j := -1
+		for k, s := range inFlight {
+			if j < 0 && e.AgentID == "" && !taken[k] && s.Type == e.Actor {
+				j = k
+			}
+		}
+		if j >= 0 {
+			listed[i], taken[j] = true, true
+		}
+	}
+	var out []state.Entry
+	for i, e := range open {
+		if !listed[i] {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // unusableLog is the warning of a stop the loop guard lets through because the log cannot be used.

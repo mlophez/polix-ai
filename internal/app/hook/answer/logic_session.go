@@ -21,8 +21,9 @@ const (
 //
 // On start the built-in guidance of the workflow comes before the entries, so the contexts of the repository have the
 // last word. On start and subagent_start, which begin a new context, every inject injects each time it applies; with
-// the answer known, they write that the session, or the subagent of the type of the actor, started when the workflow
-// observes it (workflow.Workflow.ObservesStart), so its once-only injects are due again (see due). subagent_start
+// the answer known, they write that the session, keyed by the source of the start, or the subagent of the type of
+// the actor, with its id, started when the workflow observes it (workflow.Workflow.ObservesStart), so its once-only
+// injects are due again (see due) and the subagents still running are known (see agentsRunning). subagent_start
 // gets neither the guidance nor the requirements, which are told to the main session. On prompt a refusal rejects the
 // prompt, so its contexts never reach the AI: its once-only injects are written as injected only when the answer
 // does not refuse. On prompt, before the entries, the programs of requirements the PATH does not run are told to the
@@ -58,7 +59,7 @@ func (r *pass) session() agent.Answer {
 		return ans
 	}
 	if start && r.ev.Workflow.ObservesStart() {
-		_ = r.write(state.KindObserved, "", 0, state.OutcomeStarted, "", "", "")
+		_ = r.write(state.KindObserved, "", 0, state.OutcomeStarted, "", r.ev.Event.Source, "")
 	}
 	if r.waiting() {
 		return ans

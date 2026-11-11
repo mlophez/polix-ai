@@ -1387,3 +1387,307 @@ on:
 		t.Fatalf("the check of the invalid rule runs: %q", stderr)
 	}
 }
+
+// subagent calls SubagentStart, or SubagentStop with stop, of a builder subagent of id, as Claude Code does.
+func (r *repo) subagent(id string, stop bool) (int, string, string) {
+	r.t.Helper()
+	event := "SubagentStart"
+	if stop {
+		event = "SubagentStop"
+	}
+	return r.hook("claude", map[string]any{"hook_event_name": event, "agent_type": "builder", "agent_id": id})
+}
+
+// sessionStart calls SessionStart with source, as Claude Code does on a new session, a resume, a clear or a
+// compaction.
+func (r *repo) sessionStart(source string) (int, string, string) {
+	r.t.Helper()
+	return r.hook("claude", map[string]any{"hook_event_name": "SessionStart", "source": source})
+}
+
+// lines counts the lines of the log that hold every field of fields with its value, written as a "key=value".
+func (r *repo) lines(fields ...string) int {
+	r.t.Helper()
+	n := 0
+	for line := range strings.SplitSeq(strings.TrimSpace(r.log()), "\n") {
+		var l map[string]any
+		if json.Unmarshal([]byte(line), &l) != nil {
+			continue
+		}
+		all := true
+		for _, f := range fields {
+			k, v, _ := strings.Cut(f, "=")
+			all = all && fmt.Sprint(l[k]) == v
+		}
+		if all {
+			n++
+		}
+	}
+	return n
+}
+
+const agentsRunningOnCommit = `version: 1
+on:
+  pre_commit:
+    - when: { agents_are_running: %v }
+      action: { block: "Subagentes: %v" }
+`
+
+// AC1: on pre_commit of the main session, agents_are_running holds after the start of a subagent and before its end,
+// and stops holding once it ends; agents_are_running: false does the opposite. The lines of the subagent carry its
+// agent_id.
+func TestAgentsAreRunningOnCommit(t *testing.T) {
+	for _, want := range []bool{true, false} {
+		r := newRepo(t, "main")
+		r.write("polix.yaml", fmt.Sprintf(agentsRunningOnCommit, want, want))
+		blocks := func(running bool) int {
+			if running == want {
+				return 2
+			}
+			return 0
+		}
+		code, _, stderr := r.bash("git commit -m x", false)
+		expect(t, fmt.Sprintf("%v: commit before the subagent", want), code, blocks(false), stderr)
+		code, _, stderr = r.subagent("a1", false)
+		expect(t, "the subagent starts", code, 0, stderr)
+		code, _, stderr = r.bash("git commit -m x", false)
+		expect(t, fmt.Sprintf("%v: commit while it runs", want), code, blocks(true), stderr)
+		code, _, stderr = r.subagent("a1", true)
+		expect(t, "the subagent stops", code, 0, stderr)
+		code, _, stderr = r.bash("git commit -m x", false)
+		expect(t, fmt.Sprintf("%v: commit after it ends", want), code, blocks(false), stderr)
+		if r.lines("kind=observed", "outcome=started", "event=subagent_start", "actor=builder", "agent_id=a1") != 1 ||
+			r.lines("kind=observed", "outcome=finished", "event=subagent_stop", "key=builder", "agent_id=a1",
+				"hash=<nil>") != 1 {
+			t.Fatalf("%v: the lines of the subagent: %s", want, r.log())
+		}
+	}
+}
+
+// AC6: on subagent_stop the subagent that stops does not count, so the last one to stop sees agents_are_running:
+// false while one stopping next to another still running does not; a refused subagent_stop leaves it running.
+func TestAgentsAreRunningOnSubagentStop(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  subagent_stop:
+    - when: { agents_are_running: false }
+      action: { block: "Último subagente" }
+  pre_commit:
+    - when: { agents_are_running: true }
+      action: { block: "Hay subagentes" }
+`)
+	r.subagent("a1", false)
+	r.subagent("a2", false)
+	code, _, stderr := r.subagent("a2", true)
+	expect(t, "a2 stops while a1 runs", code, 0, stderr)
+	code, _, stderr = r.subagent("a1", true)
+	expect(t, "a1, the last one, stops", code, 2, stderr)
+	if !strings.Contains(stderr, "Último subagente") {
+		t.Fatalf("reason: %q", stderr)
+	}
+	code, _, stderr = r.bash("git commit -m x", false)
+	expect(t, "commit after the refused stop of a1", code, 2, stderr)
+	if r.lines("outcome=finished", "agent_id=a1") != 0 || r.lines("outcome=finished", "agent_id=a2") != 1 {
+		t.Fatalf("a refused stop writes no finished line: %s", r.log())
+	}
+}
+
+// AC7: a start of the session that compacts keeps the subagents running; one that clears closes them.
+func TestAgentsAreRunningAfterSessionStart(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", fmt.Sprintf(agentsRunningOnCommit, true, true))
+	r.subagent("a1", false)
+	code, _, stderr := r.sessionStart("compact")
+	expect(t, "compact", code, 0, stderr)
+	code, _, stderr = r.bash("git commit -m x", false)
+	expect(t, "commit after compact", code, 2, stderr)
+	code, _, stderr = r.sessionStart("clear")
+	expect(t, "clear", code, 0, stderr)
+	code, _, stderr = r.bash("git commit -m x", false)
+	expect(t, "commit after clear", code, 0, stderr)
+	if r.lines("outcome=started", "event=start", "actor=session", "key=compact", "agent_id=<nil>") != 1 ||
+		r.lines("outcome=started", "event=start", "actor=session", "key=clear") != 1 {
+		t.Fatalf("the source is the key of the start: %s", r.log())
+	}
+}
+
+// stopWith calls Stop, or with id the SubagentStop of the builder of id, with tasks as its background_tasks, left out
+// when nil; task gives one subagent of them.
+func (r *repo) stopWith(id string, tasks any) (int, string, string) {
+	r.t.Helper()
+	in := map[string]any{"hook_event_name": "Stop"}
+	if id != "" {
+		in = map[string]any{"hook_event_name": "SubagentStop", "agent_type": "builder", "agent_id": id}
+	}
+	if tasks != nil {
+		in["background_tasks"] = tasks
+	}
+	return r.hook("claude", in)
+}
+
+// task is a subagent of background_tasks, running.
+func task(id string) map[string]any {
+	return map[string]any{"id": id, "type": "subagent", "agent_type": "builder", "status": "running"}
+}
+
+const agentsRunningOnStop = `version: 1
+on:
+  pre_commit:
+    - when: { agents_are_running: true }
+      action: { block: "Hay subagentes" }
+  stop:
+    - when: { agents_are_running: true }
+      action: { block: "Espera a los subagentes" }
+`
+
+// AC4: on stop, background_tasks decides agents_are_running: one that lists the subagent makes it true and writes
+// nothing; one that lists none makes it false although the log has it open, writes one ended line for it, and a
+// later pre_commit no longer counts it.
+func TestAgentsAreRunningReconciled(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", agentsRunningOnStop)
+	r.subagent("a1", false)
+	code, _, stderr := r.stopWith("", []any{task("a1"), map[string]any{"id": "b1", "type": "shell"}})
+	expect(t, "stop while a1 is listed", code, 2, stderr)
+	if n := r.lines("outcome=ended"); n != 0 {
+		t.Fatalf("a listed subagent is not ended: %s", r.log())
+	}
+	code, _, stderr = r.stopWith("", []any{map[string]any{"id": "b1", "type": "shell"}})
+	expect(t, "stop without a1 listed", code, 0, stderr)
+	if r.lines("kind=observed", "outcome=ended", "event=stop", "actor=builder", "agent_id=a1", "key=<nil>",
+		"hash=<nil>") != 1 || r.lines("outcome=ended") != 1 {
+		t.Fatalf("one ended line for a1: %s", r.log())
+	}
+	code, _, stderr = r.bash("git commit -m x", false)
+	expect(t, "commit after a1 ended", code, 0, stderr)
+	code, _, stderr = r.stopWith("", []any{})
+	expect(t, "stop with nothing to end", code, 0, stderr)
+	if r.lines("outcome=ended") != 1 {
+		t.Fatalf("an ended subagent is not ended again: %s", r.log())
+	}
+}
+
+// AC5: a stop without background_tasks, or with one that is not an array of tasks, decides by the log and writes no
+// ended line.
+func TestAgentsAreRunningWithoutTasks(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", agentsRunningOnStop)
+	r.subagent("a1", false)
+	code, _, stderr := r.stopWith("", nil)
+	expect(t, "stop without background_tasks", code, 2, stderr)
+	code, _, stderr = r.stopWith("", "a1")
+	expect(t, "stop with a malformed background_tasks", code, 2, stderr)
+	if r.lines("outcome=ended") != 0 {
+		t.Fatalf("no ended line: %s", r.log())
+	}
+}
+
+// AC6: on subagent_stop, the subagent that stops does not count among background_tasks either, so one that lists
+// only itself answers agents_are_running: false although the log has another open, which it ends.
+func TestAgentsAreRunningOnSubagentStopReconciled(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  subagent_stop:
+    - when: { agents_are_running: false }
+      action: { block: "Último subagente" }
+`)
+	r.subagent("a1", false)
+	r.subagent("a2", false)
+	code, _, stderr := r.stopWith("a1", []any{task("a1")})
+	expect(t, "a1 stops, listed alone", code, 2, stderr)
+	if r.lines("outcome=ended", "agent_id=a2", "actor=builder", "event=subagent_stop") != 1 ||
+		r.lines("outcome=ended") != 1 {
+		t.Fatalf("a2 ended, a1 not: %s", r.log())
+	}
+}
+
+// waitingRunOnStop has a run_on_stop item that fails on a changed Go file, with the option of the format verb after
+// its message.
+const waitingRunOnStop = `version: 1
+guardrails:
+  run_on_stop:
+    - run: [git, rev-parse, --verify, --quiet, missing]
+      changed: "*.go"
+      message: "Fallan los tests"%s
+`
+
+// noticeWait is the notice of the stops that hold run_on_stop back while subagents run.
+const noticeWait = "run_on_stop waits for the subagents still running: its checks run on the next stop after they end."
+
+// AC9, AC11: an item of run_on_stop that waits does not run while a subagent runs, even without background_tasks:
+// the stop does not block, shows the notice once and logs no run; it runs on the next stop after the subagent ends.
+func TestRunOnStopWaitsForAgents(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", fmt.Sprintf(waitingRunOnStop, ""))
+	r.write("src/a.go", "package a\n")
+	r.subagent("a1", false)
+	code, stdout, stderr := r.stop()
+	expect(t, "stop while a1 runs", code, 0, stderr)
+	if msg := systemMessage(t, stdout); strings.Count(msg, noticeWait) != 1 {
+		t.Fatalf("the notice once: %q", msg)
+	}
+	if r.lines("action=run") != 0 || r.lines("outcome=blocked") != 0 {
+		t.Fatalf("the check ran: %s", r.log())
+	}
+	r.subagent("a1", true)
+	code, stdout, stderr = r.stop()
+	expect(t, "stop after a1 ends", code, 2, stderr)
+	if !strings.Contains(stderr, "Fallan los tests") || strings.Contains(stdout+stderr, noticeWait) {
+		t.Fatalf("the check runs, without the notice: %q %q", stdout, stderr)
+	}
+}
+
+// AC10: an item with wait_agents: false runs while a subagent runs, as before.
+func TestRunOnStopDoesNotWait(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", fmt.Sprintf(waitingRunOnStop, "\n      wait_agents: false"))
+	r.write("src/a.go", "package a\n")
+	r.subagent("a1", false)
+	code, _, stderr := r.stop()
+	expect(t, "stop while a1 runs", code, 2, stderr)
+	if !strings.Contains(stderr, "Fallan los tests") {
+		t.Fatalf("reason: %q", stderr)
+	}
+}
+
+// AC11: two items that wait and whose changed match show the notice once in the answer, and a stop with no subagent
+// running shows none.
+func TestRunOnStopNoticeOnce(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+guardrails:
+  run_on_stop:
+    - run: git --version
+      changed: "*.go"
+    - run: git status
+      changed: "src/**"
+`)
+	r.write("src/a.go", "package a\n")
+	code, stdout, stderr := r.stop()
+	expect(t, "stop without subagents", code, 0, stderr)
+	if strings.Contains(stdout, "run_on_stop waits") {
+		t.Fatalf("a notice without subagents: %q", stdout)
+	}
+	r.subagent("a1", false)
+	code, stdout, stderr = r.stop()
+	expect(t, "stop while a1 runs", code, 0, stderr)
+	if msg := systemMessage(t, stdout); strings.Count(msg, noticeWait) != 1 {
+		t.Fatalf("the notice once: %q", msg)
+	}
+}
+
+// AC13: a workflow that neither injects once, nor has requirements, nor uses agents_are_running writes no started
+// nor finished line.
+func TestAgentsNotCountedWithoutTheCondition(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", reviewOnStop)
+	r.sessionStart("startup")
+	r.subagent("a1", false)
+	r.stopWith("", []any{})
+	r.subagent("a1", true)
+	if r.lines("outcome=started") != 0 || r.lines("outcome=finished") != 0 || r.lines("outcome=ended") != 0 {
+		t.Fatalf("lines written: %s", r.log())
+	}
+}

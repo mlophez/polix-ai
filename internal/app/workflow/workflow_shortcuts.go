@@ -4,6 +4,7 @@ import (
 	"errors"
 	"maps"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -37,12 +38,14 @@ type GuardrailForbidden struct {
 }
 
 // GuardrailCheck is an item of format_on_edit or run_on_stop: the command to run, the globs that scope it (the
-// path of format_on_edit or the changed of run_on_stop, as written, nil without them) and the message before
-// the output of a failure. Problems holds what is wrong with its values, reported at its line.
+// path of format_on_edit or the changed of run_on_stop, as written, nil without them), the message before
+// the output of a failure and, for run_on_stop, whether it waits for the subagents still running (wait_agents, true
+// when left out). Problems holds what is wrong with its values, reported at its line.
 type GuardrailCheck struct {
 	Run      []string
 	Scope    any
 	Message  string
+	Waits    bool
 	Line     int
 	Problems []string
 }
@@ -59,6 +62,11 @@ const (
 // branchMessage is the message of the entry of protected_branches, in English since polix writes it.
 const branchMessage = "{branch} is protected in " + File + ": create a branch for this change and commit there."
 
+// waitMessage is the notice of the stops that hold back the items of run_on_stop that wait while subagents run, in
+// English since polix writes it.
+const waitMessage = ShortcutRunOnStop + " waits for the subagents still running: its checks run on the next stop " +
+	"after they end."
+
 // GuardrailsKeys are the shortcuts of the section guardrails, in the order they expand.
 var GuardrailsKeys = []string{ShortcutProtectedFiles, ShortcutForbiddenCommands, ShortcutProtectedBranches,
 	ShortcutFormatOnEdit, ShortcutRunOnStop}
@@ -68,7 +76,7 @@ var GuardrailsKeys = []string{ShortcutProtectedFiles, ShortcutForbiddenCommands,
 var (
 	ForbiddenKeys    = []string{"pattern", "reason"}
 	FormatOnEditKeys = []string{"run", "path", "message"}
-	RunOnStopKeys    = []string{"run", "changed", "message"}
+	RunOnStopKeys    = []string{"run", "changed", "message", "wait_agents"}
 )
 
 // Valid tells why the section is not valid: the items that are not, each with why.
@@ -120,7 +128,11 @@ func (c GuardrailCheck) Valid() error {
 //
 //   - protected_branches: an entry on pre_commit with branch, an anchored regular expression of the names.
 //   - format_on_edit: an entry on post_edit per item that runs its command, on the edits of its path when it has one.
-//   - run_on_stop: an entry on stop per item that runs its command, when its changed holds if it has one.
+//   - run_on_stop: an entry on stop per item that runs its command, when its changed holds if it has one and, for an
+//     item that waits, when no subagent is running (agents_are_running: false); and, when an item waits, one notify
+//     that tells the user, every time, that the checks wait, while subagents run and a changed holding the globs of
+//     every item that waits holds, left out when one of them has none (waitNotice). The notify goes last on stop,
+//     after the entries written in on too, so no entry after it may block the stop and hide it.
 //
 // Each entry takes the line of its item, the first one for an entry of several items, and the path of its shortcut.
 // protected_files and forbidden_commands expand into nothing: they are protections, not entries.
@@ -148,6 +160,9 @@ func (g Guardrails) Expand(on map[string][]Entry) map[string][]Entry {
 	maps.Copy(out, on)
 	for ev, entries := range regular {
 		out[ev] = append(entries, on[ev]...)
+	}
+	if e, ok := g.waitNotice(); ok {
+		out[Stop] = append(out[Stop], e)
 	}
 	return out
 }
@@ -212,17 +227,56 @@ func (g Guardrails) Problems(w Workflow) []string {
 	return v.byLine()
 }
 
-// entry returns the entry of the item c of the shortcut key, whose scope goes in the condition cond; false when the
-// item has problems.
+// entry returns the entry of the item c of the shortcut key, whose scope goes in the condition cond, and, when the
+// item waits, agents_are_running: false; false when the item has problems.
 func (c GuardrailCheck) entry(key, cond string) (Entry, bool) {
 	if len(c.Problems) > 0 {
 		return Entry{}, false
 	}
 	var when Cond
-	if c.Scope != nil {
+	switch {
+	case c.Scope != nil && c.Waits:
+		when = Cond{cond: c.Scope, "agents_are_running": false}
+	case c.Scope != nil:
 		when = Cond{cond: c.Scope}
+	case c.Waits:
+		when = Cond{"agents_are_running": false}
 	}
 	e, _ := when.shortcutRun("guardrails."+key, c.Line, c.Run, c.Message)
+	return e, true
+}
+
+// waitNotice returns the notify of run_on_stop that tells the user its checks wait for the subagents still running,
+// at the line of the first item that waits, when subagents run and a file in the globs of every item that waits, in
+// file order and once each, changed; without changed when one of them has none. False when no item without problems
+// waits.
+func (g Guardrails) waitNotice() (Entry, bool) {
+	line := 0
+	var globs []any
+	scoped := true
+	for _, c := range g.RunOnStop {
+		if len(c.Problems) > 0 || !c.Waits {
+			continue
+		}
+		if line == 0 {
+			line = c.Line
+		}
+		list, err := Cond{"changed": c.Scope}.Strings("changed")
+		scoped = scoped && c.Scope != nil
+		for _, s := range list {
+			if err == nil && !slices.Contains(globs, any(s)) {
+				globs = append(globs, s)
+			}
+		}
+	}
+	if line == 0 {
+		return Entry{}, false
+	}
+	when := Cond{"agents_are_running": true}
+	if scoped {
+		when = Cond{"agents_are_running": true, "changed": globs}
+	}
+	e, _ := when.shortcutNotify("guardrails."+ShortcutRunOnStop, line, waitMessage)
 	return e, true
 }
 
@@ -270,6 +324,15 @@ func (c Cond) shortcutRun(from string, line int, command []string, message strin
 	a := Action{Run: &r, Keys: []string{VerbRun}}
 	e := Entry{When: c, Action: a, From: from, Line: line, Keys: c.shortcutKeys()}
 	return e, errors.Join(r.Valid(), a.Valid(), e.Valid())
+}
+
+// shortcutNotify returns the entry of a shortcut from at line that shows message to the user every time the
+// conditions of c, its when, hold.
+func (c Cond) shortcutNotify(from string, line int, message string) (Entry, error) {
+	n := Notify{Message: message, Always: true, Keys: []string{"always", "message"}}
+	a := Action{Notify: &n, Keys: []string{VerbNotify}}
+	e := Entry{When: c, Action: a, From: from, Line: line, Keys: c.shortcutKeys()}
+	return e, errors.Join(n.Valid(), a.Valid(), e.Valid())
 }
 
 // shortcutKeys returns the keys an entry of a shortcut whose when is c would have written in on.

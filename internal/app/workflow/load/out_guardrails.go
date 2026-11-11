@@ -42,6 +42,7 @@ type checkYAML struct {
 	Run      []string
 	Scope    any
 	Message  string
+	Waits    bool
 	Line     int
 	Problems []string
 }
@@ -204,9 +205,10 @@ func (n nodeYAML) forbidden() forbiddenYAML {
 
 // check reads the item n of format_on_edit or run_on_stop (the shortcut key, whose items take keys), a map, with
 // the problems of its values. The command of run is a string split on spaces or a list of arguments, and the scope
-// keeps the value as written, which the validator checks as the condition it becomes.
+// keeps the value as written, which the validator checks as the condition it becomes. An item of run_on_stop waits
+// for the subagents still running unless its wait_agents, true or false, is false.
 func (n nodeYAML) check(key string, keys []string) checkYAML {
-	y := checkYAML{Line: n.Line}
+	y := checkYAML{Line: n.Line, Waits: key == workflow.ShortcutRunOnStop}
 	badRun := false
 	y.Problems = n.fields(key, keys, func(k string, val nodeYAML) string {
 		switch k {
@@ -223,6 +225,12 @@ func (n nodeYAML) check(key string, keys []string) checkYAML {
 				return "message must be a text"
 			}
 			y.Message = s
+		case "wait_agents":
+			var waits bool
+			if val.Kind != yaml.ScalarNode || val.ShortTag() != "!!bool" || val.Decode(&waits) != nil {
+				return "wait_agents must be true or false"
+			}
+			y.Waits = waits
 		default:
 			var scope any
 			if err := val.Decode(&scope); err != nil {

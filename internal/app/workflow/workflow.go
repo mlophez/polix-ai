@@ -240,9 +240,24 @@ func (w Workflow) Programs() []string {
 
 // ObservesStart reports whether polix writes the start of a session, or of a subagent, to its log, so what it tells
 // once per session is due again: when the workflow injects once (InjectsOnce), or has requirements, whose missing
-// programs the hook tells once on the first prompt of a session.
+// programs the hook tells once on the first prompt of a session; or so it knows the subagents still running, when
+// the workflow counts them (CountsAgents).
 func (w Workflow) ObservesStart() bool {
-	return len(w.Requirements) > 0 || w.InjectsOnce()
+	return len(w.Requirements) > 0 || w.InjectsOnce() || w.CountsAgents()
+}
+
+// CountsAgents reports whether an entry uses agents_are_running, in its when or its unless or in a not or an any
+// nested in them, those the shortcuts expand into included: polix then writes the start and the end of every
+// subagent to its log, to know which ones are still running.
+func (w Workflow) CountsAgents() bool {
+	for _, entries := range w.On {
+		for _, e := range entries {
+			if e.When.countsAgents() || e.Unless.countsAgents() {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // InjectsOnce reports whether the workflow has a once-only inject: an inject without always on an event other than

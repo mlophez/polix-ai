@@ -20,6 +20,7 @@ type entryJSON struct {
 	Session string `json:"session,omitempty"`
 	Event   string `json:"event,omitempty"`
 	Actor   string `json:"actor,omitempty"`
+	AgentID string `json:"agent_id,omitempty"`
 	Branch  string `json:"branch,omitempty"`
 	Hash    string `json:"hash,omitempty"`
 	Head    string `json:"head,omitempty"`

@@ -33,6 +33,7 @@ func (r *pass) writeEntry(kind, action string, line int, outcome, reason, key, h
 // hash, passed and blocked) also carry the HEAD commit, so another branch on the same commit reads them too, and so
 // does a snapshot, so its post_command sees HEAD moved; every other entry goes without it. Only a snapshot carries
 // refs, what git moves without moving HEAD, so its post_command sees a git stash or a merge stopped on its conflicts.
+// Every entry carries the id of the subagent of the event, when the agent gives one.
 func (r *pass) entryOf(kind, action string, line int, outcome, reason, key, hash, refs string) (state.Entry, error) {
 	ev := r.ev.Event
 	branch, head := r.branch(), r.head()
@@ -43,7 +44,7 @@ func (r *pass) entryOf(kind, action string, line int, outcome, reason, key, hash
 		head = ""
 	}
 	e := state.Entry{Kind: kind, Agent: ev.Agent, Session: ev.Session, Event: ev.Name, Actor: ev.Actor,
-		Branch: branch, Hash: hash, Head: head, Refs: refs, Action: action, Line: line, Key: key, Outcome: outcome,
+		AgentID: ev.AgentID, Branch: branch, Hash: hash, Head: head, Refs: refs, Action: action, Line: line, Key: key, Outcome: outcome,
 		Reason: reason}
 	return e, e.Valid()
 }

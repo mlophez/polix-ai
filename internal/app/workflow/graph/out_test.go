@@ -96,8 +96,11 @@ func TestCommand(t *testing.T) {
 	repo = newRepo(t, map[string]string{workflow.File: "version: 1\nguardrails:\n  run_on_stop:\n" +
 		"    - run: \"go test ./...\"\n"})
 	code, stdout, stderr = runCommand(t, repo, "graph")
-	if want := "flowchart TD\n  subgraph stop\n    n0[\"run go test ./...<br/>from guardrails.run_on_stop\"]\n" +
-		"  end\n"; code != 0 || stdout != want {
+	if want := "flowchart TD\n  subgraph stop\n" +
+		"    n0[\"when agents_are_running=false<br/>run go test ./...<br/>from guardrails.run_on_stop\"]\n" +
+		"    n1[\"when agents_are_running=true<br/>notify: run_on_stop waits for the subagents still running: its " +
+		"checks run on the next stop after they end. (always)<br/>from guardrails.run_on_stop\"]\n" +
+		"    n0 --> n1\n  end\n"; code != 0 || stdout != want {
 		t.Fatalf("graph of guardrails: %d %q %q", code, stdout, stderr)
 	}
 }

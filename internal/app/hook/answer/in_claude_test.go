@@ -1,6 +1,7 @@
 package answer
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
@@ -83,6 +84,81 @@ func TestParseClaude(t *testing.T) {
 	}
 	if _, _, err := (claude{}).parse([]byte(`{`)); err == nil {
 		t.Error("broken JSON is an error")
+	}
+}
+
+// The agent_id of SubagentStart, SubagentStop and a tool call inside a subagent, and the source of SessionStart,
+// reach the event; without them, or with a value that is not a text, they are empty and the input still parses.
+// The main session, a Stop included, has no agent_id, and only a start has a source.
+func TestClaudeAgentIDAndSource(t *testing.T) {
+	cases := []struct {
+		input   string
+		agentID string
+		source  string
+	}{
+		{`{"hook_event_name":"SubagentStart","agent_id":"a1","agent_type":"builder"}`, "a1", ""},
+		{`{"hook_event_name":"SubagentStop","agent_id":"a1","agent_type":"builder"}`, "a1", ""},
+		{`{"hook_event_name":"PreToolUse","agent_id":"a1","agent_type":"builder","tool_name":"Bash",` +
+			`"tool_input":{"command":"git commit -m x"}}`, "a1", ""},
+		{`{"hook_event_name":"SessionStart","source":"compact"}`, "", "compact"},
+		{`{"hook_event_name":"SessionStart"}`, "", ""},
+		{`{"hook_event_name":"SessionStart","source":7}`, "", ""},
+		{`{"hook_event_name":"SubagentStop","agent_type":"builder"}`, "", ""},
+		{`{"hook_event_name":"SubagentStop","agent_id":["a1"],"agent_type":"builder"}`, "", ""},
+		{`{"hook_event_name":"Stop","agent_id":"a1","source":"startup"}`, "", ""},
+		{`{"hook_event_name":"UserPromptSubmit","agent_id":"a1","prompt":"x"}`, "", ""},
+	}
+	for _, c := range cases {
+		_, evs, err := claude{}.parse([]byte(c.input))
+		if err != nil || len(evs) == 0 {
+			t.Errorf("%s: %+v %v", c.input, evs, err)
+			continue
+		}
+		for _, ev := range evs {
+			if ev.AgentID != c.agentID || ev.Source != c.source || ev.Valid() != nil {
+				t.Errorf("%s: event %+v", c.input, ev)
+			}
+		}
+	}
+}
+
+// The background_tasks of Stop and SubagentStop give the subagents in flight, the other tasks left out, whatever their
+// status; without the array, or with a value that is not an array of tasks, they are unknown, and an empty array
+// is known and empty. The input parses in every case, and the other events never carry them.
+func TestClaudeBackgroundTasks(t *testing.T) {
+	tasks := `[{"id":"a1","type":"subagent","agent_type":"builder","status":"running"},` +
+		`{"id":"b1","type":"shell","status":"running"},{"id":"a2","type":"subagent","agent_type":"reviewer",` +
+		`"status":"completed"}]`
+	cases := []struct {
+		input string
+		known bool
+		ids   string
+	}{
+		{`{"hook_event_name":"Stop","background_tasks":` + tasks + `}`, true, "a1:builder,a2:reviewer"},
+		{`{"hook_event_name":"SubagentStop","agent_id":"a1","agent_type":"builder","background_tasks":` + tasks + `}`,
+			true, "a1:builder,a2:reviewer"},
+		{`{"hook_event_name":"Stop","background_tasks":[]}`, true, ""},
+		{`{"hook_event_name":"Stop"}`, false, ""},
+		{`{"hook_event_name":"Stop","background_tasks":null}`, false, ""},
+		{`{"hook_event_name":"Stop","background_tasks":"a1"}`, false, ""},
+		{`{"hook_event_name":"Stop","background_tasks":["a1"]}`, false, ""},
+		{`{"hook_event_name":"Stop","background_tasks":[{"type":"subagent"}]}`, false, ""},
+		{`{"hook_event_name":"SubagentStart","agent_id":"a1","agent_type":"builder","background_tasks":` + tasks + `}`,
+			false, ""},
+	}
+	for _, c := range cases {
+		_, evs, err := claude{}.parse([]byte(c.input))
+		if err != nil || len(evs) != 1 {
+			t.Errorf("%s: %+v %v", c.input, evs, err)
+			continue
+		}
+		var ids []string
+		for _, s := range evs[0].InFlight {
+			ids = append(ids, s.ID+":"+s.Type)
+		}
+		if evs[0].InFlightKnown != c.known || strings.Join(ids, ",") != c.ids || evs[0].Valid() != nil {
+			t.Errorf("%s: event %+v", c.input, evs[0])
+		}
 	}
 }
 

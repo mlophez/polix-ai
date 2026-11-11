@@ -94,6 +94,21 @@ func (c Cond) appendFinished(out []string) []string {
 	return out
 }
 
+// countsAgents reports whether c, or a map nested in it, uses agents_are_running.
+func (c Cond) countsAgents() bool {
+	for k := range c {
+		switch k {
+		case "agents_are_running":
+			return true
+		case "not", "any":
+			if nested, ok := c.Nested(k); ok && nested.countsAgents() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // cond reports the problems of the conditions c on event ev, in the order of their names; an empty ev skips the
 // events they hold on. inAny tells that c is the map of an `any`, where contains is rejected.
 func (v *validator) cond(ev string, c Cond, line int, inAny bool) {
@@ -135,6 +150,10 @@ func (v *validator) condition(ev string, c Cond, k string, line int, inAny bool)
 	case "exit":
 		if _, ok := c[k].(int); !ok {
 			v.add(line, "exit needs a number")
+		}
+	case "agents_are_running":
+		if _, ok := c[k].(bool); !ok {
+			v.add(line, "agents_are_running needs true or false")
 		}
 	case "contains":
 		v.condContains(c, line, inAny)

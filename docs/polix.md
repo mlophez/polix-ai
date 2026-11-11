@@ -404,7 +404,7 @@ guardrails:           # the basics every project wants (optional)
   format_on_edit:                                 # runs on each edited file of its path; a failure informs
     - { run: "gofmt -w {path}", path: "*.go" }
   run_on_stop:                                    # must pass before the agent ends its turn
-    - { run: "go test ./...", changed: "*.go" }
+    - { run: "go test ./...", changed: "*.go" }   # waits for running subagents unless wait_agents: false
 guidance:             # built-in instructions injected at session start (optional, all true by default)
   commit: true        # run each commit as a git commit of its own
   edit: true          # change files with the edit tool of the agent, not the shell
@@ -505,12 +505,20 @@ The other three are only sugar: the loading of polix.yaml (`internal/app/workflo
   `{branch} is protected in polix.yaml: create a branch for this change and commit there.`
 - `format_on_edit: [{ run, path, message }, ...]`: a regular entry on `post_edit` per item that runs its command,
   with the condition `path` when it has one (the edited file, not `changed`).
-- `run_on_stop: [{ run, changed, message }, ...]`: a regular entry on `stop` per item that runs its command,
-  with the condition `changed` when it has one.
+- `run_on_stop: [{ run, changed, message, wait_agents }, ...]`: a regular entry on `stop` per item that runs its
+  command, with the condition `changed` when it has one. An item waits for the subagents still running by default:
+  its entry also has `agents_are_running: false`, so while a subagent of the session runs, in the background or
+  interrupted without its end reaching polix, its check is skipped, and it runs on the next `stop` after the
+  subagents end. When at least one item waits, one more entry goes last on `stop`, after the entries written in
+  `on`: a `notify` with `always`, under `agents_are_running: true` and a `changed` with the globs of every item that
+  waits (none when one of them has none), so every stop that holds a check back tells the user once
+  `run_on_stop waits for the subagents still running: its checks run on the next stop after they end.`
+  `wait_agents: false` keeps an item running whether subagents run or not, as before; any other value than `true`
+  or `false` is a problem at the line of the item.
 
 In each event the entries of `protected_branches`, `format_on_edit` and `run_on_stop` come first, then the
-entries written in `on`, each group in the order of the file. Each expanded entry takes the line of its item, so
-the messages of `polix config check`, the keys of the repeat rules and the loop guard tell them apart, and the
+entries written in `on`, each group in the order of the file, the notify of `run_on_stop` aside. Each expanded
+entry takes the line of its item, so the messages of `polix config check`, the keys of the repeat rules and the loop guard tell them apart, and the
 path of its shortcut (`workflow.Entry.From`), which `polix graph` names; `polix graph` draws `protected_files` and
 `forbidden_commands` in a subgraph `guardrails` before the events. `polix config check` reports a value in another
 form than its own (a single string where a list goes, a string where a map goes) with the expected form, an
@@ -601,6 +609,12 @@ Conditions:
 - `finished`: a subagent type, or a list of them (all must hold), ended on this branch, or on another one with the
   same HEAD commit, and the files of the scope of the entry did not change since. See
   [What polix observes](#what-polix-observes-and-finished).
+- `agents_are_running: true|false`: subagents of the session, of any type, are still running, the one that acts
+  aside: on `subagent_stop` the subagent that stops does not count itself, so the last one to stop sees `false`. It
+  holds on every event, a `pre_commit` included, so a commit or the end of a turn can wait until every subagent has
+  ended. polix counts them from the starts and ends of subagents in its log, corrected on each `stop` and
+  `subagent_stop` of Claude Code with the list of work still in flight it sends (see
+  [What polix observes](#what-polix-observes-and-finished)). Any other value than `true` or `false` is a problem.
 - `not`: a map of nested conditions; it holds unless every one of them holds (with one nested condition, it is its
   negation).
 - `any`: a map of nested conditions; it holds when at least one of them holds. It may hold `not` and sit inside
@@ -779,13 +793,17 @@ line of the entry, a key and one outcome. The lines about a content that are rea
 content hash, a `passed` and a `blocked`, also carry `head`, the commit HEAD pointed to when they were written, left
 out when the repository has no commit yet, and so does a `snapshot`, so its `post_command` sees HEAD moved; the
 decisions and the other outcomes never carry it. A `snapshot` also carries `refs`, what git moves without HEAD (the
-commit of `refs/stash` and an operation stopped halfway), when there is one:
+commit of `refs/stash` and an operation stopped halfway), when there is one. Every line of an event of a subagent,
+the decisions included, also carries `agent_id`, the id the agent gives that subagent, left out when it gives none
+(Codex, an older Claude Code) and on the lines of the main session, so two subagents of one type are told apart:
 
 - `finished`: a subagent ended and the answer to its `subagent_stop` did not refuse. It is written, with the
   content hash and the subagent type as key, when a `finished` of the workflow names that type; polix observes it
   by itself, so no entry on `subagent_stop` is needed. Without a content hash it is written for any subagent when
-  the workflow has an `inject` that acts once, so the inject reaches its next run; a subagent the loop guard let
-  through gets this line too, never one with the hash.
+  the workflow has an `inject` that acts once, so the inject reaches its next run, or uses `agents_are_running`
+  (`run_on_stop` included, whose items wait by default), so the subagent stops counting as running; a subagent the
+  loop guard let through gets this line too, never one with the hash. A refused `subagent_stop` writes nothing: the
+  subagent goes on.
 - `passed`: a `run` of polix passed, with or without `always`, on a content that did not change while it ran; the
   key is what it ran and the hash is the content it saw. A run that rewrote files (a formatter) or ran with an
   unknown hash writes none. These lines show which checks were green on each content.
@@ -795,11 +813,15 @@ commit of `refs/stash` and an operation stopped halfway), when there is one:
 - `injected`: an `inject` that acts once reached the AI, keyed by its entry and the text, file or rule it injected,
   without hash. On `prompt`, an inject followed by a block that rejects the prompt writes none, since the AI never
   sees that prompt; on the other events an inject before a block reaches the AI with the block and counts.
-- `started`: a session started, resumed, was cleared or was compacted, on `start`, or a subagent started, on
+- `started`: a session started, resumed, was cleared or was compacted, on `start`, with the `source` the agent gives
+  (`startup`, `resume`, `clear` or `compact`) as key, empty when it gives none, or a subagent started, on
   `subagent_start`, with its type as the actor. Written only when the workflow has an `inject` without `always` on
-  an event other than `start` and `subagent_start` (one that acts once, `inject: { rules }` included), or
-  `requirements`. The line of `start` makes the once-only injects due again for every actor; the line of a subagent
-  only for its type.
+  an event other than `start` and `subagent_start` (one that acts once, `inject: { rules }` included),
+  `requirements` or `agents_are_running`. The line of `start` makes the once-only injects due again for every actor;
+  the line of a subagent only for its type.
+- `ended`: a subagent the log had open was missing from the list of work in flight that Claude Code sends on a
+  `stop` or a `subagent_stop` (its `background_tasks`), so it ended without its end reaching polix, as an
+  interrupted one does; with the type of that subagent as the actor and its `agent_id`, without key nor hash.
 - `notified`: a `notify` without `always` reached the user, keyed by its entry and the text it expanded to, without
   hash. The events of one hook call give one answer, and a blocked one shows the user no message, so it is written
   only when the whole call does not block, by its last event: the notice of the `pre_command` of a commit whose
@@ -828,6 +850,19 @@ after a commit moves HEAD, so a reviewed change committed in two parts asks for 
 whose branch is empty, sees the lines written on a branch at the same commit, and the lines written on a detached
 HEAD match each other. A line without `head`, written by an older polix, and a repository without commits, whose
 HEAD is unknown, match only by branch. The same holds for the repeat of `run` and for a `once` block.
+
+`agents_are_running` counts the subagents of the session still running, from these lines: a `started` of a
+subagent opens one; its `finished`, or an `ended`, closes it, the one of its `agent_id`, or, on the lines without
+one (Codex, an older Claude Code or polix), the oldest open one of its type; and a `started` of `start` whose key is
+not `compact` (a new session, a resume, a clear, or a start without `source`) closes every one, while a compaction
+keeps them, since background subagents survive it. A subagent that is interrupted may never report its end, so on
+each `stop` and `subagent_stop` that carries `background_tasks` polix reconciles the log with it, when the workflow
+uses the condition: every subagent the log has open and the list does not name, the one that acts aside, gets an
+`ended` line before the entries run, and the condition of that call reads the list itself, every task of type
+`subagent` counting as running whatever its `status`. A `background_tasks` that is missing or does not decode
+counts as absent: the call decides by the log alone and writes no `ended` line. The subagent that acts never counts
+itself, found by its `agent_id`, or by its type without one. A log that cannot be read counts as no subagent
+running, with the warning of [State](#state).
 
 Only what polix sees by itself counts: its own runs and the end of a subagent. A command the AI runs never counts
 as passed, green or not, and its `snapshot` only records the content before it, not what it ran nor its result:
@@ -960,11 +995,15 @@ count: it fails open, lets the agent stop with a warning and records a `loop_gua
   and the reason, the evidence of the process each change followed. It carries the content hash only when the call already
   computed it, since computing it costs a pass over the whole tree.
 - `observed`: what polix saw by itself and the workflow asks about, with its outcome (`finished`, `passed`,
-  `blocked`, `injected`, `started`, `notified`, `snapshot` or `watched`), its key and, on a `finished` with hash, a
-  `passed`, a `blocked` and a `snapshot`, the `head` commit, plus the `refs` on a `snapshot`; see
+  `blocked`, `injected`, `started`, `notified`, `snapshot`, `watched` or `ended`), its key and, on a `finished` with
+  hash, a `passed`, a `blocked` and a `snapshot`, the `head` commit, plus the `refs` on a `snapshot`; see
   [What polix observes](#what-polix-observes-and-finished). Nothing else is recorded: an edit of the AI leaves no
   observed line, a command leaves at most its `snapshot` and `watched`, when the workflow watches the edits, and the
-  end of a subagent no `finished` names leaves none when no `inject` acts once.
+  end of a subagent no `finished` names leaves none when no `inject` acts once and nothing uses
+  `agents_are_running`.
+
+Both kinds carry `agent_id` on the lines of an event of a subagent whose agent gives one; a polix older than it reads
+those lines and ignores the key, and a line without it, written by an older polix, pairs by the type of the subagent.
 
 Lines of the kinds `fact`, `injected` and `stop_block`, written by earlier builds, stay in the log, are ignored by
 every query and are shown by `polix log` with their kind (and the name of a `fact`).
@@ -988,8 +1027,8 @@ after it passes when the first was known, so `passed` is written only when the r
 anything that needs it after a run computes it again, since a run may rewrite files. A `once` block and the loop
 guard compute it, and `finished` only when a `finished` line of that type exists. When the workflow watches the
 edits, every command computes it before it runs and, when it has a `snapshot`, again after it; putting back a
-protected file counts as a run, so the hash is computed again after it. An `inject`, a `notify`, a `started` and a
-`notified` line never compute it.
+protected file counts as a run, so the hash is computed again after it. An `inject`, a `notify`, a `started`, a
+`notified` and an `ended` line never compute it.
 When it cannot be computed (an unreadable file, a broken index), nothing that needs it is observed nor holds:
 `finished` does not hold, a `run` is not skipped, a `once` block blocks, and the hook warns with the cause. The loop
 guard still counts the blocks of a stop made without a hash, as one content, so the agent can always stop.
@@ -1157,6 +1196,16 @@ may outlive the budget, since polix does not kill the whole process tree.
 - No tests inside `polix.yaml` yet, and expiring entries with `review_by` is pending.
 - `finished` only says that a subagent ended on the content, not what it concluded: requiring the verdict of the
   reviewer needs its output in the input of the hook.
+- `agents_are_running` in Codex counts by the log alone: Codex sends no list of work in flight, so a subagent whose
+  end never reached polix counts as running until a new session, a resume or a clear. In Claude Code an interrupted
+  subagent stays open until the next `stop` or `subagent_stop` that carries `background_tasks`, or a new session;
+  a compaction keeps it open.
+- Among the tasks of `background_tasks` only subagents count (shells, monitors and other tasks are left out), and
+  their `status` is not read: every subagent listed counts as running. polix takes the `id` of a task for the
+  `agent_id` of the subagent; this pairing is still to be checked against a running Claude Code, and a mismatch would
+  end live subagents in the log and let the one that stops count itself.
+- Lost lines of the log (parallel subagents appending at once) can leave a subagent open, holding back
+  `run_on_stop` until the next reconciliation; `wait_agents: false` keeps an item running regardless.
 - Measured on macOS: about 13 ms per hook call without a workflow and about 130 ms for a stop that computes the
   content hash of a 730 file repository.
   Not measured on Windows yet.

@@ -30,8 +30,8 @@ var Events = []string{Start, Prompt, SubagentStart, PreEdit, PostEdit, PreComman
 var Actions = []string{VerbRun, VerbInject, VerbBlock, VerbNotify}
 
 // Conditions a `when` or `unless` can use.
-var Conditions = []string{"actor", "finished", "branch", "var", "path", "changed", "file", "contains", "command",
-	"writes", "exit", "not", "any", "changed_lines", "changed_files", "risk_score"}
+var Conditions = []string{"actor", "finished", "agents_are_running", "branch", "var", "path", "changed", "file",
+	"contains", "command", "writes", "exit", "not", "any", "changed_lines", "changed_files", "risk_score"}
 
 // Measures are the conditions that measure the uncommitted diff, over the files of the nearest `changed`.
 var Measures = []string{"changed_lines", "changed_files", "risk_score"}
