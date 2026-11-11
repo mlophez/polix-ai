@@ -7,6 +7,14 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- The skill `/polix:risk` calibrates `risk.weights` and the thresholds `changed_lines`, `changed_files` and
+  `risk_score` of the entries of `polix.yaml` on the history of commits: it measures a sample with
+  `polix risk --commit`, weighs the paths by their fix and revert commits, picks the thresholds that make each gate
+  hold on the share of commits the user accepts to review (15% by default) and shows the commits that change side
+  before writing. Only the user runs it, typing the command.
+
 ### Changed
 
 - The switches `edit` and `layout` of `guidance` are off by default: a `polix.yaml` that leaves them out no longer

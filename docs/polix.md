@@ -1055,7 +1055,8 @@ also prints that Codex support is not implemented in this release and the setup 
 
 - The plugin `polix`, for the user, since it helps in any repository. It is the folder `plugins/polix/` of this
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
-  the folder of rules, `doctor` fixes the setup, `plan` writes a plan in the folder of plans, `build` implements a
+  the folder of rules, `risk` calibrates `risk.weights` and the thresholds of the measures on the history of commits,
+  `doctor` fixes the setup, `plan` writes a plan in the folder of plans, `build` implements a
   plan with one `builder` agent that runs every task in order, updates the Markdown docs of the project, has the
   agent `reviewer` review the change against the plan and the builder fix the blocking and major findings up to
   twice, reviewing after each fix, checks the acceptance criteria and merges the reports of the run into the
@@ -1071,16 +1072,16 @@ also prints that Codex support is not implemented in this release and the setup 
     `claude plugin install polix@polix --scope user`. Claude Code copies the plugin to its cache
     (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
     `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
-    skills are `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:init`, `/polix:plan`,
-    `/polix:build`, `/polix:review` and `/polix:audit`, its agents `polix:workflow-author`, `polix:rules-author`,
-    `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`. The skills `build`, `review` and
-    `audit` launch the agents; Codex, which has no agents of plugins and whose support is not
+    skills are `/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`,
+    `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit`, its agents `polix:workflow-author`,
+    `polix:rules-author`, `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`. The skills
+    `build`, `review` and `audit` launch the agents; Codex, which has no agents of plugins and whose support is not
     implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
     or the workflow of polix asks for it, as its description says, and the frontmatter enforces it.
-    `init` and `doctor` carry `disable-model-invocation: true`: only the user runs them, typing the command; when a
-    message of polix asks for one, as the session start does for `/polix:doctor`, the model tells the user to run
-    it. `plan`, `build`, `review` and `audit` stay open to the model, so a message of polix can ask it to run one,
+    `init`, `doctor` and `risk` carry `disable-model-invocation: true`: only the user runs them, typing the
+    command; when a message of polix asks for one, as the session start does for `/polix:doctor`, the model tells
+    the user to run it. `plan`, `build`, `review` and `audit` stay open to the model, so a message of polix can ask it to run one,
     but their description holds only the fixed sentence and asks the model never to suggest nor mention them on its
     own, and what each one does is a comment of the frontmatter, which the model never sees. `workflow` and `add-rule`
     stay open to the model but carry `paths` (`polix.yaml`, `ai/rules/**`): the model sees them only while it works

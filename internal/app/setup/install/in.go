@@ -87,10 +87,10 @@ func Command() *cobra.Command {
 		Long: "Install what the agents need to run polix, from this binary.\n\n" +
 			"Claude Code is the supported agent and the default. Codex is opt-in, set up only with --agent codex: its\n" +
 			"support is not implemented in this release and the setup is untested.\n\n" +
-			"For the user, the plugin polix, with skills (/polix:workflow, /polix:add-rule, /polix:doctor, /polix:init,\n" +
-			"/polix:plan, /polix:build, /polix:review, /polix:audit) and agents (polix:workflow-author, polix:rules-author,\n" +
-			"polix:builder, polix:reviewer, polix:rules-reviewer, polix:auditor) that help in any repository. It is written\n" +
-			"to the local marketplace ~/.polix/marketplace/ and registered with each agent:\n" +
+			"For the user, the plugin polix, with skills (/polix:workflow, /polix:add-rule, /polix:risk, /polix:doctor,\n" +
+			"/polix:init, /polix:plan, /polix:build, /polix:review, /polix:audit) and agents (polix:workflow-author,\n" +
+			"polix:rules-author, polix:builder, polix:reviewer, polix:rules-reviewer, polix:auditor) that help in any\n" +
+			"repository. It is written to the local marketplace ~/.polix/marketplace/ and registered with each agent:\n" +
 			"  Claude Code  claude plugin marketplace add, claude plugin install polix@polix --scope user\n" +
 			"  Codex        codex plugin marketplace add, and enabled in ~/.codex/config.toml (not implemented)\n\n" +
 			"For the repository of --dir, unless --user, the hooks that call polix hook, to commit with its polix.yaml:\n" +

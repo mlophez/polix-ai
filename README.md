@@ -193,7 +193,8 @@ on:
 Adopt the whole flow, a single phase or none of it.
 
 > The harness is in progress: plan, build and review exist, and a document phase is not written yet. Today the
-> plugin holds the skills that set Polix up (`/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:init`),
+> plugin holds the skills that set Polix up (`/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`,
+> `/polix:init`),
 > the skills `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit`, and the agents `polix:workflow-author`,
 > `polix:rules-author`, `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`. Every report
 > follows a fixed template, and `/polix:review` and `/polix:audit` save theirs in the folder of reports.
@@ -234,8 +235,8 @@ polix install --agent claude,codex  # Codex too: not implemented in this release
 `--agent codex`, and its support is not implemented. It sets up two things, and running it again only updates what
 changed:
 
-- **For you, the plugin `polix`.** It holds the skills `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`,
-  `/polix:init`, `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit` and the agents
+- **For you, the plugin `polix`.** It holds the skills `/polix:workflow`, `/polix:add-rule`, `/polix:risk`,
+  `/polix:doctor`, `/polix:init`, `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit` and the agents
   `polix:workflow-author`, `polix:rules-author`, `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and
   `polix:auditor`.
   The plugin ships inside the binary: Polix writes it to the local marketplace `~/.polix/marketplace/` and
