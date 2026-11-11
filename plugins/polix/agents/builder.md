@@ -7,7 +7,7 @@ description: >
   It never commits nor touches the index, and never asks: it decides what the plan leaves open and reports it.
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: inherit
-effort: high
+effort: medium
 color: green
 ---
 

@@ -5,8 +5,8 @@ name: review
 # It never fixes what it finds.
 description: >
   It runs only when the user or the workflow of polix asks for it. Never suggest it nor mention it on your own.
-effort: medium
-model: inherit
+effort: low
+model: sonnet
 user-invocable: true
 disable-model-invocation: false
 argument-hint: "[range or files, e.g. HEAD~3..HEAD or internal/app/setup; empty for the current change]"

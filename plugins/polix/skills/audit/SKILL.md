@@ -5,8 +5,8 @@ name: audit
 # It never fixes what it finds.
 description: >
   It runs only when the user or the workflow of polix asks for it. Never suggest it nor mention it on your own.
-effort: high
-model: inherit
+effort: medium
+model: sonnet
 user-invocable: true
 disable-model-invocation: false
 argument-hint: "[paths and an optional focus, e.g. internal/app/setup security; empty for the whole repository]"

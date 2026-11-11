@@ -7,6 +7,15 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- The plugin spends its effort where a mistake multiplies or nothing else checks the work: `plan`, `reviewer`,
+  `auditor` and `init` keep `high`; `builder`, `rules-reviewer`, `audit` and `risk` drop to `medium`, since tests,
+  the checks of the rules or the measures of `polix risk` verify them; `build`, `review` and `doctor` drop to `low`,
+  since they only launch agents, relay verdicts or follow `polix doctor`.
+- `rules-reviewer`, `doctor`, `build`, `review` and `audit` run on `sonnet` instead of the model of the session,
+  since they check a list or orchestrate; `plan`, `reviewer`, `auditor` and the rest still inherit it.
+
 ## [0.6.1] - 2026-11-11
 
 ### Changed

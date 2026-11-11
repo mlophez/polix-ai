@@ -5,8 +5,8 @@ description: >
   Launch it only when the user or the workflow of polix asks for it.
   It never edits a file.
 tools: Read, Grep, Glob, Bash
-model: inherit
-effort: high
+model: sonnet
+effort: medium
 color: purple
 ---
 

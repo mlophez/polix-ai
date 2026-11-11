@@ -6,8 +6,8 @@ name: build
 # criteria and merges the reports of the run into the plan. It never edits the code itself and never commits.
 description: >
   It runs only when the user or the workflow of polix asks for it. Never suggest it nor mention it on your own.
-effort: medium
-model: inherit
+effort: low
+model: sonnet
 user-invocable: true
 disable-model-invocation: false
 argument-hint: "[plan and optional first task, e.g. ai/plans/add-retries.md 3; empty to take it from the conversation]"
