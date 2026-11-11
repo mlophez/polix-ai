@@ -166,7 +166,8 @@ version.
 repository: it tells the agent to propose the install command of the system of the user, and to run it only
 with their approval, when polix is missing.
 
-Both scripts then run `polix install --skills --yes`, which installs the plugin of the user for Claude Code (see
+Both scripts then run `polix install --user --yes` (`--user`, hidden as `--skills`, since `POLIX_VERSION` may
+install a release without `--skills`), which installs the plugin of the user for Claude Code (see
 below) and no hooks: they belong to each repository. `POLIX_NO_SETUP=1` skips it.
 
 `polix update` downloads the latest release (or `--version V`, older ones included), checks it against
@@ -190,8 +191,9 @@ Every release must keep what earlier releases rely on to update into it, since t
 the binaries of the users: the assets `polix_<os>_<arch>` (`.exe` on Windows) and `checksums.txt` in the format of
 `sha256sum`, the redirect of `releases/latest` to `releases/tag/v<version>`, the cache `update.json`, and the
 commands an old binary runs with the new one after replacing it: `__refresh --quiet`, `__refresh --hooks`,
-`doctor --hook` and `install --skills --yes --quiet`, and `install --user --yes --quiet` of polix 0.6 and earlier,
-which `--user` keeps working hidden as `--skills` (`TestCommandsTheUpdateRuns` keeps them). A tag with a
+`doctor --hook` and `install --user --yes --quiet` (`TestCommandsTheUpdateRuns` keeps them): `--user` stays,
+hidden, as `--skills`, which releases up to 0.6 lack, so `polix update --version` to one of them still refreshes its
+plugin. A tag with a
 prerelease (`v0.2.0-rc1`) is published as a GitHub prerelease, which `releases/latest` never points to.
 Only releases update themselves: a development build (`just install`, or `go install` of a commit) never does, so
 the machines that try polix install it with `install.sh` or `install.ps1`.

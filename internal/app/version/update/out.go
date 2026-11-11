@@ -125,13 +125,14 @@ func (a Adapter) Install(ctx context.Context, exe, release string) error {
 }
 
 // Refresh runs the binary at exe to refresh the plugin: with hook `__refresh --quiet`, which only refreshes the
-// plugin already installed; else `install --skills --yes --quiet`, which installs it when missing, and then
-// `__refresh --hooks`, which also refreshes the hooks the repository registers.
+// plugin already installed; else `install --user --yes --quiet`, which installs it when missing, and then
+// `__refresh --hooks`, which also refreshes the hooks the repository registers. It runs --user, hidden in later
+// releases as --skills, since exe may be an older release (--version) that has no --skills.
 func (a Adapter) Refresh(ctx context.Context, exe string, hook bool) (string, string, error) {
 	if hook {
 		return a.run(ctx, exe, "__refresh", "--quiet")
 	}
-	stdout, stderr, err := a.run(ctx, exe, "install", "--skills", "--yes", "--quiet")
+	stdout, stderr, err := a.run(ctx, exe, "install", "--user", "--yes", "--quiet")
 	if err != nil {
 		return stdout, stderr, err
 	}

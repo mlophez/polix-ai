@@ -102,7 +102,8 @@ doctor and its failure (`polix doctor: <failure>`). With `--hook` the lines are 
   Windows) and `checksums.txt` of the release within 2 minutes, checks the binary and replaces the running one
   atomically (on Windows moving the old one aside first); a replace that fails is a `version.ErrReplace`.
 - `Refresh`: runs the binary at the path, from the working folder: with `--hook` `__refresh --quiet`, else
-  `install --skills --yes --quiet` and then `__refresh --hooks`.
+  `install --user --yes --quiet` and then `__refresh --hooks`: `--user`, which later releases keep hidden as
+  `--skills`, since the binary may be an older release (`--version`) that has no `--skills`.
 - `Doctor`: runs `doctor --hook` with the binary at the path.
 
 ## Errors

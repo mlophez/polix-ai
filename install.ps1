@@ -8,7 +8,7 @@
 #   POLIX_INSTALL_DIR     folder of the binary (default: %LOCALAPPDATA%\Programs\polix on Windows, ~/.local/bin elsewhere)
 #   POLIX_RELEASES_URL    releases page (default: https://github.com/mlophez/polix-ai/releases)
 #   POLIX_NO_MODIFY_PATH  set it to leave the user PATH alone
-#   POLIX_NO_SETUP        set it to skip `polix install --skills`, which installs the plugin of polix for the user
+#   POLIX_NO_SETUP        set it to skip `polix install --user`, which installs the plugin of polix for the user
 #
 # Errors are thrown, never `exit`: run through `irm | iex`, exit would close the terminal of the user. The whole body
 # runs in a script block, so `irm | iex` leaves no variable, preference or protocol change in the session.
@@ -145,8 +145,9 @@
 
     # The plugin of the user, embedded in the binary just installed. The hooks belong to each repository: polix
     # install registers them there.
+    # --user, hidden as --skills in later releases, since POLIX_VERSION may install a release that has no --skills.
     if (-not $env:POLIX_NO_SETUP) {
-        & (Join-Path $dir $exeName) install --skills --yes
-        if ($LASTEXITCODE -ne 0) { Write-Warning "polix install --skills failed: run it again by hand" }
+        & (Join-Path $dir $exeName) install --user --yes
+        if ($LASTEXITCODE -ne 0) { Write-Warning "polix install --user failed: run it again by hand" }
     }
 }
