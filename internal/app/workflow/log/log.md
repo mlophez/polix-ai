@@ -34,11 +34,12 @@ The loader of the log and the domain decide the rest:
 ## Response
 
 `Response`: `Entries`, each entry to show as an `Entry` with the fields of a line of the log (`At`, `Kind`, `Agent`,
-`Session`, `Event`, `Actor`, `AgentID`, `Branch`, `Hash`, `Head`, `Refs`, `Rule`, `Fact`, `Action`, `Line`, `Key`,
+`Session`, `Event`, `Actor`, `AgentID`, `Branch`, `Hash`, `Before`, `Head`, `Refs`, `Rule`, `Fact`, `Action`, `Line`, `Key`,
 `Outcome` and `Reason`; `AgentID`, the id of the subagent that acted, only on the lines of a subagent whose agent
 gives one; `Head`, the HEAD commit, only on the observed lines finished with a hash, passed, blocked and snapshot
 that know it; `Refs`, what git moved without HEAD (the stash and an operation stopped halfway), only on a
-snapshot line written while there was one;
+snapshot line written while there was one; `Before`, the content hash the event started from, only on a blocked
+line of a stop whose runs changed the content;
 `Rule` and `Fact` only come from the lines an older polix wrote, never from a new one), and `Skipped`, the lines of
 the log skipped for being too long.
 

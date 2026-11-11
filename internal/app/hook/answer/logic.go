@@ -44,6 +44,9 @@ type pass struct {
 	loop bool
 	// guarded tells that the loop guard let a block of the event through: the event did not end as asked.
 	guarded bool
+	// released are the blocks the loop guard let through, whose observed `blocked` lines are written once the
+	// entries of the event are done, with the content they ended on (see writeReleased).
+	released []passReleased
 	// warnings are the warnings of the pass for the user, such as a log that cannot be read.
 	warnings []string
 	// injected are the once-only injects that reached the answer, written as observed `injected` lines once the
@@ -58,6 +61,13 @@ type pass struct {
 	pending []state.Entry
 	// follow are the edits a command made, which the shell evaluates next in the same call (see derive).
 	follow []agent.Event
+}
+
+// passReleased is a block the loop guard let through: the line of its entry and what a failing run ran ("" for a
+// block).
+type passReleased struct {
+	line int
+	key  string
 }
 
 // passInject is a once-only inject that reached the answer: the line of its entry and its key.

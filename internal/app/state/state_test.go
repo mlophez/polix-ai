@@ -169,6 +169,51 @@ func TestIndex(t *testing.T) {
 	}
 }
 
+// Chain selects the entries on the content of the query or of also, and walks back through the Before of each one
+// it selects, so the blocks of a run that changes the content on every stop count together; an edit of the agent
+// between two stops breaks the chain, and without any Before it selects what Observed selects by hash.
+func TestChain(t *testing.T) {
+	blocked := func(hash, before string) Entry {
+		return Entry{Kind: KindObserved, Outcome: OutcomeBlocked, Session: "s", Event: "stop", Line: 4, Hash: hash,
+			Before: before}
+	}
+	q := Query{Outcome: OutcomeBlocked, Session: "s", Event: "stop", Line: 4, ByHash: true}
+	// h0 -> h1 by the run; the agent edits to e1 -> e2 by the run; then it does nothing: e2 -> e3, e3 -> e4.
+	other := blocked("e2", "e1")
+	other.Line = 9
+	s := State{Entries: []Entry{blocked("h1", "h0"), blocked("e2", "e1"), other, blocked("e3", "e2"),
+		{Kind: KindDecision, Outcome: OutcomeBlocked, Line: 4, Hash: "e3"}, blocked("e4", "e3")}}
+
+	q.Hash = "e5"
+	if got := s.Chain(q, "e4"); len(got) != 3 || got[0].Hash != "e2" || got[2].Hash != "e4" {
+		t.Fatalf("the chain from e4, without h1 nor line 9: %+v", got)
+	}
+	q.Hash = "h1"
+	if got := s.Chain(q); len(got) != 1 || got[0].Hash != "h1" {
+		t.Fatalf("the chain from h1: %+v", got)
+	}
+	q.Hash = "e1"
+	if got := s.Chain(q); len(got) != 0 {
+		t.Fatalf("an older content never reaches a later one: %+v", got)
+	}
+
+	plain := State{Entries: []Entry{blocked("a", ""), blocked("b", ""), blocked("a", "")}}
+	q.Hash = "a"
+	if got, want := plain.Chain(q), plain.Observed(q); len(got) != 2 || len(want) != 2 {
+		t.Fatalf("without Before as Observed: %+v %+v", got, want)
+	}
+	if got := plain.Chain(q, "b", ""); len(got) != 3 {
+		t.Fatalf("also b: %+v", got)
+	}
+	q.Hash = ""
+	if got := plain.Chain(q, "a"); got != nil {
+		t.Fatalf("without the hash of the query: %+v", got)
+	}
+	if got := plain.Chain(Query{Outcome: "fact", Hash: "a"}); got != nil {
+		t.Fatalf("a query that is not valid: %+v", got)
+	}
+}
+
 // The lines of the kinds an older polix wrote (injected, stop_block) are kept as read and never selected.
 func TestOldKindsIgnored(t *testing.T) {
 	s := State{Entries: []Entry{

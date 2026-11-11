@@ -248,9 +248,15 @@ The rules it follows, as before this use case:
    the AI are never observed and never count as passed.
 10. Loop guard: every block of `stop` or `subagent_stop`, a `block` or a failing `run`, writes an observed
     `blocked` line with the content hash, and the guard counts those lines per session, event, actor, entry and
-    whole hash; an unknown hash is written as `state.UnknownHash`, so those blocks count together. After
-    `max_stop_retries` the agent may stop with a warning and the next entries run, and when the log cannot be read or
-    written the guard fails open.
+    whole hash; an unknown hash is written as `state.UnknownHash`, so those blocks count together. A block after
+    runs of the event that changed the content also writes `before`, the hash of epoch 0, the content the agent left,
+    and the guard counts the chain of those lines (`state.State.Chain`): a block whose stop started from the content
+    a previous one ended on counts with it, so a run that writes files the tree does not ignore, the blocking one or
+    an earlier one, is still bounded while the agent changes nothing. When those runs changed
+    the content, a block let through writes its line too, once the entries of the event are done, with the hash they
+    ended on (`writeReleased`), so the chain goes on even when a later run writes again, and the warning names
+    `max_stop_retries`. After `max_stop_retries` the agent may
+    stop with a warning and the next entries run, and when the log cannot be read or written the guard fails open.
 11. The content hash is computed only when something needs it: the repeat of a `run` and its `passed` line (before
     and after the run), a `block` with `once`, the loop guard, `finished` and its observed line, and, when the
     workflow watches, the `snapshot` of the last event before a command line runs (the `pre_command`, or the

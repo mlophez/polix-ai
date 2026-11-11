@@ -20,6 +20,11 @@ type Entry struct {
 	AgentID string
 	Branch  string
 	Hash    string // content hash; on decisions only when the call already computed it
+	// Before is the content hash at the start of the event of a blocked line, the content the agent left, written
+	// only when the runs of the event changed it before the block: a command that writes files the tree does not
+	// ignore. The loop guard chains the blocks through it (see Chain), so a block still counts with the earlier ones
+	// on a content the agent left alone.
+	Before string
 	// Head is the commit HEAD pointed to when the line was written, empty when unknown: written only on the observed
 	// lines about a content that are read by branch (finished with a hash, passed and blocked), so another branch on
 	// the same commit selects them too (see Query), and on the snapshot lines, so a post_command sees HEAD moved.
@@ -54,7 +59,9 @@ const (
 	OutcomeFinished = "finished"
 	// OutcomePassed: a run of polix passed on a content that did not change during it; Key is what it ran.
 	OutcomePassed = "passed"
-	// OutcomeBlocked: an entry with once blocked, or any entry blocked a stop, counted by the loop guard.
+	// OutcomeBlocked: an entry with once blocked, or any entry blocked a stop, counted by the loop guard; also a
+	// block of a stop the loop guard let through after runs of the stop changed the content, so the chain of its
+	// blocks goes on (see Chain).
 	OutcomeBlocked = "blocked"
 	// OutcomeInjected: a once-only inject reached the AI; Key is its expanded text, file or rule id.
 	OutcomeInjected = "injected"
@@ -91,6 +98,17 @@ var Outcomes = []string{OutcomeFinished, OutcomePassed, OutcomeBlocked, OutcomeI
 // hashed are the outcomes that are about a content, so their entries need its hash.
 var hashed = []string{OutcomePassed, OutcomeBlocked, OutcomeSnapshot}
 
+// Chained returns the entry carrying before, the content hash at the start of its event, when it is an observed
+// blocked line on a known content and before is another known content: the runs of the event changed the content
+// (see Before). Otherwise the entry as it is.
+func (e Entry) Chained(before string) Entry {
+	known := e.Hash != "" && e.Hash != UnknownHash && before != "" && before != UnknownHash
+	if e.Kind == KindObserved && e.Outcome == OutcomeBlocked && known && before != e.Hash {
+		e.Before = before
+	}
+	return e
+}
+
 // Valid tells why the entry is not valid to be appended: it has no kind or a negative line, it carries the fact or
 // the rule of the lines an older polix wrote, or it is observed without a known outcome, or without the hash its
 // outcome is about, or it carries refs without being a snapshot. A kind this polix does not know is accepted,
@@ -116,6 +134,9 @@ func (e Entry) Valid() error {
 	}
 	if e.Refs != "" && (e.Kind != KindObserved || e.Outcome != OutcomeSnapshot) {
 		errs = append(errs, errors.New("only a snapshot line carries the refs"))
+	}
+	if e.Before != "" && (e.Kind != KindObserved || e.Outcome != OutcomeBlocked) {
+		errs = append(errs, errors.New("only a blocked line carries the hash its event started from"))
 	}
 	return errors.Join(errs...)
 }

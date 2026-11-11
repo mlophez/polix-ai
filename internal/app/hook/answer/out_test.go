@@ -784,6 +784,86 @@ on:
 	r.stops("", 0)
 }
 
+// A failing check of run_on_stop whose command writes a file the tree does not ignore leaves a new content on every
+// stop: the guard chains its blocks through the content each stop started from, so it lets the agent stop after
+// max_stop_retries blocks on a content the agent left alone, and keeps letting it stop; an edit of the agent breaks
+// the chain and the check blocks again.
+func TestStopLoopGuardOnARunThatWrites(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+guardrails:
+  run_on_stop:
+    - run: [git, -c, "alias.check=!echo x >> out.txt; exit 1", check]
+`)
+	r.stops("", 2, 2, 2, 0, 0)
+	if r.lines("outcome=loop_guard") != 2 || r.lines("outcome=blocked", "kind=observed") != 5 {
+		t.Fatalf("three blocks, two let through, each in the chain: %s", r.log())
+	}
+	if r.lines("outcome=blocked", "kind=observed", "before=<nil>") != 0 {
+		t.Fatalf("every blocked line carries the content before its run: %s", r.log())
+	}
+	r.write("src/a.go", "package a\n")
+	r.stops("", 2)
+}
+
+// writer is a command that appends to a file the tree does not ignore, a new content on every run, and fails, or
+// passes with "true"; missingRef is a check that fails without writing.
+const (
+	writer     = `[git, -c, "alias.w=!echo x >> out.txt; %s", w]`
+	missingRef = `[git, rev-parse, --verify, --quiet, missing]`
+)
+
+// The files a run writes do not escape the guard when another entry of the stop blocks or writes after a block let
+// through: each entry that blocks is let through after max_stop_retries blocks on a content the agent left alone, and
+// so are the next stops while the agent changes nothing.
+func TestStopLoopGuardAfterAnotherRunWrites(t *testing.T) {
+	cases := []struct {
+		name string
+		yaml string
+		want []int
+	}{
+		{"two failing checks", "guardrails:\n  run_on_stop:\n    - run: " + fmt.Sprintf(writer, "exit 1") +
+			"\n    - run: " + missingRef + "\n", []int{2, 2, 2, 2, 2, 2, 0, 0}},
+		{"a passing writer", "guardrails:\n  run_on_stop:\n    - run: " + fmt.Sprintf(writer, "true") +
+			"\n    - run: " + missingRef + "\n", []int{2, 2, 2, 0, 0}},
+		{"a block", "on:\n  stop:\n    - action: { run: " + fmt.Sprintf(writer, "true") +
+			" }\n    - action: { block: revisa }\n", []int{2, 2, 2, 0, 0}},
+		{"a block with once", "on:\n  stop:\n    - action: { run: " + fmt.Sprintf(writer, "true") +
+			" }\n    - action: { block: { message: revisa, once: true } }\n", []int{2, 2, 2, 0, 0, 0}},
+		{"two failing writers", "guardrails:\n  run_on_stop:\n    - run: " + fmt.Sprintf(writer, "exit 1") +
+			"\n    - run: " + fmt.Sprintf(writer, "exit 2") + "\n", []int{2, 2, 2, 2, 2, 2, 0, 0, 0}},
+		{"a failing check, then a passing writer", "guardrails:\n  run_on_stop:\n    - run: " + missingRef +
+			"\n    - run: " + fmt.Sprintf(writer, "true") + "\n", []int{2, 2, 2, 0, 0, 0}},
+		{"a block, then a passing writer", "on:\n  stop:\n    - action: { block: revisa }\n    - action: { run: " +
+			fmt.Sprintf(writer, "true") + " }\n", []int{2, 2, 2, 0, 0, 0}},
+		{"a failing writer, then a passing one", "guardrails:\n  run_on_stop:\n    - run: " +
+			fmt.Sprintf(writer, "exit 1") + "\n    - run: " + fmt.Sprintf(writer, "true") + "\n",
+			[]int{2, 2, 2, 0, 0, 0}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newRepo(t, "main")
+			r.write("polix.yaml", "version: 1\n"+c.yaml)
+			r.stops("", c.want...)
+		})
+	}
+}
+
+// The warning of a stop let through names max_stop_retries, however many stops were let through before.
+func TestStopLoopGuardWarningCount(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\nmax_stop_retries: 1\nguardrails:\n  run_on_stop:\n    - run: "+
+		fmt.Sprintf(writer, "exit 1")+"\n")
+	r.stops("", 2)
+	for i := range 3 {
+		code, stdout, stderr := r.stop()
+		expect(t, fmt.Sprintf("stop %d", i+2), code, 0, stderr)
+		if msg := systemMessage(t, stdout); !strings.Contains(msg, "after 1 blocks") {
+			t.Fatalf("stop %d: %q", i+2, msg)
+		}
+	}
+}
+
 // An invalid workflow fails closed, but the main session can still fix it, and the protections still apply.
 func TestInvalidWorkflowCanBeFixed(t *testing.T) {
 	r := newRepo(t, "main")

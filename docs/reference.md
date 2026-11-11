@@ -121,7 +121,10 @@ base_branch: [main, dev]
 - Type: non-negative integer. Default: `3` (`0` also means 3).
 - The loop guard: after this many blocks of the same entry of `stop` or `subagent_stop`, in the same session, by the
   same actor and on the same content, the agent may stop and the log records a `loop_guard` decision. A block let
-  through does not end the evaluation, and a subagent let through does not count as `finished`.
+  through does not end the evaluation, and a subagent let through does not count as `finished`. A `run` whose
+  command writes files the tree does not ignore, the blocking one or an earlier one of the stop, does not escape it:
+  while the agent changes nothing, the guard chains the blocks through the content each stop started from (see
+  [polix.md](polix.md#loop-guard)).
 - `polix config check` rejects a negative value.
 
 ### rules

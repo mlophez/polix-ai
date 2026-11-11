@@ -123,10 +123,11 @@ func (r *pass) apply(e workflow.Entry, ans agent.Answer) (agent.Answer, bool) {
 
 // block blocks the event for the entry e and reports whether it is actually blocked; key is what a failing run ran,
 // "" for a block. A block with once writes an observed `blocked` line, which reminded reads. On the events of the
-// loop guard (see stop) every block (a block or a failing run) writes it too, and the guard may let the event
-// through instead (see loopGuard); when the log cannot be written the guard cannot count, so it fails open. A block
-// with once outside them blocks without writing when the hash is unknown or the log cannot be read, so it blocks
-// again.
+// loop guard (see stop) every block (a block or a failing run) writes it too, with the content the event started from
+// when its runs changed it (see startOf), and the guard may let the event through instead (see loopGuard); when the
+// log cannot be written the guard cannot count, so it fails open. A stop the guard lets through after runs that
+// changed the content writes its line too (see releaseChain). A block with once outside them blocks without writing
+// when the hash is unknown or the log cannot be read, so it blocks again.
 func (r *pass) block(e workflow.Entry, ans agent.Answer, reason, key string) (agent.Answer, bool) {
 	verb := e.Action.Verb()
 	once := e.Action.Block != nil && e.Action.Block.Once
@@ -139,15 +140,17 @@ func (r *pass) block(e workflow.Entry, ans agent.Answer, reason, key string) (ag
 	if r.waiting() {
 		return ans, false
 	}
+	before := ""
 	if r.loop {
+		before = r.startOf(hash, known)
 		var warning string
-		if hash, warning = r.loopGuard(e, st, err, hash, known, reason); warning != "" {
-			return r.release(e, ans, warning, reason), false
+		if hash, warning = r.loopGuard(e, st, err, hash, before, known, reason); warning != "" {
+			return r.releaseChain(e, ans, warning, reason, key, err == nil), false
 		}
 		known = true
 	}
 	if known && err == nil {
-		werr := r.write(state.KindObserved, "", e.Line, state.OutcomeBlocked, "", key, hash)
+		werr := r.writeBlocked(e.Line, key, hash, before)
 		if r.waiting() {
 			return ans, false
 		}
@@ -157,6 +160,59 @@ func (r *pass) block(e workflow.Entry, ans agent.Answer, reason, key string) (ag
 	}
 	r.log(verb, e.Line, "block", reason)
 	return ans.Refuse(reason), true
+}
+
+// startOf returns the content hash at the start of the event, the content the agent left, when the runs of the event
+// changed it since and hash, the content now, is known; "" otherwise. The first run of the event computes the hash of
+// epoch 0 before it runs (see runEntry), so it is known whenever a run moved the epoch. A block written with it chains
+// to the blocks that ended on the content the agent left (see state.State.Chain), so a run that writes files the tree
+// does not ignore, the blocking one or any earlier one of the event, does not make every stop a new content.
+func (r *pass) startOf(hash string, known bool) string {
+	if !known || r.epoch == 0 {
+		return ""
+	}
+	if start, ok, _ := r.ev.Facts.Hash(0); ok && start != hash {
+		return start
+	}
+	return ""
+}
+
+// releaseChain lets the event through for the loop guard as release does and, when the log is usable, keeps the
+// block of the entry e, with key, for its `blocked` line, written once the entries of the event are done (see
+// writeReleased): the evaluation goes on, and a later run of the event may change the content again.
+func (r *pass) releaseChain(e workflow.Entry, ans agent.Answer, warning, reason, key string,
+	usable bool) agent.Answer {
+	if usable {
+		r.released = append(r.released, passReleased{line: e.Line, key: key})
+	}
+	return r.release(e, ans, warning, reason)
+}
+
+// writeReleased writes the observed `blocked` line of each block the loop guard let through in the event, with the
+// content hash the entries of the event ended on, the one the next stop starts from when the agent changes nothing,
+// and the content the event started from when its runs changed it. So the chain of the blocks of each entry goes on
+// (see state.State.Chain) and the next stop on a content the agent left alone is let through too, a block with once
+// included, whose line reminded reads as already blocked on that content. It writes nothing when the runs of the
+// event left the content as it started, since the next stop then finds the blocks on that same content, nor
+// without a known hash.
+func (r *pass) writeReleased() {
+	if len(r.released) == 0 || r.epoch == 0 {
+		return
+	}
+	hash, known := r.hash()
+	if r.waiting() {
+		return
+	}
+	start := r.startOf(hash, known)
+	if start == "" {
+		return
+	}
+	for _, b := range r.released {
+		_ = r.writeBlocked(b.line, b.key, hash, start)
+		if r.waiting() {
+			return
+		}
+	}
 }
 
 // release lets the event through for the loop guard, with warning for the user: the block of the entry e is logged

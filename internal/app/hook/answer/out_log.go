@@ -24,6 +24,7 @@ type logLine struct {
 	AgentID string `json:"agent_id,omitempty"`
 	Branch  string `json:"branch,omitempty"`
 	Hash    string `json:"hash,omitempty"`
+	Before  string `json:"before,omitempty"`
 	Head    string `json:"head,omitempty"`
 	Refs    string `json:"refs,omitempty"`
 	Rule    string `json:"rule,omitempty"`
@@ -50,7 +51,7 @@ func (a *Adapter) Append(_ context.Context, e state.Entry) error {
 		at = time.Now().Format(time.RFC3339)
 	}
 	stamped := state.Entry{At: at, Kind: e.Kind, Agent: e.Agent, Session: e.Session, Event: e.Event, Actor: e.Actor,
-		AgentID: e.AgentID, Branch: e.Branch, Hash: e.Hash, Head: e.Head, Refs: e.Refs, Rule: e.Rule, Action: e.Action, Line: e.Line, Key: e.Key,
+		AgentID: e.AgentID, Branch: e.Branch, Hash: e.Hash, Before: e.Before, Head: e.Head, Refs: e.Refs, Rule: e.Rule, Action: e.Action, Line: e.Line, Key: e.Key,
 		Outcome: e.Outcome, Reason: e.Reason}
 	if err := stamped.Valid(); err != nil {
 		return err
