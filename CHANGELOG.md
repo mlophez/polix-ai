@@ -7,6 +7,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-12
+
 ### Added
 
 - The section `githooks` of `polix.yaml` holds the gates git itself runs on every commit, whoever makes it (a person,
@@ -348,7 +350,8 @@ Claude Code is the supported agent; Codex support is not implemented.
 - The condition `pr`, on the state of the pull request, is not implemented.
 - The rest of the known limits are in [docs/polix.md](docs/polix.md#known-limits).
 
-[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/mlophez/polix-ai/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/mlophez/polix-ai/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/mlophez/polix-ai/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/mlophez/polix-ai/compare/v0.4.0...v0.5.0
