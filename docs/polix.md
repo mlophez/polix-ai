@@ -1039,7 +1039,8 @@ also prints that Codex support is not implemented in this release and the setup 
     save their report in the folder of reports from the `template.md` next to them, as `plan` saves its plan; a
     `polix:reviewer` launched without a skill answers in the chat and saves no file. `build` keeps the reports of a
     run next to the plan, `<plan>.iterNN.md` for the builder and `<plan>.revNN.md` for each review, and merges them
-    into the plan at the end of the run, deleting them; a run that did not end resumes from them.
+    into the plan at the end of the run, deleting them; a run that did not end resumes from them, or is closed as
+    `interrupted` when the plan was adjusted since.
   - Codex, only with `--agent codex` (not implemented): `codex plugin marketplace add ~/.polix/marketplace` and
     `[plugins."polix@polix"] enabled = true` in `~/.codex/config.toml`, the rest of the file kept. Codex documents
     no command to install a plugin without its interface, and this part was never checked against a running

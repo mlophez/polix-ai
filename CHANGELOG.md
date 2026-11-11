@@ -30,18 +30,21 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 - The skill build launches one `polix:builder` for the whole plan instead of one per task in waves. It launches
   `polix:reviewer` itself, against the plan, instead of following the skill review, and has the builder fix the
   blocking and major findings up to twice, reviewing again after each fix. A plan is `built` only when every task is
-  done, every acceptance criterion met and the last review has no blocking nor major finding. A task left `[-]` is
-  tried again by the next build. The reports of a run are kept next to the plan, `<plan>.iterNN.md` and
-  `<plan>.revNN.md`, a run that did not end resumes from them, and at the end they are merged into the `Iterations`
-  of the plan and deleted.
+  done, every acceptance criterion met (or a manual step left to the user) and the last review has no blocking nor
+  major finding. A task left `[-]` is tried again by the next build. The reports of a run are kept next to the plan,
+  `<plan>.iterNN.md` and `<plan>.revNN.md`; a run that did not end resumes from them at the first step not done, or
+  is closed as `interrupted` when the plan was adjusted since, and at the end they are merged into the `Iterations`
+  of the plan and deleted. Without subagents, as in Codex, the session plays the builder and the reviewer and says
+  that the review is not independent.
 - The agent `polix:builder` implements the plan from a task to the end without stopping nor asking: it runs the
   baseline, writes the tests before each change, records each departure from the plan, and marks each task of
-  `Progress` `[x]` only when its tests and verification pass, `[-]` otherwise; it also fixes the findings of a review
-  report, reading the reports of the earlier builders of the run first.
-- The agent `polix:reviewer` has two modes: against a plan, from the skill build, where the decisions, the scope
-  and the departures of the plan are never findings; and against an intent, from the skill review, which no longer
-  takes a plan. It reports only what the lines the change adds or alters introduce, and keeps severities, categories
-  and verdicts in English whatever the language of the report.
+  `Progress` `[x]` only when its tests and verification pass, `[-]` otherwise, removing or skipping the tests of a
+  `[-]` task that still fail; it also fixes the findings of a review report, reading the reports of the earlier
+  builders of the run first.
+- The agent `polix:reviewer` has two modes: against a plan, from the skill build, where the decisions, the scope,
+  the departures and the findings skipped in earlier runs are never findings again; and against an intent, from the
+  skill review, which no longer takes a plan. It reports only what the lines the change adds or alters introduce,
+  and keeps severities, categories and verdicts in English whatever the language of the report.
 
 ## [0.3.0] - 2026-11-11
 
