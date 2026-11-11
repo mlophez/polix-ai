@@ -59,6 +59,18 @@ on:
           - Commits in this project go directly to main: never create, switch to or push other branches.
           - Always push to remote after commit.
 
+  # The builders and the reviewer start with a clean context: give them the habits the plan of each build needs.
+  subagent_start:
+    - when: { actor: polix:builder }
+      action:
+        inject: |
+          - Edit files only with the Edit and Write tools: never with python, perl, sed or a heredoc from the shell.
+          - Never run `just install` nor `just check`: they overwrite the polix binary the hooks of this session run.
+    - when: { actor: polix:reviewer }
+      action:
+        inject: |
+          - Never run `just install` nor `just check`: build the binary into a temporary folder and run it from there.
+
   pre_commit:
     # Remind once per content to update README.md and docs/ when the behaviour changes.
     - when:
@@ -86,3 +98,13 @@ on:
         block: |
           This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score}).
           Run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again.
+
+    # Tell the user what goes into main, after every entry that may block the commit.
+    - when: { actor: session }
+      action:
+        notify: "Commit a main: {changed_lines} líneas en {changed_files} ficheros, riesgo {risk_score}."
+
+  subagent_stop:
+    - when: { actor: polix:reviewer }
+      action:
+        notify: "polix:reviewer ha terminado: ya puedes commitear."
