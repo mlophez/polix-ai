@@ -57,6 +57,32 @@ const (
 	cliTimeout = time.Minute
 )
 
+// GitHooks asks git, for the event of each of hooks, which hooks it runs (git.Repo.Hooks): by event, the names it
+// lists, never nil, and apart those it lists as disabled, nil when there are none; and whether this git lists the
+// hooks of its configuration; a git that cannot list them, or fails, lists none.
+func (a Adapter) GitHooks(ctx context.Context, root string, hooks []setup.GitHook) (listed, disabled map[string][]string,
+	ok bool) {
+	listed = map[string][]string{}
+	repo, err := git.Open(ctx, root)
+	if err != nil {
+		return listed, nil, false
+	}
+	for _, h := range hooks {
+		names, off, lists, err := repo.Hooks(ctx, string(h))
+		if !lists || err != nil {
+			return map[string][]string{}, nil, false
+		}
+		listed[string(h)] = names
+		if len(off) > 0 {
+			if disabled == nil {
+				disabled = map[string][]string{}
+			}
+			disabled[string(h)] = off
+		}
+	}
+	return listed, disabled, true
+}
+
 // Home returns the home folder of the user, or "".
 func (a Adapter) Home(_ context.Context) string {
 	home, _ := os.UserHomeDir()

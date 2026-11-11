@@ -84,6 +84,10 @@ type Port interface {
 	// ClaudePlugin asks `claude plugin list --json` whether the plugin polix is installed for the user, whether it
 	// is enabled, and the folder Claude Code reads it from; setup.ErrNoCLI without the CLI.
 	ClaudePlugin(ctx context.Context) (bool, bool, string, error)
+	// GitHooks asks git which hooks it runs for the event of each of hooks in the repository at root: by event, the
+	// names it lists, and apart those it lists as disabled; and whether this git lists the hooks of its
+	// configuration at all.
+	GitHooks(ctx context.Context, root string, hooks []setup.GitHook) (listed, disabled map[string][]string, ok bool)
 }
 
 // repository is what the shell reads through the port about the repository, inside one with git.
@@ -100,6 +104,9 @@ type repository struct {
 	baseErr      error
 	stateDir     string
 	stateErr     error
+	gitHooks     map[string][]string
+	disabled     map[string][]string
+	listsHooks   bool
 }
 
 // Command is the command `polix doctor`, the entry of the use case DiagnoseSetup: it turns the flags
@@ -111,7 +118,7 @@ func Command(rules rule.Load, cache version.Load, loadWorkflow workflow.Load) *c
 		Use:   "doctor",
 		Short: "Check that this machine and repository are ready for polix",
 		Long: "Check the binary and its version, the PATH the hooks use, git, the workflow, the rules and their checks, " +
-			"the hooks of Claude Code, the plugin of the user, Codex only when polix is registered for it (not implemented), " +
+			"the hooks of Claude Code, the hooks of git, the plugin of the user, Codex only when polix is registered for it (not implemented), " +
 			"and the state. Exits 1 on any failure.",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
@@ -169,7 +176,8 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		Runnable: repo.runnable, BaseErr: repo.baseErr,
 		ClaudeHooks: claudeHooks, CodexHooks: codexHooks, CodexEnabled: codexEnabled, Plugin: plugin,
 		ClaudeInstalled: installed, ClaudeEnabled: enabled, ClaudeFolder: folder, ClaudeErr: claudeErr,
-		SameFolder: port.SameFile(ctx, folder, s.PluginDir()), StateDir: repo.stateDir, StateErr: repo.stateErr}
+		SameFolder: port.SameFile(ctx, folder, s.PluginDir()), StateDir: repo.stateDir, StateErr: repo.stateErr,
+		GitHooks: repo.gitHooks, DisabledGitHooks: repo.disabled, ListsHooks: repo.listsHooks}
 	if err := i.Valid(); err != nil {
 		return Response{}, err
 	}
@@ -196,7 +204,8 @@ func releases(ctx context.Context, port Port, req Request, exeErr error) (string
 
 // inspectRepository reads the repository of root: its workflow, why the PATH does not run each program it requires
 // (workflow.Programs, git included; only for a workflow that can be used), its rules, whether each check exists and can run, whether a base branch
-// exists, and whether the state below gitDir can be written.
+// exists, whether the state below gitDir can be written, and the hooks git lists for the hooks of git polix
+// registers (setup.GitHooks).
 func inspectRepository(ctx context.Context, port Port, req Request, root, gitDir string) repository {
 	wf, found, wfErr, baseErr := port.LoadWorkflow(ctx, root, req.Version)
 	r := repository{wf: wf, found: found, wfErr: wfErr, baseErr: baseErr}
@@ -206,6 +215,7 @@ func inspectRepository(ctx context.Context, port Port, req Request, root, gitDir
 	loaded, missing, runnable := port.LoadRules(ctx, root, r.wf.RulesPath())
 	r.rules, r.invalid, r.rulesErr, r.missing, r.runnable = loaded.Rules, loaded.Problems, loaded.Err, missing, runnable
 	r.stateDir, r.stateErr = port.WriteState(ctx, gitDir)
+	r.gitHooks, r.disabled, r.listsHooks = port.GitHooks(ctx, root, setup.GitHooks)
 	return r
 }
 

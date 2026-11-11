@@ -292,3 +292,22 @@ func TestCommand(t *testing.T) {
 		t.Fatal(out, err)
 	}
 }
+
+// Live writes the stdout and the stderr of the command to their writers, and returns its error.
+func TestLive(t *testing.T) {
+	var stdout, stderr strings.Builder
+	if err := Live(context.Background(), t.TempDir(), helper("echo"), &stdout, &stderr); err != nil ||
+		stdout.String() != "out\n" || stderr.String() != "err\n" {
+		t.Fatalf("Live = %v, %q, %q", err, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	err := Live(context.Background(), t.TempDir(), helper("fail", "3"), &stdout, &stderr)
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 3 || stderr.String() != "it failed\n" {
+		t.Fatalf("Live = %v, %q", err, stderr.String())
+	}
+	if err := Live(context.Background(), t.TempDir(), nil, &stdout, &stderr); err == nil {
+		t.Fatal("Live without a command is an error")
+	}
+}

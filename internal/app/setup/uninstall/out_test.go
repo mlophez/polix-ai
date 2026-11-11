@@ -3,6 +3,7 @@ package uninstall
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -73,5 +74,34 @@ func TestAdapterUnregisterHooks(t *testing.T) {
 	testenv.Write(t, only, "[]")
 	if _, err := (Adapter{}).UnregisterHooks(ctx, only); err == nil || !strings.HasPrefix(err.Error(), only+": ") {
 		t.Fatalf("the error names the file: %v", err)
+	}
+}
+
+// AC14: the adapter removes both sections of the hooks of git from .git/config and reports each, an unrelated hook
+// stays, and a second uninstall removes nothing.
+func TestAdapterGitHooks(t *testing.T) {
+	ctx := context.Background()
+	root := testenv.GitRepo(t)
+	for _, kv := range [][2]string{{"hook.polix-pre-commit.event", "pre-commit"},
+		{"hook.polix-pre-commit.command", "polix githook pre-commit"}, {"hook.polix-commit-msg.event", "commit-msg"},
+		{"hook.polix-commit-msg.command", "polix githook commit-msg"}, {"hook.lint.event", "pre-commit"},
+		{"hook.lint.command", "make lint"}} {
+		if err := exec.Command("git", "-C", root, "config", "--local", kv[0], kv[1]).Run(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := Adapter{}
+	for _, h := range setup.GitHooks {
+		if ch, err := a.UnregisterGitHook(ctx, root, h); err != nil ||
+			!slices.Equal(ch, []setup.Change{{Path: h.Key(), Action: "removed"}}) {
+			t.Fatalf("%s: %v %v", h, ch, err)
+		}
+		if ch, err := a.UnregisterGitHook(ctx, root, h); err != nil || ch != nil {
+			t.Fatalf("%s again: %v %v", h, ch, err)
+		}
+	}
+	out, err := exec.Command("git", "-C", root, "config", "--local", "--list").Output()
+	if err != nil || strings.Contains(string(out), "polix-") || !strings.Contains(string(out), "hook.lint.command=make lint") {
+		t.Fatalf("configuration: %s %v", out, err)
 	}
 }

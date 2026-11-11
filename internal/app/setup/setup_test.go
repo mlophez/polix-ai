@@ -71,11 +71,30 @@ func TestDuplicates(t *testing.T) {
 
 func TestSummary(t *testing.T) {
 	s := Setup{Home: "/h", Root: "/r", Agents: []string{Claude, Codex}, Version: "1.2.3"}
-	got := s.Summary("write")
+	got := s.Summary("write", nil)
 	for _, want := range []string{"polix 1.2.3 will write:", "Claude Code: the plugin polix@polix", "Codex: the plugin",
 		"the hooks of " + s.HooksFile(Codex)} {
 		if !strings.Contains(got, want) {
 			t.Errorf("summary lacks %q:\n%s", want, got)
+		}
+	}
+}
+
+// AC21: the summary names the hooks of git in the local git configuration of the repository, when there are some
+// and a repository to hold them.
+func TestSummaryGitHooks(t *testing.T) {
+	s := Setup{Home: "/h", Root: "/r", Agents: []string{Claude}, Version: "1.2.3"}
+	got := s.Summary("write", GitHooks)
+	for _, want := range []string{"hook.polix-pre-commit", "hook.polix-commit-msg", "local git configuration of /r"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary lacks %q:\n%s", want, got)
+		}
+	}
+	outside := Setup{Home: "/h", Agents: []string{Claude}, Version: "1.2.3"}
+	for name, got := range map[string]string{"without hooks of git": s.Summary("remove", nil),
+		"without a root": outside.Summary("write", GitHooks)} {
+		if strings.Contains(got, "hook.polix-") || strings.Contains(got, "git configuration") {
+			t.Errorf("%s, the summary names the hooks of git:\n%s", name, got)
 		}
 	}
 }

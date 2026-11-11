@@ -52,6 +52,9 @@ type Port interface {
 	UnregisterHooks(ctx context.Context, file string) ([]setup.Change, error)
 	// RemovePlugin removes the local marketplace dir, and its parent when nothing else is left in it.
 	RemovePlugin(ctx context.Context, dir string) ([]setup.Change, error)
+	// UnregisterGitHook removes the hook of git h from the local configuration of the repository at root, keeping
+	// every other key.
+	UnregisterGitHook(ctx context.Context, root string, h setup.GitHook) ([]setup.Change, error)
 }
 
 // Command is the command `polix uninstall`, the entry of the use case UninstallSetup: it turns the
@@ -67,7 +70,8 @@ func Command() *cobra.Command {
 		Long: "Unregister the plugin polix from Claude Code, and from Codex when it was set up with --agent codex " +
 			"(Codex support is not implemented), and remove ~/.polix/marketplace/ and, unless --user, the hooks of " +
 			"polix from the .claude/settings.json and .codex/hooks.json of the repository of --dir, keeping every " +
-			"other setting and hook. The binary stays: delete it by hand.",
+			"other setting and hook, and, when both agents are removed, the hooks of git of polix from its local " +
+			"git configuration. The binary stays: delete it by hand.",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			if err := req.parseAgents(agents); err != nil {
@@ -96,7 +100,8 @@ func Command() *cobra.Command {
 
 // run is the shell, from request to response: it reads through the port the home and the repository
 // unless --user, calls the logic once, asks for confirmation, and carries out its output: for each agent the
-// plugin and the hooks of the repository, then the local marketplace. The first error stops it.
+// plugin and the hooks of the repository, then the hooks of git of the repository, then the local marketplace. The
+// first error stops it.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	res := Response{Quiet: req.Quiet}
 	home, err := port.Home(ctx)
@@ -127,6 +132,13 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 			if err != nil {
 				return res, err
 			}
+		}
+	}
+	for _, h := range out.GitHooks {
+		ch, err := port.UnregisterGitHook(ctx, out.Setup.Root, h)
+		res.Changes = append(res.Changes, ch...)
+		if err != nil {
+			return res, err
 		}
 	}
 	if out.RemovePlugin {

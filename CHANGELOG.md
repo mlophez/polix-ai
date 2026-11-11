@@ -7,6 +7,43 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- The section `githooks` of `polix.yaml` holds the gates git itself runs on every commit, whoever makes it (a person,
+  an IDE or an agent), apart from the events of the AI: `pre_commit`, before the commit is made, and `commit_msg`,
+  once its message is written. Its entries keep the shape of those of `on` with a vocabulary of their own: the verbs
+  `block` and `run` (a command and a `message`, run on every commit with its output in the terminal: githooks keep
+  no log), the conditions `branch`, `changed` (the files staged for the commit) and, in `commit_msg`, `message` (a
+  regular expression, or a list, of the first line of the message, without the comment lines of git nor what
+  follows the scissors line), and the placeholders `{branch}`, `{message}` and the variables of `vars`. So a team can
+  demand a message format by branch, such as the key of the ticket, or by the files a commit holds, and run a command
+  that blocks the commit. `polix config check` reports any other event, verb, key, condition or placeholder at the
+  line of its entry, and `polix config fmt` writes `githooks` after `on`. `on.pre_commit` does not change and never
+  evaluates `githooks`.
+- `polix githook <pre-commit|commit-msg> [file]`, hidden, the command git runs: it exits with 1 to abort the commit,
+  with each line of its reasons on stderr prefixed `polix: `. Without `polix.yaml`, without entries for the event or
+  outside a repository it lets the commit go; a `polix.yaml` that cannot be used aborts every commit with its
+  problems.
+- `polix install` writes `hook.polix-pre-commit` and `hook.polix-commit-msg` (`polix githook pre-commit` and
+  `polix githook commit-msg`) into the local git configuration of the repository, also without `githooks` in
+  `polix.yaml`, and warns when git does not list them: git 2.54 or later runs the hooks of its configuration.
+  `polix uninstall` removes them, and `polix doctor` warns, never fails, when git does not run them.
+- `polix install --githooks` writes only those two hooks of git: no plugin, no hooks of the agents and no
+  marketplace. It never asks for confirmation and prints only what changed, nothing when the hooks are already
+  there; when git does not list them it keeps them, warns on stderr and exits with 1. With `--user`, with `--agent`
+  or outside a repository it is an error that writes nothing.
+- A hook of git disabled with `hook.polix-<event>.enabled=false`, which git lists as disabled, is not taken for one
+  git cannot run: `polix install` (also `--githooks`, which exits with 0) warns that it is disabled in the git
+  configuration and leaves it so, and `polix doctor` says the same instead of asking to run `polix install`.
+- The summary `polix install` and `polix uninstall` ask to confirm names the hooks of git they write or remove in
+  the local git configuration of the repository.
+- Declaring `githooks` is enough to get their hooks: a `polix.yaml` with at least one entry in `githooks` expands
+  into one more entry first in `start`, from `githooks`, that runs `polix install --githooks` with `always: true`,
+  so every session start of the AI puts the hooks of git back, and when git is too old to run them the message
+  "The hooks of git of githooks are not installed, so the gates of githooks do not apply to the commits:" reaches
+  the AI. `polix graph` draws it as `from githooks`, `polix config fmt` never writes it, and removing the entries of
+  `githooks` turns it off.
+
 ### Changed
 
 - The plugin spends its effort where a mistake multiplies or nothing else checks the work: `plan`, `reviewer`,

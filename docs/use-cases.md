@@ -65,6 +65,10 @@ run again on the same content; an `inject` reaches the AI once per session and a
   - Rollout and evidence
     - [Evidence of the process each change followed](#evidence-of-the-process-each-change-followed)
   - [Putting it together: build, document, test, review, commit](#putting-it-together-build-document-test-review-commit)
+- The gates of git, with `githooks:`
+  - [The message starts with the key of the ticket](#the-message-starts-with-the-key-of-the-ticket)
+  - [A message format by the files of the commit](#a-message-format-by-the-files-of-the-commit)
+  - [A command that blocks the commit](#a-command-that-blocks-the-commit)
 - [Coming from Claude Code hooks](#coming-from-claude-code-hooks)
 
 ## Guardrails
@@ -755,6 +759,81 @@ If the reviewer finds a bug and the agent fixes it in `src/`, `finished: documen
 Nobody has to remember to invalidate anything: the fix is a new content, and polix observed nothing on it yet. The
 `just test` of `pre_commit` shares its repeat with the one of the stop, since both run the same command: on a
 content the stop already tested, the commit does not run it again.
+
+## The gates of git
+
+The entries of `on.pre_commit` only see the commits the agent makes in a form polix recognises. The section
+`githooks` holds the gates git itself runs, on every commit, whoever makes it: a person, an IDE or an agent.
+`polix install` declares the hooks of git that run them in the local git configuration (git 2.54 or later), and
+`polix doctor` warns when git does not list them. Their vocabulary is small: `block` and `run`, and the conditions
+`branch`, `changed` (the files staged for the commit) and, in `commit_msg`, `message` (the first line of the
+message). Every `run` runs on every commit, with its output in the terminal: githooks keep no log.
+
+Declaring the entries is enough: a `polix.yaml` with `githooks` runs `polix install --githooks` on every session
+start of the AI, by itself and first in `start`, so each person who works on the repository with the AI has the
+hooks of git without writing a recipe for it, and the AI learns at the start when git is too old to run them.
+Nothing else is needed: no `start` entry is written by hand, and removing the entries of `githooks` turns it off.
+
+### The message starts with the key of the ticket
+
+On a ticket branch, the first line of every commit message starts with the key of the ticket, and merges go
+through.
+
+```yaml
+vars:
+  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # PLAT-123-add-retry -> PLAT-123
+
+githooks:
+  commit_msg:
+    - when: { branch: "^[A-Z][A-Z0-9]+-[0-9]+" }
+      unless: { message: ["^{key}: ", "^Merge "] }
+      action: { block: "Empieza el mensaje por la clave del ticket: «{key}: {message}»" }
+```
+
+`git commit -m "arregla el login"` on `PLAT-123-login` fails with
+`polix: Empieza el mensaje por la clave del ticket: «PLAT-123: arregla el login»`, and
+`git commit -m "PLAT-123: arregla el login"` goes through.
+
+### A message format by the files of the commit
+
+A commit that touches the migrations says so in its message, and nothing of `secrets/` is ever committed, whoever
+commits.
+
+```yaml
+vars:
+  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+
+githooks:
+  pre_commit:
+    - when: { changed: "secrets/**" }
+      action: { block: "No se commitea nada de secrets/: sácalo del índice con git restore --staged" }
+  commit_msg:
+    - when: { changed: ["db/migrations/**", "*.sql"] }
+      unless: { message: "^migration: " }
+      action: { block: "Un commit con migraciones empieza por «migration: »" }
+```
+
+`changed` only looks at the staged files: a migration edited and left out of the commit does not ask for the
+prefix.
+
+### A command that blocks the commit
+
+The linter runs on every commit that stages Go code, and its output shows in the terminal of the commit.
+
+```yaml
+vars:
+  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+
+githooks:
+  pre_commit:
+    - when: { changed: ["*.go", go.mod] }
+      action:
+        run: { command: golangci-lint run ./..., message: "Arregla el lint antes de commitear" }
+```
+
+A failure aborts the commit with the message and `golangci-lint run ./... failed: exit status 1`. To keep the agent
+from skipping the hooks with `--no-verify`, add `- { pattern: "git*--no-verify*", reason: "..." }` to
+`guardrails.forbidden_commands`.
 
 ## Coming from Claude Code hooks
 

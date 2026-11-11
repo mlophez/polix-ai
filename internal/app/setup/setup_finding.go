@@ -12,8 +12,10 @@ import (
 // Finding is one line of the report of polix doctor: its level, the area it is about and what it says. It is
 // built with a literal followed by Valid.
 type Finding struct {
-	Level   string // LevelOK, LevelWarn or LevelFail
-	Area    string // binary, version, path, git, repo, workflow, requirements, rules, hooks, plugin, codex or state
+	Level string // LevelOK, LevelWarn or LevelFail
+	// Area is binary, version, path, git, repo, workflow, requirements, rules, hooks, githooks, plugin, codex or
+	// state.
+	Area    string
 	Message string
 }
 
@@ -52,6 +54,15 @@ type Inspection struct {
 	SameFolder      bool                 // whether Claude Code reads the plugin from the local marketplace
 	StateDir        string               // the folder of the state
 	StateErr        error                // why the state cannot be written
+	// GitHooks are, by event of git of GitHooks, the hooks git lists for it in the repository; nil when git was not
+	// asked, as outside a repository.
+	GitHooks map[string][]string
+	// DisabledGitHooks are, by event of git of GitHooks, the hooks git lists for it as disabled
+	// (hook.<name>.enabled=false), which it does not run, apart from GitHooks; nil when it lists none.
+	DisabledGitHooks map[string][]string
+	// ListsHooks tells whether git lists the hooks of its configuration: a git older than 2.54 neither lists nor
+	// runs them.
+	ListsHooks bool
 }
 
 // Levels of a finding.
@@ -72,8 +83,14 @@ func (f Finding) Valid() error {
 	return nil
 }
 
-// Valid reports why i is not an inspection: its setup must be valid.
-func (i Inspection) Valid() error { return i.Setup.Valid() }
+// Valid reports why i is not an inspection: its setup must be valid, and a git that lists the hooks of its
+// configuration was asked for them.
+func (i Inspection) Valid() error {
+	if i.ListsHooks && i.GitHooks == nil {
+		return errors.New("an inspection where git lists hooks needs the hooks it listed")
+	}
+	return i.Setup.Valid()
+}
 
 // Problem reports whether the finding is a warning or a failure.
 func (f Finding) Problem() bool { return f.Level != LevelOK }

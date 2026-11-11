@@ -18,7 +18,7 @@ GO-4 of `ai/rules/go.yaml` (see [Limits of size and complexity](#limits-of-size-
 
 The domains are `agent` (Claude Code and Codex, the neutral event of a hook call and its answer; the formats of
 each agent live in the entry of `AnswerHook`), `diff`
-(`risk`), `hook` (`hook`), `rule` (`rules check`, `rules fmt`), `setup` (`config check`, `install`, `uninstall`, `doctor`, the
+(`risk`), `githook` (`githook`, the gates git runs on every commit), `hook` (`hook`), `rule` (`rules check`, `rules fmt`), `setup` (`config check`, `install`, `uninstall`, `doctor`, the
 hidden `__refresh`), `state` (the log of a repository), `version` (`version`, `update`) and `workflow`
 (`polix.yaml`, `config fmt`, `graph`, `log`). How polix behaves is in `docs/polix.md`.
 
@@ -52,12 +52,14 @@ internal/platform/           the technology polix runs on, without domain: only 
   cli/                       the ui, the exit code error, the flag --dir, the root command and Run (with fang)
   file/                      files as the agents expect them: a missing one is empty, atomic writes that keep
                              symlinks and modes, a folder synced to a set of files, the cache folder
-  git/                       the repository: root, branch, changed files, base branch, content hash, the paths
-                             that differ between two trees
+  git/                       the repository: root, branch, changed and staged files, base branch, content hash,
+                             the paths that differ between two trees, the comment character, the hooks of the
+                             local configuration
   github/                    the releases of a repository: latest tag, checked download, replace of a binary
   glob/                      paths and command lines matched against patterns
   jsonl/                     files of one record per line: bounded reading and appending
-  proc/                      running an argv with a deadline, and the interpreter of a file on Windows
+  proc/                      running an argv with a deadline or live to writers, and the interpreter of a file on
+                             Windows
   semver/                    versions of releases: parse and compare
   shell/                     a command line split into the commands it runs
   testenv/                   support for the tests: files in one call, a repository with one commit, a machine
@@ -76,6 +78,7 @@ a new `<lib>/`, and a use case too big a new `<helper>/`; no use case has a help
 
 - `agent`: none; `hook` and `AnswerHook` use its domain.
 - `diff`: `measure/` (`MeasureDiff`, `polix risk`).
+- `githook`: `answer/` (`AnswerGithook`, the hidden `polix githook`).
 - `hook`: `answer/` (`AnswerHook`, `polix hook`).
 - `rule`: `check/` (`CheckRule`, `polix rules check`), `format/` (`FormatRule`, `polix rules fmt`) and `load/`
   (`LoadRule`, the loader of the rule files).

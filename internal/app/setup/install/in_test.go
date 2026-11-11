@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/setup"
+	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
 // fakePort answers the port of InstallSetup from memory and records the calls.
@@ -17,37 +19,88 @@ type fakePort struct {
 	pluginErr error // of RegisterPlugin
 	filesErr  error // of MarketplaceFiles
 	refuse    bool  // Confirm refuses
+	outside   bool  // Root finds no repository
+	// gitHooks records the hooks of git written and listed, apart from calls; gitChanges makes each write a change,
+	// unlisted makes git list none of them, and disabled makes git list the first one as disabled.
+	gitHooks   []string
+	gitChanges bool
+	unlisted   bool
+	disabled   bool
+	// methods records the name of every method of the port called, in order.
+	methods []string
+}
+
+func (f *fakePort) RegisterGitHook(_ context.Context, root string, h setup.GitHook) ([]setup.Change, error) {
+	f.methods = append(f.methods, "RegisterGitHook")
+	f.gitHooks = append(f.gitHooks, "RegisterGitHook "+root+" "+string(h))
+	if !f.gitChanges {
+		return nil, nil
+	}
+	return []setup.Change{{Path: h.Key(), Action: "created"}}, nil
+}
+
+func (f *fakePort) Unlisted(_ context.Context, root string, hooks []setup.GitHook) ([]setup.GitHook, []setup.GitHook) {
+	f.methods = append(f.methods, "Unlisted")
+	f.gitHooks = append(f.gitHooks, "Unlisted "+root)
+	switch {
+	case f.unlisted:
+		return hooks, nil
+	case f.disabled:
+		return nil, hooks[:1]
+	}
+	return nil, nil
 }
 
 func (f *fakePort) Confirm(_ context.Context, _ string) error {
+	f.methods = append(f.methods, "Confirm")
 	if f.refuse {
 		return setup.ErrCancelled
 	}
 	return nil
 }
 
-func (f *fakePort) Home(_ context.Context) (string, error)  { return "/h", nil }
-func (f *fakePort) Root(_ context.Context, _ string) string { return "/r" }
+func (f *fakePort) Home(_ context.Context) (string, error) {
+	f.methods = append(f.methods, "Home")
+	return "/h", nil
+}
+func (f *fakePort) Root(_ context.Context, _ string) string {
+	f.methods = append(f.methods, "Root")
+	if f.outside {
+		return ""
+	}
+	return "/r"
+}
 func (f *fakePort) Plugin(_ context.Context) (map[string][]byte, error) {
+	f.methods = append(f.methods, "Plugin")
 	return map[string][]byte{"polix/.claude-plugin/plugin.json": []byte(`{"name": "polix", "version": "0"}`)}, nil
 }
 func (f *fakePort) MarketplaceFiles(_ context.Context, _ setup.Plugin) (map[string][]byte, error) {
+	f.methods = append(f.methods, "MarketplaceFiles")
 	return map[string][]byte{".claude-plugin/marketplace.json": []byte("{}")}, f.filesErr
 }
 func (f *fakePort) WritePlugin(_ context.Context, dir string, _ map[string][]byte) ([]setup.Change, error) {
+	f.methods = append(f.methods, "WritePlugin")
 	f.calls = append(f.calls, "WritePlugin "+dir)
 	return []setup.Change{{Path: dir, Action: "created"}}, nil
 }
 func (f *fakePort) RegisterPlugin(_ context.Context, _ setup.Setup, agent string) ([]setup.Change, error) {
+	f.methods = append(f.methods, "RegisterPlugin")
 	f.calls = append(f.calls, "RegisterPlugin "+agent)
 	return nil, f.pluginErr
 }
 func (f *fakePort) RegisterHooks(_ context.Context, file string, _ map[string][]setup.HookGroup) ([]setup.Change, error) {
+	f.methods = append(f.methods, "RegisterHooks")
 	f.calls = append(f.calls, "RegisterHooks "+file)
 	return nil, nil
 }
-func (f *fakePort) Registered(_ context.Context, _ []string) map[string]bool { return nil }
-func (f *fakePort) OnPath(_ context.Context, _ string) error                 { return errors.New("no") }
+func (f *fakePort) Registered(_ context.Context, _ []string) map[string]bool {
+	f.methods = append(f.methods, "Registered")
+	return nil
+}
+func (f *fakePort) OnPath(_ context.Context, _ string) error {
+	f.methods = append(f.methods, "OnPath")
+	return errors.New("no")
+}
 
 func TestShell(t *testing.T) {
 	port := &fakePort{}
@@ -73,6 +126,143 @@ func TestShell(t *testing.T) {
 	if _, err = run(context.Background(), port, Request{Version: "1.2.3"}); err == nil || err.Error() != "no version" ||
 		len(port.calls) != 0 {
 		t.Fatalf("%v %v", err, port.calls)
+	}
+}
+
+// AC11, AC12, AC13: inside a repository the shell writes both hooks of git after the hooks of the agents, reports
+// their changes and warns when git lists none of them; with --user or outside a repository it touches no git
+// configuration.
+func TestShellGitHooks(t *testing.T) {
+	ctx := context.Background()
+	port := &fakePort{gitChanges: true}
+	res, err := run(ctx, port, Request{Version: "1.2.3"})
+	want := []string{"RegisterGitHook /r pre-commit", "RegisterGitHook /r commit-msg", "Unlisted /r"}
+	if err != nil || !slices.Equal(port.gitHooks, want) || res.Unlisted != nil ||
+		!slices.Contains(res.Changes, setup.Change{Path: "git config hook.polix-pre-commit", Action: "created"}) ||
+		!slices.Contains(res.Changes, setup.Change{Path: "git config hook.polix-commit-msg", Action: "created"}) {
+		t.Fatalf("%+v %v %q", res, err, port.gitHooks)
+	}
+	var stdout, stderr bytes.Buffer
+	res.print(&stdout, &stderr)
+	if strings.Contains(stderr.String(), "git") {
+		t.Fatalf("a warning without reason: %s", stderr.String())
+	}
+
+	port = &fakePort{unlisted: true}
+	res, err = run(ctx, port, Request{Version: "1.2.3", Quiet: true})
+	if err != nil || !slices.Equal(res.Unlisted, setup.GitHooks) {
+		t.Fatalf("unlisted: %+v %v", res, err)
+	}
+	stdout.Reset()
+	res.print(&stdout, &stderr)
+	if !strings.Contains(stderr.String(), "git does not run hooks from its configuration") ||
+		!strings.Contains(stderr.String(), "githooks of polix.yaml do not apply until git is updated") {
+		t.Fatalf("no warning: %q", stderr.String())
+	}
+
+	for name, req := range map[string]Request{"--user": {Version: "1.2.3", User: true}, "outside": {Version: "1.2.3"}} {
+		port = &fakePort{outside: name == "outside"}
+		if res, err := run(ctx, port, req); err != nil || port.gitHooks != nil || res.Unlisted != nil {
+			t.Fatalf("%s: %+v %v %q", name, res, err, port.gitHooks)
+		}
+	}
+}
+
+// AC18, AC19: with --githooks the shell reads only the repository, writes each hook of git and asks which git does
+// not list, never asks for confirmation nor touches the plugin or the hooks of the agents; the command prints only
+// the changes, nothing when there are none, and exits 1 with the warning of AC12 when git does not list them.
+func TestShellGitHooksOnly(t *testing.T) {
+	ctx := context.Background()
+	want := []string{"Root", "RegisterGitHook", "RegisterGitHook", "Unlisted"}
+	port := &fakePort{gitChanges: true, refuse: true}
+	res, err := run(ctx, port, Request{Version: "1.2.3", GitHooks: true})
+	if err != nil || !slices.Equal(port.methods, want) || !res.GitHooksOnly || len(res.Changes) != 2 || res.Unlisted != nil {
+		t.Fatalf("%+v %v %q", res, err, port.methods)
+	}
+	var stdout, stderr bytes.Buffer
+	res.printChanges(&stdout)
+	res.print(&stdout, &stderr)
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) != 2 || !strings.Contains(lines[0], "git config hook.polix-pre-commit") ||
+		!strings.Contains(lines[1], "git config hook.polix-commit-msg") || stderr.Len() != 0 || res.exit() != nil {
+		t.Fatalf("only the changes, exit 0: %q %q %v", stdout.String(), stderr.String(), res.exit())
+	}
+
+	port = &fakePort{}
+	res, err = run(ctx, port, Request{Version: "1.2.3", GitHooks: true})
+	stdout.Reset()
+	res.printChanges(&stdout)
+	res.print(&stdout, &stderr)
+	if err != nil || !slices.Equal(port.methods, want) || stdout.Len() != 0 || stderr.Len() != 0 || res.exit() != nil {
+		t.Fatalf("nothing changed, nothing printed: %v %q %q %q", err, port.methods, stdout.String(), stderr.String())
+	}
+
+	port = &fakePort{unlisted: true}
+	res, err = run(ctx, port, Request{Version: "1.2.3", GitHooks: true})
+	res.print(&stdout, &stderr)
+	if err != nil || !slices.Equal(res.Unlisted, setup.GitHooks) || res.exit() == nil ||
+		!strings.Contains(stderr.String(), "git does not run hooks from its configuration") {
+		t.Fatalf("unlisted: %+v %v %q %v", res, err, stderr.String(), res.exit())
+	}
+
+	// polix install without --githooks exits 0 with unlisted hooks.
+	port = &fakePort{unlisted: true}
+	if res, err := run(ctx, port, Request{Version: "1.2.3"}); err != nil || res.Unlisted == nil || res.exit() != nil {
+		t.Fatalf("without --githooks: %+v %v", res, err)
+	}
+}
+
+// A hook of git that git lists as disabled (hook.<name>.enabled=false) is not unlisted: install, with or without
+// --githooks, warns that it is disabled in the git configuration, neither blaming the version of git nor exiting 1,
+// since writing the hooks again does not enable it.
+func TestShellGitHooksDisabled(t *testing.T) {
+	ctx := context.Background()
+	for _, req := range []Request{{Version: "1.2.3", GitHooks: true}, {Version: "1.2.3", Quiet: true}} {
+		port := &fakePort{disabled: true}
+		res, err := run(ctx, port, req)
+		var stdout, stderr bytes.Buffer
+		res.print(&stdout, &stderr)
+		warn := stderr.String()
+		if err != nil || res.Unlisted != nil || !slices.Equal(res.Disabled, setup.GitHooks[:1]) || res.exit() != nil ||
+			!strings.Contains(warn, "disabled in the git configuration") ||
+			!strings.Contains(warn, "hook.polix-pre-commit.enabled") || strings.Contains(warn, "polix-commit-msg") ||
+			strings.Contains(warn, "2.54") {
+			t.Fatalf("githooks %v: %+v %v %q %v", req.GitHooks, res, err, warn, res.exit())
+		}
+	}
+}
+
+// AC20: --githooks outside a repository, and with --user, which reads no repository, is an error that writes
+// nothing.
+func TestShellGitHooksOutside(t *testing.T) {
+	for name, req := range map[string]Request{"outside": {Version: "1.2.3", GitHooks: true},
+		"--user": {Version: "1.2.3", GitHooks: true, User: true}} {
+		port := &fakePort{outside: name == "outside"}
+		_, err := run(context.Background(), port, req)
+		if err == nil || !strings.Contains(err.Error(), "not inside a git repository") || port.gitHooks != nil ||
+			port.calls != nil {
+			t.Fatalf("%s: %v %q %q", name, err, port.gitHooks, port.calls)
+		}
+	}
+}
+
+// AC20: the command rejects --githooks with --user or --agent before running anything.
+func TestCommandGitHooksFlags(t *testing.T) {
+	testenv.Home(t)
+	dir := t.TempDir()
+	for _, args := range [][]string{{"--githooks", "--user"}, {"--githooks", "--agent", "claude"}} {
+		c := Command()
+		c.SilenceUsage, c.SilenceErrors = true, true
+		var stdout, stderr bytes.Buffer
+		c.SetOut(&stdout)
+		c.SetErr(&stderr)
+		c.SetArgs(append(args, "--yes", "--dir", dir))
+		if err := c.Execute(); err == nil || !strings.Contains(err.Error(), "neither --user nor --agent") || stdout.Len() != 0 {
+			t.Fatalf("%v: %v %q", args, err, stdout.String())
+		}
+	}
+	if entries, err := os.ReadDir(os.Getenv("HOME")); err != nil || len(entries) != 0 {
+		t.Fatalf("the home stays empty: %v %v", entries, err)
 	}
 }
 

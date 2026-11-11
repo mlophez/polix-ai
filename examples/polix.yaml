@@ -7,7 +7,8 @@
 # Two layers: `guardrails` holds the basics every project wants from the first minute (files and commands no agent
 # touches, branches nobody commits on, a formatter per edited file, the checks before the end of the turn), each a
 # short list; `on` holds the flow of the team (tickets, plans, builders, reviewer subagents) and whatever a shortcut
-# does not cover.
+# does not cover. Apart from both, `githooks` (at the end) holds the gates git itself runs on every commit, whoever
+# makes it.
 #
 # How a hook call is answered:
 # 1. The adapter turns the hook input into neutral events (an edit of several files gives one event per path; a
@@ -48,6 +49,8 @@
 #   - exit: post_command.
 #   Every other condition (actor, finished, agents_are_running, branch, var, changed, file, contains, changed_lines,
 #   changed_files, risk_score, not, any) holds on any event.
+# - githooks, apart from `on`: the events pre_commit and commit_msg, the verbs block and run, and the conditions
+#   branch, changed and, in commit_msg, message.
 
 # Required. The only version is 1.
 version: 1
@@ -727,3 +730,48 @@ on:
         block:
           once: true
           message: "Lanza el subagente polix:reviewer sobre el diff actual"
+
+# Optional. The gates git itself runs on every commit, whoever makes it (a person, an IDE or an agent), apart from
+# the events of the AI: on.pre_commit only sees the commits polix recognises in a command line of the agent, and
+# the events of `on` never evaluate these entries, nor git those of `on`. `polix install` declares two hooks in the
+# local git configuration of the repository (hook.polix-pre-commit and hook.polix-commit-msg, which git 2.54 and
+# later run), also without this section; `polix doctor` warns when git does not list them. git runs
+# `polix githook pre-commit` and `polix githook commit-msg <file>`; exit 1 aborts the commit, with each line of the
+# reasons on stderr prefixed `polix: `.
+# - Events: pre_commit, before the commit is made; commit_msg, once its message is written.
+# - Entries: when, unless and action, as in `on`, in file order; the first entry that blocks ends the evaluation.
+# - Verbs: block (a message, or { message }) and run (a command, or { command, message }); inject, notify, once,
+#   rules and always are rejected. Every run runs on every commit, from the root, with no time limit and its output
+#   live in the terminal: githooks keep no log.
+# - Conditions: branch (a regular expression of the branch, placeholders not expanded), changed (globs of the files
+#   staged for the commit, the index against HEAD) and, only in commit_msg, message (regular expressions of the
+#   first line of the message, without the comment lines of git nor what follows the scissors line). A list holds
+#   when one item matches; a negation goes in unless; any, not and every other condition are rejected.
+# - Placeholders: {branch}, {message} (only in commit_msg) and the variables of vars.
+# Without polix.yaml or without entries for the event the commit goes on; a polix.yaml that cannot be used aborts
+# every commit with its problems. `git commit --no-verify` skips the hooks: forbid it to the agent in
+# guardrails.forbidden_commands.
+# Declaring these entries is enough: with at least one, this file expands into one more entry first in start that
+# runs `polix install --githooks` with always: true, so every session start of the AI puts the hooks of git back,
+# and when the run fails (a git older than 2.54) the message "The hooks of git of githooks are not installed, so the
+# gates of githooks do not apply to the commits:" reaches the AI. `polix graph` draws it `from githooks`; removing
+# the entries of githooks turns it off.
+githooks:
+  pre_commit:
+    # Nothing of secrets/ is committed, by anyone.
+    - when: { changed: "secrets/**" }
+      action: { block: "No se commitea nada de secrets/: sácalo del índice con git restore --staged" }
+
+    # The linter runs on every commit that stages Go code; its output shows in the terminal of the commit.
+    - when: { changed: ["*.go", go.mod] }
+      action:
+        run:
+          command: golangci-lint run ./...
+          message: "Arregla el lint antes de commitear."
+
+  commit_msg:
+    # On a ticket branch the first line starts with the key of the ticket; merges go through.
+    - when: { branch: "^[A-Z][A-Z0-9]+-[0-9]+" }
+      unless: { message: ["^{key}: ", "^Merge "] }
+      action:
+        block: "Empieza el mensaje por la clave del ticket: «{key}: {message}»"

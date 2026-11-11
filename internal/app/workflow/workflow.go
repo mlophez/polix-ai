@@ -64,6 +64,11 @@ type Workflow struct {
 	Weights []Weight
 	// EventLines is the line of each event of `on` in the file, for messages.
 	EventLines map[string]int
+	// Githooks holds the entries of each event of githooks (GithookEvents), the gates git runs on every commit,
+	// apart from the events of the AI in On and with a vocabulary of their own.
+	Githooks map[string][]Entry
+	// GithookLines is the line of each event of githooks in the file, for messages.
+	GithookLines map[string]int
 }
 
 // Var extracts a variable from the branch name: the first group of the regular expression, or the whole match.
@@ -119,13 +124,14 @@ func (w Workflow) Problems() []string {
 }
 
 // workflow reports the problems of the workflow w: its settings and guardrails, its variables, its events, its
-// layout and its weights.
+// githooks, its layout and its weights.
 func (v *validator) workflow(w Workflow) {
 	v.settings(w)
 	for _, name := range slices.Sorted(maps.Keys(w.Vars)) {
 		v.variable(name, w.Vars[name])
 	}
 	v.events(w)
+	v.githooks(w)
 	v.rules(w.Rules)
 	v.folder("plans", w.Plans)
 	v.folder("reports", w.Reports)

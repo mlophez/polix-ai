@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -126,6 +127,43 @@ func (a Adapter) Registered(_ context.Context, paths []string) map[string]bool {
 func (a Adapter) OnPath(_ context.Context, name string) error {
 	_, err := exec.LookPath(name)
 	return err
+}
+
+// RegisterGitHook writes the event and the command of the hook h into the local configuration of the repository
+// at root through git (git.Repo.SetHook), never into the configuration of the user; a hook that already had them
+// is no change.
+func (a Adapter) RegisterGitHook(ctx context.Context, root string, h setup.GitHook) ([]setup.Change, error) {
+	repo, err := git.Open(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	action, err := repo.SetHook(ctx, h.Name(), string(h), h.Command())
+	if err != nil || action == "" {
+		return nil, err
+	}
+	return setup.Changes{}.Add(action, h.Key())
+}
+
+// Unlisted asks git which hooks it runs for the event of each hook (git.Repo.Hooks) and returns those it does not
+// name, apart from those it names as disabled; a git that cannot list them, or fails, names none.
+func (a Adapter) Unlisted(ctx context.Context, root string, hooks []setup.GitHook) (unlisted, disabled []setup.GitHook) {
+	repo, err := git.Open(ctx, root)
+	if err != nil {
+		return hooks, nil
+	}
+	for _, h := range hooks {
+		names, off, ok, err := repo.Hooks(ctx, string(h))
+		switch {
+		case !ok || err != nil:
+			unlisted = append(unlisted, h)
+		case slices.Contains(names, h.Name()):
+		case slices.Contains(off, h.Name()):
+			disabled = append(disabled, h)
+		default:
+			unlisted = append(unlisted, h)
+		}
+	}
+	return unlisted, disabled
 }
 
 // registerCodex adds the marketplace to Codex, or leaves the command to run by hand without its CLI or when it

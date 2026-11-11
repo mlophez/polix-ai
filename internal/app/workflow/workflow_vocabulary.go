@@ -68,6 +68,37 @@ var EventVerbs = map[string][]string{
 	Stop:          {VerbRun, VerbBlock, VerbNotify},
 }
 
+// CommitMsg is the event of githooks git runs once the message of a commit is written (commit-msg); the other one,
+// before the commit is made (pre-commit), takes the name of PreCommit.
+const CommitMsg = "commit_msg"
+
+// GithookEvents are the events of githooks, the gates git runs on every commit, apart from the events of the AI
+// (Events), in the order git runs them.
+var GithookEvents = []string{PreCommit, CommitMsg}
+
+// GithookVerbs are the verbs a githooks entry can hold, in the order of Actions.
+var GithookVerbs = []string{VerbRun, VerbBlock}
+
+// GithookConditions are the conditions a `when` or `unless` of githooks can use, in the order polix config fmt
+// writes them; message holds only on CommitMsg (githookOnly).
+var GithookConditions = []string{"branch", "changed", "message"}
+
+// GithookBuiltins are the placeholders the strings of githooks may use besides the variables of vars; message
+// expands only on CommitMsg (githookOnly).
+var GithookBuiltins = []string{"branch", "message"}
+
+// GithookRunKeys and GithookBlockKeys are the keys of the long form of run and block in githooks, in the order of
+// RunKeys and BlockKeys: githooks keep no log, so a run runs on every commit (no always) and a block blocks every
+// time (no once).
+var (
+	GithookRunKeys   = []string{"command", "message"}
+	GithookBlockKeys = []string{"message"}
+)
+
+// githookOnly names the only event of githooks a condition or a placeholder holds on, for those that do not hold
+// on every one.
+var githookOnly = map[string]string{"message": CommitMsg}
+
 // refusals tells why an event does not allow a verb, with the alternative, as a format of the event; a verb without
 // one is told only the verbs the event allows.
 var refusals = map[string]string{

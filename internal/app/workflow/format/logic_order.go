@@ -7,9 +7,9 @@ import (
 
 // topKeys is the order of the top level keys of a formatted polix.yaml: the settings first, in the order of
 // workflow.TopKeys, then requirements right before guardrails, since it is not a shortcut that expands into entries,
-// and the two sections that hold the workflow, guardrails and on, last.
+// the two sections that hold the workflow of the AI, guardrails and on, and githooks, the gates git runs, last.
 var topKeys = []string{"version", "requires", "base_branch", "max_stop_retries", "vars", "rules", "plans",
-	"reports", "guidance", "risk", "requirements", "guardrails", "on"}
+	"reports", "guidance", "risk", "requirements", "guardrails", "on", "githooks"}
 
 // varKeys and rulesKeys are the keys of a variable of vars and of the section rules.
 var (
@@ -28,13 +28,14 @@ func formatData(data []byte) ([]byte, error) {
 }
 
 // spaced tells whether the items of the sequence at path are separated by one blank line: the entries of each event
-// of on and the items of the shortcuts of guardrails that take a list of maps. The lists of texts stay together.
+// of on and of githooks, and the items of the shortcuts of guardrails that take a list of maps. The lists of texts
+// stay together.
 func spaced(path []string) bool {
 	if len(path) != 2 {
 		return false
 	}
 	switch path[0] {
-	case "on":
+	case "on", "githooks":
 		return true
 	case "guardrails":
 		return path[1] == workflow.ShortcutForbiddenCommands || path[1] == workflow.ShortcutFormatOnEdit ||
@@ -56,6 +57,8 @@ func order(path []string) []string {
 		return orderShortcut(path[1])
 	case path[0] == "on" && len(path) >= 3 && path[2] == "-":
 		return orderEntry(path[3:])
+	case path[0] == "githooks" && len(path) >= 3 && path[2] == "-":
+		return orderGithookEntry(path[3:])
 	}
 	return nil
 }
@@ -67,6 +70,8 @@ func orderSection(key string) []string {
 		return workflow.GuardrailsKeys
 	case "on":
 		return workflow.Events
+	case "githooks":
+		return workflow.GithookEvents
 	case "rules":
 		return rulesKeys
 	case "plans", "reports":
@@ -90,6 +95,16 @@ func orderShortcut(key string) []string {
 		return workflow.RunOnStopKeys
 	}
 	return nil
+}
+
+// orderGithookEntry returns the order of the keys of an entry of githooks at the path below the entry: that of an
+// entry of on (orderEntry), but for the conditions of its when and unless, in the order of
+// workflow.GithookConditions.
+func orderGithookEntry(path []string) []string {
+	if len(path) == 1 && (path[0] == "when" || path[0] == "unless") {
+		return workflow.GithookConditions
+	}
+	return orderEntry(path)
 }
 
 // orderEntry returns the order of the keys of an entry of on at the path below the entry: the entry, its

@@ -18,3 +18,15 @@ func TestFinding(t *testing.T) {
 		t.Fatal("inspection")
 	}
 }
+
+// A git that lists the hooks of its configuration was asked for them: the inspection holds what it listed.
+func TestInspectionGitHooks(t *testing.T) {
+	asked := Inspection{Setup: Setup{Version: "1"}, ListsHooks: true, GitHooks: map[string][]string{}}
+	old := Inspection{Setup: Setup{Version: "1"}, GitHooks: map[string][]string{}}
+	if asked.Valid() != nil || old.Valid() != nil {
+		t.Fatal("a git asked for its hooks")
+	}
+	if (Inspection{Setup: Setup{Version: "1"}, ListsHooks: true}).Valid() == nil {
+		t.Fatal("a git that lists hooks without the hooks it listed")
+	}
+}

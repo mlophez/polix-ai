@@ -273,6 +273,100 @@ on:
 	}
 }
 
+// AC1: githooks loads the entries of each of its events with their lines, apart from on, and the short and long
+// forms of block and run; its problems come with those of the workflow, and a file without it loads as before.
+func TestDecodeGithooks(t *testing.T) {
+	src := `version: 1
+vars:
+  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+on:
+  pre_commit:
+    - action: { block: "IA" }
+githooks:
+  pre_commit:
+    - when: { branch: "^main$" }
+      action: { block: "No se commitea en {branch}" }
+    - when: { changed: ["src/**", "*.go"] }
+      action: { run: go test ./... }
+    - action: { run: [go, vet, "./..."] }
+
+  commit_msg:
+    - when: { branch: "^[A-Z]+-[0-9]+" }
+      unless: { message: "^{key}: " }
+      action:
+        block: { message: "{message} needs {key}" }
+    - action:
+        run: { command: just lint, message: "Arregla el lint" }
+`
+	w, err := parse(t, src, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.On[workflow.PreCommit]) != 1 || len(w.On[workflow.CommitMsg]) != 0 {
+		t.Fatalf("on: %+v", w.On)
+	}
+	pre, msg := w.Githooks[workflow.PreCommit], w.Githooks[workflow.CommitMsg]
+	if len(pre) != 3 || len(msg) != 2 || w.GithookLines[workflow.PreCommit] != 8 ||
+		w.GithookLines[workflow.CommitMsg] != 15 {
+		t.Fatalf("githooks: %+v %v", w.Githooks, w.GithookLines)
+	}
+	if b := pre[0].Action.Block; b == nil || b.Message != "No se commitea en {branch}" || pre[0].Line != 9 ||
+		pre[0].When["branch"] != "^main$" || strings.Join(pre[0].Keys, ",") != "when,action" {
+		t.Fatalf("block short: %+v", pre[0])
+	}
+	if r := pre[1].Action.Run; r == nil || strings.Join(r.Command, ",") != "go,test,./..." || pre[1].Line != 11 {
+		t.Fatalf("run string: %+v", pre[1])
+	}
+	if r := pre[2].Action.Run; r == nil || strings.Join(r.Command, ",") != "go,vet,./..." {
+		t.Fatalf("run list: %+v", pre[2])
+	}
+	if b := msg[0].Action.Block; b == nil || b.Message != "{message} needs {key}" || msg[0].Line != 16 ||
+		msg[0].Unless["message"] != "^{key}: " || strings.Join(b.Keys, ",") != "message" {
+		t.Fatalf("block long: %+v", msg[0])
+	}
+	if r := msg[1].Action.Run; r == nil || strings.Join(r.Command, ",") != "just,lint" || r.Message != "Arregla el lint" ||
+		strings.Join(r.Keys, ",") != "command,message" || msg[1].Line != 20 {
+		t.Fatalf("run long: %+v", msg[1])
+	}
+
+	_, err = parse(t, "version: 1\ngithooks:\n  pre_push:\n    - action: { block: x }\n  pre_commit:\n"+
+		"    - action: { inject: x }\n", "dev")
+	var invalid workflow.InvalidError
+	if !errors.As(err, &invalid) || len(invalid) != 2 ||
+		invalid[0] != `polix.yaml:3: unknown githooks event "pre_push" (githooks events: pre_commit, commit_msg)` ||
+		invalid[1] != `polix.yaml:6: githooks.pre_commit: verb "inject" is not allowed (githooks allow run, block)` {
+		t.Fatalf("problems: %v", err)
+	}
+
+	w, err = parse(t, "version: 1\non:\n  stop:\n    - action: { block: x }\n", "dev")
+	if err != nil || w.Githooks != nil || w.GithookLines != nil || len(w.On[workflow.Stop]) != 1 {
+		t.Fatalf("without githooks: %v %+v", err, w)
+	}
+}
+
+// AC22: a polix.yaml with a githooks entry loads with the entry that installs the hooks of git first in start,
+// before the start entries written in on and those of the shortcuts; one without githooks, or with only empty
+// githooks events, loads its start as before.
+func TestDecodeGithooksInstall(t *testing.T) {
+	const on = "version: 1\non:\n  start:\n    - action: { inject: hola }\n"
+	w, err := parse(t, on+"githooks:\n  pre_commit: []\n  commit_msg:\n    - action: { block: x }\n", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := w.On[workflow.Start]
+	if len(start) != 2 || start[0].From != "githooks" || start[0].Line != 7 || start[0].Action.Run == nil ||
+		strings.Join(start[0].Action.Run.Command, " ") != "polix install --githooks" || !start[0].Action.Run.Always ||
+		start[1].Action.Inject == nil || start[1].Line != 4 {
+		t.Fatalf("start: %+v", start)
+	}
+	for _, src := range []string{on, on + "githooks:\n  pre_commit: []\n  commit_msg: []\n"} {
+		w, err := parse(t, src, "dev")
+		if start := w.On[workflow.Start]; err != nil || len(start) != 1 || start[0].Action.Inject == nil {
+			t.Fatalf("%q: %v %+v", src, err, start)
+		}
+	}
+}
+
 // A verb, an action, once or always of the wrong kind of node stop the parse with the key and its line.
 func TestDecodeVerbErrors(t *testing.T) {
 	cases := map[string]string{

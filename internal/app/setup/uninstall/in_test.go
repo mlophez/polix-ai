@@ -13,6 +13,17 @@ import (
 type fakePort struct {
 	calls []string
 	err   error // of UnregisterPlugin
+	// gitHooks records the hooks of git removed, apart from calls; gitChanges makes each removal a change.
+	gitHooks   []string
+	gitChanges bool
+}
+
+func (f *fakePort) UnregisterGitHook(_ context.Context, root string, h setup.GitHook) ([]setup.Change, error) {
+	f.gitHooks = append(f.gitHooks, root+" "+string(h))
+	if !f.gitChanges {
+		return nil, nil
+	}
+	return []setup.Change{{Path: h.Key(), Action: "removed"}}, nil
 }
 
 func (f *fakePort) Confirm(_ context.Context, _ string) error { return nil }
@@ -41,6 +52,24 @@ func TestShell(t *testing.T) {
 	res, err = run(context.Background(), port, Request{Version: "1", User: true})
 	if err == nil || len(res.Changes) != 1 || len(port.calls) != 1 {
 		t.Fatalf("the first error stops it: %+v %v %v", res, err, port.calls)
+	}
+}
+
+// AC14: inside a repository the shell removes both hooks of git and reports it, unless --user or only some agents
+// are removed, which leaves them to the agents still installed.
+func TestShellGitHooks(t *testing.T) {
+	ctx := context.Background()
+	port := &fakePort{gitChanges: true}
+	res, err := run(ctx, port, Request{Version: "1"})
+	if err != nil || !slices.Equal(port.gitHooks, []string{"/r pre-commit", "/r commit-msg"}) ||
+		!slices.Contains(res.Changes, setup.Change{Path: "git config hook.polix-commit-msg", Action: "removed"}) {
+		t.Fatalf("%+v %v %q", res, err, port.gitHooks)
+	}
+	for _, req := range []Request{{Version: "1", User: true}, {Version: "1", Agents: []string{setup.Codex}}} {
+		port = &fakePort{}
+		if _, err := run(ctx, port, req); err != nil || port.gitHooks != nil {
+			t.Fatalf("%+v: %v %q", req, err, port.gitHooks)
+		}
 	}
 }
 

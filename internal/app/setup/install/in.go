@@ -27,6 +27,9 @@ type Request struct {
 	Agents  []string // the agents asked, parsed (parseAgents); empty for the default ones
 	Quiet   bool     // only print what changed
 	Version string   // version of the running polix
+	// GitHooks asks only for the hooks of git of the repository (--githooks): no plugin, no hooks of the agents
+	// and no confirmation.
+	GitHooks bool
 }
 
 // Response is what the use case InstallSetup gives back to the caller, in the shape of the transport:
@@ -42,6 +45,15 @@ type Response struct {
 	Quiet        bool           // only print what changed
 	NotOnPath    bool           // polix is not on the PATH, which the hooks run
 	Duplicates   []string       // other settings of Claude Code that also register the hooks of polix
+	// Unlisted are the hooks of git written that git does not list for their events: a git older than 2.54 does
+	// not run the hooks of its configuration.
+	Unlisted []setup.GitHook
+	// Disabled are the hooks of git written that git lists as disabled (hook.<name>.enabled=false): it does not
+	// run them, and writing them again does not enable them.
+	Disabled []setup.GitHook
+	// GitHooksOnly is true when only the hooks of git were asked (--githooks): the command prints only the changes
+	// and the warning of Unlisted, and exits 1 with it.
+	GitHooksOnly bool
 }
 
 // Port is what the shell of InstallSetup needs from the outside: the home, the repository, the plugin
@@ -72,6 +84,12 @@ type Port interface {
 	Registered(ctx context.Context, paths []string) map[string]bool
 	// OnPath returns why the program name is not on the PATH; nil when it is.
 	OnPath(ctx context.Context, name string) error
+	// RegisterGitHook writes the hook of git h into the local configuration of the repository at root, in place of
+	// the values it had, keeping every other key.
+	RegisterGitHook(ctx context.Context, root string, h setup.GitHook) ([]setup.Change, error)
+	// Unlisted returns the hooks, of hooks, that git does not list for their events in the repository at root: all
+	// of them when git cannot list the hooks of its configuration; and apart, those it lists as disabled.
+	Unlisted(ctx context.Context, root string, hooks []setup.GitHook) (unlisted, disabled []setup.GitHook)
 }
 
 // Command is the command `polix install`, the entry of the use case InstallSetup: it turns the flags
@@ -95,15 +113,25 @@ func Command() *cobra.Command {
 			"  Codex        codex plugin marketplace add, and enabled in ~/.codex/config.toml (not implemented)\n\n" +
 			"For the repository of --dir, unless --user, the hooks that call polix hook, to commit with its polix.yaml:\n" +
 			"  Claude Code  .claude/settings.json\n" +
-			"  Codex        .codex/hooks.json (not implemented)\n\n" +
+			"  Codex        .codex/hooks.json (not implemented)\n" +
+			"and the hooks of git that call polix githook on pre-commit and commit-msg, in the local git configuration\n" +
+			"(hook.polix-pre-commit, hook.polix-commit-msg; git 2.54 or later runs them), also without githooks in\n" +
+			"polix.yaml.\n\n" +
+			"With --githooks, only the hooks of git of the repository: no plugin, no hooks of the agents and no\n" +
+			"confirmation; it prints only what changed, and exits 1 when git does not run them. A polix.yaml with\n" +
+			"githooks runs it on every session start.\n\n" +
 			"Every other setting and hook of those files is kept. Running it again updates what changed; polix update " +
 			"refreshes the plugin after every update.",
 		Example: "  # The plugin for this machine and the hooks for this repository\n  polix install\n\n" +
 			"  # Only the plugin, from anywhere\n  polix install --user\n\n" +
 			"  # The hooks of another repository\n  polix install --dir ~/Code/service\n\n" +
+			"  # Only the hooks of git of this repository\n  polix install --githooks\n\n" +
 			"  # Codex too (not implemented: untested)\n  polix install --agent claude,codex",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
+			if req.GitHooks && (req.User || c.Flags().Changed("agent")) {
+				return errors.New("--githooks installs only the hooks of git of the repository: it takes neither --user nor --agent")
+			}
 			if err := req.parseAgents(agents); err != nil {
 				return err
 			}
@@ -119,10 +147,11 @@ func Command() *cobra.Command {
 				return err
 			}
 			res.print(c.OutOrStdout(), c.ErrOrStderr())
-			return nil
+			return res.exit()
 		},
 	}
 	c.Flags().BoolVarP(&req.User, "user", "u", false, "only the plugin of the user, not the hooks of the repository")
+	c.Flags().BoolVar(&req.GitHooks, "githooks", false, "only the hooks of git of the repository")
 	c.Flags().StringVarP(&req.Dir, "dir", "C", ".", "repository whose hooks to register")
 	c.Flags().StringSliceVarP(&agents, "agent", "a", nil, "agents: claude, codex (default: claude; codex is not implemented)")
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
@@ -132,32 +161,79 @@ func Command() *cobra.Command {
 	return c
 }
 
-// run is the shell, from request to response: it reads through the port the home, the repository unless
-// --user and the plugin of the binary, calls the logic once, asks the port for the files of the marketplace, asks
-// for confirmation, and carries out its output: the plugin, then for each agent its registration and the hooks of
-// the repository; then it asks whether polix is on the PATH and which other settings register the hooks too.
+// run is the shell, from request to response: it reads through the port the home and the plugin of the binary,
+// unless only the hooks of git are asked, and the repository unless --user; calls the logic once; and carries out
+// its output: only the hooks of git (installGitHooks), or the whole install (installAll).
 func run(ctx context.Context, port Port, req Request) (Response, error) {
-	res := Response{Version: req.Version, User: req.User, Quiet: req.Quiet}
-	home, err := port.Home(ctx)
+	res := Response{Version: req.Version, User: req.User, Quiet: req.Quiet, GitHooksOnly: req.GitHooks}
+	asked, embedded, err := read(ctx, port, req)
 	if err != nil {
 		return res, err
+	}
+	out := Decide(asked, embedded, req.GitHooks)
+	if out.Failure != "" {
+		return res, errors.New(out.Failure)
+	}
+	if out.GitHooksOnly {
+		return installGitHooks(ctx, port, out, res)
+	}
+	return installAll(ctx, port, out, res)
+}
+
+// read reads through the port what the logic needs: the home and the plugin of the binary, unless only the hooks
+// of git are asked, and the repository unless --user; and builds the setup asked.
+func read(ctx context.Context, port Port, req Request) (setup.Setup, map[string][]byte, error) {
+	var home string
+	var embedded map[string][]byte
+	if !req.GitHooks {
+		var err error
+		if home, err = port.Home(ctx); err != nil {
+			return setup.Setup{}, nil, err
+		}
+		if embedded, err = port.Plugin(ctx); err != nil {
+			return setup.Setup{}, nil, err
+		}
 	}
 	var root string
 	if !req.User {
 		root = port.Root(ctx, req.Dir)
 	}
-	embedded, err := port.Plugin(ctx)
+	asked := setup.Setup{Home: home, Root: root, Agents: req.Agents, Version: req.Version}
+	if err := asked.Valid(); err != nil {
+		return setup.Setup{}, nil, err
+	}
+	return asked, embedded, nil
+}
+
+// installGitHooks carries out an output of only the hooks of git: it writes each of them, without confirmation,
+// and asks which of them git does not list or lists as disabled.
+func installGitHooks(ctx context.Context, port Port, out Output, res Response) (Response, error) {
+	ch, err := registerGitHooks(ctx, port, out)
+	res.Changes = ch
 	if err != nil {
 		return res, err
 	}
-	asked := setup.Setup{Home: home, Root: root, Agents: req.Agents, Version: req.Version}
-	if err := asked.Valid(); err != nil {
-		return res, err
+	res.Unlisted, res.Disabled = port.Unlisted(ctx, out.Setup.Root, out.GitHooks)
+	return res, nil
+}
+
+// registerGitHooks writes each hook of git of the output into the repository, and returns their changes and their
+// errors joined, so one that fails does not keep the others from being written.
+func registerGitHooks(ctx context.Context, port Port, out Output) ([]setup.Change, error) {
+	var changes []setup.Change
+	var errs []error
+	for _, h := range out.GitHooks {
+		ch, err := port.RegisterGitHook(ctx, out.Setup.Root, h)
+		changes, errs = append(changes, ch...), append(errs, err)
 	}
-	out := Decide(asked, embedded)
-	if out.Failure != "" {
-		return res, errors.New(out.Failure)
-	}
+	return changes, errors.Join(errs...)
+}
+
+// installAll carries out the output of the whole install: it asks the port for the files of the marketplace, asks
+// for confirmation, writes the plugin, then for each agent its registration and the hooks of the repository, then
+// the hooks of git of the repository and which of them git does not list or lists as disabled; then it asks whether
+// polix is on the PATH and which other settings register the hooks too.
+func installAll(ctx context.Context, port Port, out Output, res Response) (Response, error) {
 	files, err := port.MarketplaceFiles(ctx, out.Plugin)
 	if err != nil {
 		return res, err
@@ -179,8 +255,13 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 			res.Changes, errs = append(res.Changes, ch...), append(errs, err)
 		}
 	}
+	ch, err := registerGitHooks(ctx, port, out)
+	res.Changes, errs = append(res.Changes, ch...), append(errs, err)
 	if err := errors.Join(errs...); err != nil {
 		return res, err
+	}
+	if len(out.GitHooks) != 0 {
+		res.Unlisted, res.Disabled = port.Unlisted(ctx, out.Setup.Root, out.GitHooks)
 	}
 	res.NotOnPath = port.OnPath(ctx, "polix") != nil
 	if out.Setup.Root != "" {
@@ -219,16 +300,49 @@ func (res Response) printChanges(stdout io.Writer) {
 	}
 }
 
-// print writes, unless quiet, what the install leaves and what to do next to stdout, and the settings that also
-// register the hooks to stderr.
+// print writes, unless quiet or only the hooks of git were asked, what the install leaves and what to do next to
+// stdout, and to stderr the settings that also register the hooks and, when git does not list the hooks of git
+// written or lists them as disabled, that their gates do not apply.
 func (res Response) print(stdout, stderr io.Writer) {
-	if !res.Quiet {
+	if !res.Quiet && !res.GitHooksOnly {
 		res.summary(cli.NewUI(stdout))
 	}
 	ue := cli.NewUI(stderr)
 	for _, f := range res.Duplicates {
 		ue.Warn("%s also registers the hooks of polix: remove them from there, or Claude Code runs them twice", f)
 	}
+	if len(res.Unlisted) > 0 {
+		ue.Warn("git does not run hooks from its configuration (it needs git 2.54 or later): the hooks of git are "+
+			"written, but the githooks of polix.yaml do not apply until git is updated (%s)",
+			strings.Join(gitHookKeys(res.Unlisted), ", "))
+	}
+	if len(res.Disabled) > 0 {
+		keys := make([]string, len(res.Disabled))
+		for i, h := range res.Disabled {
+			keys[i] = "hook." + h.Name() + ".enabled"
+		}
+		ue.Warn("hooks of git disabled in the git configuration (%s false): git does not run them, so the githooks "+
+			"of polix.yaml do not apply to their events until they are enabled again", strings.Join(keys, ", "))
+	}
+}
+
+// exit returns the exit code 1 of an install of only the hooks of git that git does not list, so a run of start
+// reaches the agent; nil otherwise, also for the whole install with unlisted hooks and for hooks git lists as
+// disabled, which a person turned off and installing again does not turn on.
+func (res Response) exit() error {
+	if res.GitHooksOnly && len(res.Unlisted) > 0 {
+		return cli.Exit(1)
+	}
+	return nil
+}
+
+// gitHookKeys returns the key of each hook of git.
+func gitHookKeys(hooks []setup.GitHook) []string {
+	keys := make([]string, len(hooks))
+	for i, h := range hooks {
+		keys[i] = h.Key()
+	}
+	return keys
 }
 
 // summary writes what the install leaves and what to do next.

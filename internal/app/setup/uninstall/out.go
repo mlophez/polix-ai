@@ -54,6 +54,20 @@ func (a Adapter) Confirm(_ context.Context, summary string) error {
 	return err
 }
 
+// UnregisterGitHook removes the section of the hook h from the local configuration of the repository at root
+// through git (git.Repo.RemoveHook); a hook that was not there is no change.
+func (a Adapter) UnregisterGitHook(ctx context.Context, root string, h setup.GitHook) ([]setup.Change, error) {
+	repo, err := git.Open(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	removed, err := repo.RemoveHook(ctx, h.Name())
+	if err != nil || !removed {
+		return nil, err
+	}
+	return setup.Changes{}.Add("removed", h.Key())
+}
+
 // UnregisterPlugin unregisters the plugin. Codex: `codex plugin marketplace remove` when its CLI is here and the
 // plugin enabled, and the table of the plugin removed from its configuration. Claude Code, when its CLI is here:
 // `claude plugin uninstall` and `claude plugin marketplace remove`, tolerating what is already gone.

@@ -46,15 +46,17 @@ vocabulary of the domain:
   last line of an item, indented deeper than the next item, stays below it. The comments right above the first key
   stay at the top of the file when that key moves, unless a blank line sets them apart from the top.
 - The top level keys follow `version`, `requires`, `base_branch`, `max_stop_retries`, `vars`, `rules`, `plans`,
-  `reports`, `guidance`, `risk`, `requirements`, `guardrails` and `on`: `requirements` goes right before
+  `reports`, `guidance`, `risk`, `requirements`, `guardrails`, `on` and `githooks`: `requirements` goes right before
   `guardrails`, and its programs keep their order. Inside each section the keys follow the order of their schema:
   the shortcuts of `guardrails` and the keys of their items, the events of `on` in lifecycle order (`workflow.Events`),
   the keys of an entry (`when`, `unless`, `action`), the conditions (`workflow.Conditions`, also inside `any` and
   `not`), the verbs of an action (`workflow.Actions`), and the keys of each verb (`workflow.RunKeys`,
   `workflow.InjectKeys`, `workflow.BlockKeys` and `workflow.NotifyKeys`, so `always` goes before the `message` of a
-  `notify` and after the `command` and the `message` of a `run`). An unknown key goes after the known ones, in its
-  order in the source.
-- One blank line separates two entries of an event of `on`, and two items of `forbidden_commands`, `format_on_edit`
+  `notify` and after the `command` and the `message` of a `run`). The events of `githooks` follow
+  `workflow.GithookEvents` (`pre_commit`, `commit_msg`), and its entries are ordered as those of `on`, but for the
+  conditions of their `when` and `unless`, which follow `workflow.GithookConditions` (`branch`, `changed`,
+  `message`). An unknown key goes after the known ones, in its order in the source.
+- One blank line separates two entries of an event of `on` or of `githooks`, and two items of `forbidden_commands`, `format_on_edit`
   and `run_on_stop`, above the comments of the later one, unless both are written on one line each, without comments
   above or below them (a comment at the end of the line is allowed), as `- pattern: "git clean -f*"`. The lists of texts (`protected_files`, `requirements`) and the lists inside an
   entry stay together, and the blank lines of the source are kept.

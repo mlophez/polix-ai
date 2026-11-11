@@ -132,8 +132,10 @@ func (s Setup) Duplicates(registered map[string]bool) []string {
 	return out
 }
 
-// Summary tells what install (verb write) or uninstall (verb remove) is about to do, for the person to confirm.
-func (s Setup) Summary(verb string) string {
+// Summary tells what install (verb write) or uninstall (verb remove) is about to do, for the person to confirm:
+// for each agent its plugin and, in a repository, its hooks file; and the hooks of git, gitHooks, in the local git
+// configuration of the repository, when there are some and a repository.
+func (s Setup) Summary(verb string, gitHooks []GitHook) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "polix %s will %s:\n", s.Version, verb)
 	for _, a := range s.Agents {
@@ -146,6 +148,13 @@ func (s Setup) Summary(verb string) string {
 		if s.Root != "" {
 			fmt.Fprintf(&b, "         the hooks of %s\n", s.HooksFile(a))
 		}
+	}
+	if s.Root != "" && len(gitHooks) > 0 {
+		names := make([]string, len(gitHooks))
+		for i, h := range gitHooks {
+			names[i] = "hook." + h.Name()
+		}
+		fmt.Fprintf(&b, "\n  git: the hooks %s, in the local git configuration of %s\n", strings.Join(names, ", "), s.Root)
 	}
 	return b.String()
 }

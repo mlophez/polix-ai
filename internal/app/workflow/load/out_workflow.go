@@ -16,6 +16,7 @@ type workflowYAML struct {
 	Guardrails     guardrailsYAML         `yaml:"guardrails"`
 	Vars           map[string]varYAML     `yaml:"vars"`
 	On             map[string][]entryYAML `yaml:"on"`
+	Githooks       map[string][]entryYAML `yaml:"githooks"`
 	Rules          rulesYAML              `yaml:"rules"`
 	Plans          folderYAML             `yaml:"plans"`
 	Reports        folderYAML             `yaml:"reports"`
@@ -159,12 +160,15 @@ func (workflowYAML) names() *strings.Replacer {
 	)
 }
 
-// workflow builds the domain value of the file, with the line of each event of `on`, the protected files and the
-// forbidden commands of guardrails, and its other shortcuts expanded into entries, and returns it with the section
-// guardrails as written. The problems of each value are reported by Workflow.Valid, which walks them all together
-// with those that depend on the event and the vars, so the errors of the parts are not returned on their own; the
-// problems of the values of the shortcuts, which the workflow does not hold, are left to Guardrails.Problems.
-func (y workflowYAML) workflow(eventLines map[string]int) (workflow.Workflow, workflow.Guardrails, error) {
+// workflow builds the domain value of the file, with the line of each event of `on` (eventLines) and of githooks
+// (githookLines), the entries of githooks, the protected files and the forbidden commands of guardrails, and its
+// other shortcuts expanded into entries of on, with first in start the entry that installs the hooks of git when
+// githooks has entries (workflow.Workflow.ExpandGithooks), and returns it with the section guardrails as written.
+// The problems of each value are reported by Workflow.Valid, which walks them all together with those that depend on
+// the event and the vars, so the errors of the parts are not returned on their own; the problems of the values of
+// the shortcuts, which the workflow does not hold, are left to Guardrails.Problems.
+func (y workflowYAML) workflow(eventLines, githookLines map[string]int) (workflow.Workflow, workflow.Guardrails,
+	error) {
 	guardrails, _ := y.Guardrails.guardrails()
 	rules, _ := y.Rules.rules()
 	plans, _ := y.Plans.folder()
@@ -180,13 +184,17 @@ func (y workflowYAML) workflow(eventLines map[string]int) (workflow.Workflow, wo
 		ProtectedFiles:    guardrails.Protected(),
 		ForbiddenCommands: guardrails.Forbidden(),
 		Vars:              y.vars(),
-		On:                guardrails.Expand(y.on()),
+		On:                guardrails.Expand(y.entries(y.On)),
 		Rules:             rules,
 		Plans:             plans,
 		Reports:           reports,
 		Guidance:          guidance,
 		EventLines:        eventLines,
+		Githooks:          y.entries(y.Githooks),
+		GithookLines:      githookLines,
 	}
+	// The entry of start that installs the hooks of git goes first, before those of the shortcuts.
+	w = w.ExpandGithooks()
 	return w, guardrails, w.Valid()
 }
 
@@ -202,21 +210,21 @@ func (y workflowYAML) vars() map[string]workflow.Var {
 	return vars
 }
 
-// on builds the entries written in on, by event; nil without the key.
-func (y workflowYAML) on() map[string][]workflow.Entry {
-	if y.On == nil {
+// entries builds the entries written in a section of events, on or githooks, by event; nil without the section.
+func (y workflowYAML) entries(section map[string][]entryYAML) map[string][]workflow.Entry {
+	if section == nil {
 		return nil
 	}
-	on := make(map[string][]workflow.Entry, len(y.On))
-	for ev, list := range y.On {
+	out := make(map[string][]workflow.Entry, len(section))
+	for ev, list := range section {
 		entries := make([]workflow.Entry, 0, len(list))
 		for _, e := range list {
 			entry, _ := e.entry()
 			entries = append(entries, entry)
 		}
-		on[ev] = entries
+		out[ev] = entries
 	}
-	return on
+	return out
 }
 
 func (y varYAML) variable() (workflow.Var, error) {

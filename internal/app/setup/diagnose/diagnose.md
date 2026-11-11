@@ -1,8 +1,8 @@
 # DiagnoseSetup
 
 Checks that the machine and the repository are ready for polix: the binary and its version, the PATH the hooks
-use, git, the workflow, the rules and their checks, the hooks of Claude Code, the plugin, Codex only when polix is
-registered for it (Codex support is not implemented and untested) and the state.
+use, git, the workflow, the rules and their checks, the hooks of Claude Code, the hooks of git, the plugin, Codex
+only when polix is registered for it (Codex support is not implemented and untested) and the state.
 
 ## Trigger
 
@@ -34,7 +34,15 @@ or are not JSON, every event of `setup.ClaudeHookEvents`, the matchers, the time
 the session start update, with `setup.HookHandler.Polix`, `Update` and `Legacy`; an event that does not run polix
 fails, but `PostToolUseFailure` and `SubagentStart`, which settings written by an older polix lack, only warn and
 ask to run `polix install`, since only the feedback of failed commands or the context at the start of subagents is
-lost), the plugin (the version of the manifest written,
+lost), the hooks of git (`logic_githooks.go`, area `githooks`: one `ok` line, `git runs polix githook on
+pre-commit, commit-msg`, when `GitHooks` of the inspection names `polix-<event>` for each event of
+`setup.GitHooks`; a `warn` per event without it, `git does not run polix githook on <event>: run polix install`, or,
+when `DisabledGitHooks` names it (git lists it as disabled, `hook.<name>.enabled=false`), `git does not run polix
+githook on <event>: hook.polix-<event> is disabled in the git configuration (hook.polix-<event>.enabled false)`,
+which `polix install` does not change; one
+`warn` when git does not list the hooks of its configuration (`ListsHooks` false: older than 2.54), that the githooks
+of polix.yaml do not apply until git is updated; never a failure, and nothing when git was not asked), the plugin
+(the version of the manifest written,
 `setup.Plugin.Manifest`, against `setup.Plugin.ManifestVersion`, and without `--hook` what `claude plugin list`
 said), Codex, and the state.
 Codex is checked only when polix is registered for it, as `polix install --agent codex` leaves it: a Codex hooks
@@ -73,6 +81,9 @@ and of polix.yaml (`internal/app/workflow/load`) that `cmd/polix` builds once an
   and whether it is the plugin polix (`agentconf.ReadManifest`).
 - `ClaudePlugin`: `claude plugin list --json`, read by the decoding type of the adapter: whether polix is installed
   for the user, enabled, and the folder it is read from; `setup.ErrNoCLI` without the CLI.
+- `GitHooks`: `git hook list <event>` for each hook of git polix registers (`git.Repo.Hooks`): by event, the names
+  git lists, apart those it lists as disabled (`disabled<TAB><name>`), and whether this git lists the hooks of its
+  configuration; a git that cannot, or fails, lists none.
 
 ## Errors
 
@@ -86,7 +97,8 @@ Every problem is a finding; only a broken embedded plugin is an error of the she
    `in_version.go` translates the version of the request into a `version.Version`, validated with the domain, to
    tell a release build), the PATH, the repository and its facts (`inspectRepository`; for a workflow that can be
    used, `lookRequirements` asks `LookPath` once per program of `Workflow.Programs`, on the PATH the hooks give polix,
-   which on Windows tries the extensions of `PATHEXT`, and keeps by program why it is not found), the
+   which on Windows tries the extensions of `PATHEXT`, and keeps by program why it is not found; and `GitHooks`
+   asks git for the hooks of git of polix), the
    hooks files of both agents and `~/.codex/config.toml`, decoded (from which the logic decides whether polix is
    registered for Codex), the plugin (`readPlugin`) and Claude Code (`askClaude`), into a `setup.Inspection`.
 3. `Decide` decides the findings.

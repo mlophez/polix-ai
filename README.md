@@ -229,6 +229,7 @@ From the root of the repository:
 polix install                       # the plugin for you and the hooks for this repository, for Claude Code
 polix install --user                # only the plugin, from anywhere (the installers already ran it)
 polix install --agent claude,codex  # Codex too: not implemented in this release, and untested
+polix install --githooks            # only the hooks of git of this repository, without asking
 ```
 
 `polix install` sets up Claude Code alone, even when Codex is on the machine: Codex is set up only with
@@ -245,7 +246,10 @@ changed:
   Start a new session to load it.
 - **For the repository, the hooks.** They go in `.claude/settings.json` (and in `.codex/hooks.json` only with
   `--agent codex`), keeping every other setting and hook of those files. Commit them with your workflow so the team
-  gets them.
+  gets them. The hooks of git that run `polix githook` on `pre-commit` and `commit-msg` go in the local git
+  configuration of the repository (git 2.54 or later runs them), so the `githooks` of `polix.yaml` gate every
+  commit, whoever makes it; each clone runs `polix install` once, or a session of the AI does it when `polix.yaml`
+  declares `githooks`.
 
 Every hook calls the same command, as in [`examples/claude-settings.json`](examples/claude-settings.json), and the
 agent shows `polix` next to its spinner while it runs:
@@ -337,6 +341,11 @@ $ polix log --tail 3
   a list of entries per event. Each entry says when it applies (`when`, `unless`) and what it does (`action`, with
   exactly one verb: `block`, `run`, `inject` or `notify`).
 
+Apart from both, **`githooks:`** holds the gates git itself runs on every commit, whoever makes it, in `pre_commit`
+and `commit_msg`: entries with `block` or `run`, and the conditions `branch`, `changed` (the staged files) and
+`message` (the first line of the message), so a team can demand a message format by branch or by the files a commit
+holds.
+
 `protected_files` and `forbidden_commands` are protections of the engine: they apply before every entry of `on:`,
 to every agent, without exceptions. The other shortcuts are only sugar: Polix expands each one into entries of `on:`
 when it reads the file, so there is one engine behind both layers, and `polix graph` names the shortcut of each
@@ -398,8 +407,8 @@ is what is not committed yet (changed since HEAD, or untracked).
 **Top-level keys:** `version`, `requires`, `base_branch` (the branch, or candidates, `rules check --changed`
 compares with), `max_stop_retries` (the loop guard), `requirements` (the programs the repository needs on the PATH:
 the first prompt of a session tells the AI which ones are missing, and `polix doctor` warns, never blocking),
-`guardrails`, `vars`, `on`, `rules` (`run`: the command that runs each kind of `check`, by the glob of its file
-name).
+`guardrails`, `vars`, `on`, `githooks` (the gates of git), `rules` (`run`: the command that runs each kind of
+`check`, by the glob of its file name).
 
 **Ignored files:** the entries of `on:` skip the edits of files git ignores, since they govern what a commit may
 hold; `protected_files` and `forbidden_commands` still cover them. To keep an agent away from a path with an
@@ -478,6 +487,7 @@ Shell hooks are fine for one trivial check. Polix is for when guardrails are par
 ```text
 polix hook claude [-C dir]     entry point of the Claude Code hooks (event on stdin)
 polix hook codex [-C dir]      entry point of the Codex hooks (not implemented: untested)
+polix githook <event> [file]   entry point of the hooks of git (pre-commit, commit-msg): the githooks of polix.yaml
 polix config check [file]      validate polix.yaml (or another workflow file) and ai/rules/
 polix config fmt [--check] [file]  format polix.yaml (or another workflow file) in place, or only tell whether it is formatted
 polix rules check [--changed]  run the checks of the deterministic rules (for CI)
@@ -489,7 +499,9 @@ polix doctor [--hook]          check that this machine and repository are ready
 polix update [--version V]     replace the binary with a release, verified and atomic
 polix update --check           only report whether a newer release exists
 polix update --hook            session start hook: at most once an hour, quiet, never fails
-polix install [--user]         install the plugin for the user and register the hooks in the repository
+polix install [--user]         install the plugin for the user and register the hooks (of the agents and of git)
+                               in the repository
+polix install --githooks       only the hooks of git of the repository: no confirmation, prints only what changed
 polix uninstall [--user]       remove the plugin and the hooks of the repository
 polix version                  print the version of polix
 polix completion <shell>       print the autocompletion script of a shell

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -41,6 +42,20 @@ func Run(ctx context.Context, dir string, argv []string, timeout time.Duration) 
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err := cmd.Run()
 	return out.String(), err
+}
+
+// Live runs argv from dir without a timeout of its own, only the deadline of ctx, and writes its stdout and its
+// stderr to the writers as it runs, so its output reaches them live. A command that exits with an error or cannot
+// start returns the error.
+func Live(ctx context.Context, dir string, argv []string, stdout, stderr io.Writer) error {
+	if len(argv) == 0 {
+		return errors.New("no command to run")
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Dir = dir
+	cmd.WaitDelay = WaitDelay
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	return cmd.Run()
 }
 
 // Program returns the argv that runs the file at path on the system goos: the file itself, or on Windows its

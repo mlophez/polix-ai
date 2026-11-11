@@ -20,7 +20,8 @@ type Output struct {
 
 // Decide turns what polix doctor observed (i) into the findings of its report: the binary and its version,
 // the PATH the hooks use, git, and inside a repository the workflow, the programs it requires on the PATH, the rules
-// and their checks, the hooks of Claude Code, the plugin, Codex when polix is registered for it, and the state;
+// and their checks, the hooks of Claude Code, the hooks of git, the plugin, Codex when polix is registered for it,
+// and the state;
 // outside one, or without git, only the binary and the plugin. With hook (the session start hook) Claude Code is
 // not asked for its plugins.
 func Decide(i setup.Inspection, hook bool) Output {
@@ -38,6 +39,7 @@ func Decide(i setup.Inspection, hook bool) Output {
 		f = append(f, requirements(i)...)
 		f = append(f, rules(i)...)
 		f = append(f, hooks(i)...)
+		f = append(f, githooks(i)...)
 		f = append(f, plugin(i, hook)...)
 		f = append(f, codex(i)...)
 		f = append(f, stateFolder(i)...)

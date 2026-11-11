@@ -3,6 +3,7 @@ package diagnose
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,8 @@ type fakePort struct {
 	wf      workflow.Workflow // the workflow LoadWorkflow returns
 	absent  map[string]bool   // the programs LookPath does not find
 	looked  []string          // the programs LookPath was asked for
+	// gitHooks are the roots GitHooks was asked for, apart from calls; GitHooks lists every hook of polix.
+	gitHooks []string
 }
 
 func (f *fakePort) note(c string) { f.calls = append(f.calls, c) }
@@ -73,6 +76,32 @@ func (f *fakePort) Plugin(_ context.Context, _ string) (map[string][]byte, strin
 func (f *fakePort) ClaudePlugin(_ context.Context) (bool, bool, string, error) {
 	f.note("ClaudePlugin")
 	return false, false, "", setup.ErrNoCLI
+}
+func (f *fakePort) GitHooks(_ context.Context, root string, hooks []setup.GitHook) (map[string][]string,
+	map[string][]string, bool) {
+	f.gitHooks = append(f.gitHooks, root)
+	listed := map[string][]string{}
+	for _, h := range hooks {
+		listed[string(h)] = []string{h.Name()}
+	}
+	return listed, nil, true
+}
+
+// AC15: inside a repository the shell asks git for the hooks of git polix registers, and the report says they
+// run; outside one it asks nothing.
+func TestShellGitHooks(t *testing.T) {
+	port := &fakePort{}
+	res, err := run(context.Background(), port, Request{Version: "0.2.0", Offline: true})
+	if err != nil || strings.Join(port.gitHooks, " ") != "/r" ||
+		!slices.Contains(res.Findings, setup.Finding{Level: setup.LevelOK, Area: "githooks",
+			Message: "git runs polix githook on pre-commit, commit-msg"}) {
+		t.Fatalf("%+v %v %q", res, err, port.gitHooks)
+	}
+	port = &fakePort{repoErr: errors.New("not inside")}
+	if _, err := run(context.Background(), port, Request{Version: "0.2.0", Offline: true}); err != nil ||
+		port.gitHooks != nil {
+		t.Fatalf("outside: %v %q", err, port.gitHooks)
+	}
 }
 
 func TestShell(t *testing.T) {

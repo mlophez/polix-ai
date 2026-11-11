@@ -9,7 +9,7 @@ Validate the file with `polix config check` and draw it with `polix graph`. `pol
 unknown key, event, condition or verb, so a typo never turns into an entry that silently stops applying.
 `polix config fmt` formats it in place, keeping its comments (both take another workflow file as an argument, as
 `polix config fmt examples/polix.yaml`): the keys of each section in the order of this
-reference, with `requirements`, `guardrails` and `on` at the end; the items of a list and the keys you name (variables, globs of
+reference, with `requirements`, `guardrails`, `on` and `githooks` at the end; the items of a list and the keys you name (variables, globs of
 `risk.weights` and `rules.run`) keep their order.
 
 The file has two layers. [`guardrails`](#guardrails) holds the basics every project wants from the first minute,
@@ -18,7 +18,8 @@ edited file and the checks that must pass before the agent ends its turn. [`on`]
 orchestrates its flow (the review subagents, the builder, the plan, the ticket), as entries per event. Files no
 agent writes and commands no agent runs are protections of the engine, applied before every entry; the other three
 shortcuts of `guardrails` are only sugar: polix expands them into entries of `on` when it reads the file, and
-`polix graph` draws them with the name of their shortcut.
+`polix graph` draws them with the name of their shortcut. Apart from both, [`githooks`](#githooks) holds the gates
+git itself runs on every commit, whoever makes it, with a small vocabulary of its own.
 
 - [The file at a glance](#the-file-at-a-glance)
 - [Top-level keys](#top-level-keys)
@@ -27,6 +28,7 @@ shortcuts of `guardrails` are only sugar: polix expands them into entries of `on
 - [Events](#events)
 - [Conditions](#conditions)
 - [Verbs](#verbs)
+- [Githooks](#githooks-1)
 - [Placeholders](#placeholders)
 - [Path globs and command patterns](#path-globs-and-command-patterns)
 - [How an event is evaluated](#how-an-event-is-evaluated)
@@ -77,6 +79,14 @@ on:                              # the entries of each event
       unless: { finished: polix:reviewer }
       action:
         block: "Lanza polix:reviewer sobre el diff actual"
+githooks:                        # the gates git runs on every commit
+  pre_commit:
+    - when: { changed: "secrets/**" }
+      action: { block: "No se commitean secretos" }
+  commit_msg:
+    - when: { branch: "^[A-Z]+-[0-9]+" }
+      unless: { message: "^{key}: " }
+      action: { block: "El mensaje empieza por {key}: " }
 ```
 
 ## Top-level keys
@@ -208,7 +218,8 @@ injects of the `start` entries, and only with a valid file. They ask for coopera
   first group, or the whole match without groups. When the regex does not match, the variable has no value: the
   condition [`var`](#var) fails and `{name}` is left as is.
 - A variable cannot take the name of a built-in placeholder (`path`, `command`, `branch`, `changed_lines`,
-  `changed_files`, `risk_score`), and `branch` is its only key.
+  `changed_files`, `risk_score`), nor `message` once [`githooks`](#githooks) has an entry, and `branch` is its only
+  key.
 
 ```yaml
 vars:
@@ -250,6 +261,20 @@ requirements: [go, golangci-lint]
 ### on
 
 A map of [event](#events) to a list of [entries](#entries).
+
+### githooks
+
+A map of the events of git, `pre_commit` and `commit_msg`, to a list of entries with the vocabulary of
+[Githooks](#githooks-1). git runs them on every commit through the hooks `polix install` declares in the local git
+configuration (git 2.54 or later); the events of the AI never evaluate them. `polix install --githooks` writes only
+those two hooks, without asking, and exits with 1 when git does not run them; a hook disabled with
+`hook.<name>.enabled=false` stays disabled, with a warning and exit 0.
+
+Declaring githooks is enough: with at least one entry, the file expands into one more entry first in `start`, from
+`githooks`, that runs `polix install --githooks` with `always: true` and the message `The hooks of git of githooks
+are not installed, so the gates of githooks do not apply to the commits:`, so every session start of the AI puts
+the hooks of git back. `polix graph` draws it as `from githooks`, `polix config fmt` never writes it, and removing
+the entries of `githooks` turns it off.
 
 ## Guardrails
 
@@ -869,6 +894,62 @@ action:
     message: "Estás en {branch}."
 ```
 
+## Githooks
+
+The entries of `githooks` keep the shape of an [entry](#entries) (`when`, `unless`, `action`), in file order, and
+the first one that blocks ends the evaluation and aborts the commit. Their vocabulary is their own; anything else
+is a problem of `polix config check` at the line of its entry.
+
+```yaml
+githooks:
+  pre_commit:                      # before the commit is made
+    - when: { branch: "^main$", changed: "*.go" }
+      action: { block: "No se commitea Go en main" }
+
+    - action:
+        run: { command: go vet ./..., message: "Arregla go vet" }
+  commit_msg:                      # once the message is written
+    - unless: { message: ["^(feat|fix|docs|chore): ", "^Merge "] }
+      action: { block: "Usa un prefijo convencional: {message}" }
+```
+
+Events:
+
+- `pre_commit`: git runs `polix githook pre-commit` before the commit is made.
+- `commit_msg`: git runs `polix githook commit-msg <file>` once the message is written, with the file of the
+  message.
+
+Verbs:
+
+- `block`: a message, or `{ message: ... }`; it aborts the commit with the message. `once` is rejected: githooks
+  keep no log.
+- `run`: a command (a string split on spaces, or a list of arguments, never run through a shell), or
+  `{ command: ..., message: ... }`. It runs from the root on every commit, without a time limit, with its output
+  live in the terminal; when it fails the commit is aborted with its `message` and `<command> failed: <error>`.
+  `rules` and `always` are rejected.
+- `inject` and `notify` are rejected: they have nobody to reach.
+
+Conditions, each a string or a list that holds when one item matches; a negation goes in `unless`, and `any`, `not`
+and every other condition are rejected:
+
+- `branch`: a regular expression of the current branch, not anchored, as the [`branch`](#branch) of `on`;
+  placeholders are not expanded.
+- `changed`: a path glob, or a list of them, of which one matches a file staged for the commit (the index against
+  HEAD, deleted files included). A file modified and not staged does not count.
+- `message`, only in `commit_msg`: a regular expression (Go RE2), or a list of them, of which one matches the first
+  line of the message, never its body. The line is taken as git commits it: without the lines that start with the
+  comment character of git (`#`, `core.commentChar` or `core.commentString`), without everything from the scissors
+  line on, and without the blank lines before it.
+
+Placeholders: `{branch}`, `{message}` (only in `commit_msg`) and the variables of [`vars`](#vars), in the messages
+and the command of the verbs and in the patterns of `changed` and `message`. Any other placeholder is a problem.
+In the regular expressions of `message` the value of a placeholder is matched literally: on branch `feat/a.b`,
+`^{branch}: ` matches `feat/a.b: ` and not `feat/aXb: `.
+
+Without `polix.yaml` or without entries for the event the commit goes on; a `polix.yaml` that cannot be used aborts
+every commit with its problems. `git commit --no-verify` skips the hooks. The details are in
+[polix.md](polix.md#the-gates-of-git-githooks).
+
 ## Placeholders
 
 Expanded in the strings of conditions (except `branch`), verbs and `contains`. An unknown one is a problem.
@@ -879,6 +960,8 @@ Expanded in the strings of conditions (except `branch`), verbs and `contains`. A
 - `{changed_lines}`, `{changed_files}`, `{risk_score}`: the measures of the change not committed yet, over the
   `changed` of the `when` of the entry, else the whole change; `?` when git cannot measure it.
 - `{<var>}`: each variable of `vars`; left as is when it has no value.
+- `{message}`: the first line of the message of the commit; only in the entries of `githooks.commit_msg`, which
+  take `{branch}`, `{message}` and the variables, and no other (see [Githooks](#githooks-1)).
 
 The placeholders of `rules.run` (`{file}`, `{dir}`, `{id}`, `{name}`, `{names}`, `{files}`, `{dirs}`) only exist
 there.

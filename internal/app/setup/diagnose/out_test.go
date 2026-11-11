@@ -16,6 +16,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/setup"
 	"github.com/mlophez/polix-ai/internal/app/version"
+	"github.com/mlophez/polix-ai/internal/platform/git"
 	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
@@ -225,6 +226,44 @@ func TestAdapterSaveCache(t *testing.T) {
 	want := fmt.Sprintf(`{"checked_at":%q,"latest":"0.2.0","failed_at":%q}`, stamp, stamp)
 	if got := readCache(t, path); got != want {
 		t.Fatalf("the failure is kept: %s, want %s", got, want)
+	}
+}
+
+// AC15: the adapter reads the hooks git lists for each event, after the git library wrote those of polix, and
+// whether this git lists them at all; a git that lists them names the hooks of polix, and one with enabled=false
+// apart, as disabled.
+func TestAdapterGitHooks(t *testing.T) {
+	ctx := context.Background()
+	root := testenv.GitRepo(t)
+	repo, err := git.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range setup.GitHooks {
+		if _, err := repo.SetHook(ctx, h.Name(), string(h), h.Command()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listed, disabled, ok := Adapter{}.GitHooks(ctx, root, setup.GitHooks)
+	if listed == nil || len(disabled) != 0 {
+		t.Fatalf("git was not asked, or lists a hook as disabled: %q %q", listed, disabled)
+	}
+	for _, h := range setup.GitHooks {
+		if ok != slices.Contains(listed[string(h)], h.Name()) {
+			t.Fatalf("lists %v, %s: %q", ok, h, listed)
+		}
+	}
+	if !ok {
+		return
+	}
+	if err := exec.Command("git", "-C", root, "config", "--local", "hook.polix-pre-commit.enabled", "false").Run(); err != nil {
+		t.Fatal(err)
+	}
+	listed, disabled, ok = Adapter{}.GitHooks(ctx, root, setup.GitHooks)
+	if !ok || slices.Contains(listed["pre-commit"], "polix-pre-commit") ||
+		!slices.Equal(disabled["pre-commit"], []string{"polix-pre-commit"}) ||
+		!slices.Contains(listed["commit-msg"], "polix-commit-msg") || len(disabled["commit-msg"]) != 0 {
+		t.Fatalf("a disabled hook: %q %q %v", listed, disabled, ok)
 	}
 }
 

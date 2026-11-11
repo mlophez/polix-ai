@@ -93,6 +93,47 @@ func (r *Repo) Changed(ctx context.Context, ref string) ([]string, error) {
 	return list, nil
 }
 
+// Branch returns the current branch, also on a branch without commits yet, where Head knows none; "" on a detached
+// HEAD or when git fails. Like Head, it runs detached from the cancellation of ctx.
+func (r *Repo) Branch(ctx context.Context) string {
+	out, err := r.git(context.WithoutCancel(ctx), "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return out
+}
+
+// Staged returns the repository relative paths staged for the next commit: those whose content in the index differs
+// from HEAD, deleted ones included, or every path of the index on a repository without commits. A file modified and
+// not staged, or untracked, is left out. git reads the index of GIT_INDEX_FILE when the environment sets it, as git
+// does for the hooks of a commit of some paths or with --all.
+func (r *Repo) Staged(ctx context.Context) ([]string, error) {
+	args := []string{"diff", "--cached", "--name-only", "--no-renames", "-z"}
+	if _, err := r.git(ctx, "rev-parse", "--verify", "--quiet", "HEAD"); err == nil {
+		args = append(args, "HEAD")
+	}
+	out, err := r.paths(ctx, append(args, "--")...)
+	if err != nil {
+		return nil, err
+	}
+	files := splitPaths(out)
+	sort.Strings(files)
+	return files, nil
+}
+
+// CommentChar returns the string that starts a comment line of a commit message: core.commentString, else
+// core.commentChar, else #. auto, with which git picks a character the message does not use, reads as #, since only
+// git knows the one it picked. Like Head, it runs detached from the cancellation of ctx.
+func (r *Repo) CommentChar(ctx context.Context) string {
+	for _, key := range []string{"core.commentString", "core.commentChar"} {
+		out, err := r.git(context.WithoutCancel(ctx), "config", "--get", key)
+		if err == nil && out != "" && out != "auto" {
+			return out
+		}
+	}
+	return "#"
+}
+
 // Summary returns the short hash and the subject of the commit rev, as one line.
 func (r *Repo) Summary(ctx context.Context, rev string) (string, error) {
 	if rev == "" || strings.HasPrefix(rev, "-") {

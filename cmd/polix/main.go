@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	diffmeasure "github.com/mlophez/polix-ai/internal/app/diff/measure"
+	githookanswer "github.com/mlophez/polix-ai/internal/app/githook/answer"
 	hookanswer "github.com/mlophez/polix-ai/internal/app/hook/answer"
 	rulecheck "github.com/mlophez/polix-ai/internal/app/rule/check"
 	ruleformat "github.com/mlophez/polix-ai/internal/app/rule/format"
@@ -70,7 +71,7 @@ func main() {
 
 	answer := hookanswer.Command(loadRules, loadWorkflow, loadState)
 	answer.GroupID = "agent"
-	root.AddCommand(answer)
+	root.AddCommand(answer, githookanswer.Command(loadWorkflow))
 
 	rules := &cobra.Command{Use: "rules", Short: "Work with the rules of rules.path (ai/rules/)", Args: cobra.NoArgs, GroupID: "repo"}
 	rules.AddCommand(rulecheck.Command(loadRules, loadWorkflow), ruleformat.Command(loadRules, loadWorkflow))

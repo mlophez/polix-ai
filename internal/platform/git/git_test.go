@@ -892,3 +892,81 @@ func TestCommitStats(t *testing.T) {
 		t.Fatal("Summary of an option is an error")
 	}
 }
+
+// The staged files are the index against HEAD, a deleted one included: a file modified and not staged, or untracked,
+// is left out. Without commits every staged file is.
+func TestStaged(t *testing.T) {
+	ctx := context.Background()
+	dir, git, write := gitRepo(t)
+	write("first.txt")
+	git("add", "first.txt")
+	write("untracked.txt")
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files, err := r.Staged(ctx); err != nil || !slices.Equal(files, []string{"first.txt"}) {
+		t.Fatalf("Staged without commits = %q, %v", files, err)
+	}
+	git("commit", "--quiet", "-m", "first")
+	commit(git, write, "gone.txt")
+	write("first.txt.new")
+	if err := os.WriteFile(filepath.Join(dir, "first.txt"), []byte("not staged"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	write("diseño/año.md")
+	git("add", "first.txt.new", "diseño/año.md")
+	git("rm", "--quiet", "gone.txt")
+	if files, err := r.Staged(ctx); err != nil ||
+		!slices.Equal(files, []string{"diseño/año.md", "first.txt.new", "gone.txt"}) {
+		t.Fatalf("Staged = %q, %v", files, err)
+	}
+}
+
+// The comment string is # by default and with auto, else core.commentChar, and core.commentString wins when both are
+// set.
+func TestCommentChar(t *testing.T) {
+	ctx := context.Background()
+	dir, git, _ := gitRepo(t)
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := r.CommentChar(ctx); c != "#" {
+		t.Fatalf("default: %q", c)
+	}
+	git("config", "core.commentChar", "auto")
+	if c := r.CommentChar(ctx); c != "#" {
+		t.Fatalf("auto: %q", c)
+	}
+	git("config", "core.commentChar", ";")
+	if c := r.CommentChar(ctx); c != ";" {
+		t.Fatalf("commentChar: %q", c)
+	}
+	git("config", "core.commentString", "//")
+	if c := r.CommentChar(ctx); c != "//" {
+		t.Fatalf("commentString: %q", c)
+	}
+}
+
+// Branch is the current branch, also on a branch without commits, and "" on a detached HEAD.
+func TestBranch(t *testing.T) {
+	ctx := context.Background()
+	dir, git, write := gitRepo(t)
+	r, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := r.Branch(ctx); b != "main" {
+		t.Fatalf("Branch without commits = %q", b)
+	}
+	commit(git, write, "a.txt")
+	git("checkout", "--quiet", "-b", "PROJ-12-login")
+	if b := r.Branch(ctx); b != "PROJ-12-login" {
+		t.Fatalf("Branch = %q", b)
+	}
+	git("checkout", "--quiet", "--detach")
+	if b := r.Branch(ctx); b != "" {
+		t.Fatalf("Branch on a detached HEAD = %q", b)
+	}
+}

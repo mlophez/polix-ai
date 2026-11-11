@@ -55,7 +55,7 @@ func (a Adapter) decode(data []byte, running string) (workflow.Workflow, workflo
 	if y.MaxStopRetries == 0 {
 		y.MaxStopRetries = workflow.DefaultMaxStopRetries
 	}
-	return y.workflow(lines)
+	return y.workflow(lines["on"], lines["githooks"])
 }
 
 // tooOld returns the TooOldError of a workflow (data) that requires a newer polix than running; nil when it does not, when
@@ -89,12 +89,13 @@ func (a Adapter) requires(data []byte) string {
 }
 
 // top checks the top level keys of the document root, a map: the first one that is not one of workflow.TopKeys is
-// a UnknownKeyError, with the new spelling of a renamed one. It returns the line of each event of on.
-func (a Adapter) top(root *yaml.Node) (map[string]int, error) {
+// a UnknownKeyError, with the new spelling of a renamed one. It returns the line of each event of the sections on
+// and githooks, by section.
+func (a Adapter) top(root *yaml.Node) (map[string]map[string]int, error) {
 	if len(root.Content) != 1 || root.Content[0].Kind != yaml.MappingNode {
 		return nil, nil
 	}
-	var lines map[string]int
+	lines := map[string]map[string]int{}
 	top := root.Content[0]
 	for i := 0; i < len(top.Content); i += 2 {
 		k := top.Content[i]
@@ -105,8 +106,8 @@ func (a Adapter) top(root *yaml.Node) (map[string]int, error) {
 			}
 			return nil, unknown
 		}
-		if k.Value == "on" && i+1 < len(top.Content) {
-			lines = nodeYAML{top.Content[i+1]}.lines()
+		if (k.Value == "on" || k.Value == "githooks") && i+1 < len(top.Content) {
+			lines[k.Value] = nodeYAML{top.Content[i+1]}.lines()
 		}
 	}
 	return lines, nil

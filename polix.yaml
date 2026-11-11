@@ -119,3 +119,9 @@ on:
     - when: { actor: session }
       action:
         notify: "Commit a main: {changed_lines} líneas en {changed_files} ficheros, riesgo {risk_score}."
+
+# The gates git runs on every commit, whoever makes it: a polix.yaml or a rule that does not validate never lands.
+githooks:
+  pre_commit:
+    - when: { changed: ["polix.yaml", "ai/rules/**"] }
+      action: { run: polix config check }

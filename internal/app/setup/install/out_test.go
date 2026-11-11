@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -173,5 +174,64 @@ func TestAdapterTodos(t *testing.T) {
 	}
 	if !a.codexAdded("", errors.New("already added")) || a.codexAdded("", errors.New("boom")) || !a.codexAdded("", nil) {
 		t.Fatal("added")
+	}
+}
+
+// localConfig returns the local git configuration of the repository at root, one key=value per line.
+func localConfig(t *testing.T, root string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", root, "config", "--local", "--list").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+// AC11: the adapter writes the event and the command of both hooks into .git/config, keeps an unrelated key, and a
+// second install changes nothing and leaves one event each; git lists them when it reads the hooks of its
+// configuration, and one with enabled=false as disabled, not unlisted.
+func TestAdapterGitHooks(t *testing.T) {
+	ctx := context.Background()
+	root := testenv.GitRepo(t)
+	if err := exec.Command("git", "-C", root, "config", "--local", "hook.lint.event", "pre-commit").Run(); err != nil {
+		t.Fatal(err)
+	}
+	a := Adapter{}
+	for _, h := range setup.GitHooks {
+		ch, err := a.RegisterGitHook(ctx, root, h)
+		if err != nil || !slices.Equal(ch, []setup.Change{{Path: h.Key(), Action: "created"}}) {
+			t.Fatalf("%s: %v %v", h, ch, err)
+		}
+	}
+	for _, h := range setup.GitHooks {
+		if ch, err := a.RegisterGitHook(ctx, root, h); err != nil || ch != nil {
+			t.Fatalf("%s again: %v %v", h, ch, err)
+		}
+	}
+	config := localConfig(t, root)
+	for _, kv := range []string{"hook.polix-pre-commit.event=pre-commit\n",
+		"hook.polix-pre-commit.command=polix githook pre-commit\n", "hook.polix-commit-msg.event=commit-msg\n",
+		"hook.polix-commit-msg.command=polix githook commit-msg\n", "hook.lint.event=pre-commit\n"} {
+		if strings.Count(config, kv) != 1 {
+			t.Fatalf("%q in:\n%s", kv, config)
+		}
+	}
+	unlisted, disabled := a.Unlisted(ctx, root, setup.GitHooks)
+	if (len(unlisted) != 0 && !slices.Equal(unlisted, setup.GitHooks)) || disabled != nil {
+		t.Fatalf("git lists some hooks of polix and not the others: %q %q", unlisted, disabled)
+	}
+	if outside, disabled := a.Unlisted(ctx, t.TempDir(), setup.GitHooks); !slices.Equal(outside, setup.GitHooks) ||
+		disabled != nil {
+		t.Fatal("outside a repository git lists no hook")
+	}
+	if len(unlisted) != 0 {
+		return // this git does not list the hooks of its configuration, nor the disabled ones
+	}
+	if err := exec.Command("git", "-C", root, "config", "--local", "hook.polix-pre-commit.enabled", "false").Run(); err != nil {
+		t.Fatal(err)
+	}
+	if unlisted, disabled := a.Unlisted(ctx, root, setup.GitHooks); unlisted != nil ||
+		!slices.Equal(disabled, setup.GitHooks[:1]) {
+		t.Fatalf("a disabled hook: unlisted %q, disabled %q", unlisted, disabled)
 	}
 }

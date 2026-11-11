@@ -129,6 +129,32 @@ on:
 	}
 }
 
+// AC22: the entry a polix.yaml with githooks expands into is drawn first in start, from githooks; the entries of
+// githooks themselves are not drawn.
+func TestDecideGithooksInstall(t *testing.T) {
+	wf, err := parseWorkflow(t, `version: 1
+on:
+  start:
+    - action: { inject: hola }
+githooks:
+  pre_commit:
+    - when: { branch: "^main$" }
+      action: { block: "No se commitea en main" }
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "flowchart TD\n" +
+		"  subgraph start\n" +
+		"    n0[\"run polix install --githooks (always)<br/>from githooks\"]\n" +
+		"    n1[\"inject: hola\"]\n" +
+		"    n0 --> n1\n" +
+		"  end\n"
+	if out := Decide(wf, true); out.Mermaid != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", out.Mermaid, want)
+	}
+}
+
 // AC9: a notify is drawn with its message, and with always when it shows every time.
 func TestDecideNotify(t *testing.T) {
 	wf := workflow.Workflow{Version: 1, On: map[string][]workflow.Entry{

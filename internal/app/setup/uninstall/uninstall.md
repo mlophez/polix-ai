@@ -1,7 +1,7 @@
 # UninstallSetup
 
 Removes what polix install wrote: the plugin from the agents and the local marketplace, and the hooks of polix
-from the repository, keeping every other setting and hook.
+from the repository, those of git included, keeping every other setting and hook.
 
 ## Trigger
 
@@ -22,7 +22,12 @@ The flags are those of `polix install`; without `--agent` both agents, so a Code
 
 `Decide(asked setup.Setup) Output` takes the setup as asked, which the shell builds and validates (the home, the
 root, the agents of the request and the running version), and decides the `setup.Setup` (the agents asked, else
-both, `Setup.Defaulted`), the `Summary` to confirm and `RemovePlugin`, true only when both agents are removed.
+both, `Setup.Defaulted`), the `Summary` to confirm, `RemovePlugin`, true only when both agents are removed, and
+`GitHooks`, the hooks of git of polix (`setup.GitHooks`) when both agents leave a repository: install writes them
+for any agent, so they stay while one is still installed, and with `--user` or outside a repository there are none.
+The `Summary` (`setup.Setup.Summary`) names the plugin and the hooks file of each agent and, with `GitHooks`, the
+hooks of git it removes from the local git configuration of the repository (`hook.polix-pre-commit`,
+`hook.polix-commit-msg`).
 
 ## Response
 
@@ -44,6 +49,9 @@ did not fail, `nothing to remove` unless `--quiet`.
   (`agentconf.MergeHooks` with none to write), and the file when they were all it held; a file that is not a JSON
   object is an error that names it.
 - `RemovePlugin`: removes the marketplace, and `~/.polix` when it is left empty.
+- `UnregisterGitHook`: removes the section of a hook of git (`hook.polix-pre-commit`, `hook.polix-commit-msg`) from
+  the local configuration of the repository (`git.Repo.RemoveHook`), reported as `removed` with its key
+  (`git config hook.polix-pre-commit`); a hook that is not there is no change, and the other hooks stay.
 
 ## Errors
 
@@ -55,5 +63,6 @@ error after that stops the uninstall, after printing what changed.
 1. `Command` parses the agents (`parseAgents`), injects `Adapter{Ask: ask}`.
 2. The shell reads the home and the repository unless `--user`, and builds the setup asked.
 3. `Decide` decides; the shell asks for confirmation.
-4. The shell unregisters each agent and its hooks, then removes the marketplace.
+4. The shell unregisters each agent and its hooks, removes the hooks of git of the output, then removes the
+   marketplace.
 5. The command prints the response.
