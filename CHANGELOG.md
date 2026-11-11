@@ -7,6 +7,42 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- The skill plan writes plans for one executor that runs every task in order, in one go: tasks have no
+  `Depends on:` and may share files. A plan keeps the request of the user verbatim in `Request` and the limits no
+  task may cross in `Constraints`, gives the executor a `Starting point` (files to read and a baseline command) and
+  a `Progress` checklist, numbered acceptance criteria that each task `Covers:`, and each task a `High risk:` line.
+  A header under the title holds the `Status` of the plan (`planned`, `building`, `built` or `partial`), its overall
+  `Risk`, the `Reference` it comes from, the date it was `Created` and its estimated `Size`; an `Iterations`
+  section at the end keeps the outcome of every build of the plan.
+  Tasks are sliced by behaviour, about 400 changed lines as a guide, update the help and docs of what they change,
+  and list their tests first, each `new` (fails before the change) or `kept` (holds the previous behaviour): every
+  observable effect of each requirement, the behaviour of the code that calls what they change, and a differential
+  check against the base version for a high-risk task. Every choice of the planner is an `Assumption:` in
+  `Decisions`. Before the interview, a brainstorm drafts two to four approaches, walks the change against the cases
+  the request does not consider (inputs, failures, existing state, interactions, compatibility, operation,
+  security), runs a pre-mortem and estimates the size; the interview proposes a split first when the plan is too
+  big, then the approach, at most four questions per round. Adjusting a plan never rewrites a task already built:
+  what changes it goes in a new task.
+- The skills plan, review and audit name their files as the project names its plans and reports, by the convention
+  of `AGENTS.md`, of `polix.yaml` or of the files already in the folder; their former names are only the fallback.
+- The skill build launches one `polix:builder` for the whole plan instead of one per task in waves. It launches
+  `polix:reviewer` itself, against the plan, instead of following the skill review, and has the builder fix the
+  blocking and major findings up to twice, reviewing again after each fix. A plan is `built` only when every task is
+  done, every acceptance criterion met and the last review has no blocking nor major finding. A task left `[-]` is
+  tried again by the next build. The reports of a run are kept next to the plan, `<plan>.iterNN.md` and
+  `<plan>.revNN.md`, a run that did not end resumes from them, and at the end they are merged into the `Iterations`
+  of the plan and deleted.
+- The agent `polix:builder` implements the plan from a task to the end without stopping nor asking: it runs the
+  baseline, writes the tests before each change, records each departure from the plan, and marks each task of
+  `Progress` `[x]` only when its tests and verification pass, `[-]` otherwise; it also fixes the findings of a review
+  report, reading the reports of the earlier builders of the run first.
+- The agent `polix:reviewer` has two modes: against a plan, from the skill build, where the decisions, the scope
+  and the departures of the plan are never findings; and against an intent, from the skill review, which no longer
+  takes a plan. It reports only what the lines the change adds or alters introduce, and keeps severities, categories
+  and verdicts in English whatever the language of the report.
+
 ## [0.3.0] - 2026-11-11
 
 ### Added

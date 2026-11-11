@@ -165,15 +165,16 @@ Polix comes in two parts, and the second one is optional.
 - **The engine** is the binary, `polix.yaml` and `ai/rules/`. It enforces whatever process you write down and
   assumes none: use it with your own skills, agents and conventions.
 - **The harness** is a small set of best practices that ships in the plugin `polix`, for teams that want a
-  development flow ready to use. Each phase runs in its own subagent, with a clean context and a structured output
-  that the next phase reads:
+  development flow ready to use. The plan is written with you in the session; building and reviewing run in
+  subagents with a clean context, and each phase leaves a structured output that the next one reads:
   - **plan** (`/polix:plan`): turns a request into a plan with its scope, tasks and how each task is verified,
     before any edit.
-  - **build** (`/polix:build`, run by `polix:builder`): implements the plan, one builder per task and several at
-    once on tasks that do not depend on each other, updates the docs, then reviews the change and checks the
-    acceptance criteria.
-  - **review** (`/polix:review`, run by `polix:reviewer`): reviews the change against its intent and `ai/rules/`,
-    and reports findings without fixing them.
+  - **build** (`/polix:build`, run by `polix:builder`): implements the plan with one builder that runs every task in
+    order, tests first, updates the docs, then has `polix:reviewer` review the change against the plan, has the
+    builder fix the blocking and major findings up to twice, reviewing after each fix, checks the acceptance
+    criteria and records the run in the plan.
+  - **review** (`/polix:review`, run by `polix:reviewer`): reviews a change without a plan against its intent and
+    `ai/rules/`, and reports findings without fixing them.
 
 The harness is not enforced by itself. A skill or agent of the plugin runs only when you or your `polix.yaml` ask
 for it, never on the initiative of the model; Polix enforces a phase when your `polix.yaml` says so, for example by

@@ -12,6 +12,7 @@ uncommitted changes; and the intent reviewed, marked as given or inferred.>
 <One per root cause, sorted by severity:
 - <severity>, <category>, `<file:line>`: <what is wrong>.
   Evidence: <the code, the command and its output, or the rule id for a rule finding>.
+  Check: <the command that shows it, when one exists>.
   Fix: <the direction of the fix>.>
 
 ## Checks
@@ -20,7 +21,7 @@ uncommitted changes; and the intent reviewed, marked as given or inferred.>
 
 ## Held
 
-<The rules checked that the change follows.>
+<The ids of the rules checked that apply to the changed files and that the change follows.>
 
 ## Pending
 

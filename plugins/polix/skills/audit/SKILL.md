@@ -70,9 +70,10 @@ Checks: <run for the first auditor, skip for the others>
 
 ### Report file
 
-Path: `<reports>/<date>-audit-<name>.md`, where `<reports>` is the folder of reports, `<date>` is today as
-`YYYY-MM-DD` and `<name>` is short kebab-case English from the scope and the focus (`repository` for the whole one).
-Example: `ai/reports/2026-11-05-audit-use-cases.md`.
+Path: a file of the folder of reports, `<reports>`.
+Name it as the project names its reports: the convention of `AGENTS.md`, of `polix.yaml` or of the reports there.
+Without one, `<reports>/<date>-audit-<name>.md`, where `<date>` is today as `YYYY-MM-DD` and `<name>` is short
+kebab-case English from the scope and the focus (`repository` for the whole one).
 When the file exists, add a numeric suffix (`-2`) instead of overwriting it.
 
 - Fill `template.md`: its sections in its order, every `<...>` replaced.

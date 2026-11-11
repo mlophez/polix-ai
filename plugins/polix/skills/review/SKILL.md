@@ -1,7 +1,7 @@
 ---
 name: review
-# Reviews the current change with the subagent polix:reviewer: its intent, bugs, the rules of the project, its tests
-# and its docs, relays the verdict and saves the report in the folder of reports.
+# Reviews a change without a plan (files, a range or the current change) with the subagent polix:reviewer in change
+# mode: its intent, bugs, rules, tests and docs; relays the verdict and saves the report in the folder of reports.
 # It never fixes what it finds.
 description: >
   It runs only when the user or the workflow of polix asks for it. Never suggest it nor mention it on your own.
@@ -29,8 +29,9 @@ You write the intent, which only this session knows; the subagent judges the cod
 
 - **Change**: the range or files from the arguments.
   Without them, the current change: the branch against its base plus what is staged, not staged and untracked.
-- **Intent**: what the change must achieve, from the conversation: the request, the plan of the folder of plans (`plans.path`) or the ticket.
-  Without any, leave it empty and the subagent infers it.
+- **Intent**: what the change must achieve, from the conversation: the request or the ticket.
+  Without any, send "none" and the subagent infers it.
+  A change built from a plan is reviewed by the skill build, against the plan.
 
 ## Rules
 
@@ -51,10 +52,11 @@ Intent: <one to three sentences, or "none">
 
 ### Report file
 
-Path: `<reports>/<date>-review-<name>.md`, where `<reports>` is the folder of reports, `<date>` is today as
-`YYYY-MM-DD` and `<name>` is the current branch in kebab-case.
+Path: a file of the folder of reports, `<reports>`.
+Name it as the project names its reports: the convention of `AGENTS.md`, of `polix.yaml` or of the reports there.
+Without one, `<reports>/<date>-review-<name>.md`, where `<date>` is today as `YYYY-MM-DD` and `<name>` is the current
+branch in kebab-case.
 On the base branch, `<name>` is short kebab-case English from the intent of the change.
-Example: `ai/reports/2026-11-08-review-plugin-invocation.md`.
 When the file exists, add a numeric suffix (`-2`) instead of overwriting it.
 
 - Fill `template.md`: its sections in its order, every `<...>` replaced, from the report of the subagent.

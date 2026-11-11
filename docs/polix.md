@@ -1004,13 +1004,14 @@ also prints that Codex support is not implemented in this release and the setup 
 - The plugin `polix`, for the user, since it helps in any repository. It is the folder `plugins/polix/` of this
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
   the folder of rules, `doctor` fixes the setup, `plan` writes a plan in the folder of plans, `build` implements a
-  plan with one `builder` agent per task, several at once on tasks that do not depend on each other, updates the
-  Markdown docs of the project, then reviews the change as `review` does and checks the acceptance criteria of the
-  plan, `review` reviews the current change with the agent `reviewer` and saves the report in the folder of reports,
-  `audit` audits the repository with several `auditor` agents in parallel and saves the report in the folder of
-  reports) and, for Claude Code, agents (`workflow-author`,
-  `rules-author`, `builder`, which implements one task of a plan without committing, so several run at once on tasks
-  that do not depend on each other, and the read-only `reviewer`, `rules-reviewer` and `auditor`). Install writes it,
+  plan with one `builder` agent that runs every task in order, updates the Markdown docs of the project, has the
+  agent `reviewer` review the change against the plan and the builder fix the blocking and major findings up to
+  twice, reviewing after each fix, checks the acceptance criteria and merges the reports of the run into the
+  `Iterations` of the plan, `review` reviews a change without a plan with the agent `reviewer` and saves the report
+  in the folder of reports, `audit` audits the repository with several `auditor` agents in parallel and saves the
+  report in the folder of reports) and, for Claude Code, agents (`workflow-author`, `rules-author`, `builder`, which
+  implements a plan from a task to the end, or fixes the findings of a review, without committing, and the read-only
+  `reviewer`, which reviews against a plan or against an intent, `rules-reviewer` and `auditor`). Install writes it,
   with the version of the binary in its manifests, to the local marketplace
   `~/.polix/marketplace/` and registers it. A development build, whose version is always `dev`, writes
   `0.0.0-dev+<hash of the plugin>` instead, so every change of the plugin is a new version.
@@ -1036,7 +1037,9 @@ also prints that Codex support is not implemented in this release and the setup 
     The read-only agents (`reviewer`,
     `rules-reviewer`, `auditor`) fill the report template inside their own file. The skills `audit` and `review`
     save their report in the folder of reports from the `template.md` next to them, as `plan` saves its plan; a
-    `polix:reviewer` launched without the skill answers in the chat and saves no file.
+    `polix:reviewer` launched without a skill answers in the chat and saves no file. `build` keeps the reports of a
+    run next to the plan, `<plan>.iterNN.md` for the builder and `<plan>.revNN.md` for each review, and merges them
+    into the plan at the end of the run, deleting them; a run that did not end resumes from them.
   - Codex, only with `--agent codex` (not implemented): `codex plugin marketplace add ~/.polix/marketplace` and
     `[plugins."polix@polix"] enabled = true` in `~/.codex/config.toml`, the rest of the file kept. Codex documents
     no command to install a plugin without its interface, and this part was never checked against a running

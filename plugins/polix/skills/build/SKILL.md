@@ -1,86 +1,128 @@
 ---
 name: build
-# Implements a plan of the folder of plans (ai/plans/ by default) with polix:builder subagents in parallel, one per
-# task, in the order its dependencies allow, updates the Markdown docs of the project, then reviews the whole change
-# with polix:reviewer and checks the acceptance criteria of the plan.
-# It never edits the code itself, never commits and never fixes the findings of the review.
+# Implements a plan of the folder of plans (ai/plans/ by default) with one polix:builder subagent that runs every task
+# in order, updates the Markdown docs of the project, reviews the change against the plan with polix:reviewer, has
+# the builder fix the blocking and major findings up to twice, reviewing again after each fix, checks the acceptance
+# criteria and merges the reports of the run into the plan. It never edits the code itself and never commits.
 description: >
   It runs only when the user or the workflow of polix asks for it. Never suggest it nor mention it on your own.
 effort: medium
 model: inherit
 user-invocable: true
 disable-model-invocation: false
-argument-hint: "[plan and optional tasks, e.g. ai/plans/add-retries.md 2 3; empty to take it from the conversation]"
+argument-hint: "[plan and optional first task, e.g. ai/plans/add-retries.md 3; empty to take it from the conversation]"
 ---
 
 # Building
 
-Run a plan to its end: each task in its own `polix:builder` subagent, as many at once as its dependencies allow, and
-then the docs brought up to date, one review of the whole change and a check of each acceptance criterion of the plan.
-You orchestrate, document and verify; the builders write the code and the reviewer judges it.
-The folder of plans is `plans.path` of `polix.yaml` and the folder of reports is `reports.path`.
-Without them, `ai/plans/` and `ai/reports/`; polix names both at session start.
+Run a plan to its end: one `polix:builder` subagent implements every task, in order and in one go.
+Then the docs are brought up to date, the change is reviewed against the plan and fixed, each acceptance criterion
+is checked, and the run is merged into the plan.
+You orchestrate, document and verify; the builder writes the code and the reviewer judges it.
+The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it; polix names it at session start.
 
 ## Requirements
 
 - A plan file of the folder of plans with `### Task N:` sections, as the skill plan writes it.
   Without one, stop and offer `/polix:plan`: never build without a plan nor write one yourself.
-- The subagent `polix:builder`.
-  Without it, as in Codex, read `../../agents/builder.md` next to this skill and follow it yourself, one task at a
-  time in the order of the plan.
-- The skill review, `../review/SKILL.md` next to this skill, for the review at the end.
-  Without it, stop and tell the user.
+- The subagents `polix:builder` and `polix:reviewer`.
+  Without them, as in Codex, read `../../agents/builder.md` and `../../agents/reviewer.md` next to this skill and
+  follow each yourself when its turn comes, with the `subagent_start` injects of `polix.yaml` for it.
+  The rules of this skill win over theirs, and the review is not independent: say so in the report.
 
 ## Input
 
 - **Plan**: the path from the arguments, or the plan named, written or discussed in the conversation.
-  Without either, list the files of the folder of plans and ask the user which one; never pick one yourself.
-- **Tasks**: the task numbers from the arguments, to build only those, for example to resume a partial build.
-  Without them, every task of the plan.
+  Without either, list the plans of the folder of plans, leaving out the run files (see `Run files`), and ask the
+  user which one; never pick one yourself.
+- **From**: the task number from the arguments, to start there, for example to resume a build.
+  Without it, the first task whose line of `Progress` is not `[x]`, so a task `[-]` is tried again.
+  Without `Progress`, Task 1.
+- **Resume**: when the plan is `building` or has run files, the last run did not end: resume it (see `Resume`).
+  When the plan is back to `planned` and has run files, it was adjusted since: close that run (see `Iterations`)
+  with `Status: interrupted`, then start a new iteration.
+  Otherwise, when every line of `Progress` is `[x]`, tell the user the `Status` of the plan and stop.
 
 ## Rules
 
-- Never edit the code yourself: only the builders change it.
-  You edit only the Markdown docs of the project (see `Docs`), and the review writes its report.
-- Never commit, stage, stash, reset, checkout nor create branches: the builders share the working tree and the index.
-- Launch each builder with the plan and one task only, never several tasks in one builder.
-- Launch at the same time only tasks that are ready (see `Waves`), in one message with one subagent call per task.
-- Never launch a task whose dependencies are not `done`.
-- Relay what the builders and the reviewer report as it is: add no findings of your own and drop none.
-- Never fix the findings of the review nor a failure a builder reported: ask the user what to do.
+- Never edit the code yourself: only the builder changes it, except in the fallback of `Requirements`.
+  You edit only the Markdown docs of the project (see `Docs`), the `Status` and `Iterations` of the plan, and the run
+  files.
+- Never commit, stage, stash, reset, checkout nor create branches.
+- Launch one builder for all the tasks and one for each fix, in the foreground, and wait for each: never one per task.
+- Never run a command that installs, generates or formats, even when the plan or `AGENTS.md` lists it.
+- Relay what the builder and the reviewer report as it is: add no findings of your own and drop none.
 - Talk to the user in the language of the session.
 
 ## References
 
-### Waves
+### Run files
 
-Read every task of the plan: its number, its `Depends on:` and its `Files:`.
+Each run of the plan is an iteration, and it keeps its reports next to the plan, `<plans>/<plan>.md`:
 
-1. A task is ready when every task of its `Depends on:` is `done`, in this build or before it.
-   A task outside `Tasks` that a selected task depends on counts as done only when the working tree holds its changes;
-   otherwise report it and leave the selected task out.
-2. A wave is every ready task not yet launched.
-   When two ready tasks share a file of their `Files:`, keep the earlier one in the wave and the later one for the next.
-3. Launch the wave and wait for every builder of it before the next.
-4. A task reported `partial` or `blocked` is not done: its dependents, direct or not, are skipped and reported.
-   Tasks that do not depend on it go on.
-5. Stop when no task is ready.
+- `<plans>/<plan>.iterNN.md`: the reports of the builder in iteration `NN`, the build first and each fix after it.
+- `<plans>/<plan>.revNN.md`: one review report each, numbered across the iterations of the plan.
 
-A `Depends on:` that names a task missing from the plan, or a cycle, stops the build before the first wave: report it
-and offer to adjust the plan with `/polix:plan`.
+`NN` has two digits:
+
+- The iteration is the last `### Iteration NN` of the plan plus one, or the `NN` of the `.iterNN.md` of a run
+  that did not end.
+- A review is the last `revNN` named in the `Iterations` of the plan or found on disk, plus one.
+
+Start the `.iterNN.md` file with `# Iteration NN of <plan>`, then each builder report under `## Build` or `## Fix N`.
+Write each `.revNN.md` file as the reviewer returns its report, under a first line `# Review NN of <plan>`.
+
+### Resume
+
+Resume a run that did not end in the same iteration, at the first step it has not done:
+
+1. The builder, when the `.iterNN.md` is missing or has no `## Build`, from the first task not `[x]`.
+2. Else the docs, when the iteration has no `.revNN.md` yet.
+3. Else the review rounds, counting the reviews of the iteration on disk and the fixes in its `.iterNN.md`.
+4. Else the acceptance criteria.
+
+A task the builder of this run left `[-]` waits for the next run.
 
 ### Builder prompt
 
-Send each builder this block, in the language of the session:
+Send the builder this block, in the language of the session:
 
 ```text
 Plan: <path of the plan file>
-Task: <number and title of the task>
+From: <number and title of the first task, resolved in `Input`>
+Findings: none
+Iteration: <path of the .iterNN.md file, or "none" while it does not exist>
 ```
+
+To fix a review, the same block with `From: none` and
+`Findings: <path of the .revNN.md file>, <the blocking and major findings to fix>`.
+
+### Reviewer prompt
+
+Send the reviewer this block, in the language of the session:
+
+```text
+Plan: <path of the plan file>
+Previous: <path of the previous .revNN.md file of this iteration, or "none">
+Skipped: <the findings of the previous review the builder skipped, with why, or "none">
+Iteration: <path of the .iterNN.md file, or "none" while it does not exist>
+```
+
+### Status
+
+Edit only the `Status` line of the header of the plan:
+
+- `building` right before launching the builder.
+- `built` at the end, when every line of `Progress` is `[x]`, every AC is `met` or a manual `not verified` with its
+  steps in `Pending`, and the last review has no `blocking` nor `major` finding; without `Progress`, when the
+  builder reported every task done.
+- `partial` at the end otherwise.
+
+A plan without `Status` gets none: never add the header to it.
 
 ### Docs
 
-Once no task is ready, bring the docs in line with what the builders changed, before the review checks them:
+Each task updates the docs of what it changes; once the builder ends, bring in line what the tasks missed:
 
 1. Read the diff of the change and list what a reader of the docs would see differently: behaviour, commands,
    flags, configuration, contracts, files and folders, install or setup steps.
@@ -94,30 +136,44 @@ Once no task is ready, bring the docs in line with what the builders changed, be
    Write the change they need in `Pending`.
 
 Leave the docs alone when the change alters nothing a reader sees, and say so.
+After a fix that changes what a reader sees, run these steps again.
 
-### Review
+### Review rounds
 
-After the docs, review the change by following `../review/SKILL.md` from its Step 1, with:
+1. Launch the reviewer (see `Reviewer prompt`), wait, and write its report to a `.revNN.md` file.
+2. While the last review has `blocking` or `major` findings and fewer than two fixes ran, launch the builder to fix
+   them (see `Builder prompt`), wait, add its report to the `.iterNN.md` file, and review again.
+3. The findings of the last review still open, and every `minor` one, go to `Pending`.
 
-- **Change**: the current change.
-- **Intent**: the path of the plan and its `Overview`, plus the tasks not built, so the reviewer does not report
-  them as missing.
-
-Run it even when some task is not done, as long as one builder changed a file; when none did, skip it and say so.
+A fix never reopens a task `[-]`: the next run tries it again, after the user adjusts the plan or as it is.
 
 ### Acceptance criteria
 
-Check every `AC` of the `Acceptance criteria` of the plan against the working tree, after the review:
+Check every `AC` of the `Acceptance criteria` of the plan against the working tree, after the review rounds:
 
 1. Run the commands of the `Verification` section of the plan, as the plan writes them, and the end to end checks
    that a command of the project can run.
-2. For each AC, gather its evidence: the result of those commands, the `Verification` of the builders of the tasks
-   whose `Covers:` name it, and the code at `file:line` that fulfils it.
+2. For each AC, gather its evidence: the result of those commands, the evidence of `Progress` of the tasks whose
+   `Covers:` name it, and the code at `file:line` that fulfils it.
 3. Mark each AC `met`, `not met` or `not verified`, with its evidence in one line.
-   It is `not met` when a check fails or a task that covers it is not `done`; `not verified` when no command or code
-   can show it, such as a manual step, which goes to `Pending` with the steps for the user.
+   It is `not met` when a check fails or a task that covers it is not `[x]`; `not verified` when no command or
+   code can show it, such as a manual step, which goes to `Pending` with the steps for the user.
 
 Run only commands that read or verify: tests, linters, builds and checks, with their outputs outside the repository.
+
+### Iterations
+
+Merge the run files into the plan, so the plan alone holds the final state of every run:
+
+1. Add to the section `## Iterations` at the end of the plan, creating it when missing and replacing its `none`,
+   one subsection `### Iteration NN: <today as YYYY-MM-DD>` with one line each:
+   - **Tasks**: each task built, `done` or `departed` and why.
+   - **Departures**: the departures the builder recorded, or "none".
+   - **Docs**: the Markdown files the docs step updated, or "none".
+   - **Review revNN**: for each review, its verdict, the findings fixed, skipped with why, and left open.
+   - **Acceptance**: each AC with `met`, `not met` or `not verified`, or `not checked` for a run closed before.
+   - **Status**: the `Status` the plan ends with, or `interrupted` for a run closed before its end.
+2. Delete the run files of the iteration with `rm`, once their content is in the plan.
 
 ## How to operate
 
@@ -125,37 +181,34 @@ Copy this checklist and track your progress:
 
 ```text
 Build progress:
-- [ ] Step 1: Resolve the plan and the tasks (see `Input`); read the plan whole.
+- [ ] Step 1: Resolve the plan, the first task and whether to resume (see `Input`); read the plan whole.
 - [ ] Step 2: Check the working tree (see Step 2).
-- [ ] Step 3: Order the tasks in waves (see `Waves`) and show them to the user.
-- [ ] Step 4: Launch each wave of builders (see `Builder prompt`) and track the status of every task.
-- [ ] Step 5: Update the docs of the project (see `Docs`).
-- [ ] Step 6: Review the change (see `Review`).
-- [ ] Step 7: Verify the acceptance criteria of the plan (see `Acceptance criteria`).
-- [ ] Step 8: Report (see `Output format`), stop and return control to the user.
+- [ ] Step 3: Show the user the tasks to build, in order.
+- [ ] Step 4: Set the plan `building` (see `Status`), launch the builder (see `Builder prompt`) and wait for it.
+- [ ] Step 5: Write its report to the `.iterNN.md` file (see `Run files`).
+- [ ] Step 6: Update the docs of the project (see `Docs`).
+- [ ] Step 7: Review the change against the plan and have the builder fix it (see `Review rounds`).
+- [ ] Step 8: Verify the acceptance criteria of the plan (see `Acceptance criteria`).
+- [ ] Step 9: Set the plan `built` or `partial` (see `Status`) and merge the run files (see `Iterations`).
+- [ ] Step 10: Report (see `Output format`), stop and return control to the user.
 ```
 
 ### Step 2: Check the working tree
 
 Run `git status --porcelain`.
-When it shows changes outside the plan file, tell the user that the builders work on top of them and the review will
-include them, and ask whether to go on.
-
-### Step 4: Launch each wave of builders
-
-After each wave, give the user one line per task: its status and, when it is not `done`, why.
-Collect from each builder its `Changes`, `Verification`, `Assumptions` and `Pending` for the report.
+Leave out the plan, its run files, the `Files:` of the tasks marked `[x]` or `[-]` and the docs the `Iterations` of
+the plan record: earlier runs changed them.
+When it shows other changes, tell the user that the builder works on top of them and the review will include them,
+and ask whether to go on.
 
 ## Output format
 
-- **Plan**: the path of the plan file.
-- **Tasks**: each task with its status (`done`, `partial`, `blocked` or `skipped`) and, when not `done`, why.
-- **Changes**: the files changed, by task.
-- **Assumptions**: the choices the builders made where the plan was open, or "none".
+- **Plan**: the path of the plan file, its `Status` and the iteration number.
+- **Tasks**: each task with its line of `Progress`: `done` with its evidence, or `departed` and why.
+- **Changes**: the files changed, by task and by fix.
+- **Departures**: the departures the builder recorded, or "none".
 - **Docs**: each Markdown file updated and what changed in it, or why none needed it.
-- **Review**: the output of the skill review: the report, the verdict, the findings and the checks.
+- **Review**: each round: its number, the verdict, the findings and the ones the builder fixed or skipped.
 - **Acceptance**: each AC with `met`, `not met` or `not verified` and its evidence.
-- **Pending**: the failures the builders reported outside their tasks, the tasks to resume with
-  `/polix:build <plan> <tasks>`, the changes `AGENTS.md`, `CLAUDE.md` or a protected file need, the ACs not met or
-  not verified, and the question of which findings to fix; or
-  "none".
+- **Pending**: the findings still open, the failures the builder reported outside its tasks, the changes `AGENTS.md`,
+  `CLAUDE.md` or a protected file need, and the ACs not met or not verified; or "none".
