@@ -70,6 +70,20 @@ on:
           - Never run `just install` nor `just check`: build the binary into a temporary folder and run it from there.
 
   pre_commit:
+    # Only the main session commits: a subagent never does, whatever its type.
+    - when: { not: { actor: session } }
+      action:
+        block: |
+          Subagents never commit: leave the changes in the working tree and report them.
+          The main session commits them.
+
+    # Commit only once every subagent has ended: the gates below run only when none is running.
+    - when: { actor: session, agents_are_running: true }
+      action:
+        block: |
+          Subagents are still running: wait until all of them have finished before committing.
+          Then commit again.
+
     # Remind once per content to update README.md and docs/ when the behaviour changes.
     - when:
         actor: session
@@ -104,8 +118,3 @@ on:
     - when: { actor: session }
       action:
         notify: "Commit a main: {changed_lines} líneas en {changed_files} ficheros, riesgo {risk_score}."
-
-  subagent_stop:
-    - when: { actor: polix:reviewer }
-      action:
-        notify: "polix:reviewer ha terminado: ya puedes commitear."
