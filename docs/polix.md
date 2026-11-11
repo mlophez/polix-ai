@@ -1133,6 +1133,9 @@ may outlive the budget, since polix does not kill the whole process tree.
 - The files a command changed are found by comparing two content hashes, which hold no file git ignores: a
   protected file that git ignores, as `.env`, is only guarded by the check of the command line before it runs, and a
   change to an ignored file is never evaluated as an edit.
+- A protected file is put back as git would check it out from the snapshot, through its filters: with
+  `core.autocrlf` or an `eol` attribute, a file the command found with other line endings comes back with those of
+  git.
 - What a command changed is judged with the `polix.yaml` read after it ran: a command that also leaves `polix.yaml`
   invalid, or takes a path out of `protected_files`, gets past the restore of that path. Protecting `polix.yaml`
   itself keeps the check of the command line before it runs, which catches the plain forms.

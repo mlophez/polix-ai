@@ -36,6 +36,9 @@ func newRepo(t *testing.T, branch string) *repo {
 	t.Helper()
 	r := &repo{t: t, dir: t.TempDir()}
 	r.git("init", "--quiet", "--initial-branch=main")
+	// The files are compared byte for byte: a core.autocrlf of the machine, true on the runners of Windows, would
+	// write a file put back by polix with CRLF.
+	r.git("config", "core.autocrlf", "false")
 	r.write("README.md", "test\n")
 	r.git("add", "--all")
 	r.git("commit", "--quiet", "-m", "init")

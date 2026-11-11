@@ -101,7 +101,7 @@ func TestCommandFile(t *testing.T) {
 		return code, out.String(), errb.String()
 	}
 	if code, _, stderr := fmtFile("--check", p); code != 1 ||
-		!strings.Contains(stderr, p+" is not formatted: run polix config fmt "+p) {
+		!strings.Contains(stderr, p+" is not formatted: run "+fixCommand(p)) {
 		t.Fatalf("check: %d %q", code, stderr)
 	}
 	if code, stdout, stderr := fmtFile(p); code != 0 || !strings.Contains(stdout, "formatted "+p) {
