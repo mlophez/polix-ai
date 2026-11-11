@@ -13,9 +13,10 @@ No paths, code or jargon; a few short paragraphs or bullets.>
 
 ## Request
 
-<The request of the user verbatim, in its language, never summarized nor reworded.>
+<The request of the user translated faithfully into English, never summarized nor reworded.
+Literal strings, messages, commands and examples keep their language.>
 
-- <Each answer of the user written as free text in the interview that changes the request, verbatim.
+- <Each answer of the user written as free text in the interview that changes the request, translated the same way.
   Delete the bullet when there are none.>
 
 ## Context
@@ -31,9 +32,9 @@ No paths, code or jargon; a few short paragraphs or bullets.>
 
 ## Decisions
 
-- <A decision that shapes the tasks, an answer of the interview, or an assumption.
-  Label "Assumption:" every choice of yours: a default for an unanswered question or a behaviour the request leaves
-  open.>
+- <A decision that shapes the tasks: an answer of the interview, or what the request, the docs, the code or a rule
+  settle, with its source.
+  Label "Delegated:" a choice the user explicitly left to the planner, with the option taken.>
 
 ## Approach
 

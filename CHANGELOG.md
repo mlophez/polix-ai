@@ -10,8 +10,9 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 ### Changed
 
 - The skill plan writes plans for one executor that runs every task in order, in one go: tasks have no
-  `Depends on:` and may share files. A plan keeps the request of the user verbatim in `Request` and the limits no
-  task may cross in `Constraints`, gives the executor a `Starting point` (files to read and a baseline command) and
+  `Depends on:` and may share files. A plan is written wholly in English, whatever the language of the session: it
+  keeps the request of the user translated faithfully, never summarized, in `Request` and the limits no task may
+  cross in `Constraints`, gives the executor a `Starting point` (files to read and a baseline command) and
   a `Progress` checklist, numbered acceptance criteria that each task `Covers:`, and each task a `High risk:` line.
   A header under the title holds the `Status` of the plan (`planned`, `building`, `built` or `partial`), its overall
   `Risk`, the `Reference` it comes from, the date it was `Created` and its estimated `Size`; an `Iterations`
@@ -19,12 +20,16 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   Tasks are sliced by behaviour, about 400 changed lines as a guide, update the help and docs of what they change,
   and list their tests first, each `new` (fails before the change) or `kept` (holds the previous behaviour): every
   observable effect of each requirement, the behaviour of the code that calls what they change, and a differential
-  check against the base version for a high-risk task. Every choice of the planner is an `Assumption:` in
-  `Decisions`. Before the interview, a brainstorm drafts two to four approaches, walks the change against the cases
+  check against the base version for a high-risk task. The planner makes no choice of its own: whatever the request,
+  the docs, the code or a rule do not settle is asked, however minor, and an unanswered question is asked again;
+  only a choice the user explicitly leaves to it is recorded, as `Delegated:` in `Decisions`. Before the interview,
+  a brainstorm drafts two to four approaches, walks the change against the cases
   the request does not consider (inputs, failures, existing state, interactions, compatibility, operation,
   security), runs a pre-mortem and estimates the size; the interview proposes a split first when the plan is too
   big, then the approach, at most four questions per round. Adjusting a plan never rewrites a task already built:
   what changes it goes in a new task.
+  A plan keeps its path from its first write: adjusting it, also within the same session or when its scope or title
+  changes, edits the sections that change in place, never renames, copies or writes it whole again.
 - The skills plan, review and audit name their files as the project names its plans and reports, by the convention
   of `AGENTS.md`, of `polix.yaml` or of the files already in the folder; their former names are only the fallback.
 - The skill build launches one `polix:builder` for the whole plan instead of one per task in waves. It launches
