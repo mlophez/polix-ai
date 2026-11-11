@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://github.com/mlophez/polix-ai/releases/latest/download/install.sh | sh
 #
-# On macOS and Linux it installs the binary itself and runs `polix install --user`, which installs the plugin of polix
+# On macOS and Linux it installs the binary itself and runs `polix install --skills`, which installs the plugin of polix
 # (skills and agents) for the user in Claude Code. On Windows (Git Bash, MSYS or Cygwin) it runs install.ps1 of the
 # same release, checked the same way, so a Windows machine gets one install wherever it starts from: in
 # %LOCALAPPDATA%\Programs\polix and on the user PATH that every shell and Claude Code see.
@@ -13,7 +13,7 @@
 #   POLIX_INSTALL_DIR   folder of the binary (default: ~/.local/bin; on Windows a Windows path, default
 #                       %LOCALAPPDATA%\Programs\polix)
 #   POLIX_RELEASES_URL  releases page (default: https://github.com/mlophez/polix-ai/releases)
-#   POLIX_NO_SETUP      set it to skip `polix install --user`, which installs the plugin of polix for the user
+#   POLIX_NO_SETUP      set it to skip `polix install --skills`, which installs the plugin of polix for the user
 #
 # The body is a function called on the last line, so a download cut halfway through `curl | sh` runs nothing.
 set -eu
@@ -105,7 +105,7 @@ main() {
   # The plugin of the user, embedded in the binary just installed. The hooks belong to each repository: polix
   # install registers them there.
   if [ -z "${POLIX_NO_SETUP:-}" ]; then
-    "$dir/polix" install --user --yes || echo "warning: polix install --user failed: run it again by hand" >&2
+    "$dir/polix" install --skills --yes || echo "warning: polix install --skills failed: run it again by hand" >&2
   fi
 }
 

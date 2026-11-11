@@ -73,14 +73,14 @@ func TestGithookCommit(t *testing.T) {
 
 // AC18, AC20: polix install --githooks writes the four keys of the hooks of git into the local configuration of
 // the repository and nothing else, no plugin nor settings of the agents, printing only what changed, and a second
-// run prints nothing; with --user, with --agent or outside a repository it fails and writes nothing. It skips,
+// run prints nothing; with --agent or outside a repository it fails and writes nothing. It skips,
 // naming the version of git, when git does not run the hooks of its configuration, where the install exits 1.
 func TestGithookInstall(t *testing.T) {
 	testenv.Machine(t, true, false)
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	r := testenv.GitRepo(t)
-	for _, args := range [][]string{{"--user"}, {"--agent", "claude"}, {"--dir", t.TempDir()}} {
+	for _, args := range [][]string{{"--agent", "claude"}, {"--dir", t.TempDir()}} {
 		code, stdout, stderr := runSetup(append([]string{"install", "--githooks", "--dir", r}, args...)...)
 		if code != 1 || stderr == "" || stdout != "" {
 			t.Fatalf("install --githooks %v: %d\n%s%s", args, code, stdout, stderr)

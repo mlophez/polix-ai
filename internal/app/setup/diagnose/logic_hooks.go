@@ -158,7 +158,7 @@ func codex(i setup.Inspection) []setup.Finding {
 		return nil
 	}
 	if !i.CodexEnabled {
-		f = append(f, found(setup.LevelWarn, "codex", "the plugin %s is not enabled in Codex: run polix install --user --agent codex", setup.PluginID)...)
+		f = append(f, found(setup.LevelWarn, "codex", "the plugin %s is not enabled in Codex: run polix install --skills --agent codex", setup.PluginID)...)
 	}
 	if !registered {
 		return append(f, found(setup.LevelWarn, "codex", "Codex does not run polix in this repository: run polix install --agent codex")...)

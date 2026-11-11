@@ -182,9 +182,9 @@ func plugin(i setup.Inspection, hook bool) []setup.Finding {
 	}
 	switch {
 	case !p.Written:
-		return found(setup.LevelWarn, "plugin", "the plugin polix (skills and agents) is not installed: run polix install --user")
+		return found(setup.LevelWarn, "plugin", "the plugin polix (skills and agents) is not installed: run polix install --skills")
 	case p.Manifest != p.ManifestVersion():
-		return found(setup.LevelWarn, "plugin", "%s is from polix %s, this binary is %s: run polix install --user", s.PluginDir(), p.Manifest, p.Version)
+		return found(setup.LevelWarn, "plugin", "%s is from polix %s, this binary is %s: run polix install --skills", s.PluginDir(), p.Manifest, p.Version)
 	}
 	if !hook {
 		if f := claude(i); f != nil {
@@ -204,11 +204,11 @@ func claude(i setup.Inspection) []setup.Finding {
 	case i.ClaudeErr != nil:
 		return found(setup.LevelWarn, "plugin", "cannot ask Claude Code for its plugins: %v", i.ClaudeErr)
 	case !i.ClaudeInstalled:
-		return found(setup.LevelWarn, "plugin", "Claude Code does not have %s installed: run polix install --user", setup.PluginID)
+		return found(setup.LevelWarn, "plugin", "Claude Code does not have %s installed: run polix install --skills", setup.PluginID)
 	case !i.ClaudeEnabled:
 		return found(setup.LevelWarn, "plugin", "%s is disabled in Claude Code: run claude plugin enable %s", setup.PluginID, setup.PluginID)
 	case i.ClaudeFolder != "" && !i.SameFolder:
-		return found(setup.LevelWarn, "plugin", "Claude Code loads %s from %s, not from %s: run polix install --user",
+		return found(setup.LevelWarn, "plugin", "Claude Code loads %s from %s, not from %s: run polix install --skills",
 			setup.PluginID, i.ClaudeFolder, i.Setup.PluginDir())
 	}
 	return nil

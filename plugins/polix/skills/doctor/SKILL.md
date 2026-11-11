@@ -26,7 +26,7 @@ Find why polix does not apply as expected and fix it with the user.
 - **path**: the folder of the binary is not on the `PATH` the hooks use.
   Add it in the profile of the shell (`~/.local/bin` on macOS and Linux), or reinstall on Windows.
   The Windows installer adds `%LOCALAPPDATA%\Programs\polix` to the user `PATH`; then restart the agent.
-- **plugin**: `polix install --user` writes this plugin to `~/.polix/marketplace/` and registers it with each agent.
+- **plugin**: `polix install --skills` writes this plugin to `~/.polix/marketplace/` and registers it with each agent.
   A new or changed plugin applies in the next session, or after `/reload-plugins` in Claude Code.
 - **hooks**: `polix install` registers the hooks of Claude Code in `.claude/settings.json` of the repository.
   When they are registered twice, remove the `polix ...` hooks of one of the files: each hook would run twice.
@@ -51,7 +51,7 @@ Find why polix does not apply as expected and fix it with the user.
 - Windows, PowerShell:
   `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/mlophez/polix-ai/releases/latest/download/install.ps1 | iex"`
 
-Both install the binary and run `polix install --user`.
+Both install the binary and run `polix install --skills`.
 Then `polix install` in the repository registers its hooks, and the user restarts the agent.
 
 ## How to operate

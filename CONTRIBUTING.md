@@ -46,7 +46,7 @@ The hooks run `polix` from the `PATH`, so run `just install` once before opening
 again after every change of the engine, so the hooks run your build.
 Until then, the hooks fail with "command not found", which Claude Code treats as a non blocking error, and the
 workflow does not apply.
-`polix install --user` adds the plugin of polix (its skills and agents) for your user.
+`polix install --skills` adds the plugin of polix (its skills and agents) for your user.
 
 In a session, the workflow of `polix.yaml`:
 

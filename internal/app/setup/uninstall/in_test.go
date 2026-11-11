@@ -1,18 +1,23 @@
 package uninstall
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/setup"
+	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
 // fakePort answers the port of UninstallSetup from memory and records the calls.
 type fakePort struct {
-	calls []string
-	err   error // of UnregisterPlugin
+	calls   []string
+	err     error // of UnregisterPlugin
+	outside bool  // Root finds no repository
 	// gitHooks records the hooks of git removed, apart from calls; gitChanges makes each removal a change.
 	gitHooks   []string
 	gitChanges bool
@@ -28,7 +33,12 @@ func (f *fakePort) UnregisterGitHook(_ context.Context, root string, h setup.Git
 
 func (f *fakePort) Confirm(_ context.Context, _ string) error { return nil }
 func (f *fakePort) Home(_ context.Context) (string, error)    { return "/h", nil }
-func (f *fakePort) Root(_ context.Context, _ string) string   { return "/r" }
+func (f *fakePort) Root(_ context.Context, _ string) string {
+	if f.outside {
+		return ""
+	}
+	return "/r"
+}
 func (f *fakePort) UnregisterPlugin(_ context.Context, _ setup.Setup, agent string) ([]setup.Change, error) {
 	f.calls = append(f.calls, "UnregisterPlugin "+agent)
 	return []setup.Change{{Path: agent, Action: "unregistered"}}, f.err
@@ -49,14 +59,14 @@ func TestShell(t *testing.T) {
 		t.Fatalf("%+v %v %v", res, err, port.calls)
 	}
 	port = &fakePort{err: errors.New("boom")}
-	res, err = run(context.Background(), port, Request{Version: "1", User: true})
+	res, err = run(context.Background(), port, Request{Version: "1", Parts: setup.Parts{Skills: true}})
 	if err == nil || len(res.Changes) != 1 || len(port.calls) != 1 {
 		t.Fatalf("the first error stops it: %+v %v %v", res, err, port.calls)
 	}
 }
 
-// AC14: inside a repository the shell removes both hooks of git and reports it, unless --user or only some agents
-// are removed, which leaves them to the agents still installed.
+// AC14: inside a repository the shell removes both hooks of git and reports it, unless --skills or --hooks, or only
+// some agents are removed without --githooks, which leaves them to the agents still installed.
 func TestShellGitHooks(t *testing.T) {
 	ctx := context.Background()
 	port := &fakePort{gitChanges: true}
@@ -65,10 +75,41 @@ func TestShellGitHooks(t *testing.T) {
 		!slices.Contains(res.Changes, setup.Change{Path: "git config hook.polix-commit-msg", Action: "removed"}) {
 		t.Fatalf("%+v %v %q", res, err, port.gitHooks)
 	}
-	for _, req := range []Request{{Version: "1", User: true}, {Version: "1", Agents: []string{setup.Codex}}} {
+	for _, req := range []Request{{Version: "1", Parts: setup.Parts{Skills: true}}, {Version: "1", Parts: setup.Parts{Hooks: true}},
+		{Version: "1", Agents: []string{setup.Codex}}} {
 		port = &fakePort{}
 		if _, err := run(ctx, port, req); err != nil || port.gitHooks != nil {
 			t.Fatalf("%+v: %v %q", req, err, port.gitHooks)
+		}
+	}
+}
+
+// Each part alone: --skills only the plugin and the marketplace, --hooks only the hooks files, --githooks only the
+// hooks of git; --hooks or --githooks outside a repository is an error that removes nothing.
+func TestShellParts(t *testing.T) {
+	ctx := context.Background()
+	port := &fakePort{}
+	if _, err := run(ctx, port, Request{Version: "1", Parts: setup.Parts{Skills: true}}); err != nil ||
+		!slices.Equal(port.calls, []string{"UnregisterPlugin claude", "UnregisterPlugin codex", "RemovePlugin " +
+			setup.Setup{Home: "/h"}.MarketplaceDir()}) || port.gitHooks != nil {
+		t.Fatalf("--skills: %v %q %q", err, port.calls, port.gitHooks)
+	}
+	port = &fakePort{}
+	s := setup.Setup{Root: "/r"}
+	if _, err := run(ctx, port, Request{Version: "1", Parts: setup.Parts{Hooks: true}}); err != nil ||
+		!slices.Equal(port.calls, []string{"UnregisterHooks " + s.HooksFile(setup.Claude), "UnregisterHooks " + s.HooksFile(setup.Codex)}) ||
+		port.gitHooks != nil {
+		t.Fatalf("--hooks: %v %q %q", err, port.calls, port.gitHooks)
+	}
+	port = &fakePort{}
+	if _, err := run(ctx, port, Request{Version: "1", Parts: setup.Parts{GitHooks: true}}); err != nil || port.calls != nil ||
+		!slices.Equal(port.gitHooks, []string{"/r pre-commit", "/r commit-msg"}) {
+		t.Fatalf("--githooks: %v %q %q", err, port.calls, port.gitHooks)
+	}
+	for _, p := range []setup.Parts{{Hooks: true}, {GitHooks: true}} {
+		port = &fakePort{outside: true}
+		if _, err := run(ctx, port, Request{Version: "1", Parts: p}); err == nil || port.calls != nil || port.gitHooks != nil {
+			t.Fatalf("outside %+v: %v %q", p, err, port.calls)
 		}
 	}
 }
@@ -91,5 +132,25 @@ func TestParseAgents(t *testing.T) {
 	if err := req.parseAgents([]string{"claude", "cursor"}); err == nil || err.Error() != `unknown agent "cursor" (claude, codex)` ||
 		req.Agents != nil {
 		t.Fatalf("unknown agent: %v", err)
+	}
+}
+
+// The command rejects --githooks alone with --agent before running anything, and has no --user.
+func TestCommandFlags(t *testing.T) {
+	testenv.Home(t)
+	dir := t.TempDir()
+	for args, want := range map[string]string{"--githooks --agent claude": "it takes no --agent", "--user": "unknown flag"} {
+		c := Command()
+		c.SilenceUsage, c.SilenceErrors = true, true
+		var stdout, stderr bytes.Buffer
+		c.SetOut(&stdout)
+		c.SetErr(&stderr)
+		c.SetArgs(append(strings.Fields(args), "--yes", "--dir", dir))
+		if err := c.Execute(); err == nil || !strings.Contains(err.Error(), want) || stdout.Len() != 0 {
+			t.Fatalf("%s: %v %q", args, err, stdout.String())
+		}
+	}
+	if entries, err := os.ReadDir(os.Getenv("HOME")); err != nil || len(entries) != 0 {
+		t.Fatalf("the home stays empty: %v %v", entries, err)
 	}
 }

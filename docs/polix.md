@@ -56,8 +56,8 @@ polix risk                 # print the lines, files and risk score of the uncomm
                            # (--changed GLOB, repeatable; --commit REV for the changes of one commit)
 polix doctor               # check that this machine and repository are ready (--hook, --offline)
 polix install              # plugin for the user, hooks of the agents and of git for the repository
-                           # (--user, --agent; default claude; --githooks for only the hooks of git)
-polix uninstall            # remove what install wrote (--user, --agent)
+                           # (--skills, --hooks, --githooks for only those parts; --agent, default claude)
+polix uninstall            # remove what install wrote (--skills, --hooks, --githooks, --agent)
 polix update               # replace the binary with the latest release and refresh the plugin
                            # (--check, --version V, --hook)
 polix version
@@ -166,7 +166,7 @@ version.
 repository: it tells the agent to propose the install command of the system of the user, and to run it only
 with their approval, when polix is missing.
 
-Both scripts then run `polix install --user --yes`, which installs the plugin of the user for Claude Code (see
+Both scripts then run `polix install --skills --yes`, which installs the plugin of the user for Claude Code (see
 below) and no hooks: they belong to each repository. `POLIX_NO_SETUP=1` skips it.
 
 `polix update` downloads the latest release (or `--version V`, older ones included), checks it against
@@ -190,7 +190,8 @@ Every release must keep what earlier releases rely on to update into it, since t
 the binaries of the users: the assets `polix_<os>_<arch>` (`.exe` on Windows) and `checksums.txt` in the format of
 `sha256sum`, the redirect of `releases/latest` to `releases/tag/v<version>`, the cache `update.json`, and the
 commands an old binary runs with the new one after replacing it: `__refresh --quiet`, `__refresh --hooks`,
-`doctor --hook` and `install --user --yes --quiet` (`TestCommandsTheUpdateRuns` keeps them). A tag with a
+`doctor --hook` and `install --skills --yes --quiet`, and `install --user --yes --quiet` of polix 0.6 and earlier,
+which `--user` keeps working hidden as `--skills` (`TestCommandsTheUpdateRuns` keeps them). A tag with a
 prerelease (`v0.2.0-rc1`) is published as a GitHub prerelease, which `releases/latest` never points to.
 Only releases update themselves: a development build (`just install`, or `go install` of a commit) never does, so
 the machines that try polix install it with `install.sh` or `install.ps1`.
@@ -1285,23 +1286,29 @@ also prints that Codex support is not implemented in this release and the setup 
   install keeps them and warns that git does not run hooks from its configuration, so the githooks of `polix.yaml`
   do not apply until git is updated.
 
-Before writing, install asks to confirm a summary of what it writes: the plugin and the hooks file of each agent
-and, in a repository, the hooks of git `hook.polix-pre-commit` and `hook.polix-commit-msg` in its local git
+`polix install` writes three parts, each alone with its flag and all of them when none is given: the plugin of the
+user (`--skills`), the hooks of the agents of the repository (`--hooks`) and its hooks of git (`--githooks`); the
+flags combine, so `polix install --hooks --githooks` registers both kinds of hooks without touching the plugin.
+
+Before writing, install asks to confirm a summary of what it writes: as the parts ask, the plugin and the hooks file
+of each agent and, in a repository, the hooks of git `hook.polix-pre-commit` and `hook.polix-commit-msg` in its local git
 configuration. `polix uninstall` asks the same for what it removes.
 
 `polix install --githooks` writes only the two hooks of git of the repository: no plugin, no hooks of the agents
 and no marketplace. It never asks for confirmation (`--yes` and `--quiet` are accepted and change nothing) and
 prints only the lines of what changed, nothing when the hooks are already there, so it can run on every session
 start. When git does not list them afterwards it keeps them, prints the warning on stderr and exits with 1, unlike
-`polix install` without the flag, which exits with 0. With `--user` or `--agent`, or outside a git repository, it is
-an error that exits with 1 and writes nothing.
+`polix install` with other parts, which exits with 0. Alone with `--agent`, or outside a git repository, it is an
+error that exits with 1 and writes nothing; so is `--hooks` outside a git repository.
 
-`--user` installs only the plugin; outside a git repository that is all install does. `polix doctor` checks Codex
+`--skills` installs only the plugin; outside a git repository, without flags, that is all install does. `--user`,
+hidden, is `--skills` as polix 0.6 and earlier named it. `polix doctor` checks Codex
 only when polix is registered for it, so a Codex user who never passed `--agent codex` gets no Codex finding.
-`polix uninstall` removes the same parts, and without `--agent` those of both agents, so it also removes a Codex
-setup: it unregisters the plugin from each agent and, for both, removes `~/.polix/marketplace/`; unless `--user`,
-it removes the hooks of polix of the repository, and a hooks file when nothing else is left in it, and, for both
-agents, the two hooks of git of its local git configuration.
+`polix uninstall` removes the same parts, with the same flags, and without `--agent` those of both agents, so it
+also removes a Codex setup: with the plugin it unregisters it from each agent and, for both, removes
+`~/.polix/marketplace/`; with the hooks it removes the hooks of polix of the repository, and a hooks file when
+nothing else is left in it; and with the hooks of git the two of its local git configuration, without flags only
+for both agents, since install writes them for any agent.
 
 The plugin only arrives with `polix install`: the repository serves no marketplace of its own. The
 reference of the skill `workflow` (`plugins/polix/skills/workflow/reference.yaml`) is a copy of

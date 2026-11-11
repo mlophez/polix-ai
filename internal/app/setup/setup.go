@@ -132,26 +132,40 @@ func (s Setup) Duplicates(registered map[string]bool) []string {
 	return out
 }
 
-// Summary tells what install (verb write) or uninstall (verb remove) is about to do, for the person to confirm:
-// for each agent its plugin and, in a repository, its hooks file; and the hooks of git, gitHooks, in the local git
-// configuration of the repository, when there are some and a repository.
-func (s Setup) Summary(verb string, gitHooks []GitHook) string {
+// Summary tells what install (verb write) or uninstall (verb remove) is about to do with the parts p, for the person
+// to confirm: for each agent, with Skills, its plugin and, with Hooks in a repository, its hooks file; and, with
+// GitHooks in a repository, the hooks of git (GitHooks) in its local git configuration.
+func (s Setup) Summary(verb string, p Parts) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "polix %s will %s:\n", s.Version, verb)
+	hooks := p.Hooks && s.Root != ""
 	for _, a := range s.Agents {
-		switch a {
-		case Claude:
-			fmt.Fprintf(&b, "\n  Claude Code: the plugin %s, from %s\n", PluginID, s.MarketplaceDir())
-		case Codex:
-			fmt.Fprintf(&b, "\n  Codex: the plugin %s, enabled in %s\n", PluginID, s.CodexConfigFile())
+		if !p.Skills && !hooks {
+			break
 		}
-		if s.Root != "" {
-			fmt.Fprintf(&b, "         the hooks of %s\n", s.HooksFile(a))
+		name := "Codex"
+		if a == Claude {
+			name = "Claude Code"
+		}
+		indent := "  " + name + ": "
+		switch {
+		case p.Skills && a == Claude:
+			fmt.Fprintf(&b, "\n%sthe plugin %s, from %s\n", indent, PluginID, s.MarketplaceDir())
+		case p.Skills:
+			fmt.Fprintf(&b, "\n%sthe plugin %s, enabled in %s\n", indent, PluginID, s.CodexConfigFile())
+		default:
+			b.WriteString("\n")
+		}
+		if hooks {
+			if p.Skills {
+				indent = strings.Repeat(" ", len(indent))
+			}
+			fmt.Fprintf(&b, "%sthe hooks of %s\n", indent, s.HooksFile(a))
 		}
 	}
-	if s.Root != "" && len(gitHooks) > 0 {
-		names := make([]string, len(gitHooks))
-		for i, h := range gitHooks {
+	if p.GitHooks && s.Root != "" {
+		names := make([]string, len(GitHooks))
+		for i, h := range GitHooks {
 			names[i] = "hook." + h.Name()
 		}
 		fmt.Fprintf(&b, "\n  git: the hooks %s, in the local git configuration of %s\n", strings.Join(names, ", "), s.Root)

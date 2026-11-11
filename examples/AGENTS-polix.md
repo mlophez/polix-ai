@@ -20,7 +20,7 @@ with their approval:
 - Windows (PowerShell):
   `powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://github.com/mlophez/polix-ai/releases/latest/download/install.ps1 | iex"`
 
-Both install the binary and run `polix install --user`, which installs the plugin `polix` for the user:
+Both install the binary and run `polix install --skills`, which installs the plugin `polix` for the user:
 in Claude Code, the skills `/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`,
 `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit` and the agents `polix:workflow-author`,
 `polix:rules-author`, `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`.

@@ -117,7 +117,7 @@ func TestShell(t *testing.T) {
 	}
 	// A person that does not confirm stops it before anything is written.
 	port = &fakePort{refuse: true}
-	_, err = run(context.Background(), port, Request{Version: "1.2.3", User: true})
+	_, err = run(context.Background(), port, Request{Version: "1.2.3", Parts: setup.Parts{Skills: true}})
 	if !errors.Is(err, setup.ErrCancelled) || len(port.calls) != 0 {
 		t.Fatalf("%v %v", err, port.calls)
 	}
@@ -130,7 +130,7 @@ func TestShell(t *testing.T) {
 }
 
 // AC11, AC12, AC13: inside a repository the shell writes both hooks of git after the hooks of the agents, reports
-// their changes and warns when git lists none of them; with --user or outside a repository it touches no git
+// their changes and warns when git lists none of them; with --skills or outside a repository it touches no git
 // configuration.
 func TestShellGitHooks(t *testing.T) {
 	ctx := context.Background()
@@ -160,7 +160,7 @@ func TestShellGitHooks(t *testing.T) {
 		t.Fatalf("no warning: %q", stderr.String())
 	}
 
-	for name, req := range map[string]Request{"--user": {Version: "1.2.3", User: true}, "outside": {Version: "1.2.3"}} {
+	for name, req := range map[string]Request{"--skills": {Version: "1.2.3", Parts: setup.Parts{Skills: true}}, "outside": {Version: "1.2.3"}} {
 		port = &fakePort{outside: name == "outside"}
 		if res, err := run(ctx, port, req); err != nil || port.gitHooks != nil || res.Unlisted != nil {
 			t.Fatalf("%s: %+v %v %q", name, res, err, port.gitHooks)
@@ -175,8 +175,8 @@ func TestShellGitHooksOnly(t *testing.T) {
 	ctx := context.Background()
 	want := []string{"Root", "RegisterGitHook", "RegisterGitHook", "Unlisted"}
 	port := &fakePort{gitChanges: true, refuse: true}
-	res, err := run(ctx, port, Request{Version: "1.2.3", GitHooks: true})
-	if err != nil || !slices.Equal(port.methods, want) || !res.GitHooksOnly || len(res.Changes) != 2 || res.Unlisted != nil {
+	res, err := run(ctx, port, Request{Version: "1.2.3", Parts: setup.Parts{GitHooks: true}})
+	if err != nil || !slices.Equal(port.methods, want) || !res.Parts.OnlyGitHooks() || len(res.Changes) != 2 || res.Unlisted != nil {
 		t.Fatalf("%+v %v %q", res, err, port.methods)
 	}
 	var stdout, stderr bytes.Buffer
@@ -189,7 +189,7 @@ func TestShellGitHooksOnly(t *testing.T) {
 	}
 
 	port = &fakePort{}
-	res, err = run(ctx, port, Request{Version: "1.2.3", GitHooks: true})
+	res, err = run(ctx, port, Request{Version: "1.2.3", Parts: setup.Parts{GitHooks: true}})
 	stdout.Reset()
 	res.printChanges(&stdout)
 	res.print(&stdout, &stderr)
@@ -198,7 +198,7 @@ func TestShellGitHooksOnly(t *testing.T) {
 	}
 
 	port = &fakePort{unlisted: true}
-	res, err = run(ctx, port, Request{Version: "1.2.3", GitHooks: true})
+	res, err = run(ctx, port, Request{Version: "1.2.3", Parts: setup.Parts{GitHooks: true}})
 	res.print(&stdout, &stderr)
 	if err != nil || !slices.Equal(res.Unlisted, setup.GitHooks) || res.exit() == nil ||
 		!strings.Contains(stderr.String(), "git does not run hooks from its configuration") {
@@ -217,7 +217,7 @@ func TestShellGitHooksOnly(t *testing.T) {
 // since writing the hooks again does not enable it.
 func TestShellGitHooksDisabled(t *testing.T) {
 	ctx := context.Background()
-	for _, req := range []Request{{Version: "1.2.3", GitHooks: true}, {Version: "1.2.3", Quiet: true}} {
+	for _, req := range []Request{{Version: "1.2.3", Parts: setup.Parts{GitHooks: true}}, {Version: "1.2.3", Quiet: true}} {
 		port := &fakePort{disabled: true}
 		res, err := run(ctx, port, req)
 		var stdout, stderr bytes.Buffer
@@ -227,42 +227,77 @@ func TestShellGitHooksDisabled(t *testing.T) {
 			!strings.Contains(warn, "disabled in the git configuration") ||
 			!strings.Contains(warn, "hook.polix-pre-commit.enabled") || strings.Contains(warn, "polix-commit-msg") ||
 			strings.Contains(warn, "2.54") {
-			t.Fatalf("githooks %v: %+v %v %q %v", req.GitHooks, res, err, warn, res.exit())
+			t.Fatalf("githooks %v: %+v %v %q %v", req.Parts.GitHooks, res, err, warn, res.exit())
 		}
 	}
 }
 
-// AC20: --githooks outside a repository, and with --user, which reads no repository, is an error that writes
-// nothing.
-func TestShellGitHooksOutside(t *testing.T) {
-	for name, req := range map[string]Request{"outside": {Version: "1.2.3", GitHooks: true},
-		"--user": {Version: "1.2.3", GitHooks: true, User: true}} {
-		port := &fakePort{outside: name == "outside"}
-		_, err := run(context.Background(), port, req)
+// AC20: --githooks, and --hooks, outside a repository is an error that writes nothing.
+func TestShellOutside(t *testing.T) {
+	for _, p := range []setup.Parts{{GitHooks: true}, {Hooks: true}, {Skills: true, GitHooks: true}} {
+		port := &fakePort{outside: true}
+		_, err := run(context.Background(), port, Request{Version: "1.2.3", Parts: p})
 		if err == nil || !strings.Contains(err.Error(), "not inside a git repository") || port.gitHooks != nil ||
 			port.calls != nil {
-			t.Fatalf("%s: %v %q %q", name, err, port.gitHooks, port.calls)
+			t.Fatalf("%+v: %v %q %q", p, err, port.gitHooks, port.calls)
 		}
 	}
 }
 
-// AC20: the command rejects --githooks with --user or --agent before running anything.
-func TestCommandGitHooksFlags(t *testing.T) {
+// --skills writes only the plugin and registers it, without the hooks of the agents nor of git; --hooks registers
+// only the hooks of the agents, without reading nor writing the plugin, after a confirmation.
+func TestShellParts(t *testing.T) {
+	ctx := context.Background()
+	port := &fakePort{}
+	res, err := run(ctx, port, Request{Version: "1.2.3", Parts: setup.Parts{Skills: true}})
+	if err != nil || !slices.Equal(port.calls, []string{"WritePlugin " + setup.Setup{Home: "/h"}.MarketplaceDir(), "RegisterPlugin claude"}) ||
+		port.gitHooks != nil || slices.Contains(port.methods, "Root") || slices.Contains(port.methods, "Registered") {
+		t.Fatalf("--skills: %+v %v %q %q", res, err, port.calls, port.methods)
+	}
+	port = &fakePort{}
+	res, err = run(ctx, port, Request{Version: "1.2.3", Parts: setup.Parts{Hooks: true}})
+	want := []string{"Home", "Root", "Confirm", "RegisterHooks", "OnPath", "Registered"}
+	if err != nil || !slices.Equal(port.methods, want) || port.gitHooks != nil || len(res.HooksFiles) != 1 {
+		t.Fatalf("--hooks: %+v %v %q", res, err, port.methods)
+	}
+	var stdout, stderr bytes.Buffer
+	res.print(&stdout, &stderr)
+	if strings.Contains(stdout.String(), "skills") || !strings.Contains(stdout.String(), "Hooks registered in") {
+		t.Fatalf("--hooks prints the hooks, not the skills:\n%s", stdout.String())
+	}
+	// --hooks --githooks goes through the confirmation, without the plugin, and exits 0 when git does not list
+	// the hooks of git, as the whole install.
+	port = &fakePort{unlisted: true}
+	res, err = run(ctx, port, Request{Version: "1.2.3", Parts: setup.Parts{Hooks: true, GitHooks: true}})
+	want = []string{"Home", "Root", "Confirm", "RegisterHooks", "RegisterGitHook", "RegisterGitHook", "Unlisted", "OnPath", "Registered"}
+	if err != nil || !slices.Equal(port.methods, want) || !slices.Equal(res.Unlisted, setup.GitHooks) || res.exit() != nil {
+		t.Fatalf("--hooks --githooks: %+v %v %q", res, err, port.methods)
+	}
+}
+
+// The command rejects --githooks alone with --agent before running anything, and takes --user, hidden, as
+// --skills, which polix update of 0.6 and earlier runs.
+func TestCommandFlags(t *testing.T) {
 	testenv.Home(t)
 	dir := t.TempDir()
-	for _, args := range [][]string{{"--githooks", "--user"}, {"--githooks", "--agent", "claude"}} {
-		c := Command()
-		c.SilenceUsage, c.SilenceErrors = true, true
-		var stdout, stderr bytes.Buffer
-		c.SetOut(&stdout)
-		c.SetErr(&stderr)
-		c.SetArgs(append(args, "--yes", "--dir", dir))
-		if err := c.Execute(); err == nil || !strings.Contains(err.Error(), "neither --user nor --agent") || stdout.Len() != 0 {
-			t.Fatalf("%v: %v %q", args, err, stdout.String())
-		}
+	c := Command()
+	c.SilenceUsage, c.SilenceErrors = true, true
+	var stdout, stderr bytes.Buffer
+	c.SetOut(&stdout)
+	c.SetErr(&stderr)
+	c.SetArgs([]string{"--githooks", "--agent", "claude", "--yes", "--dir", dir})
+	if err := c.Execute(); err == nil || !strings.Contains(err.Error(), "it takes no --agent") || stdout.Len() != 0 {
+		t.Fatalf("%v %q", err, stdout.String())
 	}
 	if entries, err := os.ReadDir(os.Getenv("HOME")); err != nil || len(entries) != 0 {
 		t.Fatalf("the home stays empty: %v %v", entries, err)
+	}
+	c = Command()
+	if f := c.Flags().Lookup("user"); f == nil || !f.Hidden {
+		t.Fatal("--user is a hidden flag")
+	}
+	if err := c.ParseFlags([]string{"--user"}); err != nil || c.Flags().Lookup("skills").Value.String() != "true" {
+		t.Fatalf("--user: %v", err)
 	}
 }
 

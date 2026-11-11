@@ -30,8 +30,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   `polix uninstall` removes them, and `polix doctor` warns, never fails, when git does not run them.
 - `polix install --githooks` writes only those two hooks of git: no plugin, no hooks of the agents and no
   marketplace. It never asks for confirmation and prints only what changed, nothing when the hooks are already
-  there; when git does not list them it keeps them, warns on stderr and exits with 1. With `--user`, with `--agent`
-  or outside a repository it is an error that writes nothing.
+  there; when git does not list them it keeps them, warns on stderr and exits with 1. Alone with `--agent`, or
+  outside a repository, it is an error that writes nothing.
 - A hook of git disabled with `hook.polix-<event>.enabled=false`, which git lists as disabled, is not taken for one
   git cannot run: `polix install` (also `--githooks`, which exits with 0) warns that it is disabled in the git
   configuration and leaves it so, and `polix doctor` says the same instead of asking to run `polix install`.
@@ -52,6 +52,13 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   since they only launch agents, relay verdicts or follow `polix doctor`.
 - `rules-reviewer`, `doctor`, `build`, `review` and `audit` run on `sonnet` instead of the model of the session,
   since they check a list or orchestrate; `plan`, `reviewer`, `auditor` and the rest still inherit it.
+- `polix install` and `polix uninstall` take one flag per part, which combine, and every part without any:
+  `--skills` (the plugin of the user, with its skills and agents), `--hooks` (the hooks of the agents of the
+  repository, which could not be installed alone before) and `--githooks` (the hooks of git of the repository).
+  `--skills` replaces `--user`: `polix uninstall --user` is gone, and `polix install --user` stays hidden as
+  `--skills`, since `polix update` of earlier releases runs it on the new binary. The installers and `polix update`
+  run `polix install --skills`. `--hooks` or `--githooks` outside a git repository is an error; `polix uninstall
+  --githooks` removes the hooks of git also when an agent stays.
 
 ## [0.6.1] - 2026-11-11
 

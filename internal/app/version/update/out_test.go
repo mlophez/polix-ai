@@ -259,7 +259,7 @@ func TestAdapterRunsTheBinary(t *testing.T) {
 		t.Fatalf("Refresh of the hook: %q %q %v", stdout, stderr, err)
 	}
 	stdout, _, err = a.Refresh(ctx, exe, false)
-	if err != nil || stdout != "ran install --user --yes --quiet in work\nran __refresh --hooks in work\n" {
+	if err != nil || stdout != "ran install --skills --yes --quiet in work\nran __refresh --hooks in work\n" {
 		t.Fatalf("Refresh of a person: %q %v", stdout, err)
 	}
 	stdout, _, err = a.Doctor(ctx, exe)

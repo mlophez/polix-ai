@@ -227,14 +227,16 @@ From the root of the repository:
 
 ```bash
 polix install                       # the plugin for you and the hooks for this repository, for Claude Code
-polix install --user                # only the plugin, from anywhere (the installers already ran it)
-polix install --agent claude,codex  # Codex too: not implemented in this release, and untested
+polix install --skills              # only the plugin, from anywhere (the installers already ran it)
+polix install --hooks               # only the hooks of the agents of this repository
 polix install --githooks            # only the hooks of git of this repository, without asking
+polix install --agent claude,codex  # Codex too: not implemented in this release, and untested
 ```
 
 `polix install` sets up Claude Code alone, even when Codex is on the machine: Codex is set up only with
 `--agent codex`, and its support is not implemented. It sets up two things, and running it again only updates what
-changed:
+changed; `--skills`, `--hooks` and `--githooks` set up only the plugin, the hooks of the agents or the hooks of git,
+and combine:
 
 - **For you, the plugin `polix`.** It holds the skills `/polix:workflow`, `/polix:add-rule`, `/polix:risk`,
   `/polix:doctor`, `/polix:init`, `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit` and the agents
@@ -266,7 +268,7 @@ turns the update off. Development builds (`just install`) never update themselve
 [docs/polix.md](docs/polix.md).
 
 `polix update` refreshes the plugin with each new binary, and `polix uninstall` removes the plugin and the hooks
-of the repository (`--user` for only the plugin).
+of the repository (`--skills`, `--hooks` and `--githooks` for only some parts, as for install).
 
 **3. Write your workflow**
 
@@ -499,10 +501,10 @@ polix doctor [--hook]          check that this machine and repository are ready
 polix update [--version V]     replace the binary with a release, verified and atomic
 polix update --check           only report whether a newer release exists
 polix update --hook            session start hook: at most once an hour, quiet, never fails
-polix install [--user]         install the plugin for the user and register the hooks (of the agents and of git)
-                               in the repository
+polix install                  install the plugin for the user and register the hooks (of the agents and of git)
+                               in the repository; --skills, --hooks and --githooks for only those parts
 polix install --githooks       only the hooks of git of the repository: no confirmation, prints only what changed
-polix uninstall [--user]       remove the plugin and the hooks of the repository
+polix uninstall                remove the plugin and the hooks of the repository (--skills, --hooks, --githooks)
 polix version                  print the version of polix
 polix completion <shell>       print the autocompletion script of a shell
 polix help [command]           help about any command

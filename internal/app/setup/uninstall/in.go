@@ -1,5 +1,6 @@
 // Package uninstall is the use case UninstallSetup, the command `polix uninstall`: it removes the plugin from the
-// agents and the local marketplace, and the hooks of polix from the repository.
+// agents and the local marketplace, and the hooks of polix of the agents and of git from the repository; each part
+// alone with its flag (--skills, --hooks, --githooks).
 package uninstall
 
 import (
@@ -22,11 +23,11 @@ import (
 // Request is what the caller asks of the use case UninstallSetup, whatever the transport: the
 // command fills it from its flags.
 type Request struct {
-	User    bool     // only the plugin of the user, not the hooks of the repository
-	Dir     string   // any folder of the repository whose hooks to remove
-	Agents  []string // the agents asked, parsed (parseAgents); empty for both
-	Quiet   bool     // only print what changed
-	Version string   // version of the running polix
+	Parts   setup.Parts // the parts asked with --skills, --hooks and --githooks; none asks for every one
+	Dir     string      // any folder of the repository whose hooks to remove
+	Agents  []string    // the agents asked, parsed (parseAgents); empty for both
+	Quiet   bool        // only print what changed
+	Version string      // version of the running polix
 }
 
 // Response is what the use case UninstallSetup gives back to the caller, in the shape of the
@@ -63,17 +64,30 @@ type Port interface {
 func Command() *cobra.Command {
 	req := Request{Version: build.Current()}
 	var agents []string
-	var yes bool
+	var yes, skills, hooks, gitHooks bool
 	c := &cobra.Command{
 		Use:   "uninstall",
 		Short: "Remove the plugin of polix and the hooks of polix of the repository",
-		Long: "Unregister the plugin polix from Claude Code, and from Codex when it was set up with --agent codex " +
-			"(Codex support is not implemented), and remove ~/.polix/marketplace/ and, unless --user, the hooks of " +
-			"polix from the .claude/settings.json and .codex/hooks.json of the repository of --dir, keeping every " +
-			"other setting and hook, and, when both agents are removed, the hooks of git of polix from its local " +
-			"git configuration. The binary stays: delete it by hand.",
+		Long: "Remove what polix install wrote: by default every part below, or only those asked with --skills, " +
+			"--hooks and --githooks, which combine.\n\n" +
+			"--skills: unregister the plugin polix from Claude Code, and from Codex when it was set up with --agent " +
+			"codex (Codex support is not implemented), and remove ~/.polix/marketplace/ when both agents are removed.\n" +
+			"--hooks: remove the hooks of polix from the .claude/settings.json and .codex/hooks.json of the repository " +
+			"of --dir, keeping every other setting and hook.\n" +
+			"--githooks: remove the hooks of git of polix from the local git configuration of the repository of --dir; " +
+			"without parts asked, only when both agents are removed. Alone it takes no --agent.\n\n" +
+			"Outside a git repository, polix uninstall removes only the plugin; --hooks and --githooks fail there. " +
+			"The binary stays: delete it by hand.",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
+			parts := setup.Parts{Skills: skills, Hooks: hooks, GitHooks: gitHooks}
+			if err := parts.Valid(); err != nil {
+				return err
+			}
+			req.Parts = parts
+			if req.Parts.OnlyGitHooks() && c.Flags().Changed("agent") {
+				return errors.New("--githooks alone removes only the hooks of git of the repository: it takes no --agent")
+			}
 			if err := req.parseAgents(agents); err != nil {
 				return err
 			}
@@ -88,7 +102,9 @@ func Command() *cobra.Command {
 			return err
 		},
 	}
-	c.Flags().BoolVarP(&req.User, "user", "u", false, "only the plugin of the user, not the hooks of the repository")
+	c.Flags().BoolVar(&skills, "skills", false, "only the plugin of the user, with its skills and agents")
+	c.Flags().BoolVar(&hooks, "hooks", false, "only the hooks of the agents of the repository")
+	c.Flags().BoolVar(&gitHooks, "githooks", false, "only the hooks of git of the repository")
 	c.Flags().StringVarP(&req.Dir, "dir", "C", ".", "repository whose hooks to remove")
 	c.Flags().StringSliceVarP(&agents, "agent", "a", nil, "agents: claude, codex (default: both; codex is not implemented)")
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
@@ -98,10 +114,10 @@ func Command() *cobra.Command {
 	return c
 }
 
-// run is the shell, from request to response: it reads through the port the home and the repository
-// unless --user, calls the logic once, asks for confirmation, and carries out its output: for each agent the
-// plugin and the hooks of the repository, then the hooks of git of the repository, then the local marketplace. The
-// first error stops it.
+// run is the shell, from request to response: it reads through the port the home and, with a part of the
+// repository, the repository; calls the logic once, asks for confirmation, and carries out its output: for each
+// agent the plugin and the hooks of the repository, as the parts ask, then the hooks of git of the repository, then
+// the local marketplace. The first error stops it.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	res := Response{Quiet: req.Quiet}
 	home, err := port.Home(ctx)
@@ -109,30 +125,24 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		return res, err
 	}
 	var root string
-	if !req.User {
+	if req.Parts.Defaulted().Repository() {
 		root = port.Root(ctx, req.Dir)
 	}
 	asked := setup.Setup{Home: home, Root: root, Agents: req.Agents, Version: req.Version}
 	if err := asked.Valid(); err != nil {
 		return res, err
 	}
-	out := Decide(asked)
+	out := Decide(asked, req.Parts)
+	if out.Failure != "" {
+		return res, errors.New(out.Failure)
+	}
 	if err := port.Confirm(ctx, out.Summary); err != nil {
 		return res, err
 	}
-	for _, a := range out.Setup.Agents {
-		ch, err := port.UnregisterPlugin(ctx, out.Setup, a)
-		res.Changes = append(res.Changes, ch...)
-		if err != nil {
-			return res, err
-		}
-		if out.Setup.Root != "" {
-			ch, err := port.UnregisterHooks(ctx, out.Setup.HooksFile(a))
-			res.Changes = append(res.Changes, ch...)
-			if err != nil {
-				return res, err
-			}
-		}
+	ch, err := removeAgents(ctx, port, out)
+	res.Changes = append(res.Changes, ch...)
+	if err != nil {
+		return res, err
 	}
 	for _, h := range out.GitHooks {
 		ch, err := port.UnregisterGitHook(ctx, out.Setup.Root, h)
@@ -149,6 +159,29 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		}
 	}
 	return res, nil
+}
+
+// removeAgents removes, for each agent of the output, its plugin and its hooks of the repository, as the parts ask;
+// the first error stops it.
+func removeAgents(ctx context.Context, port Port, out Output) ([]setup.Change, error) {
+	var changes []setup.Change
+	for _, a := range out.Setup.Agents {
+		if out.Parts.Skills {
+			ch, err := port.UnregisterPlugin(ctx, out.Setup, a)
+			changes = append(changes, ch...)
+			if err != nil {
+				return changes, err
+			}
+		}
+		if out.Parts.Hooks && out.Setup.Root != "" {
+			ch, err := port.UnregisterHooks(ctx, out.Setup.HooksFile(a))
+			changes = append(changes, ch...)
+			if err != nil {
+				return changes, err
+			}
+		}
+	}
+	return changes, nil
 }
 
 // parseAgents reads the agents asked with --agent into the request: trimmed, in lower case and once each; an agent

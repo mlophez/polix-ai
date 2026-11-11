@@ -45,7 +45,7 @@ func TestInstall(t *testing.T) {
 		!strings.Contains(stdout, "run by hand: claude plugin marketplace add") || !strings.Contains(stdout, "polix is not on the PATH") {
 		t.Fatalf("install: %d\n%s%s", code, stdout, stderr)
 	}
-	code, stdout, _ = runSetup("install", "--yes", "--agent", "claude", "--user")
+	code, stdout, _ = runSetup("install", "--yes", "--agent", "claude", "--skills")
 	if code != 0 || strings.Contains(stdout, "created") || strings.Contains(stdout, "repository") {
 		t.Fatalf("second install: %d\n%s", code, stdout)
 	}
@@ -75,7 +75,7 @@ func TestInstall(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".polix")); err == nil {
 		t.Fatal("uninstall of both agents removes the marketplace")
 	}
-	if _, stdout, _ := runSetup("uninstall", "--yes", "--user"); !strings.Contains(stdout, "nothing to remove") {
+	if _, stdout, _ := runSetup("uninstall", "--yes", "--skills"); !strings.Contains(stdout, "nothing to remove") {
 		t.Fatalf("second uninstall: %s", stdout)
 	}
 }
@@ -108,15 +108,15 @@ func TestDoctor(t *testing.T) {
 }
 
 // The hidden command the update runs: the hook refreshes only a plugin already installed, with one line when it
-// changed; a person gets the plugin with install --user and __refresh --hooks.
+// changed; a person gets the plugin with install --skills and __refresh --hooks.
 func TestRefresh(t *testing.T) {
 	testenv.Machine(t, false, false)
 	t.Chdir(t.TempDir())
 	if code, stdout, _ := runSetup("__refresh", "--quiet"); code != 0 || stdout != "" {
 		t.Fatalf("the hook installs nothing new: %d %q", code, stdout)
 	}
-	if code, _, stderr := runSetup("install", "--user", "--yes", "--quiet"); code != 0 {
-		t.Fatalf("install --user: %d %q", code, stderr)
+	if code, _, stderr := runSetup("install", "--skills", "--yes", "--quiet"); code != 0 {
+		t.Fatalf("install --skills: %d %q", code, stderr)
 	}
 	if code, stdout, _ := runSetup("__refresh", "--hooks"); code != 0 || stdout != "" {
 		t.Fatalf("nothing to refresh: %d %q", code, stdout)
@@ -132,10 +132,10 @@ func TestRefresh(t *testing.T) {
 }
 
 // Every release runs these commands of the next one after an update (internal/app/version), so they keep existing
-// with these flags.
+// with these flags: polix 0.6 and earlier run install --user, which later releases keep hidden as --skills.
 func TestCommandsTheUpdateRuns(t *testing.T) {
 	for _, args := range [][]string{{"__refresh", "--quiet"}, {"__refresh", "--hooks"}, {"doctor", "--hook"},
-		{"install", "--user", "--yes", "--quiet"}} {
+		{"install", "--skills", "--yes", "--quiet"}, {"install", "--user", "--yes", "--quiet"}} {
 		if code, _, stderr := runSetup(append(args, "--help")...); code != 0 {
 			t.Errorf("polix %s: %d %q", strings.Join(args, " "), code, stderr)
 		}
