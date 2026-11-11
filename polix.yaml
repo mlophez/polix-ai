@@ -55,8 +55,6 @@ on:
   start:
     - action:
         inject: |
-          - Commit changes when work is done without ask user.
-          - Commits in this project go directly to main: never create, switch to or push other branches.
           - Always push to remote after commit.
 
   # The builders and the reviewer start with a clean context: give them the habits the plan of each build needs.
@@ -64,22 +62,12 @@ on:
     - when: { actor: polix:builder }
       action:
         inject: |
-          - Edit files only with the Edit and Write tools: never with python, perl, sed or a heredoc from the shell.
           - Never run `just install` nor `just check`: they overwrite the polix binary the hooks of this session run.
+
     - when: { actor: polix:reviewer }
       action:
         inject: |
           - Never run `just install` nor `just check`: build the binary into a temporary folder and run it from there.
-
-  # A plan of ai/plans/ is named by the date it is written and a kebab-case slug: YYYY-MM-DD-<slug>.md.
-  pre_edit:
-    - when:
-        path: ai/plans/*.md
-        not: { path: "ai/plans/????-??-??-*.md" }
-      action:
-        block: |
-          The plan {path} does not follow the naming of ai/plans/: YYYY-MM-DD-<slug>.md, with the date it is written
-          and a kebab-case slug, as ai/plans/2026-11-11-plan-file-names.md. Write it under that name.
 
   pre_commit:
     # Remind once per content to update README.md and docs/ when the behaviour changes.
@@ -107,7 +95,10 @@ on:
       action:
         block: |
           This diff is not reviewed ({changed_lines} lines in {changed_files} Go files, risk score {risk_score}).
-          Run the polix:reviewer sub-agent on the current diff, wait for it to end without editing files, then commit again.
+          1. Run the polix:reviewer sub-agent on the current diff.
+          2. Wait for it to end without editing files.
+          3. Fix important things.
+          4. then commit again.
 
     # Tell the user what goes into main, after every entry that may block the commit.
     - when: { actor: session }
