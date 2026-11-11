@@ -1,16 +1,27 @@
+---
 version: 1
+
+requirements:
+  - go
+  - golangci-lint
 
 guardrails:
   # No agent writes these files, the main session included.
-  protected_files: [".env", "*.pem"]
+  protected_files:
+    - AGENTS.md
+    - CLAUDE.md
+    - .env
 
   # No agent runs these commands; the reason goes back to the agent.
   forbidden_commands:
+    - pattern: "*rm -rf /*"
+
     - pattern: "git push*--force*"
       reason: "Force pushes rewrite shared history: ask a person to run it."
 
   # Nobody commits on these branches.
-  protected_branches: [main]
+  protected_branches:
+    - main
 
   # Format on edit
   format_on_edit:
