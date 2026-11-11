@@ -25,6 +25,18 @@ func (r *pass) writeEntry(kind, action string, line int, outcome, reason, key, h
 	return r.appendEntry(e, valid)
 }
 
+// writeBlocked appends to the log the observed `blocked` line of the entry at line, with key and hash, and before,
+// the hash its event started from when the runs of the event changed it, else "" (see state.Entry.Before), and
+// returns the error of appending it.
+func (r *pass) writeBlocked(line int, key, hash, before string) error {
+	e, _ := r.entryOf(state.KindObserved, "", line, state.OutcomeBlocked, "", key, hash, "")
+	if r.waiting() {
+		return nil
+	}
+	e = e.Chained(before)
+	return r.appendEntry(e, e.Valid())
+}
+
 // entryOf builds the entry of kind about the event that writeEntry appends, and the error of an entry that is not
 // valid to append; the branch it carries may be a step the pass waits for. The content hash costs a git call over
 // the whole tree, so a decision only carries the one this call already computed; an observed entry carries the hash

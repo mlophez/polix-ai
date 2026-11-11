@@ -101,6 +101,36 @@ func (s State) Observed(q Query) []Entry {
 	return out
 }
 
+// Chain returns, in file order, the observed entries the query selects on the content of q.Hash or of any of also,
+// or on a content that reached one of those only through the runs of the events of the selected entries: walking
+// the log back, the Before of a selected entry, the content its event started from, joins the contents selected.
+// With no entry carrying a Before it selects what Observed selects with ByHash, on q.Hash and also. A command that
+// writes files the tree does not ignore leaves a new content on every run, so the blocks on a content the agent
+// left alone are counted together. None for a query that is not valid or without q.Hash.
+func (s State) Chain(q Query, also ...string) []Entry {
+	if q.Valid() != nil || q.Hash == "" {
+		return nil
+	}
+	hashes := []string{q.Hash}
+	for _, h := range also {
+		if h != "" && !slices.Contains(hashes, h) {
+			hashes = append(hashes, h)
+		}
+	}
+	var out []Entry
+	for _, e := range slices.Backward(s.Entries) {
+		if e.Kind != KindObserved || e.Outcome != q.Outcome || !q.selectsAnyHash(e) || !slices.Contains(hashes, e.Hash) {
+			continue
+		}
+		out = append(out, e)
+		if e.Before != "" && !slices.Contains(hashes, e.Before) {
+			hashes = append(hashes, e.Before)
+		}
+	}
+	slices.Reverse(out)
+	return out
+}
+
 // Latest returns the last observed entry the query selects, and whether there is one.
 func (s State) Latest(q Query) (Entry, bool) {
 	found := s.Observed(q)
@@ -127,9 +157,14 @@ func (s State) Index(q Query) int {
 
 // selects reports whether e matches every field the query sets, its outcome apart.
 func (q Query) selects(e Entry) bool {
+	return q.selectsAnyHash(e) && (!q.ByHash || e.Hash == q.Hash)
+}
+
+// selectsAnyHash reports whether e matches every field the query sets, its outcome and its hash apart.
+func (q Query) selectsAnyHash(e Entry) bool {
 	return (q.Session == "" || e.Session == q.Session) && (q.Actor == "" || e.Actor == q.Actor) &&
 		(q.Event == "" || e.Event == q.Event) && q.selectsBranch(e) &&
-		(q.Key == "" || e.Key == q.Key) && (q.Line == 0 || e.Line == q.Line) && (!q.ByHash || e.Hash == q.Hash)
+		(q.Key == "" || e.Key == q.Key) && (q.Line == 0 || e.Line == q.Line)
 }
 
 // selectsBranch reports whether e is of the branch of the query: of any branch without Branch nor ByBranch; with

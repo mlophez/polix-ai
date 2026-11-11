@@ -793,7 +793,9 @@ line of the entry, a key and one outcome. The lines about a content that are rea
 content hash, a `passed` and a `blocked`, also carry `head`, the commit HEAD pointed to when they were written, left
 out when the repository has no commit yet, and so does a `snapshot`, so its `post_command` sees HEAD moved; the
 decisions and the other outcomes never carry it. A `snapshot` also carries `refs`, what git moves without HEAD (the
-commit of `refs/stash` and an operation stopped halfway), when there is one. Every line of an event of a subagent,
+commit of `refs/stash` and an operation stopped halfway), when there is one. A `blocked` line of a stop whose runs
+changed the content before the block also carries `before`, the content hash the event started from, which the
+[loop guard](#loop-guard) chains its blocks through. Every line of an event of a subagent,
 the decisions included, also carries `agent_id`, the id the agent gives that subagent, left out when it gives none
 (Codex, an older Claude Code) and on the lines of the main session, so two subagents of one type are told apart:
 
@@ -978,6 +980,17 @@ run, and a subagent let through does not count as `finished`: when the workflow 
 gets a `finished` line without hash, so its next run gets those injects again, and the condition never reads it.
 Counting per entry keeps several pending blocks from using up the guard of each other, and subagents never use
 up the guard of the main session.
+A `run` whose command writes files the tree does not ignore (a coverage report, a build output) leaves a new content
+hash on every stop, so the blocks of that stop never meet on one hash: those of the `run` itself when it fails, and
+those of any later entry that blocks. When the runs of a stop changed the content before a block, its `blocked` line
+also carries `before`, the content hash the stop started from, that is, the content the agent left, and the guard
+chains the blocks through it: a block counts with the earlier ones of its entry when the content its stop started
+from is the one a previous block of the chain ended on, that is, when the agent changed nothing in between. Such a
+block is let through after `max_stop_retries` blocks on a content the agent left alone. When the runs of the
+stop changed the content, a block let through writes its `blocked` line too, once the entries of the stop are done,
+with the content they ended on, so the next
+stop with nothing changed is let through as well, a `block` with `once` included, even when a later `run` of the
+stop wrote files again; an edit of the agent breaks the chain and the entry blocks again. The warning names `max_stop_retries`, whatever the stops let through.
 When the log cannot be read, or the block cannot be written to it (a read only state folder), the guard cannot
 count: it fails open, lets the agent stop with a warning and records a `loop_guard` decision when it can.
 

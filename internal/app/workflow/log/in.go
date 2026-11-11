@@ -40,10 +40,11 @@ type Entry struct {
 	AgentID string `json:"agent_id,omitempty"` // the id of the subagent that acted, when the agent gives one
 	Branch  string `json:"branch,omitempty"`
 	Hash    string `json:"hash,omitempty"`
-	Head    string `json:"head,omitempty"` // the HEAD commit of an observed line about a content
-	Refs    string `json:"refs,omitempty"` // what git moved without HEAD, on a snapshot line
-	Rule    string `json:"rule,omitempty"` // the rule id of a line of kind injected an older polix wrote
-	Fact    string `json:"fact,omitempty"` // the name of a line of kind fact an older polix wrote
+	Before  string `json:"before,omitempty"` // the content hash the event of a blocked line started from, when its runs changed it
+	Head    string `json:"head,omitempty"`   // the HEAD commit of an observed line about a content
+	Refs    string `json:"refs,omitempty"`   // what git moved without HEAD, on a snapshot line
+	Rule    string `json:"rule,omitempty"`   // the rule id of a line of kind injected an older polix wrote
+	Fact    string `json:"fact,omitempty"`   // the name of a line of kind fact an older polix wrote
 	Action  string `json:"action,omitempty"`
 	Line    int    `json:"line,omitempty"`
 	Key     string `json:"key,omitempty"`

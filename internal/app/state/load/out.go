@@ -23,6 +23,7 @@ type entryJSON struct {
 	AgentID string `json:"agent_id,omitempty"`
 	Branch  string `json:"branch,omitempty"`
 	Hash    string `json:"hash,omitempty"`
+	Before  string `json:"before,omitempty"`
 	Head    string `json:"head,omitempty"`
 	Refs    string `json:"refs,omitempty"`
 	Rule    string `json:"rule,omitempty"`

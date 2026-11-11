@@ -76,6 +76,8 @@ base_branch: [main, dev]
 # subagent_stop (a block or a failing run): after this many blocks of the same entry, in the same session, by the
 # same actor and on the same content hash, the agent may stop, and the log records a `loop_guard` decision. A block
 # let through by the guard does not end the evaluation, and a subagent let through does not count as `finished`.
+# A run that writes files the tree does not ignore does not escape it: while the agent changes nothing, the guard
+# chains the blocks through the content each stop started from.
 max_stop_retries: 3
 
 # Optional. Variables extracted from the current branch name, usable as {name} in any string and by the condition

@@ -7,6 +7,16 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Fixed
+
+- The loop guard bounds the blocks of `stop` and `subagent_stop` after a `run` whose command writes files the tree
+  does not ignore, as a coverage report or a build output, whether that `run` fails itself or a later entry blocks:
+  every run left a new content hash, so the blocks never met on one and the agent was kept from stopping forever,
+  above all with a `run_on_stop` item without `changed`, which runs on every stop. The `blocked` line of such a stop
+  now carries `before`, the content hash the stop started from, and the guard chains the blocks through it while the
+  agent changes nothing, letting the agent stop after `max_stop_retries` blocks; an edit of the agent breaks the
+  chain. The warning of a stop let through names `max_stop_retries`.
+
 ## [0.4.0] - 2026-11-11
 
 ### Added
