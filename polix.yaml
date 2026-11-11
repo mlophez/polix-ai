@@ -71,6 +71,16 @@ on:
         inject: |
           - Never run `just install` nor `just check`: build the binary into a temporary folder and run it from there.
 
+  # A plan of ai/plans/ is named by the date it is written and a kebab-case slug: YYYY-MM-DD-<slug>.md.
+  pre_edit:
+    - when:
+        path: ai/plans/*.md
+        not: { path: "ai/plans/????-??-??-*.md" }
+      action:
+        block: |
+          The plan {path} does not follow the naming of ai/plans/: YYYY-MM-DD-<slug>.md, with the date it is written
+          and a kebab-case slug, as ai/plans/2026-11-11-plan-file-names.md. Write it under that name.
+
   pre_commit:
     # Remind once per content to update README.md and docs/ when the behaviour changes.
     - when:
