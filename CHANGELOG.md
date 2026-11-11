@@ -7,6 +7,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-11
+
 ### Changed
 
 - A failing `run` whose output is longer than the 15 lines its answer keeps says so in the line of the command, as
@@ -293,7 +295,8 @@ Claude Code is the supported agent; Codex support is not implemented.
 - The condition `pr`, on the state of the pull request, is not implemented.
 - The rest of the known limits are in [docs/polix.md](docs/polix.md#known-limits).
 
-[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/mlophez/polix-ai/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/mlophez/polix-ai/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/mlophez/polix-ai/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/mlophez/polix-ai/compare/v0.3.0...v0.4.0
