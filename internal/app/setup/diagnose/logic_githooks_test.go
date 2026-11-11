@@ -2,6 +2,7 @@ package diagnose
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -29,7 +30,7 @@ func TestDecideGitHooks(t *testing.T) {
 	if got := githookLines(out); got != "ok git runs polix githook on pre-commit, commit-msg\n" || out.Failed {
 		t.Fatalf("both listed:\n%s", text(out))
 	}
-	if got := text(out); !strings.Contains(got, "ok hooks registered in /r/.claude/settings.json\nok githooks ") {
+	if got := text(out); !strings.Contains(got, "ok hooks registered in "+filepath.FromSlash("/r/.claude/settings.json")+"\nok githooks ") {
 		t.Fatalf("after the hooks of Claude Code:\n%s", got)
 	}
 
