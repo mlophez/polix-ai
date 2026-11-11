@@ -30,6 +30,7 @@ check: install
     [ -x "$polix" ] || polix=$polix.exe
     "$polix" config check
     "$polix" config fmt --check
+    "$polix" rules fmt --check
     "$polix" rules check
     "$polix" doctor --offline
 

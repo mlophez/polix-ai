@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/version"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 )
@@ -25,11 +24,11 @@ func (i Inspection) WorkflowProblems() ([]string, bool) {
 	return problems, !old && version.Problems(strings.Join(problems, "\n")).NeedsNewer()
 }
 
-// RuleProblems returns the problems of the rules, every one of them: those of each invalid rule (Invalid, from
-// rule.Loaded.Problems), the ids repeated, and the checks that do not exist (Missing, by check).
+// RuleProblems returns the problems of the rules, every one of them: those of the loader (Invalid, from
+// rule.Loaded.Problems: each invalid rule, then each id repeated, retired ones included), and the checks that do not
+// exist (Missing, by check).
 func (i Inspection) RuleProblems() []string {
 	problems := append([]string{}, i.Invalid...)
-	problems = append(problems, rule.Rules(i.Rules).Repeated()...)
 	for _, r := range i.Rules {
 		if r.Valid() == nil && r.HasCheck() && i.Missing[r.Check] {
 			problems = append(problems, fmt.Sprintf("%s %s: check %s does not exist", r.File, r.ID, r.Check))

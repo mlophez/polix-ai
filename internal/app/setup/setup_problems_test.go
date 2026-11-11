@@ -32,11 +32,14 @@ var problemRules = []rule.Rule{
 	{ID: "B-1", Description: "d", Deterministic: true, Check: "tests/b_test.go", File: "ai/rules/b.yaml"},
 }
 
+// The problems of the loader (Invalid), the repeated ids among them, come once and in their order, followed by the
+// checks that do not exist.
 func TestRuleProblems(t *testing.T) {
-	i := Inspection{Rules: problemRules, Invalid: []string{"ai/rules/c.yaml C-1: no description"},
+	repeat := "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml"
+	i := Inspection{Rules: problemRules, Invalid: []string{"ai/rules/c.yaml C-1: no description", repeat},
 		Missing: map[string]bool{"checks/a.sh": true}}
 	got := i.RuleProblems()
-	want := []string{"ai/rules/c.yaml C-1: no description", "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml",
+	want := []string{"ai/rules/c.yaml C-1: no description", repeat,
 		"ai/rules/a.yaml A-1: check checks/a.sh does not exist"}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("got\n%s", strings.Join(got, "\n"))

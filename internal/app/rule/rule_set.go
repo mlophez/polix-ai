@@ -54,11 +54,17 @@ func (rs Rules) Matching(paths []string) Rules {
 	return out
 }
 
-// Repeated returns one problem for each rule whose id an earlier rule already has, naming its file and that of the
-// last earlier one, so polix check tells that an id names one rule only.
-func (rs Rules) Repeated() []string {
+// Repeated returns one problem for each rule whose id an earlier rule or a retired rule already has, naming its file
+// and that of the last earlier one, so an id names one rule only, retired ones included. The ids of retired are taken
+// first, with their file; a repeat among the retired rules themselves is never reported.
+func (rs Rules) Repeated(retired Rules) []string {
 	var problems []string
 	seen := map[string]string{}
+	for _, r := range retired {
+		if r.ID != "" {
+			seen[r.ID] = r.File
+		}
+	}
 	for _, r := range rs {
 		if r.ID == "" {
 			continue

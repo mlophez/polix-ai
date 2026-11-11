@@ -44,6 +44,8 @@ polix rules check          # run the checks of every deterministic rule (for CI)
 polix rules check --changed  # only the rules whose scope matches the files changed by the branch
                              # (--base BRANCH, default the closest of base_branch in polix.yaml, else main;
                              # it fails when no base exists, locally or on origin)
+polix rules fmt            # format every rules file of rules.path in place, retired.yaml included
+                           # (--check only tells whether they are formatted, exiting with 1 when not)
 polix graph                # print the workflow as a Mermaid diagram
 polix log --tail 20        # print the last entries of the state log (--json for the raw lines)
 polix risk                 # print the lines, files and risk score of the uncommitted change, file by file
@@ -68,7 +70,8 @@ hooks never use `base_branch`.
 
 `polix rules check` reads `polix.yaml` and then the rules of its `rules.path` before running anything, and stops
 without running a check when a file of the folder of rules cannot be read or parsed, when a rule is not valid (no id, no description, a `check` on
-a rule that is not `deterministic`, or a `check` given as an absolute path), when `polix.yaml` cannot be read or
+a rule that is not `deterministic`, or a `check` given as an absolute path), when two rules share an id or a rule
+has the id of a rule of `retired.yaml` (`<file> <id>: id repeated, also in <other file>`), when `polix.yaml` cannot be read or
 parsed or requires a newer polix (without the file it uses the defaults), when a runner of `rules.run` is not
 valid, and when `--base` is given without `--changed`. The other problems of a `polix.yaml` that parses are left
 to `polix config check`. The hint to set `base_branch` or pass
@@ -76,6 +79,24 @@ to `polix config check`. The hint to set `base_branch` or pass
 the first runner of `rules.run` whose glob matches its file, or else as a program (see `rules.run` below); it
 prints each failure with the last 15 lines of its output, then `<n> checks, <m> failed`, and exits with 1 when a
 check failed.
+
+`polix rules fmt` formats every `*.yaml` of the folder of `rules.path` (`ai/rules` without `polix.yaml`) in place,
+`retired.yaml` included, with the layout of `polix config fmt`: two spaces of indentation, flow collections on one
+line, the comments and the blank lines kept. `rules` goes first, the keys of each rule follow `id`, `description`,
+`scope`, `deterministic`, `check` and `reason`, with any other key after them in its order, and the rules never
+move. Exactly one blank line separates two rules, above the comments of the later one, and none follows `rules:`;
+a rule that ends in a block scalar with `+` (`|+`, `>+`) keeps its own blank lines, which belong to the scalar.
+It prints `ok: formatted <file>` for each file it writes, or `ok: the rules are formatted` when none changes; with
+`--check` it writes nothing, prints `<file> is not formatted: run polix rules fmt` to stderr for each file that
+would change and exits with 1. It is all or nothing: when a file cannot be formatted (not YAML, an anchor, an
+alias), it prints `<file>: <problem>` and writes no file at all, and so it does, with or without `--check`, when two
+rules share an id or a rule has the id of a rule of `retired.yaml`, printing
+`<file> <id>: id repeated, also in <other file>`, and when a file is YAML but does not decode as rules (a `scope`
+that is not a list), printing the error of the loader of the rules, since it cannot rule out a repeated id then.
+A missing folder, or one without `*.yaml`, prints
+`ok: no rules to format in <dir>`. It stops before reading any rules file when `polix.yaml` cannot be read or
+parsed or requires a newer polix, and when `rules.path` is absolute, the root, outside the root or a glob; the other
+problems of `polix.yaml` are left to `polix config check`.
 
 `polix risk` prints what the conditions `changed_lines`, `changed_files` and `risk_score` would compare (see
 [Measures of the change](#measures-of-the-change)): what was measured, the three totals, and one line per file with
@@ -892,7 +913,8 @@ event outside `workflow.Informed` (all but `start`, `subagent_start`, `post_edit
 the two stops included. A blocked event shows the user no message, so the notice would be lost whenever the gate acts.
 The problem is at the line of the `notify`, naming the line of the first such entry and asking to move the notice
 after it or into its message. Of `ai/rules/` it reports every problem,
-not only the first: a rule without id or description, an id repeated, a check that does not exist, a `check` on a
+not only the first: a rule without id or description, an id repeated (one that an earlier rule or a rule of
+`retired.yaml` already has, as `<file> <id>: id repeated, also in <other file>`), a check that does not exist, a `check` on a
 rule that is not `deterministic: true`, and a `check` named by an absolute path instead of one relative to the root.
 It also rejects the problems of the shortcuts of [Guardrails](#guardrails).
 

@@ -19,7 +19,7 @@ func TestDecideKeepsEveryRule(t *testing.T) {
 		{ID: "A-4", Description: "d", Deterministic: true, Check: "/abs/a.sh", File: "ai/rules/a.yaml"},
 		{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"},
 	}
-	got := Decide(rules, true, nil).Loaded
+	got := Decide(rules, nil, true, nil).Loaded
 	want := []string{
 		"ai/rules/a.yaml A-2: no description",
 		"ai/rules/a.yaml: a rule has no id",
@@ -45,11 +45,12 @@ func TestDecideKeepsEveryRule(t *testing.T) {
 func TestDecideValidRules(t *testing.T) {
 	rules := []rule.Rule{{ID: "GO-1", Description: "gofmt", Deterministic: true, Check: "ai/checks/gofmt.sh",
 		Scope: []string{"**/*.go"}, File: "ai/rules/go.yaml"}}
-	got := Decide(rules, true, nil).Loaded
-	if len(got.Rules) != 1 || got.Rules[0].ID != "GO-1" || got.Problems != nil || got.Err != nil || got.Strict != nil {
+	got := Decide(rules, nil, true, nil).Loaded
+	if len(got.Rules) != 1 || got.Rules[0].ID != "GO-1" || got.Problems != nil || got.Repeated != nil ||
+		got.Err != nil || got.Strict != nil {
 		t.Fatalf("got %+v", got)
 	}
-	if got := Decide(nil, false, nil).Loaded; got.Rules != nil || got.Exists || got.Err != nil || got.Strict != nil {
+	if got := Decide(nil, nil, false, nil).Loaded; got.Rules != nil || got.Exists || got.Err != nil || got.Strict != nil {
 		t.Fatalf("no folder: %+v", got)
 	}
 }
@@ -58,15 +59,63 @@ func TestDecideValidRules(t *testing.T) {
 // invalid rule of a file before it, else at the error.
 func TestDecideStopsAtAFileThatCannotBeRead(t *testing.T) {
 	broken := errors.New("ai/rules/c.yaml: yaml: did not find expected node content")
-	got := Decide(nil, true, broken).Loaded
+	got := Decide(nil, nil, true, broken).Loaded
 	if got.Rules != nil || got.Problems != nil || !errors.Is(got.Err, broken) || !errors.Is(got.Strict, broken) ||
 		!got.Exists {
 		t.Fatalf("got %+v", got)
 	}
 	before := []rule.Rule{{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"}, {ID: "B-1", File: "ai/rules/b.yaml"}}
-	got = Decide(before, true, broken).Loaded
+	got = Decide(before, nil, true, broken).Loaded
 	if got.Rules != nil || !errors.Is(got.Err, broken) || got.Strict == nil ||
 		got.Strict.Error() != "ai/rules/b.yaml: rule B-1 has no description" {
 		t.Fatalf("an invalid rule before: %+v", got)
+	}
+	repeated := []rule.Rule{{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"},
+		{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"}}
+	got = Decide(repeated, nil, true, broken).Loaded
+	if got.Rules != nil || got.Problems != nil || got.Repeated != nil || !errors.Is(got.Err, broken) ||
+		got.Strict == nil || got.Strict.Error() != "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml" {
+		t.Fatalf("a repeated id before: %+v", got)
+	}
+}
+
+// Two rules with one id: the repeat is a problem after those of the invalid rules, it is in Repeated too, and a
+// strict reading stops at it when no rule is invalid; an invalid rule of any file still wins.
+func TestDecideRepeatedIDs(t *testing.T) {
+	rules := []rule.Rule{
+		{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"},
+		{ID: "B-1", Description: "d", File: "ai/rules/a.yaml"},
+		{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"},
+	}
+	repeat := "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml"
+	got := Decide(rules, nil, true, nil).Loaded
+	if strings.Join(got.Problems, "\n") != repeat || strings.Join(got.Repeated, "\n") != repeat ||
+		got.Strict == nil || got.Strict.Error() != repeat || len(got.Rules) != 3 || got.Err != nil {
+		t.Fatalf("got %+v", got)
+	}
+	invalid := append(append([]rule.Rule(nil), rules...), rule.Rule{ID: "C-1", File: "ai/rules/c.yaml"})
+	got = Decide(invalid, nil, true, nil).Loaded
+	want := []string{"ai/rules/c.yaml C-1: no description", repeat}
+	if strings.Join(got.Problems, "\n") != strings.Join(want, "\n") || strings.Join(got.Repeated, "\n") != repeat ||
+		got.Strict == nil || got.Strict.Error() != "ai/rules/c.yaml: rule C-1 has no description" {
+		t.Fatalf("an invalid rule after the repeat: %+v", got)
+	}
+}
+
+// An active id that a retired rule already has is repeated, naming the retired file; the retired rules are never
+// rules of the result.
+func TestDecideRetiredIDs(t *testing.T) {
+	retired := []rule.Rule{{ID: "GOARCH-31", File: "ai/rules/retired.yaml"},
+		{ID: "GOARCH-31", File: "ai/rules/retired.yaml"}}
+	rules := []rule.Rule{{ID: "GOARCH-31", Description: "d", File: "ai/rules/a.yaml"}}
+	repeat := "ai/rules/a.yaml GOARCH-31: id repeated, also in ai/rules/retired.yaml"
+	got := Decide(rules, retired, true, nil).Loaded
+	if strings.Join(got.Repeated, "\n") != repeat || strings.Join(got.Problems, "\n") != repeat ||
+		got.Strict == nil || got.Strict.Error() != repeat || len(got.Rules) != 1 {
+		t.Fatalf("got %+v", got)
+	}
+	other := []rule.Rule{{ID: "GOARCH-1", Description: "d", File: "ai/rules/a.yaml"}}
+	if got := Decide(other, retired, true, nil).Loaded; got.Problems != nil || got.Repeated != nil || got.Strict != nil {
+		t.Fatalf("no clash with the retired rules: %+v", got)
 	}
 }

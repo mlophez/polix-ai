@@ -31,11 +31,28 @@ func TestRepeated(t *testing.T) {
 		{File: "ai/rules/c.yaml"},
 	}
 	want := []string{"ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml"}
-	if got := Rules(all).Repeated(); !slices.Equal(got, want) {
+	if got := Rules(all).Repeated(nil); !slices.Equal(got, want) {
 		t.Fatalf("Repeated = %q, want %q", got, want)
 	}
-	if got := Rules(all[2:]).Repeated(); len(got) != 0 {
+	if got := Rules(all[2:]).Repeated(nil); len(got) != 0 {
 		t.Fatalf("no repeated id: %q", got)
+	}
+}
+
+// The ids of the retired rules are taken before the active rules: an active rule with one of them is repeated,
+// naming the retired file, and a repeat among the retired rules themselves is never reported.
+func TestRepeatedRetired(t *testing.T) {
+	retired := Rules{
+		{ID: "GOARCH-31", File: "ai/rules/retired.yaml"},
+		{ID: "GOARCH-31", File: "ai/rules/retired.yaml"},
+	}
+	active := Rules{{ID: "GOARCH-31", File: "ai/rules/a.yaml"}, {ID: "GOARCH-1", File: "ai/rules/a.yaml"}}
+	want := []string{"ai/rules/a.yaml GOARCH-31: id repeated, also in ai/rules/retired.yaml"}
+	if got := active.Repeated(retired); !slices.Equal(got, want) {
+		t.Fatalf("Repeated = %q, want %q", got, want)
+	}
+	if got := Rules(nil).Repeated(retired); len(got) != 0 {
+		t.Fatalf("a repeat among the retired rules: %q", got)
 	}
 }
 

@@ -47,6 +47,10 @@ func TestLoadedValid(t *testing.T) {
 		{"a folder that cannot be read", Loaded{Exists: true, Err: boom, Strict: boom}, true},
 		{"rules with the error", Loaded{Rules: rules, Exists: true, Err: boom, Strict: boom}, false},
 		{"problems with the error", Loaded{Exists: true, Problems: []string{"x"}, Err: boom, Strict: boom}, false},
+		{"repeated ids among the problems", Loaded{Rules: rules, Exists: true, Problems: []string{"x"},
+			Repeated: []string{"x"}}, true},
+		{"repeated ids with the error", Loaded{Exists: true, Repeated: []string{"x"}, Err: boom, Strict: boom}, false},
+		{"repeated ids out of the problems", Loaded{Rules: rules, Exists: true, Repeated: []string{"x"}}, false},
 		{"an error without a strict one", Loaded{Exists: true, Err: boom}, false},
 		{"rules without the folder", Loaded{Rules: rules}, false},
 	} {
@@ -59,9 +63,10 @@ func TestLoadedValid(t *testing.T) {
 // Fail drops what was read and stops every reading at its error, on a copy.
 func TestLoadedFail(t *testing.T) {
 	boom := errors.New("boom")
-	l := Loaded{Rules: []Rule{{ID: "A-1"}}, Exists: true, Problems: []string{"x"}}
+	l := Loaded{Rules: []Rule{{ID: "A-1"}}, Exists: true, Problems: []string{"x"}, Repeated: []string{"x"}}
 	failed := l.Fail(boom)
-	if failed.Rules != nil || failed.Problems != nil || !failed.Exists || !errors.Is(failed.Err, boom) ||
+	if failed.Rules != nil || failed.Problems != nil || failed.Repeated != nil || !failed.Exists ||
+		!errors.Is(failed.Err, boom) ||
 		!errors.Is(failed.Strict, boom) || failed.Valid() != nil {
 		t.Fatalf("Fail = %+v", failed)
 	}

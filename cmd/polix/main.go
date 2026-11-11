@@ -11,6 +11,7 @@ import (
 	diffmeasure "github.com/mlophez/polix-ai/internal/app/diff/measure"
 	hookanswer "github.com/mlophez/polix-ai/internal/app/hook/answer"
 	rulecheck "github.com/mlophez/polix-ai/internal/app/rule/check"
+	ruleformat "github.com/mlophez/polix-ai/internal/app/rule/format"
 	ruleload "github.com/mlophez/polix-ai/internal/app/rule/load"
 	setupcheck "github.com/mlophez/polix-ai/internal/app/setup/check"
 	setupdiagnose "github.com/mlophez/polix-ai/internal/app/setup/diagnose"
@@ -72,7 +73,7 @@ func main() {
 	root.AddCommand(answer)
 
 	rules := &cobra.Command{Use: "rules", Short: "Work with the rules of rules.path (ai/rules/)", Args: cobra.NoArgs, GroupID: "repo"}
-	rules.AddCommand(rulecheck.Command(loadRules, loadWorkflow))
+	rules.AddCommand(rulecheck.Command(loadRules, loadWorkflow), ruleformat.Command(loadRules, loadWorkflow))
 	root.AddCommand(rules)
 
 	os.Exit(cli.Run(root, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))

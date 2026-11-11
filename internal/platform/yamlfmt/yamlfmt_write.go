@@ -74,13 +74,17 @@ func (p *printer) mapping(n *yaml.Node, indent int, first string) {
 }
 
 // sequence writes the block sequence n at indent, its items indented below their key; a non-empty first replaces
-// the indentation of its first line.
+// the indentation of its first line. A spaced sequence gets one blank line before each item but the first, above
+// its comments, unless the item before it ends in a block scalar that keeps its final blank lines.
 func (p *printer) sequence(n *yaml.Node, indent int, first string) {
 	if n.Style&yaml.FlowStyle != 0 || len(n.Content) == 0 {
 		p.line(prefix(indent, first)+p.inline(n), p.comment(n))
 		return
 	}
 	for i, it := range n.Content {
+		if i > 0 && p.spaced[n] && !p.keeps(n.Content[i-1]) {
+			p.lines([]line{{}}, indent, true)
+		}
 		p.lines(p.lead[it], leadIndent(indent, first, i), i > 0)
 		dash := spaces(indent) + "- "
 		if i == 0 {
@@ -267,6 +271,16 @@ func (p *printer) line(code, comment string) {
 func (p *printer) raw(s string) {
 	p.out = append(p.out, s)
 	p.code = append(p.code, -1)
+}
+
+// keeps tells whether n ends in a block scalar with the indicator + (|+, >+), its last value as written: a blank line
+// below it would be part of its content, so it counts as separated from the item after it.
+func (p *printer) keeps(n *yaml.Node) bool {
+	for block(n) {
+		n = n.Content[len(n.Content)-1]
+	}
+	b, ok := p.bodies[n]
+	return ok && strings.Contains(b.header, "+")
 }
 
 // block tells whether n is a block collection with items.

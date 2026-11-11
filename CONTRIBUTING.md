@@ -23,8 +23,8 @@ just test                             # go vet and go test of the whole module
 just test -run TestName               # one test
 golangci-lint run ./...               # lint with .golangci.yml, as CI does
 golangci-lint fmt                     # format with gofmt and goimports
-just check                            # install, then polix config check, config fmt --check, rules check
-                                      # and doctor --offline
+just check                            # install, then polix config check, config fmt --check,
+                                      # rules fmt --check, rules check and doctor --offline
 claude plugin validate plugins/polix  # validate the plugin
 ```
 

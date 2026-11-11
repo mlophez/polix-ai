@@ -44,9 +44,10 @@ gathers the problems with the methods of `setup.Inspection` of `internal/app/set
    that may block it, a `block` or a `run` on an event outside `workflow.Informed`, as `the notice is not shown when
    the entry of line M blocks the event: move it after that entry or into its message`, at the line of the
    `notify`, since a blocked event shows the user no message.
-2. The error of reading the rules is one problem; else `RuleProblems`: every invalid rule (`rule.Loaded.Problems`,
-   in the words `<file> <id>: no description`), every id repeated (`rule.Rules.Repeated`) and every check that does
-   not exist.
+2. The error of reading the rules is one problem; else `RuleProblems`: the problems of the loader
+   (`rule.Loaded.Problems`): every invalid rule, in the words `<file> <id>: no description`, then every id repeated,
+   one an earlier rule or a rule of `retired.yaml` already has, as `<file> <id>: id repeated, also in <other file>`;
+   and every check that does not exist.
 3. With problems, the output holds them and, when they may come from a newer polix, the hint `NewerHint`.
 4. Without problems, `BaseWarning`: when a deterministic rule has a check and no base branch exists,
    `polix rules check --changed` would fail.
@@ -70,7 +71,8 @@ problem to stderr and the hint as a warning, and exits with 1; else it prints th
 - `LoadRules`: loads the rules of the folder it is given (`rules.path` of the workflow, `ai/rules/` by default)
   through the field `Rules` of the adapter, the loader of `LoadRule` (`internal/app/rule/load`) that `cmd/polix`
   builds once and passes to `Command`: every rule but those of `retired.yaml`, ordered by id, with the problems of
-  the invalid ones; without the folder, none; a file that cannot be read or parsed is an error.
+  the invalid ones and of the ids repeated; without the folder, none; a file that cannot be read or parsed is an
+  error.
 - `Missing`: whether the file of a check does not exist below the root.
 - `ResolveBase`: why no base branch of the workflow exists, locally or on origin.
 

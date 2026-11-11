@@ -61,8 +61,8 @@ and of polix.yaml (`internal/app/workflow/load`) that `cmd/polix` builds once an
 - `OpenRepo` and `WriteState`.
 - `LoadWorkflow`: through the loader of polix.yaml, the workflow, whether it exists and the error of loading it;
   and why none of its base branches exists in the repository, asked to git.
-- `LoadRules`: through the loader of the rules, a `rule.Loaded` (every rule, the problems of the invalid ones and
-  the error of a file that cannot be read); and, by the check of each rule that has one, whether its file is
+- `LoadRules`: through the loader of the rules, a `rule.Loaded` (every rule, the problems of the invalid ones and of
+  the ids repeated, and the error of a file that cannot be read); and, by the check of each rule that has one, whether its file is
   missing and why it cannot run (a check that exists but is not executable; on Windows, without its interpreter).
 - `HooksFiles`: the hooks files of an agent that exist, the settings of Claude Code or the hooks files of Codex,
   decoded (`agentconf.ParseHooks`, for which an empty file is not JSON, and `agentconf.ReadHooks`, for which it has

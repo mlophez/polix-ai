@@ -85,7 +85,7 @@ and with 1 otherwise.
   adapter, the loader of `LoadRule` (`internal/app/rule/load`) that `cmd/polix` builds once and passes to
   `Command`: `retired.yaml` left out, ordered by id; without the folder, no rules. It stops where a strict reading
   does (`rule.Loaded.Strict`): at the first invalid rule of the files in the order of their names, with its file,
-  or at a file that cannot be read or is not yaml.
+  else at the first id repeated, retired ones included, else at a file that cannot be read or is not yaml.
 - `LoadWorkflow`: loads polix.yaml, always, for its runners and its base branches, through the field `Workflow` of
   the adapter, the loader of `LoadWorkflow` (`internal/app/workflow/load`) that `cmd/polix` builds once and passes
   to `Command`; without polix.yaml, the default workflow. Of the problems that `polix config check` reports on a workflow that parses, only those of `rules`
@@ -110,6 +110,9 @@ The use case stops, without running any check, when:
 - `--dir` is not inside a git repository.
 - A file of the folder of rules cannot be read, is not valid yaml or holds a rule that is not `Valid` (a rule without id
   or description, with a `check` but not `deterministic`, or with a `check` given as an absolute path).
+- Two rules share an id, or a rule has the id of a rule of `retired.yaml`: the error is the problem of the loader,
+  `<file> <id>: id repeated, also in <other file>`, for the first such rule in the order of the files; an invalid
+  rule of any file wins over it.
 - polix.yaml cannot be read, is not valid yaml, has an unknown top level key or requires a newer polix.
 - The key `rules` of polix.yaml is not valid (`Rules.Valid`): a `path` that is not a folder below the root, a
   runner with an empty argv or glob, an unknown placeholder, or `{files}` or `{dirs}` inside a longer argument,

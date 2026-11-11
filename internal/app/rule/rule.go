@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -34,9 +35,10 @@ type Load func(ctx context.Context, root, dir string) Loaded
 type Loaded struct {
 	Rules    []Rule   // every rule of the folder, invalid ones included, ordered by id, stably; none with Err
 	Exists   bool     // whether the folder exists
-	Problems []string // why each invalid rule is not valid, in the words of polix config check, in file order
+	Problems []string // why each invalid rule is not valid, then each id repeated, in the words of polix config check
+	Repeated []string // the problems of the ids repeated, retired ones included: the last ones of Problems
 	Err      error    // why a file of the folder cannot be read or is not yaml, the first by name; nil when none
-	Strict   error    // where a reading that admits no invalid rule stops: Err, or an invalid rule of an earlier file
+	Strict   error    // where a strict reading stops: an invalid rule, else a repeated id, of the files read, else Err
 }
 
 // RetiredFile holds retired rules: they keep their id but never apply.
@@ -70,23 +72,26 @@ func (r Rule) absoluteCheck() bool {
 // HasCheck reports whether a file decides the rule.
 func (r Rule) HasCheck() bool { return r.Deterministic && r.Check != "" }
 
-// Valid reports why l is not what a folder of rules loads: rules or problems with the error that stops the reading,
-// that error without a strict reading that stops too, or rules without the folder.
+// Valid reports why l is not what a folder of rules loads: rules, problems or repeated ids with the error that stops
+// the reading, that error without a strict reading that stops too, repeated ids that are not the last problems, or
+// rules without the folder.
 func (l Loaded) Valid() error {
 	switch {
-	case l.Err != nil && (len(l.Rules) > 0 || len(l.Problems) > 0):
+	case l.Err != nil && (len(l.Rules) > 0 || len(l.Problems) > 0 || len(l.Repeated) > 0):
 		return fmt.Errorf("rules loaded from a folder that cannot be read: %w", l.Err)
 	case l.Err != nil && l.Strict == nil:
 		return fmt.Errorf("a strict reading of the rules goes past the error that stops them: %w", l.Err)
+	case len(l.Repeated) > len(l.Problems) || !slices.Equal(l.Problems[len(l.Problems)-len(l.Repeated):], l.Repeated):
+		return errors.New("repeated ids that are not the last problems of the rules")
 	case !l.Exists && len(l.Rules) > 0:
 		return errors.New("rules loaded without their folder")
 	}
 	return nil
 }
 
-// Fail returns l failed with err: no rules nor problems, and err stops every reading of the folder.
+// Fail returns l failed with err: no rules, problems nor repeated ids, and err stops every reading of the folder.
 func (l Loaded) Fail(err error) Loaded {
 	failed := l
-	failed.Rules, failed.Problems, failed.Err, failed.Strict = nil, nil, err, err
+	failed.Rules, failed.Problems, failed.Repeated, failed.Err, failed.Strict = nil, nil, nil, err, err
 	return failed
 }

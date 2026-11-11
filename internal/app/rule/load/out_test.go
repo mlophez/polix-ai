@@ -78,6 +78,35 @@ func TestAdapterReadRulesOfAFolder(t *testing.T) {
 	}
 }
 
+// The retired rules are those of retired.yaml, each with its file; without the file, with one that is not yaml or
+// without the folder there are none, and never an error.
+func TestAdapterReadRetired(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, map[string]string{
+		"ai/rules/a.yaml":              "rules:\n  - id: A-1\n    description: d\n",
+		"ai/rules/" + rule.RetiredFile: "rules:\n  - id: R-1\n    reason: merged into A-1\n  - id: R-2\n",
+	})
+	got := Adapter{}.ReadRetired(context.Background(), root, "ai/rules")
+	var read []string
+	for _, r := range got {
+		read = append(read, r.File+" "+r.ID)
+	}
+	if want := "ai/rules/retired.yaml R-1,ai/rules/retired.yaml R-2"; strings.Join(read, ",") != want {
+		t.Fatalf("read %v, want %s", read, want)
+	}
+	if got := (Adapter{}).ReadRetired(context.Background(), root, "docs/rules"); got != nil {
+		t.Fatalf("no folder: %+v", got)
+	}
+	write(t, root, map[string]string{"other/a.yaml": "rules:\n  - id: A-1\n    description: d\n",
+		"broken/" + rule.RetiredFile: "rules: [\n"})
+	if got := (Adapter{}).ReadRetired(context.Background(), root, "other"); got != nil {
+		t.Fatalf("no retired.yaml: %+v", got)
+	}
+	if got := (Adapter{}).ReadRetired(context.Background(), root, "broken"); got != nil {
+		t.Fatalf("a retired.yaml that is not yaml: %+v", got)
+	}
+}
+
 // Without the folder there are no rules, and no error.
 func TestAdapterReadRulesWithoutFolder(t *testing.T) {
 	got, exists, err := Adapter{}.ReadRules(context.Background(), t.TempDir(), "ai/rules")

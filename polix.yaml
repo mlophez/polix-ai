@@ -29,12 +29,14 @@ guardrails:
     - AGENTS.md
     - CLAUDE.md
 
-  # Format each edited Go file and this polix.yaml right after the edit.
+  # Format each edited Go file, this polix.yaml and the rules files of ai/rules/ right after the edit.
   format_on_edit:
     - run: golangci-lint fmt {path}
       path: "*.go"
     - run: polix config fmt
       path: polix.yaml
+    - run: polix rules fmt
+      path: "ai/rules/*.yaml"
 
   # Before the turn ends, in order; each check runs again only on new content.
   run_on_stop:

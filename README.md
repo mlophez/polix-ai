@@ -273,6 +273,7 @@ validate it:
 ```bash
 polix config check     # validate polix.yaml and ai/rules/
 polix config fmt       # format polix.yaml: keys in the order of the reference, comments kept
+polix rules fmt        # format the rules files of ai/rules/: one blank line between rules, comments kept
 polix graph            # draw the workflow as a Mermaid diagram, each entry with the shortcut it comes from
 polix doctor           # check that this machine and repository are ready
 ```
@@ -480,6 +481,7 @@ polix hook codex [-C dir]      entry point of the Codex hooks (not implemented: 
 polix config check [file]      validate polix.yaml (or another workflow file) and ai/rules/
 polix config fmt [--check] [file]  format polix.yaml (or another workflow file) in place, or only tell whether it is formatted
 polix rules check [--changed]  run the checks of the deterministic rules (for CI)
+polix rules fmt [--check]      format the rules files of ai/rules/ in place, or only tell whether they are formatted
 polix graph                    print the workflow as a Mermaid diagram
 polix log --tail 20 [--json]   print the last entries of the state log
 polix risk [--commit C]        print the size and the risk score of the change, file by file

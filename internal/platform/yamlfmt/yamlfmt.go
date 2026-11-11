@@ -1,7 +1,10 @@
 // Package yamlfmt formats a YAML document in one layout while it keeps every comment, the blank lines that
 // separate its items and the style of each node: two spaces of indentation, sequences indented below their key,
 // flow collections on one line ({ a: b } and [a, b]), one space before a line comment and at most one blank line in
-// a row. The keys of each mapping follow the order a caller gives; the items of a sequence never move.
+// a row. The keys of each mapping follow the order a caller gives; the items of a sequence never move. The items of
+// the block sequences a caller chooses are separated by exactly one blank line, above the comments of each item and
+// never before the first one; an item that ends in a block scalar with the indicator + (|+, >+) keeps its own blank
+// lines instead, since one more would be part of the scalar.
 //
 // The comments and the blank lines are read from the source lines, not from the comments yaml.v3 attaches to the
 // nodes, which it spreads between head, line and foot comments in ways that do not survive a reorder. A comment or
@@ -31,6 +34,10 @@ import (
 // source. Nil keeps the order of the source.
 type Order func(path []string) []string
 
+// Spaced tells whether the items of the block sequence at path, the keys from the root to the sequence with "-" for
+// the item of a sequence as in Order, are separated by one blank line. Nil separates no sequence.
+type Spaced func(path []string) bool
+
 // line is a comment or blank line of the source: its text without the indentation (empty for a blank line) and its
 // column, relative to the item it belongs to for the lines kept below an item.
 type line struct {
@@ -53,6 +60,7 @@ type printer struct {
 	lead    map[*yaml.Node][]line // the comments and blank lines above each item, at the column of the item
 	trail   map[*yaml.Node][]line // the comments below each item, indented deeper than the item after it
 	bodies  map[*yaml.Node]body   // the source of each block scalar
+	spaced  map[*yaml.Node]bool   // the block sequences whose items are separated by one blank line
 	header  []line                // the comments at the top of the document, before its first blank line
 	first   *yaml.Node            // the first item of the root in the source
 	footer  []line                // the comments at the end of the document
@@ -64,13 +72,14 @@ type printer struct {
 // ErrUnsupported is the error of a document Format cannot rewrite safely.
 var ErrUnsupported = errors.New("not supported by the formatter")
 
-// Format formats the YAML document src, ordering the keys of each mapping with order (nil keeps them all). A
+// Format formats the YAML document src, ordering the keys of each mapping with order (nil keeps them all) and
+// separating the items of the block sequences that spaced accepts with one blank line (nil separates none). A
 // document without content (empty, or only comments) comes back as it is. Line breaks \r\n are kept.
-func Format(src []byte, order Order) ([]byte, error) {
+func Format(src []byte, order Order, spaced Spaced) ([]byte, error) {
 	crlf := bytes.Contains(src, []byte("\r\n"))
 	text := strings.ReplaceAll(string(src), "\r\n", "\n")
 	if start, rest, ok := documentStart(text); ok {
-		out, err := Format([]byte(rest), order)
+		out, err := Format([]byte(rest), order, spaced)
 		if err != nil {
 			return nil, err
 		}
@@ -83,7 +92,7 @@ func Format(src []byte, order Order) ([]byte, error) {
 	if root == nil {
 		return src, nil
 	}
-	out := rewrite(lines, root, order)
+	out := rewrite(lines, root, order, spaced)
 	if err := same(text, out); err != nil {
 		return nil, err
 	}
@@ -135,18 +144,39 @@ func markers(lines []string) error {
 	return nil
 }
 
-// rewrite reads the comments, blank lines and block scalars of the source lines, orders the keys below root and
-// writes the document again.
-func rewrite(lines []string, root *yaml.Node, order Order) string {
+// rewrite reads the comments, blank lines and block scalars of the source lines, orders the keys below root, marks
+// the sequences spaced accepts and writes the document again.
+func rewrite(lines []string, root *yaml.Node, order Order, spaced Spaced) string {
 	p := &printer{src: lines, claimed: make([]bool, len(lines)+1), lead: map[*yaml.Node][]line{},
-		trail: map[*yaml.Node][]line{}, bodies: map[*yaml.Node]body{}}
+		trail: map[*yaml.Node][]line{}, bodies: map[*yaml.Node]body{}, spaced: map[*yaml.Node]bool{}}
 	p.readBodies(root, 0)
 	p.readTrivia(root, true)
 	if order != nil {
 		reorder(root, nil, order)
 	}
+	if spaced != nil {
+		p.markSpaced(root, nil, spaced)
+	}
 	p.write(root)
 	return strings.Join(p.out, "\n") + "\n"
+}
+
+// markSpaced marks every block sequence below n, at path, whose items spaced separates with one blank line.
+func (p *printer) markSpaced(n *yaml.Node, path []string, spaced Spaced) {
+	switch n.Kind {
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			p.markSpaced(n.Content[i+1], append(slices.Clone(path), n.Content[i].Value), spaced)
+		}
+	case yaml.SequenceNode:
+		if block(n) && spaced(path) {
+			p.spaced[n] = true
+		}
+		for _, c := range n.Content {
+			p.markSpaced(c, append(slices.Clone(path), "-"), spaced)
+		}
+	default:
+	}
 }
 
 // documentStart splits text at a leading document start marker: the comment and blank lines before it and the

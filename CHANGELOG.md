@@ -14,12 +14,27 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   `polix risk --commit`, weighs the paths by their fix and revert commits, picks the thresholds that make each gate
   hold on the share of commits the user accepts to review (15% by default) and shows the commits that change side
   before writing. Only the user runs it, typing the command.
+- `polix rules fmt [--check]` formats every `*.yaml` of the folder of rules (`rules.path`, `ai/rules` by default)
+  in place, `retired.yaml` included, with the layout of `polix config fmt`: `rules` first, the keys of each rule in
+  the order `id`, `description`, `scope`, `deterministic`, `check`, `reason` and then any other, the rules in their
+  order, and exactly one blank line between two rules, above the comments of the later one. It is all or nothing:
+  when a file cannot be formatted, an id is repeated (retired ones included) or a file does not decode as rules, so
+  no repeat can be ruled out, it reports it and writes no file. With `--check` it writes nothing and exits with 1
+  naming each file that is not formatted. A missing folder, or one without `*.yaml`, has nothing to format.
+  A `polix.yaml` that cannot be read or parsed, requires a newer polix or has a `rules.path` that cannot be a folder
+  stops it before any file is read.
 
 ### Changed
 
 - The switches `edit` and `layout` of `guidance` are off by default: a `polix.yaml` that leaves them out no longer
   injects the instructions on edits nor the folders of the AI on `start`; `true` turns each one on. `commit` stays on
   by default.
+- An id repeated among the rules is found by the loader of the rules, so `polix rules check` stops on it too, before
+  running any check, with `<file> <id>: id repeated, also in <other file>`; an invalid rule of any file still wins.
+  The id of a rule of `retired.yaml` counts as taken: an active rule with it is an id repeated, naming
+  `retired.yaml`, in `polix rules check`, `polix config check` and `polix doctor`. Repeats among the retired rules
+  are not reported, and a `retired.yaml` that is missing, cannot be read or is not YAML changes nothing. A repository
+  that carries such an id today fails `polix rules check` after the update.
 
 ### Fixed
 

@@ -233,8 +233,7 @@ rules:
       runs (a flag that needs another, allowed values); the shell turns the Request into the Response, built from
       the Output and what the port returned while carrying it out; and the entry serializes the Response to the
       console and sets the exit code. Only the Request and the Response carry the shape of the transport.
-    scope: ["internal/app/*/*/in.go", "internal/app/*/*/in_*.go", "internal/app/*/*/logic.go",
-            "internal/app/*/*/logic_*.go"]
+    scope: ["internal/app/*/*/in.go", "internal/app/*/*/in_*.go", "internal/app/*/*/logic.go", "internal/app/*/*/logic_*.go"]
     deterministic: false
 
   - id: GOARCH-23

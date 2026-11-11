@@ -11,15 +11,20 @@ import (
 
 // fakePort answers the reading of the rules with what it is given, and records each folder it was asked for.
 type fakePort struct {
-	rules  []rule.Rule
-	exists bool
-	err    error
-	asked  []string
+	rules   []rule.Rule
+	retired []rule.Rule
+	exists  bool
+	err     error
+	asked   []string
 }
 
 func (f *fakePort) ReadRules(_ context.Context, root, dir string) ([]rule.Rule, bool, error) {
 	f.asked = append(f.asked, root+" "+dir)
 	return f.rules, f.exists, f.err
+}
+
+func (f *fakePort) ReadRetired(_ context.Context, _, _ string) []rule.Rule {
+	return f.retired
 }
 
 // The shell reads the folder of the request through the port and builds the response from the logic.
@@ -35,6 +40,18 @@ func TestRun(t *testing.T) {
 	if l := res.Loaded; len(l.Rules) != 2 || l.Rules[0].ID != "A-1" || len(l.Problems) != 1 || !l.Exists ||
 		l.Strict == nil {
 		t.Fatalf("loaded %+v", l)
+	}
+}
+
+// The shell passes the retired rules of the port to the logic: an active rule with a retired id is repeated.
+func TestRunRetired(t *testing.T) {
+	port := &fakePort{rules: []rule.Rule{{ID: "R-1", Description: "d", File: "ai/rules/a.yaml"}},
+		retired: []rule.Rule{{ID: "R-1", File: "ai/rules/retired.yaml"}}, exists: true}
+	res, err := run(context.Background(), port, Request{Root: "/repo", Dir: "ai/rules"})
+	want := "ai/rules/a.yaml R-1: id repeated, also in ai/rules/retired.yaml"
+	if err != nil || !slices.Equal(res.Loaded.Repeated, []string{want}) || res.Loaded.Strict == nil ||
+		res.Loaded.Strict.Error() != want {
+		t.Fatalf("got %+v %v", res, err)
 	}
 }
 

@@ -27,6 +27,10 @@ type Port interface {
 	// the order of their names and in the order each file writes them, not validated, and whether the folder
 	// exists. The error tells why a file cannot be read or is not yaml, with the rules of the files before it.
 	ReadRules(ctx context.Context, root, dir string) ([]rule.Rule, bool, error)
+	// ReadRetired returns the rules of rule.RetiredFile of the folder dir of root, in the order of the file, each with
+	// its file, not validated; none when the file is missing, cannot be read or is not yaml. It never fails: the
+	// retired rules only take their ids.
+	ReadRetired(ctx context.Context, root, dir string) []rule.Rule
 }
 
 // loader keeps what the shell loaded for each request for the life of the process, so a folder is read once.
@@ -45,13 +49,15 @@ func Command() rule.Load {
 	return l.load
 }
 
-// run is the shell, from request to response: it reads the rules of the folder through the port, calls the logic
-// once and builds the response. It never fails: what stops the reading is data of the response.
+// run is the shell, from request to response: it reads the rules of the folder and then its retired rules through
+// the port, calls the logic once and builds the response. It never fails: what stops the reading is data of the
+// response.
 //
 //nolint:unparam // every shell returns (response, error), as docs/architecture.md says, even when it cannot fail
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	rules, exists, err := port.ReadRules(ctx, req.Root, req.Dir)
-	out := Decide(rules, exists, err)
+	retired := port.ReadRetired(ctx, req.Root, req.Dir)
+	out := Decide(rules, retired, exists, err)
 	return Response(out), nil
 }
 

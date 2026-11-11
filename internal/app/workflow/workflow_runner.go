@@ -66,6 +66,17 @@ func (r Rules) Valid() error {
 	return nil
 }
 
+// ValidPath tells why rules.path cannot be the folder of the rules (absolute, the root itself, outside the root or a
+// glob), in the words of Workflow.Problems; the runners and the keys of rules are left to Valid.
+func (r Rules) ValidPath() error {
+	v := &validator{}
+	v.rulesPath(r)
+	if len(v.problems) > 0 {
+		return InvalidError(v.problems)
+	}
+	return nil
+}
+
 // Valid tells why the runner is not valid: an empty glob or argv, an unknown placeholder, or {files} or {dirs}
 // inside a longer argument.
 func (r Runner) Valid() error {
@@ -210,11 +221,16 @@ func (c ruleCheck) name() string {
 
 func (v *validator) rules(r Rules) {
 	v.unknownKeys(0, "rules", r.Keys, []string{"path", "run"})
-	if p := folderPath(r.Path).problem(); p != "" {
-		v.add(0, "rules.path %q %s", r.Path, p)
-	}
+	v.rulesPath(r)
 	for _, run := range r.Run {
 		v.runner(run)
+	}
+}
+
+// rulesPath reports the problem of rules.path, the one text of it.
+func (v *validator) rulesPath(r Rules) {
+	if p := folderPath(r.Path).problem(); p != "" {
+		v.add(0, "rules.path %q %s", r.Path, p)
 	}
 }
 

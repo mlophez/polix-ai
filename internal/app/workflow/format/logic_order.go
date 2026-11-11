@@ -23,7 +23,7 @@ var (
 // workflow with problems is formatted as well. The error tells why the data cannot be formatted (broken YAML, or
 // what yamlfmt does not support).
 func formatData(data []byte) ([]byte, error) {
-	return yamlfmt.Format(data, order)
+	return yamlfmt.Format(data, order, nil)
 }
 
 // order returns the order of the keys of the mapping of polix.yaml at path, nil to keep the source order.

@@ -18,7 +18,7 @@ GO-4 of `ai/rules/go.yaml` (see [Limits of size and complexity](#limits-of-size-
 
 The domains are `agent` (Claude Code and Codex, the neutral event of a hook call and its answer; the formats of
 each agent live in the entry of `AnswerHook`), `diff`
-(`risk`), `hook` (`hook`), `rule` (`rules check`), `setup` (`config check`, `install`, `uninstall`, `doctor`, the
+(`risk`), `hook` (`hook`), `rule` (`rules check`, `rules fmt`), `setup` (`config check`, `install`, `uninstall`, `doctor`, the
 hidden `__refresh`), `state` (the log of a repository), `version` (`version`, `update`) and `workflow`
 (`polix.yaml`, `config fmt`, `graph`, `log`). How polix behaves is in `docs/polix.md`.
 
@@ -77,7 +77,8 @@ a new `<lib>/`, and a use case too big a new `<helper>/`; no use case has a help
 - `agent`: none; `hook` and `AnswerHook` use its domain.
 - `diff`: `measure/` (`MeasureDiff`, `polix risk`).
 - `hook`: `answer/` (`AnswerHook`, `polix hook`).
-- `rule`: `check/` (`CheckRule`, `polix rules check`) and `load/` (`LoadRule`, the loader of the rule files).
+- `rule`: `check/` (`CheckRule`, `polix rules check`), `format/` (`FormatRule`, `polix rules fmt`) and `load/`
+  (`LoadRule`, the loader of the rule files).
 - `setup`: `check/` (`CheckSetup`, `polix config check`), `diagnose/` (`DiagnoseSetup`, `polix doctor`),
   `install/` (`InstallSetup`), `refresh/` (`RefreshSetup`, the hidden `polix __refresh`) and `uninstall/`
   (`UninstallSetup`).
@@ -353,7 +354,8 @@ The other linters of design of `.golangci.yml` follow the same policy, enabled w
 - The helpers of a use case sit right below it, not under a Go `internal/` of the use case: the compiler would
   enforce their visibility, but one level deeper than the layout allows; GOARCH-9 enforces it instead.
 - `polix rules check` changes on purpose: a rule that is not `Valid` (no description, or a `check` without
-  `deterministic`) stops the command; `--base` without `--changed` is an error; the hint to set `base_branch` only
+  `deterministic`) stops the command, and so does an id repeated, retired ones included, which the loader of the
+  rules reports (`rule.Loaded.Repeated`); `--base` without `--changed` is an error; the hint to set `base_branch` only
   comes when no base exists. It always reads polix.yaml when it exists, to know the runners of `rules.run`, and
   `--base` only replaces its base branches; a polix.yaml that cannot be read or parsed stops the command.
 - `polix hook` takes the step shape, since a later entry of an event sees what an earlier one did (an observed

@@ -53,6 +53,21 @@ func (a Adapter) ReadRules(_ context.Context, root, dir string) ([]rule.Rule, bo
 	return rules, exists, nil
 }
 
+// ReadRetired reads rule.RetiredFile of the folder dir of root through internal/platform/file and decodes its rules,
+// each with its file. A file that is missing, cannot be read or cannot be decoded has no rules, and is no error.
+func (a Adapter) ReadRetired(_ context.Context, root, dir string) []rule.Rule {
+	path := filepath.Join(root, filepath.FromSlash(dir), rule.RetiredFile)
+	data, found, err := file.Read(path)
+	if err != nil || !found {
+		return nil
+	}
+	rules, err := a.decode(dir+"/"+rule.RetiredFile, data)
+	if err != nil {
+		return nil
+	}
+	return rules
+}
+
 // names returns the names of the files of rules among files, sorted: yaml, without rule.RetiredFile.
 func (a Adapter) names(files map[string][]byte) []string {
 	var names []string

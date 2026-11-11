@@ -54,7 +54,7 @@ f: >-
   text
 # end
 `
-	got, err := Format([]byte(src), nil)
+	got, err := Format([]byte(src), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ a:
 z: 1
 b: 2
 `
-	got, err := Format([]byte(src), order)
+	got, err := Format([]byte(src), order, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,10 +107,72 @@ b: 2
 	}
 }
 
+// The items of a spaced sequence are separated by exactly one blank line, above the comments of an item and never
+// after the key of the sequence; the blank lines inside an item stay, and a nested sequence is not spaced. The output
+// formats to itself, and on \r\n input the blank line is \r\n too.
+func TestFormatSpaced(t *testing.T) {
+	src := `rules:
+  - id: A-1
+    scope:
+      - a
+      - b
+  - id: A-2
+
+    description: kept blank line inside the item
+
+
+  - id: A-3
+  # about A-4
+  - id: A-4
+`
+	want := `rules:
+  - id: A-1
+    scope:
+      - a
+      - b
+
+  - id: A-2
+
+    description: kept blank line inside the item
+
+  - id: A-3
+
+  # about A-4
+  - id: A-4
+`
+	spaced := func(path []string) bool { return strings.Join(path, "/") == "rules" }
+	got, err := Format([]byte(src), nil, spaced)
+	if err != nil || string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s\n%v", got, want, err)
+	}
+	if twice, err := Format(got, nil, spaced); err != nil || string(twice) != want {
+		t.Fatalf("not idempotent:\n%s\n%v", twice, err)
+	}
+	crlf := strings.ReplaceAll(src, "\n", "\r\n")
+	if got, err := Format([]byte(crlf), nil, spaced); err != nil || string(got) != strings.ReplaceAll(want, "\n", "\r\n") {
+		t.Fatalf("crlf: %q %v", got, err)
+	}
+	if got, err := Format([]byte(src), nil, nil); err != nil || strings.Contains(string(got), "b\n\n  - id: A-2") {
+		t.Fatalf("without spaced, no blank line is added:\n%s\n%v", got, err)
+	}
+	// A blank line below a block scalar with the indicator + would be its content: an item that ends in one counts
+	// as separated already, and one whose keep scalar is not its last value does not.
+	keep := "rules:\n  - id: A-1\n    description: |+\n      literal\n  - id: A-2\n    description: >+\n      folded\n" +
+		"  - id: A-3\n    description: |+\n      kept\n    reason: r\n  - id: A-4\n"
+	want = strings.Replace(keep, "  - id: A-4", "\n  - id: A-4", 1)
+	got, err = Format([]byte(keep), nil, spaced)
+	if err != nil || string(got) != want {
+		t.Fatalf("keep:\ngot:\n%s\nwant:\n%s\n%v", got, want, err)
+	}
+	if twice, err := Format(got, nil, spaced); err != nil || string(twice) != want {
+		t.Fatalf("keep, not idempotent:\n%s\n%v", twice, err)
+	}
+}
+
 // A formatted document comes back as it is, line breaks \r\n included.
 func TestFormatIdempotent(t *testing.T) {
 	src := "a:\r\n  - b # c\r\n"
-	got, err := Format([]byte(src), nil)
+	got, err := Format([]byte(src), nil, nil)
 	if err != nil || string(got) != src {
 		t.Fatalf("%q %v", got, err)
 	}
@@ -119,11 +181,11 @@ func TestFormatIdempotent(t *testing.T) {
 // An empty document or one with only comments comes back as it is; broken YAML is an error.
 func TestFormatEdges(t *testing.T) {
 	for _, src := range []string{"", "# only\n", "scalar\n"} {
-		if got, err := Format([]byte(src), nil); err != nil || string(got) != src {
+		if got, err := Format([]byte(src), nil, nil); err != nil || string(got) != src {
 			t.Fatalf("%q: %q %v", src, got, err)
 		}
 	}
-	if _, err := Format([]byte("a: [\n"), nil); err == nil {
+	if _, err := Format([]byte("a: [\n"), nil, nil); err == nil {
 		t.Fatal("broken yaml")
 	}
 }
@@ -135,7 +197,7 @@ func TestFormatDocumentStart(t *testing.T) {
 		"# top\n\n---\r\nb:    1\r\n": "# top\r\n\r\n---\r\nb: 1\r\n",
 		"---\n":                       "---\n",
 	} {
-		if got, err := Format([]byte(src), nil); err != nil || string(got) != want {
+		if got, err := Format([]byte(src), nil, nil); err != nil || string(got) != want {
 			t.Fatalf("%q: %q %v", src, got, err)
 		}
 	}
@@ -145,7 +207,7 @@ func TestFormatDocumentStart(t *testing.T) {
 func TestFormatUnsupported(t *testing.T) {
 	for _, src := range []string{"a: &x 1\nb: *x\n", "a: !!str 1\n", "? [a]\n: 1\n", "---\na: 1\n---\nb: 2\n",
 		"%YAML 1.2\n---\na: 1\n", "a: 1\n...\n"} {
-		if _, err := Format([]byte(src), nil); !errors.Is(err, ErrUnsupported) {
+		if _, err := Format([]byte(src), nil, nil); !errors.Is(err, ErrUnsupported) {
 			t.Fatalf("%q: %v", src, err)
 		}
 	}
@@ -163,14 +225,14 @@ func TestFormatStableInSequenceItem(t *testing.T) {
 	src := "on:\n  stop:\n    - action: { block: x }\n      # about when\n      when: { changed: x }\n"
 	want := "on:\n  stop:\n    # about when\n    - when: { changed: x }\n      action: { block: x }\n"
 	for _, in := range []string{src, want, "-\n  # c\n  a: 1\n"} {
-		once, err := Format([]byte(in), order)
+		once, err := Format([]byte(in), order, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if in == src && string(once) != want {
 			t.Fatalf("got:\n%s", once)
 		}
-		if twice, err := Format(once, order); err != nil || string(twice) != string(once) {
+		if twice, err := Format(once, order, nil); err != nil || string(twice) != string(once) {
 			t.Fatalf("not stable: %q -> %q %v", once, twice, err)
 		}
 	}
@@ -184,7 +246,7 @@ func TestFormatBlockScalars(t *testing.T) {
 		"a: >-\n    x\n    y\nb: 1\n":                 "a: >-\n  x\n  y\nb: 1\n",
 		"a:\r\n    b: |\r\n      # not a comment\r\n": "a:\r\n  b: |\r\n    # not a comment\r\n",
 	} {
-		got, err := Format([]byte(src), nil)
+		got, err := Format([]byte(src), nil, nil)
 		if err != nil || string(got) != want {
 			t.Fatalf("%q: %q %v", src, got, err)
 		}
@@ -194,12 +256,12 @@ func TestFormatBlockScalars(t *testing.T) {
 // A comment inside a flow collection is refused; one after it, or a # inside a quoted or plain scalar, is not.
 func TestFormatFlowComments(t *testing.T) {
 	for _, src := range []string{"a: [ # c\n  x ]\n", "a: { # c\n  x: 1 }\n", "a: [x, # c\n  y]\n"} {
-		if _, err := Format([]byte(src), nil); !errors.Is(err, ErrUnsupported) {
+		if _, err := Format([]byte(src), nil, nil); !errors.Is(err, ErrUnsupported) {
 			t.Fatalf("%q: %v", src, err)
 		}
 	}
 	for _, src := range []string{"a: [x, \"#y\", it's#z] # c\n", "a: { b: 'x # y' }\n"} {
-		if got, err := Format([]byte(src), nil); err != nil || string(got) != src {
+		if got, err := Format([]byte(src), nil, nil); err != nil || string(got) != src {
 			t.Fatalf("%q: %q %v", src, got, err)
 		}
 	}
@@ -207,7 +269,7 @@ func TestFormatFlowComments(t *testing.T) {
 
 // Line comments line up by characters, not bytes.
 func TestFormatAlignsRunes(t *testing.T) {
-	got, err := Format([]byte("ñ: ññ # c1\nbb: y # c2\n"), nil)
+	got, err := Format([]byte("ñ: ññ # c1\nbb: y # c2\n"), nil, nil)
 	if err != nil || string(got) != "ñ: ññ # c1\nbb: y # c2\n" {
 		t.Fatalf("%q %v", got, err)
 	}
@@ -234,11 +296,11 @@ func TestFormatRepository(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		once, err := Format(src, nil)
+		once, err := Format(src, nil, nil)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		twice, err := Format(once, nil)
+		twice, err := Format(once, nil, nil)
 		if err != nil || string(twice) != string(once) {
 			t.Fatalf("%s: not idempotent: %v", name, err)
 		}
