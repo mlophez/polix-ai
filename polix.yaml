@@ -43,12 +43,12 @@ guardrails:
   # Before the turn ends, in order; each check runs again only on new content.
   run_on_stop:
     # Lint the whole module when Go code or the lint configuration changes.
-    - run: golangci-lint run ./...
-      changed: ["*.go", "go.mod", "go.sum", ".golangci.yml"]
+    - run: &lint golangci-lint run ./...
+      changed: &lint_changed ["*.go", "go.mod", "go.sum", ".golangci.yml"]
 
     # Run every test when Go code, the install scripts or scripts/ change.
-    - run: go test ./...
-      changed: ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"]
+    - run: &test go test ./...
+      changed: &test_changed ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"]
 
 # Entries run in file order after guardrails, and the first block ends the evaluation.
 on:
@@ -120,8 +120,15 @@ on:
       action:
         notify: "Commit a main: {changed_lines} líneas en {changed_files} ficheros, riesgo {risk_score}."
 
-# The gates git runs on every commit, whoever makes it: a polix.yaml or a rule that does not validate never lands.
+# The gates git runs on every commit, whoever makes it, a person too: a polix.yaml or a rule that does not validate,
+# a lint error or a failing test never lands. Lint and test reuse the commands and globs of run_on_stop.
 githooks:
   pre_commit:
     - when: { changed: ["polix.yaml", "ai/rules/**"] }
       action: { run: polix config check }
+
+    - when: { changed: *lint_changed }
+      action: { run: *lint }
+
+    - when: { changed: *test_changed }
+      action: { run: *test }
