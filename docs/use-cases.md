@@ -1,18 +1,19 @@
 # Use cases
 
 Recipes for `polix.yaml`, from a single guardrail to a whole development flow. Each one is a fragment: put it
-under the `guardrails:` or the `on:` of your workflow (with `version: 1` at the top), validate it with
+under the `guardrails:`, the `on:` or the `githooks:` of your workflow (with `version: 1` at the top), validate it with
 `polix config check` and draw it with `polix graph`. Every key, condition and verb is described in
 [reference.md](reference.md), and a whole annotated workflow is [`examples/polix.yaml`](../examples/polix.yaml);
 the design and its limits are in [polix.md](polix.md).
 
-The recipes come in the two layers of `polix.yaml`:
+The recipes come in the three sections of `polix.yaml`:
 
 - **`guardrails:`**, the basics every project wants from the first minute: files no agent writes, commands no
   agent runs, branches nobody commits on, a formatter or a linter after each edit and the checks that must pass
   before the agent ends its turn. Each is a short list, a shortcut.
 - **`on:`**, where the team orchestrates its flow: the review subagents, the builder, the plan, the ticket. Each
   entry says on which event it applies, when, and what it does.
+- **`githooks:`**, the gates git itself runs on every commit, whoever makes it: a person, an IDE or an agent.
 
 `protected_files` and `forbidden_commands` are protections of the engine: they deny before every entry of `on:`,
 for every actor, without exceptions, also on the files git ignores. The other three shortcuts are only sugar: polix
@@ -69,6 +70,7 @@ run again on the same content; an `inject` reaches the AI once per session and a
   - [The message starts with the key of the ticket](#the-message-starts-with-the-key-of-the-ticket)
   - [A message format by the files of the commit](#a-message-format-by-the-files-of-the-commit)
   - [A command that blocks the commit](#a-command-that-blocks-the-commit)
+  - [The agent cannot skip the hooks of git](#the-agent-cannot-skip-the-hooks-of-git)
 - [Coming from Claude Code hooks](#coming-from-claude-code-hooks)
 
 ## Guardrails
@@ -164,6 +166,10 @@ on:
       action: { block: "{path} would end up in a commit: keep secrets in an ignored file or a secret store" }
 ```
 
+Both keep the agent away; a commit of a person is gated by `githooks:`, as in
+[A message format by the files of the commit](#a-message-format-by-the-files-of-the-commit), whose `pre_commit` blocks
+any staged file under `secrets/`.
+
 ### Destructive commands are left to a person
 
 Commands that throw away work nobody saved are blocked, in any position of the line.
@@ -216,6 +222,16 @@ on:
 
 `pre_commit` runs for any command line that holds a `git commit`, also inside `git add . && git commit -m ...`.
 Copy the entry into `on:` to change its message, or to add an `unless` for a release bot.
+
+`protected_branches` is a gate of the agent only. To keep people off `main` too, write the same gate in
+`githooks:`, which git runs on every commit:
+
+```yaml
+githooks:
+  pre_commit:
+    - when: { branch: "^(?:main|master)$" }
+      action: { block: "{branch} is protected: create a branch for this change and commit there." }
+```
 
 ### Format every file the agent edits
 
@@ -455,7 +471,9 @@ on:
 ```
 
 `{key}` is then available in every string of the workflow: in messages, in paths and in `contains`. The nudge of
-`prompt` is an `inject`, so it reaches the agent once per session, and again after a compaction.
+`prompt` is an `inject`, so it reaches the agent once per session, and again after a compaction. To have the key at
+the start of every commit message, whoever commits, see
+[The message starts with the key of the ticket](#the-message-starts-with-the-key-of-the-ticket).
 
 ### A plan before the first edit
 
@@ -787,12 +805,12 @@ githooks:
   commit_msg:
     - when: { branch: "^[A-Z][A-Z0-9]+-[0-9]+" }
       unless: { message: ["^{key}: ", "^Merge "] }
-      action: { block: "Empieza el mensaje por la clave del ticket: «{key}: {message}»" }
+      action: { block: "Start the message with the key of the ticket: {key}: {message}" }
 ```
 
-`git commit -m "arregla el login"` on `PLAT-123-login` fails with
-`polix: Empieza el mensaje por la clave del ticket: «PLAT-123: arregla el login»`, and
-`git commit -m "PLAT-123: arregla el login"` goes through.
+`git commit -m "fix the login"` on `PLAT-123-login` fails with
+`polix: Start the message with the key of the ticket: PLAT-123: fix the login`, and
+`git commit -m "PLAT-123: fix the login"` goes through.
 
 ### A message format by the files of the commit
 
@@ -800,17 +818,14 @@ A commit that touches the migrations says so in its message, and nothing of `sec
 commits.
 
 ```yaml
-vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
-
 githooks:
   pre_commit:
     - when: { changed: "secrets/**" }
-      action: { block: "No se commitea nada de secrets/: sácalo del índice con git restore --staged" }
+      action: { block: "Nothing of secrets/ is committed: unstage it with git restore --staged" }
   commit_msg:
     - when: { changed: ["db/migrations/**", "*.sql"] }
       unless: { message: "^migration: " }
-      action: { block: "Un commit con migraciones empieza por «migration: »" }
+      action: { block: "A commit with migrations starts with \"migration: \"" }
 ```
 
 `changed` only looks at the staged files: a migration edited and left out of the commit does not ask for the
@@ -821,19 +836,26 @@ prefix.
 The linter runs on every commit that stages Go code, and its output shows in the terminal of the commit.
 
 ```yaml
-vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
-
 githooks:
   pre_commit:
     - when: { changed: ["*.go", go.mod] }
       action:
-        run: { command: golangci-lint run ./..., message: "Arregla el lint antes de commitear" }
+        run: { command: golangci-lint run ./..., message: "Fix the lint before committing" }
 ```
 
-A failure aborts the commit with the message and `golangci-lint run ./... failed: exit status 1`. To keep the agent
-from skipping the hooks with `--no-verify`, add `- { pattern: "git*--no-verify*", reason: "..." }` to
-`guardrails.forbidden_commands`.
+A failure aborts the commit with the message and `golangci-lint run ./... failed: exit status 1`.
+
+### The agent cannot skip the hooks of git
+
+`git commit --no-verify` skips both hooks, and `git -c hook.polix-pre-commit.enabled=false commit` one of them.
+People may still do it; the agent may not:
+
+```yaml
+guardrails:
+  forbidden_commands:
+    - { pattern: "git*--no-verify*", reason: "The hooks of git are not skipped: fix what they block" }
+    - { pattern: "git*hook.polix-*", reason: "The hooks of git are not skipped: fix what they block" }
+```
 
 ## Coming from Claude Code hooks
 
