@@ -29,6 +29,20 @@ One static binary that works with Claude Code through its hooks; Codex support i
   <img src="docs/assets/overview.svg" alt="Claude Code calls Polix through its hooks, and git on every commit (Codex is not implemented); Polix reads polix.yaml and ai/rules/, keeps what it observed and decided in log.jsonl, and answers by blocking, injecting context or allowing the action" width="100%">
 </p>
 
+<details>
+<summary><b>See it in a real session</b>: Claude Code asked to <i>add a Reverse function with a test and commit it</i></summary>
+
+<br>
+
+Polix blocks the commit on `main` and then the commit without a review, and Claude recovers by itself: a branch, the
+reviewer, the tests Polix runs, the commit ([`docs/assets/demo/polix.yaml`](docs/assets/demo/polix.yaml)).
+
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="A Claude Code session adds a Reverse function and its test; Polix blocks the commit on main, Claude creates a branch, Polix blocks the commit without a review, Claude runs the reviewer subagent and then commits" width="100%">
+</p>
+
+</details>
+
 ## The problem
 
 You wrote it down in `AGENTS.md`: *run the tests before you commit, get the diff reviewed, never push to main.*
@@ -73,14 +87,6 @@ githooks:
 where your team orchestrates its flow: reviews, plans, tickets, each an entry that says on which event it applies,
 when, and what it does. `githooks:` carries gates to the hooks of git, so they hold for every commit, whoever makes
 it.
-
-Here it is in a real Claude Code session asked to *add a Reverse function with a test and commit it*
-([`docs/assets/demo/polix.yaml`](docs/assets/demo/polix.yaml)). Polix blocks the commit on `main` and then the commit
-without a review, and Claude recovers by itself: a branch, the reviewer, the tests Polix runs, the commit.
-
-<p align="center">
-  <img src="docs/assets/demo.gif" alt="A Claude Code session adds a Reverse function and its test; Polix blocks the commit on main, Claude creates a branch, Polix blocks the commit without a review, Claude runs the reviewer subagent and then commits" width="100%">
-</p>
 
 > The human writes the rules. Polix only enforces them.
 > It **measures and never judges**: conditions are facts about the repository, the event and the state.
