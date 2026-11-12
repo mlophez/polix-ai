@@ -7,6 +7,23 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- The state of polix is split into one file per session of the agent, `<git-dir>/polix/sessions/<name>.jsonl`,
+  with the lines of its subagents: the name is the session id as it is when made only of `A-Z`, `a-z`, `0-9`, `.`,
+  `_` and `-`, at most 128 characters long and not only dots, else its lowercase hex sha256. A hook reads only the
+  file of its session instead of the whole log of the repository.
+- `finished` and the repeat of a `run` count only within the session: a review that finished, or a check that
+  passed, in another session no longer holds nor spares the check, even on the same branch and content, so a new
+  session runs its checks and asks for its reviews again. Resume the session (`claude --resume`) to keep them.
+- An event without a session id writes nothing and reads no state: it acts as when the log cannot be read, with the
+  same warning.
+- The single `<git-dir>/polix/log.jsonl` of earlier releases is ignored, by the hook and by `polix log`, and left on
+  disk: remove it by hand when its history is no longer wanted.
+- `polix log` prints the log grouped by session, each whole under `== session <id> ==`, the most recently active
+  last. `-n` (`--tail`) now counts sessions, 5 by default and all of them with `0`, and `--json` prints only the
+  lines of those sessions, without headers.
+
 ## [0.8.1] - 2026-11-12
 
 ### Fixed

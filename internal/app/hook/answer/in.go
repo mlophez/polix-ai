@@ -40,8 +40,8 @@ type Response struct {
 }
 
 // Port is what the shell of AnswerHook needs from the outside: the repository, its workflow, its
-// facts, the processes and the log. It speaks in domain values, and every method takes the context of the
-// caller.
+// facts, the processes and the log of the session. It speaks in domain values, and every method takes the context
+// of the caller.
 //
 //nolint:interfacebloat // the hook reads every fact through this one port, and the step shape needs one method per fact
 type Port interface {
@@ -71,8 +71,9 @@ type Port interface {
 	Files(ctx context.Context) []string
 	// LoadRules returns the rules of the folder dir, relative to the root, retired ones excluded, ordered by id.
 	LoadRules(ctx context.Context, dir string) ([]rule.Rule, error)
-	// LoadState reads the log of polix.
-	LoadState(ctx context.Context) (state.State, error)
+	// LoadState reads the log of polix of the session, the file of that session alone; a session without an id is
+	// an error, as a log that cannot be read.
+	LoadState(ctx context.Context, session state.Session) (state.State, error)
 	// Ignored reports whether git ignores the path, relative to the root.
 	Ignored(ctx context.Context, path string) bool
 	// Real returns the real path of each of paths, symlinks resolved, in the same order.
@@ -95,7 +96,7 @@ type Port interface {
 	// Restore puts the paths, relative to the root with slashes, back in the working tree as the tree source holds
 	// them, removing those it does not hold, without touching the index; the error names the first path that failed.
 	Restore(ctx context.Context, source string, paths []string) error
-	// Append appends an entry to the log, stamped with the time.
+	// Append appends an entry to the log of its session, stamped with the time.
 	Append(ctx context.Context, e state.Entry) error
 }
 
@@ -241,7 +242,7 @@ func carry(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook
 	case s.Rules:
 		return ev.KnowRules(port.LoadRules(ctx, ev.Workflow.RulesPath()))
 	case s.State:
-		return ev.KnowState(port.LoadState(ctx))
+		return ev.KnowState(port.LoadState(ctx, state.Session(ev.Event.Session)))
 	}
 	return lookup(ctx, port, ev, s)
 }

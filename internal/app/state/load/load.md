@@ -1,14 +1,16 @@
 # LoadState
 
-Loads the log of polix (`<git-dir>/polix/log.jsonl`), so every use case that reads it shares one reading of its
-format, and a log that cannot be read is data of the result.
+Loads one file of the log of polix, the file of a session (`<git-dir>/polix/sessions/<name>.jsonl`, see
+`state.Session.File`), so every use case that reads it shares one reading of its format, and a log that cannot be
+read is data of the result.
 
 ## Trigger
 
 Not a command: `cmd/polix` (`main`) calls `Command` once, which returns the loader, a `state.Load`, and passes it to
 the `Command` of every use case that reads the log: `AnswerHook` and `LogWorkflow`. Each puts it in a field of its
-adapter, `State`, which calls it from its port method (`LoadState` of `AnswerHook`, `ReadLog` of `LogWorkflow`) with
-the log of the repository it opened:
+adapter, `State`, which calls it from its port method with a file of the sessions of the repository it opened: the
+file of the session of the event (`LoadState` of `AnswerHook`), or each file of the sessions folder (`ReadLog` of
+`LogWorkflow`):
 
 ```
 loadState(ctx, path) state.Loaded

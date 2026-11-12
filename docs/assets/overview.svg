@@ -80,7 +80,7 @@
   <!-- State -->
   <path class="wire" d="M480,254 L480,296" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
   <rect class="card" x="395" y="300" width="170" height="50" rx="10"/>
-  <text class="t mono" x="480" y="322" font-size="14" font-weight="600" text-anchor="middle">log.jsonl</text>
+  <text class="t mono" x="480" y="322" font-size="14" font-weight="600" text-anchor="middle">sessions/*.jsonl</text>
   <text class="m" x="480" y="339" font-size="11" text-anchor="middle">observations and decisions</text>
 
   <!-- Outcomes -->

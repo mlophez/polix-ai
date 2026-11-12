@@ -444,7 +444,7 @@ on:
     session still running (the condition [`agents_are_running`](#agents_are_running)).
 - The checks that must pass before the agent ends its turn. A failure blocks the `stop` with its output, up to the
   loop guard, and the first one that fails ends the evaluation, so list the cheaper or more basic check first. A
-  check that passed is not run again on the same content.
+  check that passed is not run again in the session on the same content (see the repeat of [`run`](#run)).
 - Expansion: one regular entry on `stop` per item, with `run`, and with the condition `changed` when it has one.
   An item that waits also gets `agents_are_running: false`: while a subagent of the session runs, its check is
   skipped, and it runs on the next `stop` after the subagents end. When at least one item waits, one more entry
@@ -719,11 +719,12 @@ unless: { actor: [acme:builder, acme:builder-ui] }
 ### finished
 
 - Value: a subagent type, or a list of them.
-- Holds when every subagent of the list ended on this branch, or on another one with the same HEAD commit (a branch
-  made with `git checkout -b` after the review), its `subagent_stop` was not refused nor let through by
-  the loop guard, and the files of the [scope](#scope-of-an-entry) of the entry did not change since. polix observes
-  the end of those subagents by itself: no entry on `subagent_stop` is needed. It never holds without a known
-  content hash, so a broken git asks again.
+- Holds when every subagent of the list ended in this session, on this branch or on another one with the same HEAD
+  commit (a branch made with `git checkout -b` after the review), its `subagent_stop` was not refused nor let
+  through by the loop guard, and the files of the [scope](#scope-of-an-entry) of the entry did not change since.
+  polix observes the end of those subagents by itself: no entry on `subagent_stop` is needed. It never holds without
+  a known content hash, so a broken git asks again. A new session asks again, even on the same content;
+  `claude --resume` keeps the session, and what ended in it.
 - Events: all.
 
 ```yaml
@@ -833,9 +834,10 @@ Runs a command from the root without a shell (no pipes, redirections or globs), 
 - A failure answers with the message, a blank line, `<command> failed: <error>` and the last 15 lines of the
   output, indented (the failing rule ids and their output for `rules`); a longer output adds `(last 15 of <n>
   lines)` to that line.
-- Repeat: a run that passed is not run again on the same content, on the same branch or on another one with the
-  same HEAD commit, keyed by what it runs (so two entries
+- Repeat: a run that passed is not run again in this session on the same content, on the same branch or on another
+  one with the same HEAD commit, keyed by what it runs (so two entries
   that run `just test` share it, and `{path}` makes one key per path); a failing run runs again on the next event.
+  A new session runs it again, even on the same content; `claude --resume` keeps the session, and what passed in it.
   `always: true` runs it every time, for a result that depends on more than the files (network, clock).
 - Every run of one hook call shares a budget of 10 minutes.
 

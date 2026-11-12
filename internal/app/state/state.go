@@ -1,21 +1,26 @@
-// Package state is the domain of the append-only log of polix in <git-dir>/polix/log.jsonl: what polix observed by
+// Package state is the domain of the append-only log of polix, one file per session of the agent in
+// <git-dir>/polix/sessions/<name>.jsonl (see Session.File), subagents included: what polix observed by
 // itself (a session or a subagent started, a subagent finished, a check of polix passed, an entry blocked, an inject
 // reached the AI, a notice reached the user), tied to the content hash it was observed on when a query needs it, and
 // every decision it takes, which also
 // serves as evidence of the process each change followed. The repeat of the verbs, the loop guard, the condition
-// finished and the subagents still running (Running) are queries over the observed entries.
+// finished and the subagents still running (Running) are queries over the observed entries of one session.
 //
 // Only polix writes it, from events it has seen; the agent never declares that something is done, and a command
-// the agent runs is never observed. Reading and writing the file, and the format of its lines, are the job of the
-// adapters, through internal/platform/jsonl: the use case LoadState (internal/app/state/load) reads and decodes it
+// the agent runs is never observed. An entry without a session is never written (see Entry.Valid). Reading and
+// writing the files, and the format of their lines, are the job of the
+// adapters, through internal/platform/jsonl: the use case LoadState (internal/app/state/load) reads and decodes one
 // for every use case that reads it, and AnswerHook, its only writer, encodes its lines. Lines of kinds this polix no
 // longer writes (fact, injected and stop_block) are kept as read and ignored by every query.
 package state
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // State is the log as read: its entries in file order and how many lines were skipped for being over MaxLine.
@@ -44,12 +49,37 @@ type Query struct {
 	ByBranch bool
 }
 
+// Session is the id of a session of the agent, which names the file of its log (see File).
+type Session string
+
 // DirName is the folder of the state inside the git directory, so it is never versioned and goes with the
 // branch or worktree.
 const DirName = "polix"
 
-// LogName is the name of the log inside DirName.
-const LogName = "log.jsonl"
+// SessionsDir is the folder of the files of the sessions inside DirName.
+const SessionsDir = "sessions"
+
+// FileExt is the extension of the file of a session.
+const FileExt = ".jsonl"
+
+// maxSessionName is the longest id of a session that names its file as it is.
+const maxSessionName = 128
+
+// File returns the base name of the file of the session, inside SessionsDir, or an error for an empty id. The id
+// names it as it is when it is made only of A-Z, a-z, 0-9, ".", "_" and "-", is at most 128 characters long and is not
+// only dots; otherwise the name is the lowercase hex sha256 of the id. So the id the agent sends never reaches a
+// path with a separator, as "." or "..", nor with a length or characters the file systems refuse.
+func (s Session) File() (string, error) {
+	if s == "" {
+		return "", errors.New("a session needs an id to name its file")
+	}
+	if len(s) <= maxSessionName && strings.Trim(string(s), ".") != "" &&
+		strings.Trim(string(s), "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") == "" {
+		return string(s) + FileExt, nil
+	}
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:]) + FileExt, nil
+}
 
 // Valid tells why the state is not valid: a negative count of skipped lines. Its entries are what the log
 // holds, kept as read even when an entry would not be valid to append.

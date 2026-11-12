@@ -230,12 +230,15 @@ func TestOldKindsIgnored(t *testing.T) {
 // Append returns a copy: the original does not see the new entry.
 func TestAppend(t *testing.T) {
 	s := State{Entries: make([]Entry, 0, 4)}
-	got, err := s.Append(Entry{Kind: KindObserved, Outcome: OutcomeFinished, Key: "a"})
+	got, err := s.Append(Entry{Kind: KindObserved, Outcome: OutcomeFinished, Session: "s", Key: "a"})
 	if err != nil || len(got.Entries) != 1 || len(s.Entries) != 0 {
 		t.Fatalf("%v %+v", err, got)
 	}
 	if _, err := s.Append(Entry{}); err == nil {
 		t.Fatal("an entry without kind")
+	}
+	if _, err := s.Append(Entry{Kind: KindDecision}); err == nil {
+		t.Fatal("an entry without session")
 	}
 }
 
@@ -245,5 +248,47 @@ func TestStateValid(t *testing.T) {
 	}
 	if err := (State{Entries: []Entry{{Kind: KindObserved}}, Skipped: 1}).Valid(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A session id made only of safe characters, at most 128 long and not only dots, names its own file.
+func TestSessionFileAsIs(t *testing.T) {
+	long := strings.Repeat("a", 128)
+	for _, id := range []string{"0b8e1c5a-7f3d-4c0e-9a41-2d6f8e1b7c35", long, "a.b_c-D9", ".hidden", "a..b", "..a", "-"} {
+		got, err := Session(id).File()
+		if err != nil || got != id+".jsonl" {
+			t.Errorf("%q: %q %v", id, got, err)
+		}
+	}
+}
+
+// Any other id is hashed, so the id of an agent never reaches a path as it is: separators, spaces, a dot or dots
+// alone, a long id.
+func TestSessionFileHashed(t *testing.T) {
+	ids := []string{"a/b", `a\b`, "../x", "a b", ".", "..", "...", strings.Repeat("a", 129), "ñ", "a\x00b"}
+	seen := map[string]string{}
+	for _, id := range ids {
+		got, err := Session(id).File()
+		if err != nil {
+			t.Fatalf("%q: %v", id, err)
+		}
+		name, ok := strings.CutSuffix(got, ".jsonl")
+		if !ok || len(name) != 64 || strings.Trim(name, "0123456789abcdef") != "" {
+			t.Errorf("%q: %q is not a lowercase sha256 and .jsonl", id, got)
+		}
+		if again, _ := Session(id).File(); again != got {
+			t.Errorf("%q: %q then %q", id, got, again)
+		}
+		if other, dup := seen[got]; dup {
+			t.Errorf("%q and %q share %q", id, other, got)
+		}
+		seen[got] = id
+	}
+}
+
+// A session without id has no file.
+func TestSessionFileEmpty(t *testing.T) {
+	if got, err := Session("").File(); err == nil || got != "" {
+		t.Fatalf("%q %v", got, err)
 	}
 }

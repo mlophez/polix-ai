@@ -224,7 +224,7 @@ func (r *pass) release(e workflow.Entry, ans agent.Answer, warning, reason strin
 }
 
 // reminded reports whether the block with once of the entry e already blocked the actor of the event in its
-// session on the current branch or on the same HEAD commit, on a content whose files in the scope of the entry did
+// session, whose log alone the state holds, on the current branch or on the same HEAD commit, on a content whose files in the scope of the entry did
 // not change since: the tree of its latest observed `blocked` line is compared with the current one. An unknown
 // hash, a log that cannot be read and two trees that cannot be compared never count as reminded, the last with the
 // error in the log: the reminder blocks again.

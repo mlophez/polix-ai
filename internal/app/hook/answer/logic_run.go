@@ -16,8 +16,8 @@ import (
 const outputLines = 15
 
 // runEntry runs the verb run of the entry e and reports whether the event is actually blocked, which ends its
-// evaluation. Without always, a run whose key already passed on the current branch or on the same HEAD commit, and
-// on the content hash, is skipped, whoever's entry ran it. A run that passes on a content that did not change during it writes an observed `passed`
+// evaluation. Without always, a run whose key already passed in the session, on the current branch or on the same
+// HEAD commit, and on the content hash, is skipped, whoever's entry ran it. A run that passes on a content that did not change during it writes an observed `passed`
 // line, with or without always; one during which the content changed, or with an unknown hash, writes none, and the
 // hash after the run is only computed when the one before it is known. A
 // failure, with the message of the run before its output, blocks the event as a block does (see block), so the
@@ -83,8 +83,9 @@ func (r *pass) runKey(run workflow.Run) ([]string, string) {
 	return args, strings.Join(args, " ")
 }
 
-// passed reports whether a run of key passed on the current branch or on the same HEAD commit, and on the content
-// hash. A log that cannot be read never counts as passed: the run runs again.
+// passed reports whether a run of key passed in the session, whose log alone the state holds, on the current branch
+// or on the same HEAD commit, and on the content hash. A log that cannot be read never counts as passed: the run runs
+// again.
 func (r *pass) passed(key, hash string) bool {
 	branch, head := r.branch(), r.head()
 	st, err := r.currentState()

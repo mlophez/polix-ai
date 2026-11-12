@@ -27,7 +27,7 @@ Works with Claude Code today: one static binary, about 13 ms per hook call, on L
 ---
 
 <p align="center">
-  <img src="docs/assets/overview.svg" alt="Claude Code calls Polix through its hooks, and git on every commit (Codex is not implemented); Polix reads polix.yaml, keeps what it observed and decided in log.jsonl, and answers by blocking, injecting context or allowing the action" width="100%">
+  <img src="docs/assets/overview.svg" alt="Claude Code calls Polix through its hooks, and git on every commit (Codex is not implemented); Polix reads polix.yaml, keeps what it observed and decided in one log per session of the agent, and answers by blocking, injecting context or allowing the action" width="100%">
 </p>
 
 <details>

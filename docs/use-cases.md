@@ -786,13 +786,15 @@ blocked by it in CI.
 
 ### Evidence of the process each change followed
 
-Every decision polix makes, and every line it observed for the workflow, is appended to
-`<git-dir>/polix/log.jsonl`, with the entry that caused it and, when it was computed, the content hash. Nobody, agent
-included, can edit it. The observed lines say what polix saw by itself: a subagent that `finished`, a run of polix
-that `passed`, an entry that `blocked`, an inject made once and the start of a session.
+Every decision polix makes, and every line it observed for the workflow, is appended to the file of its session,
+`<git-dir>/polix/sessions/<session id>.jsonl` (its subagents included), with the entry that caused it and, when it
+was computed, the content hash. Nobody, agent included, can edit it. The observed lines say what polix saw by itself:
+a subagent that `finished`, a run of polix that `passed`, an entry that `blocked`, an inject made once and the start
+of a session. They count only within their session: a new session runs the checks and asks for the reviews again,
+while `claude --resume` keeps them. The single `log.jsonl` of earlier releases is ignored and left on disk.
 
 ```bash
-polix log --tail 20
+polix log
 polix log --tail 0 --json | jq -c 'select(.kind == "observed" and .outcome == "passed")'
 polix log --tail 0 --json | jq -c 'select(.kind == "observed" and .outcome == "finished" and .key == "polix:reviewer")'
 polix log --tail 0 --json | jq -c 'select(.kind == "decision" and .event == "pre_commit" and .outcome == "block"
@@ -801,8 +803,9 @@ polix log --tail 0 --json | jq -c 'select(.kind == "decision" and .event == "pre
 
 That log answers questions such as *were the tests green on the exact content that was committed?* (a `passed` line
 of `just test` with the hash of that content) or *how many times was a commit of this branch blocked for a missing
-review?* (the `block` decisions of `pre_commit` with the message of the review gate). `--tail 0` reads the whole log,
-not only its last 20 entries. A command the agent ran by itself never appears as passed. For teams that must show
+review?* (the `block` decisions of `pre_commit` with the message of the review gate). `polix log` prints the last 5
+sessions, each whole under `== session <id> ==`, the most recently active last; `--tail 0` reads every session, and
+`--json` prints only their lines. A command the agent ran by itself never appears as passed. For teams that must show
 how a change was made, not only what changed, it is evidence produced as a side effect of working.
 
 ## Putting it together: build, document, test, review, commit

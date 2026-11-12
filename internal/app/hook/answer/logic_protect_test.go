@@ -18,11 +18,13 @@ func TestAnyPathFold(t *testing.T) {
 func TestNamesState(t *testing.T) {
 	dir := filepath.FromSlash("/repo/.git/polix")
 	for command, want := range map[string]bool{
-		"rm -rf .git/polix":                     true,
-		"cat .git/worktrees/w1/polix/log.jsonl": true,
-		"rm " + dir + "/log.jsonl":              true,
-		"go install ./cmd/polix":                false,
-		"cp build/polix ~/bin/":                 false,
+		"rm -rf .git/polix":                                       true,
+		"cat .git/worktrees/w1/polix/log.jsonl":                   true,
+		"rm " + dir + "/log.jsonl":                                true,
+		"rm .git/polix/sessions/s1.jsonl":                         true,
+		"echo x >> " + filepath.Join(dir, "sessions", "s1.jsonl"): true,
+		"go install ./cmd/polix":                                  false,
+		"cp build/polix ~/bin/":                                   false,
 	} {
 		if got := namesState(command, dir, dir, false); got != want {
 			t.Errorf("namesState(%q) = %v", command, got)
@@ -86,7 +88,8 @@ func TestMayWrite(t *testing.T) {
 func TestWithin(t *testing.T) {
 	dir := filepath.FromSlash("/repo/.git/polix")
 	for p, want := range map[string]bool{dir: true, filepath.Join(dir, "log.jsonl"): true,
-		filepath.FromSlash("/repo/.git"): false, filepath.FromSlash("/repo/.git/polixx"): false} {
+		filepath.Join(dir, "sessions", "s1.jsonl"): true,
+		filepath.FromSlash("/repo/.git"):           false, filepath.FromSlash("/repo/.git/polixx"): false} {
 		if got := within(dir, p, false); got != want {
 			t.Errorf("within(%q) = %v", p, got)
 		}

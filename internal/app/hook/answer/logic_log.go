@@ -41,8 +41,9 @@ func (r *pass) writeBlocked(line int, key, hash, before string) error {
 // valid to append; the branch it carries may be a step the pass waits for. The content hash costs a git call over
 // the whole tree, so a decision only carries the one this call already computed; an observed entry carries the hash
 // it is given, none for those that are not about a content (injected, started, notified, watched and a finished that
-// only makes injects due again). The observed entries about a content that are read by branch (finished with a
-// hash, passed and blocked) also carry the HEAD commit, so another branch on the same commit reads them too, and so
+// only makes injects due again). The observed entries about a content that are read by branch within the session
+// (finished with a hash, passed and blocked) also carry the HEAD commit, so another branch on the same commit reads
+// them too in the session, and so
 // does a snapshot, so its post_command sees HEAD moved; every other entry goes without it. Only a snapshot carries
 // refs, what git moves without moving HEAD, so its post_command sees a git stash or a merge stopped on its conflicts.
 // Every entry carries the id of the subagent of the event, when the agent gives one.
@@ -80,7 +81,7 @@ func (r *pass) appendEntry(e state.Entry, valid error) error {
 }
 
 // readByHead reports whether an entry of kind and outcome with hash is an observed line about a content that is read
-// by branch or by HEAD commit (finished with a hash, passed and blocked), or a snapshot, whose post_command compares
+// by branch or by HEAD commit within its session (finished with a hash, passed and blocked), or a snapshot, whose post_command compares
 // HEAD (see watch), so it carries the HEAD commit.
 func readByHead(kind, outcome, hash string) bool {
 	if kind != state.KindObserved || hash == "" {

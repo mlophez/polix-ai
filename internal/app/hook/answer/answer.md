@@ -196,12 +196,17 @@ The rules it follows, as before this use case:
    never to the AI, logged as a `notify` decision with the text, and a message that expands to nothing shows
    nothing. On an edit a command made (rule 16), which already happened, a `block` and a failing `run` reach the AI
    as context, logged as `inform`, and the evaluation goes on.
-6. Repeat rules, on the observed lines of the log (`state.KindObserved`, read with `state.Query`). A verb that does
-   not act because of them is logged as a `skip` decision of its entry and never blocks. The three readers of the
-   lines by branch, the reminder of a `block` with `once`, the repeat of a `run` and `finished` (rule 8), select
-   the lines of the current branch or of the same HEAD commit (`state.Query.ByBranch` with `state.Query.Head`): a
-   branch made from the commit the line was written on, as `git checkout -b` gives, reads it too, and on the same
-   branch a line keeps counting after a commit moves HEAD. A line without HEAD commit (written by an older polix)
+6. Repeat rules, on the observed lines of the log of the session of the event (`state.KindObserved`, read with
+   `state.Query`): the state the hook reads is the file of that session alone, its subagents included, so a line
+   another session wrote never counts for any verb nor condition, and a new session starts from an empty state
+   (`claude --resume` keeps the session, and its state). An event without a session reads no state, as a log that
+   cannot be read (see below), writes no line and warns as that log does, whether it reads the state or not
+   (`Decide`, with the error of `state.Session.File`). A verb that does not act because of them is logged as a `skip`
+   decision of its entry and never blocks. The three readers of the lines by branch, the reminder of a `block` with
+   `once`, the repeat of a `run` and `finished` (rule 8), select, within the session, the lines of the current branch
+   or of the same HEAD commit (`state.Query.ByBranch` with `state.Query.Head`): a branch made from the commit the
+   line was written on, as `git checkout -b` gives, reads it too, and on the same branch a line keeps counting after
+   a commit moves HEAD. A line without HEAD commit (written by an older polix)
    or an unknown current one (a repository without commits, git failing) matches only by branch; on a detached
    HEAD, whose branch is empty, the lines written on a detached HEAD count, whatever their commit, and so do the
    lines of a branch on the same commit. The lines about a content they read,
@@ -214,9 +219,9 @@ The rules it follows, as before this use case:
      files in the scope of the entry did not change (see rule 8), and it writes `blocked`, with the hash, when it
      blocks. So the first attempt of an actor in a session on a content is blocked and the next one goes through;
      another actor, a new session and an edit inside the scope are reminded again, an edit outside it is not.
-   - `run` acts once by default: it is skipped when its key passed on the current branch or the same HEAD commit,
-     and on the content hash, whoever's entry ran it. The key is what it runs: the expanded arguments joined by
-     single spaces, or `rules` and the expanded target, so a `{path}` repeats it per path. Any run of polix that passes, with or without `always`,
+   - `run` acts once by default: it is skipped when its key passed in the session, on the current branch or the same
+     HEAD commit, and on the content hash, whoever's entry ran it. The key is what it runs: the expanded arguments
+     joined by single spaces, or `rules` and the expanded target, so a `{path}` repeats it per path. Any run of polix that passes, with or without `always`,
      writes `passed` with its key when the hash before and after it is the same; a run during which the content
      changed, or with an unknown hash, writes none, and the hash after it is computed only when the one before it is
      known. With `always: true` it runs on every event.
@@ -261,9 +266,9 @@ The rules it follows, as before this use case:
    at a time, in the order of the file, and the next one reruns only the runs that did not pass; the contexts of the
    entries before it reach the agent with the block. A block let through by the loop guard, an `inject`, a `notify`,
    a skipped verb, a passing `run` and a failing `run` on the events where it only informs never end it.
-8. `finished: <subagent>` (or a list, all of them) holds when the latest observed `finished` line of that type on
-   the current branch or the same HEAD commit (rule 6), with a hash, has a tree whose paths that differ from the
-   current content (`hook.Step.Compare`, answered by `TreeDiff`) are all outside the scope of the entry: the globs
+8. `finished: <subagent>` (or a list, all of them) holds when the latest observed `finished` line of that type in
+   the session, on the current branch or the same HEAD commit (rule 6), with a hash, has a tree whose paths that
+   differ from the current content (`hook.Step.Compare`, answered by `TreeDiff`) are all outside the scope of the entry: the globs
    of the nearest `changed`, else of the `changed` of its `when`, else the whole tree, where any differing path counts. Equal trees
    need no comparison. The log is read first: without such a line the content hash is not computed. A log that
    cannot be read (with the warning of rule 6) and an unknown hash never hold; a tree git no longer has or a
@@ -441,10 +446,14 @@ needs one method per fact.
   `retired.yaml` left out, ordered by id, invalid ones included, or the error of a file that cannot be read or is
   not yaml (`rule.Loaded.Err`), through the field `Rules` of the adapter, the loader of `LoadRule`
   (`internal/app/rule/load`) that `cmd/polix` builds once and passes to `Command`.
-- `LoadState`: the log through the field `State` of the adapter, the loader of `LoadState`
+- `LoadState`: the log of the session it is given, the session of the event, which the shell passes: the file
+  `<git-dir>/polix/sessions/<name>.jsonl` (`state.DirName`, `state.SessionsDir` and `state.Session.File`: the id as
+  it is when made only of `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`, at most 128 characters and not only dots, else its
+  lowercase hex sha256), read through the field `State` of the adapter, the loader of `LoadState`
   (`internal/app/state/load`) that `cmd/polix` builds once and passes to `Command`, which `polix log` shares: read
   through `internal/platform/jsonl`, the lines over `state.MaxLine` skipped and counted, every line that decodes
-  kept; a log that cannot be read is its error.
+  kept; a missing file is an empty log, a file that cannot be read is its error, and so is a session without an id,
+  which names no file. The old `<git-dir>/polix/log.jsonl` is never read.
 - `Real`: the real path of each path.
 - `Foreign`: whether a folder is inside an existing git repository other than this one (`git.Repo.Foreign`: its git
   common directory, objects and refs are each another file than ours by `os.SameFile`, so a linked worktree of this
@@ -467,9 +476,13 @@ needs one method per fact.
   (`git.Repo.Restore`, through a scratch index in the folder of the state, as `Hash`, so the real index of the person
   is never touched); it removes the paths the tree does not hold before writing the others, and its error names
   the first path that failed; a tree git no longer has is an error.
-- `Append`: appends an entry to the log, stamped with the time (RFC 3339), encoded as one line by the unexported
+- `Append`: appends an entry to the file of its session (`state.Entry.Session`, named as `LoadState` names it),
+  creating it and its folder when missing, stamped with the time (RFC 3339), encoded as one line by the unexported
   method `encodeLine` with the encoding type `logLine` of `out_log.go`, its reason cut to `state.MaxReason`: the
-  shape `LoadState` decodes, the id of a subagent as `agent_id`, left out when empty.
+  shape `LoadState` decodes, the id of a subagent as `agent_id`, left out when empty. Each line is one append call,
+  without a lock, so the main session and its subagents append to the same file. An entry that is not valid, one
+  without a session among them (`state.Entry.Valid`), is not written and is its error. Nothing is written to the old
+  `<git-dir>/polix/log.jsonl`, which is left on disk.
 
 ## Errors
 
