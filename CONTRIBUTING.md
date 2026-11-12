@@ -31,6 +31,9 @@ Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 Keep each pull request to one change. CI must pass on Linux, macOS and Windows before it is merged.
 
+Pull requests written with AI are welcome, as long as a person has reviewed them and answers the review. A pull
+request that gets no answer to a review within a week is closed.
+
 Commit messages are one imperative sentence that says what changes and why, without a prefix: for example,
 `Run install --user from polix update and the installers, so the plugin is installed for the user`.
 
