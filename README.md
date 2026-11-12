@@ -182,7 +182,7 @@ on:
     - when: { changed: ["*.go", go.mod], changed_lines: 50 }
       unless: { finished: polix:reviewer }
       action:
-        block: "Review the diff with /polix:review, then commit again."
+        block: "Review the diff with the polix:reviewer subagent, then commit again."
 
 githooks:
   commit_msg:
@@ -216,14 +216,14 @@ none: use it with your own skills, agents and conventions.
 **The harness** is optional: the `polix` plugin ships a ready-to-use development flow, with `/polix:plan`,
 `/polix:build` (run by `polix:builder`, reviewed by `polix:reviewer`), `/polix:review` and `/polix:audit`, plus the
 skills that set Polix up (`/polix:init`, `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:risk`). A
-skill runs only when you or your `polix.yaml` ask for it, and Polix enforces a phase only when your workflow says so:
+skill of the flow runs only when you type it, and Polix enforces a phase only when your workflow says so:
 
 ```yaml
 on:
   pre_commit:
     - unless: { finished: "polix:reviewer" }
       action:
-        block: "Review the diff with /polix:review before committing"
+        block: "Review the diff with the polix:reviewer subagent before committing"
 ```
 
 ## Learn more

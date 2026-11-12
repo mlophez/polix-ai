@@ -676,7 +676,7 @@ on:
     - when: { not: { path: "ai/plans/{key}-*.md" } }
       unless: { file: "ai/plans/{key}-*.md" }
       action:
-        block: "There is no plan for {key}: write it with /polix:plan"
+        block: "There is no plan for {key}: ask the user to write it with /polix:plan"
 ```
 
 Globs are relative to the root and use `/`: `*` stays inside a segment, `**` crosses segments, a pattern
@@ -1254,11 +1254,11 @@ also prints that Codex support is not implemented in this release and the setup 
     implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
     or the workflow of polix asks for it, as its description says, and the frontmatter enforces it.
-    `init`, `doctor` and `risk` carry `disable-model-invocation: true`: only the user runs them, typing the
-    command; when a message of polix asks for one, as the session start does for `/polix:doctor`, the model tells
-    the user to run it. `plan`, `build`, `review` and `audit` stay open to the model, so a message of polix can ask it to run one,
-    but their description holds only the fixed sentence and asks the model never to suggest nor mention them on its
-    own, and what each one does is a comment of the frontmatter, which the model never sees. `workflow` and `add-rule`
+    `init`, `doctor`, `risk`, `plan`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
+    user runs them, typing the command; when a message of polix asks for one, as the session start does for
+    `/polix:doctor` or a gate without a plan for `/polix:plan`, the model tells the user to run it. So the flow of
+    the harness always starts by hand, and a gate the model must satisfy alone asks for an agent, as
+    `polix:reviewer`, not for a skill. `workflow` and `add-rule`
     stay open to the model but carry `paths` (`polix.yaml`, `ai/rules/**`): the model sees them only while it works
     on those files. A `rules.path` other than `ai/rules/` leaves `add-rule` to the user's command. The agents stay
     open to the model, so a rule that asks for `polix:reviewer` still works.

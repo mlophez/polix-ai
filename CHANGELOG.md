@@ -9,6 +9,10 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- The skills `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit` carry `disable-model-invocation:
+  true`: only the user runs them, typing the command, and the model no longer launches them on its own nor at a
+  message of polix, which now makes it ask the user to run them. A gate the model must satisfy alone asks for the
+  agent `polix:reviewer` instead. Their description says what each one does, as the menu of commands shows it.
 - `polix config fmt` and `polix rules fmt` format files with YAML anchors and aliases on values, instead of refusing
   them, and keep each `&name` and `*name` where it is written: an anchored block collection has its anchor alone at
   the end of the line of its key or of its dash (`run: &test`, `- &fmt`), with its content below. They still refuse,

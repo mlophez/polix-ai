@@ -387,10 +387,10 @@ How it works:
   `pre_commit` has no `changed`, so any edit asks for a new review there.
 - The reviewer reports and never fixes, so its run does not change the content it just approved.
 - Both are plain blocks, gates that hold on every attempt until the review ran.
-- The block asks for the subagent: the agent satisfies the gate by launching `polix:reviewer` itself. Ask for
-  `/polix:review` instead, in the block or by running it yourself, when you want its report saved in the folder of
-  reports (`ai/reports/` by default), as evidence next to the plan; it launches the same reviewer, so it satisfies
-  the gate as well.
+- The block asks for the subagent: the agent satisfies the gate by launching `polix:reviewer` itself. Run
+  `/polix:review` yourself instead when you want its report saved in the folder of reports (`ai/reports/` by
+  default), as evidence next to the plan; it launches the same reviewer, so it satisfies the gate as well. Only the
+  user runs the skill: a block that names it makes the agent ask you to run it.
 
 When the reviewer runs in the background, the stop above blocks again on every turn until it ends. To ask once
 per content instead, make the block of the stop a reminder with `once: true`:
@@ -524,7 +524,7 @@ on:
     - when: { not: { path: "ai/plans/{key}-*.md" } }
       unless: { file: "ai/plans/{key}-*.md" }
       action:
-        block: "There is no plan for {key}: write it with /polix:plan"
+        block: "There is no plan for {key}: ask the user to write it with /polix:plan"
     - when: { not: { path: "ai/plans/{key}-*.md" } }
       unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
       action:

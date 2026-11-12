@@ -1,14 +1,14 @@
 ---
 name: plan
-# Writes a self-contained implementation plan in the folder of plans (ai/plans/ by default) for a feature, refactor
-# or bugfix, before any code, interviewing the user on what the request leaves open; it replaces plan mode.
-# One executor runs the plan alone, task by task in order. It never writes code, branches or commits.
 description: >
-  It runs only when the user or the workflow of polix asks for it. Never suggest it nor mention it on your own.
+  Writes a self-contained implementation plan in the folder of plans (ai/plans/ by default) for a feature, refactor
+  or bugfix, before any code, interviewing the user on what the request leaves open; it replaces plan mode.
+  One executor runs the plan alone, task by task in order. It never writes code, branches or commits.
+  It runs only when the user or the workflow of polix asks for it.
 effort: high
 model: inherit
 user-invocable: true
-disable-model-invocation: false
+disable-model-invocation: true
 argument-hint: "[what to plan, e.g. add retries to the webhook sender; empty to take it from the conversation]"
 ---
 

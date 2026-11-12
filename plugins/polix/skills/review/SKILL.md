@@ -1,14 +1,14 @@
 ---
 name: review
-# Reviews a change without a plan (files, a range or the current change) with the subagent polix:reviewer in change
-# mode: its intent, bugs, rules, tests and docs; relays the verdict and saves the report in the folder of reports.
-# It never fixes what it finds.
 description: >
-  It runs only when the user or the workflow of polix asks for it. Never suggest it nor mention it on your own.
+  Reviews a change without a plan (files, a range or the current change) with the subagent polix:reviewer in change
+  mode: its intent, bugs, rules, tests and docs; relays the verdict and saves the report in the folder of reports.
+  It never fixes what it finds.
+  It runs only when the user or the workflow of polix asks for it.
 effort: low
 model: sonnet
 user-invocable: true
-disable-model-invocation: false
+disable-model-invocation: true
 argument-hint: "[range or files, e.g. HEAD~3..HEAD or internal/app/setup; empty for the current change]"
 ---
 

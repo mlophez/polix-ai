@@ -1,15 +1,15 @@
 ---
 name: build
-# Implements a plan of the folder of plans (ai/plans/ by default) with one polix:builder subagent that runs every task
-# in order, updates the Markdown docs of the project, reviews the change against the plan with polix:reviewer, has
-# the builder fix the blocking and major findings up to twice, reviewing again after each fix, checks the acceptance
-# criteria and merges the reports of the run into the plan. It never edits the code itself and never commits.
 description: >
-  It runs only when the user or the workflow of polix asks for it. Never suggest it nor mention it on your own.
+  Implements a plan of the folder of plans (ai/plans/ by default) with one polix:builder subagent that runs every task
+  in order, updates the Markdown docs of the project, reviews the change against the plan with polix:reviewer, has
+  the builder fix the blocking and major findings up to twice, reviewing again after each fix, checks the acceptance
+  criteria and merges the reports of the run into the plan. It never edits the code itself and never commits.
+  It runs only when the user or the workflow of polix asks for it.
 effort: low
 model: sonnet
 user-invocable: true
-disable-model-invocation: false
+disable-model-invocation: true
 argument-hint: "[plan and optional first task, e.g. ai/plans/add-retries.md 3; empty to take it from the conversation]"
 ---
 
