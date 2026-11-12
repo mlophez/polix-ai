@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
 // fakePort answers the port of GraphWorkflow from memory.
@@ -15,6 +17,13 @@ type fakePort struct {
 	found   bool
 	err     error
 	running string // the version LoadWorkflow was asked for
+}
+
+// TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
+// of polix.yaml run go test, and these tests run git in repositories of their own.
+func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
+	os.Exit(m.Run())
 }
 
 func (f *fakePort) LoadWorkflow(_ context.Context, running string) (workflow.Workflow, bool, error) {

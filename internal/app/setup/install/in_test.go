@@ -30,6 +30,13 @@ type fakePort struct {
 	methods []string
 }
 
+// TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
+// of polix.yaml run go test, and these tests run git in repositories of their own.
+func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
+	os.Exit(m.Run())
+}
+
 func (f *fakePort) RegisterGitHook(_ context.Context, root string, h setup.GitHook) ([]setup.Change, error) {
 	f.methods = append(f.methods, "RegisterGitHook")
 	f.gitHooks = append(f.gitHooks, "RegisterGitHook "+root+" "+string(h))

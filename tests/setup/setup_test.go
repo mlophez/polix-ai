@@ -24,6 +24,13 @@ import (
 	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
+// TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
+// of polix.yaml run go test, and these tests run git in repositories of their own.
+func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
+	os.Exit(m.Run())
+}
+
 // runSetup runs the commands of setup as cmd/polix composes them, with their exit codes, and the loaders built
 // once for the run as cmd/polix builds them.
 func runSetup(args ...string) (int, string, string) {

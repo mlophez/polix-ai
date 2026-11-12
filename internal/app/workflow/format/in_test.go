@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
 // fakePort answers the port of FormatWorkflow from memory and records what was written.
@@ -15,6 +18,13 @@ type fakePort struct {
 	readErr  error
 	writeErr error
 	written  []byte
+}
+
+// TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
+// of polix.yaml run go test, and these tests run git in repositories of their own.
+func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
+	os.Exit(m.Run())
 }
 
 func (f *fakePort) ReadWorkflow(_ context.Context) ([]byte, bool, error) {

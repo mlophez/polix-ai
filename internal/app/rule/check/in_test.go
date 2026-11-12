@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"runtime"
 	"slices"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
+	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
 // The shell is tested with a fake of the port: no disk, git nor processes.
@@ -30,6 +32,13 @@ type fakePort struct {
 	calls      []string         // the methods called, in order
 	candidates []string         // the bases Changed was asked for
 	argv       map[string][]string
+}
+
+// TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
+// of polix.yaml run go test, and these tests run git in repositories of their own.
+func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
+	os.Exit(m.Run())
 }
 
 func (f *fakePort) LoadRules(_ context.Context, dir string) ([]rule.Rule, error) {

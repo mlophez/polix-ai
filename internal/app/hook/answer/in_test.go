@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
 // fakePort is a fake of Port: a repository at /repo with the workflow of its yaml, the errors
@@ -43,6 +45,13 @@ type fakePort struct {
 }
 
 var _ Port = (*fakePort)(nil)
+
+// TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
+// of polix.yaml run go test, and these tests run git in repositories of their own.
+func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
+	os.Exit(m.Run())
+}
 
 func (p *fakePort) Open(_ context.Context, dir string) (string, string, error) {
 	p.calls = append(p.calls, "Open "+dir)

@@ -3,6 +3,7 @@ package diagnose
 import (
 	"context"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/setup"
 	"github.com/mlophez/polix-ai/internal/app/version"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
 // fakePort answers the port of DiagnoseSetup from memory and records the calls.
@@ -24,6 +26,13 @@ type fakePort struct {
 	looked  []string          // the programs LookPath was asked for
 	// gitHooks are the roots GitHooks was asked for, apart from calls; GitHooks lists every hook of polix.
 	gitHooks []string
+}
+
+// TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
+// of polix.yaml run go test, and these tests run git in repositories of their own.
+func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
+	os.Exit(m.Run())
 }
 
 func (f *fakePort) note(c string) { f.calls = append(f.calls, c) }

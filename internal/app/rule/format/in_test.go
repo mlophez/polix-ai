@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -26,6 +27,13 @@ type fakePort struct {
 	written  []string
 	data     map[string]string
 	repeated []string
+}
+
+// TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
+// of polix.yaml run go test, and these tests run git in repositories of their own.
+func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
+	os.Exit(m.Run())
 }
 
 func (f *fakePort) RepeatedIDs(_ context.Context, _ string) []string {

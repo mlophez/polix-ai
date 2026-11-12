@@ -9,6 +9,34 @@ import (
 	"testing"
 )
 
+// TestMain runs the tests of testenv without the variables git exports to its hooks, as every package that runs git.
+func TestMain(m *testing.M) {
+	ClearGitHookEnv()
+	os.Exit(m.Run())
+}
+
+// ClearGitHookEnv unsets every variable git exports to a hook about the repository being committed, and nothing else.
+func TestClearGitHookEnv(t *testing.T) {
+	for _, v := range GitHookVars {
+		t.Setenv(v, "/elsewhere")
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	ClearGitHookEnv()
+	for _, v := range GitHookVars {
+		if got, ok := os.LookupEnv(v); ok {
+			t.Errorf("%s = %q after ClearGitHookEnv", v, got)
+		}
+	}
+	if os.Getenv("GIT_CONFIG_GLOBAL") != "/dev/null" {
+		t.Error("ClearGitHookEnv unset a variable that is not about the repository")
+	}
+	for _, v := range []string{"GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"} {
+		if !slices.Contains(GitHookVars, v) {
+			t.Errorf("GitHookVars misses %s", v)
+		}
+	}
+}
+
 func TestGitRepo(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not on the PATH")
