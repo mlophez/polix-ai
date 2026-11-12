@@ -7,6 +7,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-12
+
 ### Fixed
 
 - A command pattern, of `forbidden_commands` and of the condition `command`, now reaches every line of a command:
@@ -401,7 +403,8 @@ Claude Code is the supported agent; Codex support is not implemented.
 - The condition `pr`, on the state of the pull request, is not implemented.
 - The rest of the known limits are in [docs/polix.md](docs/polix.md#known-limits).
 
-[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/mlophez/polix-ai/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/mlophez/polix-ai/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/mlophez/polix-ai/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/mlophez/polix-ai/compare/v0.6.0...v0.6.1
