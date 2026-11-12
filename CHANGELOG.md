@@ -7,6 +7,14 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Fixed
+
+- `/polix:build` no longer goes on to the docs and the review with tasks the builder never started: when the agent
+  `polix:builder` returns with lines `[ ]` in `Progress`, the build launches it again from the first one, up to three
+  times while each run marks a task, and a run resumed after an interruption does the same. The builder ends its turn
+  only once every task is `[x]` or `[-]`, rereading `Progress` before the verification of the plan. A plan left
+  `partial` builds again without adjusting it with `/polix:plan`.
+
 ## [0.8.0] - 2026-11-12
 
 ### Changed

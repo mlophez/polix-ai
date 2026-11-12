@@ -1276,7 +1276,8 @@ also prints that Codex support is not implemented in this release and the setup 
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
   the folder of rules, `risk` calibrates `risk.weights` and the thresholds of the measures on the history of commits,
   `doctor` fixes the setup, `plan` writes a plan in the folder of plans, `build` implements a
-  plan with one `builder` agent that runs every task in order, updates the Markdown docs of the project, has the
+  plan with one `builder` agent that runs every task in order, launched again from the first task it left undone
+  when it stops early, updates the Markdown docs of the project, has the
   agent `reviewer` review the change against the plan and the builder fix the blocking and major findings up to
   twice, reviewing after each fix, checks the acceptance criteria and merges the reports of the run into the
   `Iterations` of the plan, `review` reviews a change without a plan with the agent `reviewer` and saves the report

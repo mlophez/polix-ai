@@ -42,6 +42,7 @@ The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it.
   When the plan is back to `planned` and has run files, it was adjusted since: close that run (see `Iterations`)
   with `Status: interrupted`, then start a new iteration.
   Otherwise, when every line of `Progress` is `[x]`, tell the user the `Status` of the plan and stop.
+  A plan `partial` needs no adjustment to build again: a new iteration starts at the first task not `[x]`.
 
 ## Rules
 
@@ -50,6 +51,7 @@ The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it.
   files.
 - Never commit, stage, stash, reset, checkout nor create branches.
 - Launch one builder for all the tasks and one for each fix, in the foreground, and wait for each: never one per task.
+  Launch another only to continue the tasks a builder left `[ ]` (see `Continuation`).
 - Never run a command that installs, generates or formats, even when the plan or `AGENTS.md` lists it.
 - Relay what the builder and the reviewer report as it is: add no findings of your own and drop none.
 - Talk to the user in the language of the session.
@@ -69,7 +71,8 @@ Each run of the plan is an iteration, and it keeps its reports next to the plan,
   that did not end.
 - A review is the last `revNN` named in the `Iterations` of the plan or found on disk, plus one.
 
-Start the `.iterNN.md` file with `# Iteration NN of <plan>`, then each builder report under `## Build` or `## Fix N`.
+Start the `.iterNN.md` file with `# Iteration NN of <plan>`, then each builder report under `## Build`,
+`## Continue N` or `## Fix N`.
 Write each `.revNN.md` file as the reviewer returns its report, under a first line `# Review NN of <plan>`.
 
 ### Resume
@@ -77,6 +80,7 @@ Write each `.revNN.md` file as the reviewer returns its report, under a first li
 Resume a run that did not end in the same iteration, at the first step it has not done:
 
 1. The builder, when the `.iterNN.md` is missing or has no `## Build`, from the first task not `[x]`.
+   Also when a line of `Progress` is still `[ ]`, from that task (see `Continuation`).
 2. Else the docs, when the iteration has no `.revNN.md` yet.
 3. Else the review rounds, counting the reviews of the iteration on disk and the fixes in its `.iterNN.md`.
 4. Else the acceptance criteria.
@@ -96,6 +100,17 @@ Iteration: <path of the .iterNN.md file, or "none" while it does not exist>
 
 To fix a review, the same block with `From: none` and
 `Findings: <path of the .revNN.md file>, <the blocking and major findings to fix>`.
+
+### Continuation
+
+A builder that returns with a line `[ ]` in `Progress` from `From` on stopped before the end of the plan:
+
+1. Launch the builder again (see `Builder prompt`) with `From:` the first task `[ ]`, and wait.
+2. Add its report to the `.iterNN.md` file under `## Continue N`.
+3. Repeat while a line is `[ ]` and the last builder marked at least one task, up to three continuations.
+4. A task still `[ ]` goes to `Pending` and leaves the plan `partial`.
+
+A task `[-]` is never continued: it waits for the next run (see `Resume`).
 
 ### Reviewer prompt
 
@@ -186,11 +201,12 @@ Build progress:
 - [ ] Step 3: Show the user the tasks to build, in order.
 - [ ] Step 4: Set the plan `building` (see `Status`), launch the builder (see `Builder prompt`) and wait for it.
 - [ ] Step 5: Write its report to the `.iterNN.md` file (see `Run files`).
-- [ ] Step 6: Update the docs of the project (see `Docs`).
-- [ ] Step 7: Review the change against the plan and have the builder fix it (see `Review rounds`).
-- [ ] Step 8: Verify the acceptance criteria of the plan (see `Acceptance criteria`).
-- [ ] Step 9: Set the plan `built` or `partial` (see `Status`) and merge the run files (see `Iterations`).
-- [ ] Step 10: Report (see `Output format`), stop and return control to the user.
+- [ ] Step 6: Continue the tasks it left `[ ]`, if any (see `Continuation`).
+- [ ] Step 7: Update the docs of the project (see `Docs`).
+- [ ] Step 8: Review the change against the plan and have the builder fix it (see `Review rounds`).
+- [ ] Step 9: Verify the acceptance criteria of the plan (see `Acceptance criteria`).
+- [ ] Step 10: Set the plan `built` or `partial` (see `Status`) and merge the run files (see `Iterations`).
+- [ ] Step 11: Report (see `Output format`), stop and return control to the user.
 ```
 
 ### Step 2: Check the working tree

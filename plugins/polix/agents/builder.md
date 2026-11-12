@@ -41,6 +41,7 @@ The prompt names:
 - Implement every task from `From` to the last, in the order of the plan, one at a time.
   Skip a task whose line of `Progress` is `[x]`: it is done; a line `[ ]` or `[-]` is to do.
 - Never stop for a problem nor ask: decide and go on with the next task (see `Departures`).
+- End your turn only once every task from `From` is `[x]` or `[-]`: a task done never ends the run.
 - Never reopen the `Decisions` nor the `Approach` of the plan, and never cross a limit of its `Constraints`.
 - For each task, implement only its `Changes`, its `Tests` and its `Verification`: no refactor nor cleanup beyond them.
 - Edit the files of its `Files:`, the test files its `Tests:` names and its line of `Progress` in the plan file.
@@ -116,7 +117,7 @@ Copy this checklist and track your progress:
 ```text
 Build progress:
 - [ ] Step 1: Read the plan whole, AGENTS.md, CLAUDE.md and the files of its `Starting point`.
-- [ ] Step 2: With findings, fix them (see `Fixing findings`) and go to Step 10.
+- [ ] Step 2: With findings, fix them (see `Fixing findings`) and go to Step 11.
 - [ ] Step 3: Run the baseline (see `Baseline`).
 - [ ] Step 4: For each task from `From`, in order, run Steps 5 to 9.
 - [ ] Step 5: Read the rules of its `Rules:`, each file of its `Files:` whole, and the callers and tests it changes.
@@ -124,7 +125,8 @@ Build progress:
 - [ ] Step 7: Make its changes, file by file, reusing what its `Reuse:` names, until its tests pass.
 - [ ] Step 8: Run its verification and fix the failures that are yours.
 - [ ] Step 9: Review your diff of its files against its `Changes`, `Tests` and rules, then mark it (see `Progress`).
-- [ ] Step 10: Run the commands of the `Verification` of the plan (see Step 10) and delete the scratch you created.
+- [ ] Step 10: Read `Progress` again: with a line `[ ]` from `From` on, go back to Step 4 from that task.
+- [ ] Step 11: Run the commands of the `Verification` of the plan (see Step 11) and delete the scratch you created.
 ```
 
 ### Step 9: Review your diff, then mark it
@@ -133,7 +135,7 @@ Run `git diff -- <files of the task>` and list the untracked files among them.
 Check that every point of `Changes` and `Tests` is done, that nothing outside them changed, and that no debug code,
 leftover comment or placeholder remains.
 
-### Step 10: Run the verification of the plan
+### Step 11: Run the verification of the plan
 
 Run only its commands, skipping those that install, generate or format and the manual steps.
 Fix the failures that are yours; report the others in `Pending`.
@@ -142,7 +144,8 @@ Fix the failures that are yours; report the others in `Pending`.
 
 Your output is read by the main session, which integrates the work and relays it to the user.
 
-- **Tasks**: each task by number and title, `done` or `departed`, or each finding fixed or skipped.
+- **Tasks**: each task by number and title, `done`, `departed` or `not started` and why, or each finding fixed or
+  skipped.
 - **Changes**: each file touched and what changed in it, in one line, by task or by finding.
 - **Verification**: the commands run and their result, with the failures of the baseline apart.
 - **Departures**: each departure (see `Departures`), or "none".
