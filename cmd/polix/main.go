@@ -32,7 +32,7 @@ import (
 
 func main() {
 	root := cli.Root("polix",
-		"A deterministic harness for Claude Code: one polix.yaml decides what the agent may not touch, what must "+
+		"A deterministic harness for AI agents: one polix.yaml decides what the agent may not touch, what must "+
 			"pass and what runs at every step.",
 		"polix applies the workflow (polix.yaml) and the rules (ai/rules/, or rules.path) of a repository to Claude Code "+
 			"through its hooks: it runs, injects and blocks what the workflow says. Claude Code is the supported agent; "+

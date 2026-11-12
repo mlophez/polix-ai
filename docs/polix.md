@@ -1,6 +1,6 @@
 # polix
 
-A deterministic harness for Claude Code: one `polix.yaml` decides what the agent may not touch, what must pass and
+A deterministic harness for AI agents: one `polix.yaml` decides what the agent may not touch, what must pass and
 what runs at every step.
 
 `polix` is the engine that connects Claude Code to the workflow and the rules of a repository through its hooks.
