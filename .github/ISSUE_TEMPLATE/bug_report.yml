@@ -1,0 +1,45 @@
+name: Bug report
+description: Polix did something it should not, or did not do what polix.yaml says.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what Polix did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: polix.yaml
+      description: The smallest polix.yaml that reproduces it.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: polix log
+      description: The lines of `polix log` around the decision, if any.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `polix --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options: [macOS, Linux, Windows]
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: polix doctor
+      description: The output of `polix doctor`.
+      render: text

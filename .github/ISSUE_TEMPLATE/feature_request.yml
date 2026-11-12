@@ -1,0 +1,21 @@
+name: Feature request
+description: Propose a new key, condition, command or recipe.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you want an agent to do or not do, and why the current polix.yaml cannot express it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How you would write it in polix.yaml, or what the command would do.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you tried, such as a hand-written hook or another entry.

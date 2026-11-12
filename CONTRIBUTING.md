@@ -18,8 +18,8 @@ Code, comments, docs and commit messages are written in English.
   needed.
 - **Test Codex.** Codex support exists but has never run against a real Codex; reports from Codex users help a lot.
 
-Security issues are not reported in public issues: report them privately through
-[GitHub security advisories](https://github.com/mlophez/polix-ai/security/advisories/new) instead.
+Security issues are not reported in public issues: see [SECURITY.md](SECURITY.md).
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Sending a pull request
 
