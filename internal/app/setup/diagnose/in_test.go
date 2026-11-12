@@ -94,7 +94,7 @@ func TestShellGitHooks(t *testing.T) {
 	res, err := run(context.Background(), port, Request{Version: "0.2.0", Offline: true})
 	if err != nil || strings.Join(port.gitHooks, " ") != "/r" ||
 		!slices.Contains(res.Findings, setup.Finding{Level: setup.LevelOK, Area: "githooks",
-			Message: "git runs polix githook on pre-commit, commit-msg"}) {
+			Message: "git runs polix githook on pre-commit, commit-msg (githooks need git 2.54 or later)"}) {
 		t.Fatalf("%+v %v %q", res, err, port.gitHooks)
 	}
 	port = &fakePort{repoErr: errors.New("not inside")}

@@ -27,7 +27,8 @@ func TestDecideGitHooks(t *testing.T) {
 	i.ListsHooks = true
 	i.GitHooks = map[string][]string{"pre-commit": {"lint", "polix-pre-commit"}, "commit-msg": {"polix-commit-msg"}}
 	out := Decide(i, false)
-	if got := githookLines(out); got != "ok git runs polix githook on pre-commit, commit-msg\n" || out.Failed {
+	if got := githookLines(out); got != "ok git runs polix githook on pre-commit, commit-msg (githooks need git 2.54 or "+
+		"later)\n" || out.Failed {
 		t.Fatalf("both listed:\n%s", text(out))
 	}
 	if got := text(out); !strings.Contains(got, "ok hooks registered in "+filepath.FromSlash("/r/.claude/settings.json")+"\nok githooks ") {

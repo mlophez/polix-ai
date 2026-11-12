@@ -35,7 +35,7 @@ the session start update, with `setup.HookHandler.Polix`, `Update` and `Legacy`;
 fails, but `PostToolUseFailure` and `SubagentStart`, which settings written by an older polix lack, only warn and
 ask to run `polix install`, since only the feedback of failed commands or the context at the start of subagents is
 lost), the hooks of git (`logic_githooks.go`, area `githooks`: one `ok` line, `git runs polix githook on
-pre-commit, commit-msg`, when `GitHooks` of the inspection names `polix-<event>` for each event of
+pre-commit, commit-msg (githooks need git 2.54 or later)`, when `GitHooks` of the inspection names `polix-<event>` for each event of
 `setup.GitHooks`; a `warn` per event without it, `git does not run polix githook on <event>: run polix install`, or,
 when `DisabledGitHooks` names it (git lists it as disabled, `hook.<name>.enabled=false`), `git does not run polix
 githook on <event>: hook.polix-<event> is disabled in the git configuration (hook.polix-<event>.enabled false)`,

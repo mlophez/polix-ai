@@ -8,7 +8,7 @@ import (
 )
 
 // githooks checks that git runs polix githook on each event polix registers (setup.GitHooks), as `git hook list`
-// names them: one ok line when it runs both; else a warning per event without its hook, saying that the hook is
+// names them: one ok line when it runs both, naming the git version githooks need; else a warning per event without its hook, saying that the hook is
 // disabled in the git configuration when git lists it as disabled (setup.Inspection.DisabledGitHooks), which polix
 // install does not change, and asking to run polix install otherwise; or one warning when git does not list the
 // hooks of its configuration, older than 2.54, which ignores them. It never fails, and says nothing when git was not
@@ -38,5 +38,6 @@ func githooks(i setup.Inspection) []setup.Finding {
 	if len(f) > 0 {
 		return f
 	}
-	return found(setup.LevelOK, "githooks", "git runs polix githook on %s", strings.Join(events, ", "))
+	return found(setup.LevelOK, "githooks", "git runs polix githook on %s (githooks need git 2.54 or later)",
+		strings.Join(events, ", "))
 }

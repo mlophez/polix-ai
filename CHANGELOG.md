@@ -20,6 +20,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   entry), an anchor on the whole document, an anchor name defined twice and a merge key (`<<`) that uses an anchor or
   alias. A file whose canonical order of keys would put an alias above its anchor is refused with
   `line <n>: the alias *<name> would come before its anchor &<name>: move the anchor up`, and nothing is written.
+- `polix doctor` names the git version githooks need in its `ok` line too, `git runs polix githook on pre-commit,
+  commit-msg (githooks need git 2.54 or later)`, not only in the warning for an older git.
 
 ## [0.7.0] - 2026-11-12
 
