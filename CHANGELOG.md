@@ -9,6 +9,9 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Fixed
 
+- A command pattern, of `forbidden_commands` and of the condition `command`, now reaches every line of a command:
+  `*` and `?` match a line break too. A pattern such as `git commit*Co-Authored-By: Claude*` missed the message of a
+  commit written over several lines, in quotes or in a here-document, the way agents write it.
 - `/polix:build` no longer goes on to the docs and the review with tasks the builder never started: when the agent
   `polix:builder` returns with lines `[ ]` in `Progress`, the build launches it again from the first one, up to three
   times while each run marks a task, and a run resumed after an interruption does the same. The builder ends its turn

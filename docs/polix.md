@@ -668,7 +668,8 @@ Conditions:
   so gates that must hold before a commit belong on `pre_commit`.
 - `file`: a file of the repository matches a glob; with `contains`, it also holds that text. `contains` is only
   valid next to `file`, and never inside `any`, where it would hold on its own and make the `any` always true.
-- `command` and `exit`: a command of the line matches a pattern (`*` matches anything) and its exit code.
+- `command` and `exit`: a command of the line matches a pattern (`*` matches anything, line breaks
+  included) and its exit code.
   `command` only on `pre_command`, `post_command` and `pre_commit`; `exit` only on `post_command`.
   The line is split into its commands (`cd x && just test 2>&1 | tail -3` runs `cd x`, `just test 2>&1` and
   `tail -3`, quotes respected), and each one is matched on its own. The commands nested in it count too: those of

@@ -43,6 +43,9 @@ func TestCommand(t *testing.T) {
 		{"just test", "  just test ", true},
 		{"just test", "just test -k sync", false},
 		{"*git push*", "cd x && git push origin main", true},
+		{"git commit*Co-Authored-By: Claude*", "git commit -m \"Fix x\n\nCo-Authored-By: Claude <a@b>\n\"", true},
+		{"git commit*Co-Authored-By: Claude*", "git commit -m \"Fix x\n\nbody\n\"", false},
+		{"just test", "just test\nrm -rf x", false},
 	}
 	for _, c := range cases {
 		if got := Command(c.pattern, c.command); got != c.want {

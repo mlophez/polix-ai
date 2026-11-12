@@ -46,6 +46,11 @@ func TestMatchingCommands(t *testing.T) {
 	if len(matchingCommands([]string{"git push*"}, `echo "git push"`, false)) != 0 {
 		t.Fatal("the text of a command inside quotes")
 	}
+	// A pattern reaches every line of a message, written in quotes or in a here-document of a substitution.
+	heredoc := "git commit -m \"$(cat <<'EOF'\nFix x\n\nCo-Authored-By: Claude <a@b>\nEOF\n)\""
+	if len(matchingCommands([]string{"git commit*Co-Authored-By: Claude*"}, heredoc, false)) != 1 {
+		t.Fatal("a multiline message in a here-document")
+	}
 }
 
 // Only the commands that check the workflow or update polix pass an invalid workflow.

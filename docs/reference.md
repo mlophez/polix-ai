@@ -1006,7 +1006,8 @@ Used by `path`, `changed`, `file`, `writes`, `guardrails.protected_files`, the `
 Used by `command` and the `pattern` of `forbidden_commands`. Each command of the line is matched whole, with its
 surrounding spaces trimmed:
 
-- `*` matches any text, spaces and slashes included; `?` matches one character.
+- `*` matches any text, spaces, slashes and line breaks included; `?` matches one character, a line break too. So
+  `git commit*Co-Authored-By: Claude*` reaches a line of a message written in quotes or in a here-document.
 - `just test` only matches the bare command; `just test*` also matches `just test -k x` or `just test 2>&1`.
 - A pattern holds on the command as written or on its normalized form: without leading assignments, the wrappers
   `sudo`, `env`, `command`, `nohup`, `time`, `exec`, `xargs` and `nice` with their options, and the global options

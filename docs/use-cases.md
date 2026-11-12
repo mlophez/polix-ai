@@ -647,7 +647,7 @@ on:
         block: "The agent never acts on production: run it yourself, or use a staging context"
 ```
 
-In a command pattern `*` matches anything, spaces and slashes included, so `kubectl*--context*prod*` holds wherever
+In a command pattern `*` matches anything, spaces, slashes and line breaks included, so `kubectl*--context*prod*` holds wherever
 the flag appears in the line.
 
 ### Hands off generated files and lockfiles

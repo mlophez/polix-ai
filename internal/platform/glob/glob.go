@@ -41,17 +41,19 @@ func AnyPath(patterns []string, p string) bool {
 	return false
 }
 
-// Command reports whether a command line matches pattern, where `*` matches any text, spaces and slashes
-// included. Surrounding spaces of the command are ignored.
+// Command reports whether a command line matches pattern, where `*` matches any text, spaces, slashes and line
+// breaks included, so a pattern reaches the lines of a quoted message or a here-document. Surrounding spaces of the
+// command are ignored.
 func Command(pattern, command string) bool {
 	return compile(pattern, false).MatchString(strings.TrimSpace(command))
 }
 
-// compile turns a pattern into an anchored regular expression; paths decides whether `*` stops at `/`.
+// compile turns a pattern into an anchored regular expression; paths decides whether `*` stops at `/`. A command
+// spans lines, so in a command pattern `*` and `?` match a line break too.
 func compile(pattern string, paths bool) *regexp.Regexp {
-	key := "c:" + pattern
+	key, start := "c:"+pattern, "(?s)^"
 	if paths {
-		key = "p:" + pattern
+		key, start = "p:"+pattern, "^"
 	}
 	if v, ok := cache.Load(key); ok {
 		if re, ok := v.(*regexp.Regexp); ok {
@@ -59,7 +61,7 @@ func compile(pattern string, paths bool) *regexp.Regexp {
 		}
 	}
 	var b strings.Builder
-	b.WriteString("^")
+	b.WriteString(start)
 	for i := 0; i < len(pattern); i++ {
 		c := pattern[i]
 		switch {
