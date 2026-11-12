@@ -140,9 +140,8 @@ The rules it follows, as before this use case:
    an invalid one, nobody edits the state of polix (`<git-dir>/polix`, by its real path, without case where file
    names ignore it) nor runs a command that may write and names it, logged as `builtin`: the line may write when
    `writesFiles` matches its text without its redirections into `/dev/null` (`withoutNullRedirects`; not `NUL`,
-   which under Git Bash may create a file), on any
-   line, or when a command of the parsed line, nested ones included, redirects into a file other than the null device, has a word
-   that writes by itself with the words after it (`writesItself`: `rm` of `find -exec rm` or `sudo -u x rm`
+   which under Git Bash may create a file), on any line, or when a command of the parsed line, nested ones
+   included, redirects into a file other than `/dev/null`, has a word that writes by itself with the words after it (`writesItself`: `rm` of `find -exec rm` or `sudo -u x rm`
    counts), has a word naming one of the shells or interpreters polix knows, with any version (`interpreters`:
    `bash`, `pwsh`, `perl`, `python3.12`..., without case), runs `.`, or runs a program whose name is not literal
    (`unknownProgram`: `$SHELL -c ...`) (`mayWrite`); the state is named anywhere in the text of the line
