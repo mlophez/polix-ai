@@ -31,7 +31,9 @@ It is the entry point of the hooks of Claude Code; the polix plugin registers it
 The formats of the agents are the transport of the entry, not domain: the in files declare the unexported
 interface `format`, with `parse`, which turns the input into the native name of the event and the neutral
 `agent.Event`s (one `pre_edit` or `post_edit` per edited path, made absolute from the `cwd` of the call; a
-`pre_command` whose line runs a `git commit` also gives `pre_commit`; the `SubagentStart` of either agent gives one
+`pre_command` whose line runs a `git commit` also gives `pre_commit`, decided by `hookInput.commits` on the commands
+of `shell.Parse`, nested ones included, whose normalized words start with `git commit`, and by the regular
+expression `gitCommit` on a line the parser rejects; the `SubagentStart` of either agent gives one
 `subagent_start` whose actor is its `agent_type`), and `render`, which turns an
 `agent.Answer` into stdout, stderr and the exit code for the native event. It has one implementation per agent:
 `claude` in `in_claude.go` and `codex` in `in_codex.go`, which share the fields of the input both agents write and
@@ -87,13 +89,34 @@ holds only what its events do and calls the engine as a library:
 The engine is the rest, in the `logic_<topic>.go` files, and has no `if` on the name of an event: the step machinery
 and the readers of the facts (`logic_facts.go`), the protections (`logic_protect.go`), the walk of the entries and
 their verbs (`logic_entries.go`, `logic_run.go`, `logic_inject.go`, `logic_notify.go`), the conditions and the placeholders
-(`logic_condition.go`, `logic_placeholder.go`), the parsing of command lines, what they write and where their commits
-land (`logic_cmdline.go`, `logic_writes.go`, `logic_commit.go`), the files a command changed (`logic_watch.go`), and
+(`logic_condition.go`, `logic_placeholder.go`), the commands of a command line, what they write and where their
+commits land (`logic_cmdline.go`, `logic_writes.go`, `logic_commit.go`), the files a command changed (`logic_watch.go`), and
 the log (`logic_log.go`). What differs per event reaches it as fields of the pass: `informed`, set by `Decide` for the
 events of `workflow.Informed` and for an edit a command made, turns a failing `run` into context; `byCommand`, set by
 `Decide` for an edit a command made (`agent.Event.ByCommand`), turns a `block` into context too; `always`, set by
 `session` on `start` and `subagent_start`, makes every inject act every time; and `loop`, set by `stop`, sends every
 block through the loop guard.
+
+A command line is read by `shell.Parse` (`internal/platform/shell`), given whether the system is Windows: it parses
+the line as bash with `mvdan.cc/sh` into `shell.Command`s, each with its text as written, its words with quotes
+removed, the targets of its redirections that write and whether its failure propagates to the line. The commands
+nested in it come too, marked with their nesting (`shell.Nesting`): those of subshells, blocks and compound commands,
+of substitutions (in the words, the redirections, the list of `for` and the word and patterns of `case`), and of the
+literal scripts of `sh -c`, `bash -c`, `zsh -c` and `eval`, past the wrappers (`sudo bash -c`), and of a
+here-document (its body as written, expansions included) or a literal here-string given to a shell reading stdin
+(`bash <<'EOF'`, `bash - <<EOF`, `sh -s <<< '...'`), directly or through a pipe (`cat <<'EOF' | bash`), parsed
+again; a
+clause (`if`, `while`, `for`, `case`, a function) and a test (`[[ ]]`) are commands of their own without words;
+`command`,
+`forbidden_commands`, `writes` and `protected_files` see them all, and the `exit` condition counts a nested command
+only when it propagates (the last one of a `-c` script that propagates, never one of a substitution nor of a negated
+statement such as `! just test`). A pattern of
+`command` and of `forbidden_commands` matches a command as written or its normalized text
+(`shell.Command.NormalText`: without leading assignments, the wrappers with their options and the global options of
+git, `matchingCommands`), and `program` starts from the normalized words, `git rm` and `git mv` read as `rm` and
+`mv`. A line the
+parser rejects (an unclosed quote, PowerShell) is read by the heuristic of the package instead, which splits it on its
+operators and parses each command with its quotes, as polix did before the parser.
 
 A `hook.Step` asks for one of: the branch and the HEAD commit (`hook.Step.Branch`), what git moves without
 moving HEAD (`Refs`: the commit of `refs/stash` and an operation stopped halfway), the content hash (of an epoch),
@@ -115,8 +138,16 @@ The rules it follows, as before this use case:
 1. Protections, before the entries of the workflow and before the skip of the edits and commits outside the change
    (rule 3); the first one that denies ends the evaluation. Whatever the workflow says and also without one or with
    an invalid one, nobody edits the state of polix (`<git-dir>/polix`, by its real path, without case where file
-   names ignore it) nor runs a command that may write and names it, logged as `builtin`. With a valid polix.yaml, no actor, the
-   main session included, writes a path of `guardrails.protected_files` (`workflow.Workflow.ProtectedFiles`, matched
+   names ignore it) nor runs a command that may write and names it, logged as `builtin`: the line may write when
+   `writesFiles` matches its text without its redirections into `/dev/null` (`withoutNullRedirects`; not `NUL`,
+   which under Git Bash may create a file), on any
+   line, or when a command of the parsed line, nested ones included, redirects into a file other than the null device, has a word
+   that writes by itself with the words after it (`writesItself`: `rm` of `find -exec rm` or `sudo -u x rm`
+   counts), has a word naming one of the shells or interpreters polix knows, with any version (`interpreters`:
+   `bash`, `pwsh`, `perl`, `python3.12`..., without case), runs `.`, or runs a program whose name is not literal
+   (`unknownProgram`: `$SHELL -c ...`) (`mayWrite`); the state is named anywhere in the text of the line
+   (`namesState`). With a valid polix.yaml, no actor, the main session included, writes a path of
+   `guardrails.protected_files` (`workflow.Workflow.ProtectedFiles`, matched
    with `anyPathFold`), also when git ignores it but never on an edit outside the repository, by an edit, a
    redirection or a program that writes the files it names (`rm`, `mv`, `cp`, `sed -i`...), its folders and
    wildcards included (`lineWrites`): the reason names the path (`<path> is protected in polix.yaml: only a person
@@ -131,7 +162,10 @@ The rules it follows, as before this use case:
 2. A workflow that cannot be used (it cannot be read or parsed, has problems or requires a newer polix) blocks
    edits and commands with its problems, logged as `invalid`, except an edit outside the change, an edit of
    polix.yaml by the main session (not when it requires a newer polix) and the commands that only check the
-   workflow or update polix; any other event only warns, so a stop is never blocked. Problems that may come from a
+   workflow or update polix (`onlyPolix`: on the line parsed as bash, every command, nested ones included, is one
+   of `onlyPolixCommands` as written with no redirection but `2>&1` or `1>&2`, and a clause or a test, a command
+   without words, fails closed; on a line the parser rejects, the
+   text check of before); any other event only warns, so a stop is never blocked. Problems that may come from a
    newer polix hint to run `polix update` (`hook.Evaluation.Running`, which the shell asks); a name of the old
    vocabulary, reported with its new spelling, does not.
 3. Without polix.yaml, for an edit outside the repository or of a file git ignores, and for a `pre_commit` whose
@@ -139,7 +173,9 @@ The rules it follows, as before this use case:
    `pre_commit` the `snapshot` of rule 16, since the rest of its line may still change this repository: the
    entries govern the change, what a commit may hold, so a build output, a local `.env` or a commit in another
    repository never fires them. The check is a strict allowlist: `commitDirs` places the line only when every
-   command of it is `git [-C dir]... add|commit` and bash expands nothing in it (`placeable`); each commit folder is
+   command of it is `git [-C dir]... add|commit` and bash expands nothing in it: on the line parsed as bash, no
+   command is nested, has a redirection or a word that is not literal (`plain`), while a comment is no word; on a
+   line the parser rejects, the text holds none of the characters that expand (`placeable`); each commit folder is
    the cwd after its -C options joined without cleaning, so its real path and `hook.Step.Foreign` resolve a `..` after a
    link as git does. The hook skips only when every folder is outside the root, symlinks resolved, and inside
    another existing repository (`hook.Step.Foreign`, a linked worktree of this one excluded). Anything else is a commit

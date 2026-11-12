@@ -67,7 +67,7 @@ func (r *pass) lastBefore(ans agent.Answer) agent.Answer {
 // command of guardrails.forbidden_commands, wherever it comes in the line.
 func (r *pass) protectCommand() (agent.Answer, bool) {
 	ev, wf := r.ev.Event, r.guardrails()
-	if mayWrite(ev.Command) {
+	if mayWrite(ev.Command, r.ev.Windows()) {
 		reals := r.reals(r.ev.StateDir())
 		if r.waiting() {
 			return agent.Answer{}, false
@@ -87,7 +87,7 @@ func (r *pass) protectCommand() (agent.Answer, bool) {
 		return r.deny(protectedFilesShortcut, 0, fmt.Sprintf("%s is protected in %s: only a person changes it.", p,
 			workflow.File))
 	}
-	if f, ok := forbidden(wf.ForbiddenCommands, ev.Command); ok {
+	if f, ok := forbidden(wf.ForbiddenCommands, ev.Command, r.ev.Windows()); ok {
 		reason := f.Reason
 		if reason == "" {
 			reason = reasonForbidden
@@ -100,7 +100,7 @@ func (r *pass) protectCommand() (agent.Answer, bool) {
 // unusableCommand answers a command line about to run with a workflow that cannot be used: the commands of polix
 // that check or update it pass (see onlyPolix), any other is refused.
 func (r *pass) unusableCommand() agent.Answer {
-	if onlyPolix(r.ev.Event.Command) {
+	if onlyPolix(r.ev.Event.Command, r.ev.Windows()) {
 		return agent.Answer{}
 	}
 	return r.refuseUnusable()

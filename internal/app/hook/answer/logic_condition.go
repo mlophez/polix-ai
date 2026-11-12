@@ -51,7 +51,7 @@ func (r *pass) condition(k string, all workflow.Cond, scope []string) bool {
 	case "contains":
 		return true // evaluated together with file
 	case "command":
-		return len(matchingCommands(r.list(all, k), r.ev.Event.Command)) > 0
+		return len(matchingCommands(r.list(all, k), r.ev.Event.Command, r.ev.Windows())) > 0
 	case "writes":
 		_, _, ok := r.writes(r.list(all, k))
 		return ok
@@ -154,7 +154,7 @@ func (r *pass) condChanged(all workflow.Cond) bool {
 func (r *pass) condExit(all workflow.Cond) bool {
 	ev := r.ev.Event
 	n, _ := all["exit"].(int)
-	if _, ok := all["command"]; ok && !propagates(matchingCommands(r.list(all, "command"), ev.Command)) {
+	if _, ok := all["command"]; ok && !propagates(matchingCommands(r.list(all, "command"), ev.Command, r.ev.Windows())) {
 		return false
 	}
 	return ev.ExitCode == n
@@ -208,7 +208,7 @@ func (r *pass) writes(patterns []string) (p, held string, ok bool) {
 		return "", "", false
 	}
 	ev := r.ev.Event
-	paths := append([]string{r.ev.Root}, writePaths(ev.Command, ev.Cwd, r.ev.Root)...)
+	paths := append([]string{r.ev.Root}, writePaths(ev.Command, ev.Cwd, r.ev.Root, r.ev.Windows())...)
 	reals := r.reals(paths...)
 	if r.waiting() {
 		return "", "", false

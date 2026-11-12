@@ -2,6 +2,7 @@ package answer
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/mlophez/polix-ai/internal/platform/shell"
@@ -12,20 +13,26 @@ import (
 const unquoted = "$`*?[]{}()<>#\\\n~"
 
 // commitDirs returns the folders where the commits of a command line commit, and whether the line can be placed at
-// all. It is a strict allowlist, so a caller keeps the workflow whenever it is false. The line holds none of the
-// characters with which bash expands, groups, escapes or comments (see placeable), and every command of it is
+// all. It is a strict allowlist, so a caller keeps the workflow whenever it is false. On a line parsed as bash,
+// every command is plain (see plain: not nested, no redirection, only literal words, while a comment is no word);
+// on a line the parser rejects, the line holds none of the characters with which bash expands, groups, escapes or
+// comments (see placeable). Every command of it is
 // `git` itself, with no option but -C, running `add` or `commit` (aliases, wrappers, assignments and any other
 // subcommand, which may run programs, are not placed). Each -C folder is a literal path, no `~`, and on Windows one
 // with its drive: not rooted without one (a Git Bash `/c/x`, or `\x`) nor relative to a drive (`C:x`). Each commit
 // is placed in cwd (the root without one) after its -C options, joined without cleaning, so a `..` after a symlink
 // is resolved as git resolves it on that system (through the link on Unix, before it on Windows).
 func commitDirs(command, cwd, root string, windows bool) ([]string, bool) {
-	if !placeable(command) {
+	cmds, ast := shell.Parse(command, windows)
+	if !ast && !placeable(command) {
 		return nil, false
 	}
 	var out []string
-	for _, seg := range shell.Split(command) {
-		dir, commits, ok := parseCommand(seg.Text).gitPlace(cwd, root, windows)
+	for _, c := range cmds {
+		if ast && !plain(c) {
+			return nil, false
+		}
+		dir, commits, ok := gitPlace(c, cwd, root, windows)
 		if !ok {
 			return nil, false
 		}
@@ -36,7 +43,13 @@ func commitDirs(command, cwd, root string, windows bool) ([]string, bool) {
 	return out, len(out) > 0
 }
 
-// placeable reports whether bash runs the line as its words read: outside quotes, none of the characters with which
+// plain reports whether a command parsed as bash runs as its words read: it is not nested in another one, has no
+// redirection, and each of its words is literal (no expansion, substitution, glob, brace nor tilde).
+func plain(c shell.Command) bool {
+	return !c.Nested() && len(c.Redirections) == 0 && !slices.Contains(c.Literal, false)
+}
+
+// placeable is the check of a line the bash parser rejects: it reports whether bash runs the line as its words read: outside quotes, none of the characters with which
 // it expands, groups, redirects, escapes or comments (unquoted) nor a second line; inside double quotes, no `$`,
 // backtick or backslash, which still act there; inside single quotes, anything. An unclosed quote is not placeable.
 func placeable(line string) bool {
@@ -64,8 +77,8 @@ func placeable(line string) bool {
 
 // gitPlace places a command `git [-C dir]... add|commit ...`: the folder it runs in, cwd (the root without one)
 // after its -C options (see changeDir), and whether it commits. ok is false for any other command (see commitDirs).
-func (c simpleCommand) gitPlace(cwd, root string, windows bool) (dir string, commits, ok bool) {
-	ws := c.words
+func gitPlace(c shell.Command, cwd, root string, windows bool) (dir string, commits, ok bool) {
+	ws := c.Words
 	if len(ws) == 0 || ws[0] != "git" && ws[0] != "git.exe" {
 		return "", false, false
 	}

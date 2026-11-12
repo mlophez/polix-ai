@@ -358,13 +358,14 @@ guardrails:
 - Type: a list of maps, each with:
   - `pattern`: required, a [command pattern](#command-patterns);
   - `reason`: optional, the message for the AI.
-- Commands no actor runs, the main session included, in any position of the line: the line is split into its
-  commands, and each is matched whole and as written, as for the condition [`command`](#command).
-- A heuristic aimed at accidents, not at an agent set on getting around it. A pattern misses another spelling of the
-  same command (`rm -fr /`, `git push -f`, the flags in another order or with two spaces), a wrapper
-  (`sudo rm -rf /`, `env X=1 ...`) and a command run through an interpreter or a substitution (`bash -c '...'`,
-  `$(...)`). List the usual spellings, and start a pattern with `*` to cover a wrapper: `*rm -rf /*`,
-  `git push*--force*`, `git push* -f*`.
+- Commands no actor runs, the main session included, in any position of the line: the line is parsed as bash into
+  its commands, nested ones included, and each is matched whole, as written or normalized, as for the condition
+  [`command`](#command): `rm -rf*` also denies `sudo rm -rf /`, `env X=1 rm -rf /` and `bash -c 'rm -rf /'`.
+- A guard aimed at accidents, not at an agent set on getting around it. A pattern misses another spelling of the
+  same command (`rm -fr /`, `git push -f`, the flags in another order), a wrapper it does not know or one with an
+  option that takes a value (`timeout 10 rm -rf /`, `sudo -u root rm -rf /`), a script that is not literal
+  (`bash -c "$CMD"`) and a command run through another interpreter (`python -c '...'`). List the usual spellings:
+  `rm -rf /*`, `git push*--force*`, `git push* -f*`.
 - On `pre_command` and `pre_commit`, the first item in the order of the file whose pattern matches a command of the
   line denies it, with its `reason` or, without one, `This command is forbidden by polix.yaml: a person must run
   it.`, followed by the line of the command. The log records the line of the item.
@@ -661,9 +662,10 @@ unless: { file: CHANGELOG.md, contains: "{key}" }
 ### command
 
 - Value: a command pattern, or a list of them.
-- Holds when some command of the line matches any pattern. The line is split into its commands
-  (`cd x && just test 2>&1 | tail -3` gives `cd x`, `just test 2>&1` and `tail -3`, quotes respected), and each is
-  matched whole. See [command patterns](#command-patterns).
+- Holds when some command of the line matches any pattern. The line is parsed as bash into its commands
+  (`cd x && just test 2>&1 | tail -3` gives `cd x`, `just test 2>&1` and `tail -3`), nested ones included
+  (`bash -c '...'`, `$(...)`, subshells, `if`, `for`, `eval`), and each is matched whole, as written or normalized.
+  See [command patterns](#command-patterns).
 - Events: `pre_command`, `post_command`, `pre_commit`.
 
 ```yaml
@@ -678,8 +680,9 @@ when: { command: ["git push*origin main*", "git push --force*"] }
   itself (`rm`, `mv`, `cp`, `tee`, `touch`, `ln`, `chmod`, `install`, `rsync`, `truncate`, `dd of=`, `sed -i`,
   `perl -i`), which also counts on a folder that holds the path or a wildcard that reaches it (`rm -rf ai/*` for
   `ai/rules/**`). Reading never counts.
-- A heuristic aimed at accidents: it does not see writes through an interpreter (`python -c`, `bash -c`), a path
-  reached through `cd`, or `find -delete`. On macOS and Windows it ignores case.
+- A guard aimed at accidents: it sees the commands nested in literal `bash -c` scripts and substitutions, but not
+  writes through another interpreter (`python -c`), a script that is not literal, a path reached through `cd`, or
+  `find -delete`. On macOS and Windows it ignores case.
 - Events: `pre_command`, `post_command`, `pre_commit`.
 
 ```yaml
@@ -1004,6 +1007,10 @@ surrounding spaces trimmed:
 
 - `*` matches any text, spaces and slashes included; `?` matches one character.
 - `just test` only matches the bare command; `just test*` also matches `just test -k x` or `just test 2>&1`.
+- A pattern holds on the command as written or on its normalized form: without leading assignments, the wrappers
+  `sudo`, `env`, `command`, `nohup`, `time`, `exec`, `xargs` and `nice` with their options, and the global options
+  of git. `git add*` matches `git -C x add .` and `sudo env FOO=1 git add .`, but not `git commit -m "add foo"`.
+- A line the bash parser rejects, such as a PowerShell one, is split by a heuristic instead, without its nested commands.
 
 ## How an event is evaluated
 
