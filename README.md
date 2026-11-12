@@ -94,26 +94,15 @@ it.
 
 ## Highlights
 
-- **Tied to content, not to time.** A check Polix ran green is not run again on the same content, and
-  `finished: reviewer` holds until a file the reviewer looked at changes. Edit one line and they apply again; nothing
-  to invalidate by hand. A `go test` the agent ran by itself never counts: Polix only trusts what it ran.
-- **Gates, reminders and notices.** A `block` holds every time until its `unless` does, `once: true` turns it into a
-  reminder once per content, an `inject` warns the AI and a `notify` tells the person, each one line of YAML.
-- **Gates of git for every commit, not only the agent's.** `githooks:` blocks or runs a check on `pre_commit` and
-  `commit_msg`, by branch, by the staged files or by the message, so a commit format or a test gate binds the people
-  of the team too. No hook scripts to copy: a session of the AI installs them in `.git/config` when `polix.yaml`
-  declares them, and `polix install --githooks` does it for anyone else.
-- **Rules that reach the agent and CI.** Rules in `ai/rules/` have a scope: Polix injects only the ones that match
-  the file being edited, and `polix rules check --changed` runs the same checks in CI.
-- **Validated and safe by default.** `polix config check` rejects unknown keys, conditions and placeholders, so a
-  typo cannot quietly switch a guardrail off. A broken `polix.yaml` fails closed for edits and commands, and a loop
-  guard never traps a stop.
-- **Correct where shell scripts are not.** Command lines are split as a shell runs them, quotes and pipelines
-  included, so `cd x && just test | tail -3` is three commands and `git commit` is found inside any of them.
-- **An audit trail.** Every decision is logged with the entry that caused it, next to the checks that passed and the
-  subagents that finished on each content.
-- **One binary, everywhere.** Linux, macOS and Windows (amd64 and arm64), tested on all three in CI, the same under
-  `sh`, Git Bash and PowerShell. About 13 ms per hook call, and it updates itself, checksum-verified.
+- **Tied to content.** A green check or a finished review holds until the files change; edit one line and it
+  applies again.
+- **Gates, reminders and notices.** `block`, `once: true`, `inject` and `notify`, each one line of YAML.
+- **Every commit, not only the agent's.** `githooks:` gates commits by branch, staged files or message, people
+  included.
+- **Rules for the agent and CI.** `ai/rules/` reach the agent by the file it edits, and CI with `polix rules check`.
+- **Safe by default.** A typo is rejected, a broken config fails closed and a loop guard never traps a stop.
+- **An audit trail.** Every decision is logged with the entry that caused it.
+- **One binary, everywhere.** Linux, macOS and Windows, about 13 ms per hook call, and it updates itself.
 
 ## Quick start
 
