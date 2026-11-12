@@ -8,8 +8,8 @@ It is a Go module of its own (`github.com/mlophez/polix-ai`), shipped as one sta
 it runs on every hook call in milliseconds. Claude Code is the supported agent; Codex support is not implemented
 (see [Known limits](#known-limits)).
 
-0.1.0 is the first public release. `polix.yaml` is `version: 1`, and a 0.x release may still change its format:
-`requires:` lets a repository pin the oldest polix that knows every option it uses.
+polix is 0.x: `polix.yaml` is `version: 1`, and a 0.x release may still change its format: `requires:` lets a
+repository pin the oldest polix that knows every option it uses.
 
 ## Layers
 
@@ -17,14 +17,14 @@ it runs on every hook call in milliseconds. Claude Code is the supported agent; 
 - `ai/rules/*.yaml` (the folder `rules.path` of polix.yaml): how the code must be. Polix only reads `id`,
   `description`, `scope`, `deterministic` and `check` of each rule; the rest of the format belongs to the skills
   that write and use the rules. `retired.yaml` holds retired rules, which never apply.
-- `polix.yaml`: what happens on each event of a session: what is blocked, what runs and what is injected. It has
-  two layers of its own: `guardrails:`, the basics every project wants from the first minute (files no agent
-  writes, commands no agent runs, branches nobody commits on, a formatter after each edit, the checks before the
+- `polix.yaml`: what happens on each event of a session, and on every commit: what is blocked, what runs and what
+  is injected. It has three sections: `guardrails:`, the basics every project wants from the first minute (files no
+  agent writes, commands no agent runs, branches nobody commits on, a formatter after each edit, the checks before the
   agent ends its turn), each a short list; and `on:`, where the team orchestrates its flow (the review subagents,
   the builder, the plan, the ticket) as entries per event. The files and the commands of `guardrails:` are
   protections of the engine, applied before the entries; its other shortcuts expand into entries of `on:` (see
-  [Guardrails](#guardrails)). A third section, `githooks:`, holds the gates git itself runs on every commit,
-  whoever makes it, apart from the events of the AI (see [The gates of git: githooks](#the-gates-of-git-githooks)).
+  [Guardrails](#guardrails)); and `githooks:`, the gates git itself runs on every commit, whoever makes it, apart
+  from the events of the AI (see [The gates of git: githooks](#the-gates-of-git-githooks)).
 - `polix`: the same binary in every repository; it reads the three and answers the hooks.
 
 The human writes the three files; polix only enforces them.
@@ -1048,15 +1048,15 @@ vars:
 githooks:
   pre_commit:
     - when: { changed: "secrets/**" }
-      action: { block: "No se commitean secretos" }
+      action: { block: "Secrets are never committed" }
 
     - when: { changed: "*.go" }
       action:
-        run: { command: go vet ./..., message: "Arregla go vet antes de commitear" }
+        run: { command: go vet ./..., message: "Fix go vet before committing" }
   commit_msg:
     - when: { branch: "^[A-Z]+-[0-9]+" }
       unless: { message: "^{key}: " }
-      action: { block: "El mensaje empieza por la clave del ticket: {key}: {message}" }
+      action: { block: "Start the message with the key of the ticket: {key}: {message}" }
 ```
 
 What git runs. `polix install` writes two hooks into the local git configuration of the repository (`.git/config`,
@@ -1072,10 +1072,10 @@ hook.polix-commit-msg.command = polix githook commit-msg
 git 2.54 and later run the hooks declared in their configuration, without a script in `.git/hooks`, next to the
 ones there; `git hook list pre-commit` names them. The names are not the events because git forbids a hook named
 as an event. The command is plain `polix`, found on the `PATH` like the hooks of the agents: an absolute path would
-depend on the machine. A second install leaves one event per hook, `polix uninstall` (of both agents) removes
-both sections and keeps every other key, and `polix doctor` warns, never fails, when git does not list them. A hook
-disabled with `hook.polix-pre-commit.enabled=false`, which `git hook list` names as `disabled<TAB>polix-pre-commit`,
-stays disabled: install never touches `enabled`, and both install and `polix doctor` warn that it is disabled in the
+depend on the machine. A second install leaves one event per hook, `polix uninstall --githooks`, or
+`polix uninstall` of both agents, removes both sections and keeps every other key, and `polix doctor` warns, never
+fails, when git does not list them. A hook disabled with `hook.polix-pre-commit.enabled=false`, which
+`git hook list` names as `disabled<TAB>polix-pre-commit`, stays disabled: install never touches `enabled`, and both install and `polix doctor` warn that it is disabled in the
 git configuration, without blaming the version of git.
 
 Installed on every session start. `.git/config` is not committed, so declaring `githooks` is enough for each person
@@ -1106,7 +1106,7 @@ other event of `githooks`. `polix githook <pre-commit|commit-msg> [file]` loads 
 entries of the event in file order, as those of `on`: an entry applies when its `when` holds and its `unless` does
 not, and the first entry that blocks ends the evaluation. It exits with 0 to let the commit go on, or with 1 to
 abort it, with each line of its reasons on stderr prefixed `polix: `, such as
-`polix: No se commitean secretos`.
+`polix: Secrets are never committed`.
 
 The vocabulary is small and its own, checked by `polix config check` at the line of each entry:
 
@@ -1128,7 +1128,7 @@ files included: a file modified and not staged does not make `changed` hold. git
 `git commit -a` or of a commit of some paths, and polix reads that one.
 
 The first line of the message is taken as git commits it: the lines that start with the comment character of git
-(`#`, else `core.commentString`, else `core.commentChar`; `auto` reads as `#`, since only git knows the character
+(`core.commentString`, else `core.commentChar`, else `#`; `auto` reads as `#`, since only git knows the character
 it picks) and everything from the scissors line (`# ------------------------ >8 ------------------------`, which
 `git commit -v` writes) on are removed, and so are the blank lines before it and the blanks at its end. The merges,
 the reverts and the other messages git writes get no special treatment: an entry lets them through with `unless`,
@@ -1148,8 +1148,8 @@ of them; the agent can do it too, so a `forbidden_commands` pattern keeps it to 
 ```yaml
 guardrails:
   forbidden_commands:
-    - { pattern: "git*--no-verify*", reason: "Los hooks de git no se saltan: arregla lo que bloquean" }
-    - { pattern: "git*hook.polix-*", reason: "Los hooks de git no se saltan: arregla lo que bloquean" }
+    - { pattern: "git*--no-verify*", reason: "The hooks of git are not skipped: fix what they block" }
+    - { pattern: "git*hook.polix-*", reason: "The hooks of git are not skipped: fix what they block" }
 ```
 
 How it differs from `on.pre_commit`. The events of the AI never evaluate `githooks`, and `polix githook` never
