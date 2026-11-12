@@ -125,7 +125,8 @@ trusts what it ran.
 `polix.yaml` has two layers. `guardrails:` holds the basics every project wants from the first minute.
 `on:` is where your team orchestrates its flow: the review subagents, the builder, the plan, the ticket, each
 an entry that says on which event it applies, when, and what it does
-([below](#the-workflow-in-one-file)).
+([below](#the-workflow-in-one-file)). An optional third section, `githooks:`, carries the same gates to the hooks of
+git, so they hold for every commit, also the ones a person makes outside the agent.
 
 > The human writes the rules. Polix only enforces them.
 > It **measures and never judges**: conditions are facts about the repository, the event and the state.
@@ -151,6 +152,12 @@ an entry that says on which event it applies, when, and what it does
   match the file being edited, once per session and agent. The same checks run in CI with
   `polix rules check --changed --base="${{ github.base_ref }}"` on a pull request, after a checkout with
   `fetch-depth: 0` ([the recipe](docs/use-cases.md#the-same-checks-for-the-agent-and-for-ci)).
+- **Gates of git for every commit, not only the agent's.** The same `polix.yaml` governs the hooks of git:
+  `githooks:` blocks or runs a check on `pre_commit` and `commit_msg`, by branch, by the staged files or by the
+  message, so a commit format or a test gate binds the people of the team too, whoever commits and from wherever.
+  No hook scripts to copy: a session of the AI installs them in `.git/config` when `polix.yaml` declares them, and
+  `polix install --githooks` does it for anyone else
+  ([the gates of git](docs/polix.md#the-gates-of-git-githooks)).
 - **No infinite loops.** A loop guard lets the agent stop after `max_stop_retries` identical blocks. A broken
   `polix.yaml` fails closed for edits and commands but never traps a stop.
 - **An audit trail.** Every decision is logged with the entry that caused it, next to the checks that passed and
