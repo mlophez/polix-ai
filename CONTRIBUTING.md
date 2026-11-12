@@ -1,9 +1,42 @@
-# Contributing to polix
+# Contributing to Polix
 
-Thanks for your interest in polix.
-This guide explains how to build, test and check the repository, how its own polix governs your session, and how a
-release is cut.
+Thanks for your interest in Polix. Bug reports, ideas and pull requests are all welcome.
+This guide explains how to report an issue, how to send a change, how to build, test and check the repository, and
+how its own Polix governs your session.
 Code, comments, docs and commit messages are written in English.
+
+## Ways to contribute
+
+- **Report a bug.** Open an [issue](https://github.com/mlophez/polix-ai/issues) with your system, the output of
+  `polix --version` and `polix doctor`, the smallest `polix.yaml` that reproduces it, and what you expected.
+  `polix log` shows what the hooks decided, which usually tells where it went wrong.
+- **Propose a feature.** Open an issue first and describe the problem it solves before writing code: a new key of
+  `polix.yaml` is a format change, and it is easier to agree on the shape before the implementation.
+- **Share a recipe.** A `polix.yaml` that solves a real problem for your team is a good addition to
+  [docs/use-cases.md](docs/use-cases.md).
+- **Improve the docs.** Typos, unclear explanations and missing examples are fixed with a pull request, no issue
+  needed.
+- **Test Codex.** Codex support exists but has never run against a real Codex; reports from Codex users help a lot.
+
+Security issues are not reported in public issues: report them privately through
+[GitHub security advisories](https://github.com/mlophez/polix-ai/security/advisories/new) instead.
+
+## Sending a pull request
+
+1. Fork the repository and create a branch from `main`.
+2. Make the change with its tests, and update the docs it affects (see [Docs](#architecture-and-docs)).
+3. Run `just test`, `golangci-lint run ./...` and `just check` locally.
+4. Add a line under `Unreleased` in [CHANGELOG.md](CHANGELOG.md) if the change is notable for users.
+5. Open the pull request against `main` and explain what it changes and why.
+
+Keep each pull request to one change. CI must pass on Linux, macOS and Windows before it is merged.
+
+Commit messages are one imperative sentence that says what changes and why, without a prefix: for example,
+`Run install --user from polix update and the installers, so the plugin is installed for the user`.
+
+**You do not need Claude Code to contribute.** The engine is plain Go, and the tests, lint and checks run without
+it. Claude Code is only needed to work under the repository's own Polix, to validate the plugin or to record the
+demo.
 
 ## Requirements
 
@@ -11,7 +44,7 @@ Code, comments, docs and commit messages are written in English.
 - [just](https://github.com/casey/just), whose recipes run with `sh`: on Windows, run them from Git Bash.
 - [golangci-lint](https://golangci-lint.run/), at the version pinned in `.github/workflows/ci.yml`.
 - git.
-- Optional: Claude Code, to work on the repository with its own polix and to validate the plugin.
+- Optional: Claude Code, to work on the repository with its own Polix and to validate the plugin.
 - Optional: [vhs](https://github.com/charmbracelet/vhs), with ttyd and ffmpeg, only to regenerate the demo.
 
 ## Build, test and check
@@ -33,20 +66,20 @@ every push to `main` and every pull request.
 The tests of `install.sh` and `install.ps1` are Go tests in `tests/install/`, and on Windows they run under
 Windows PowerShell 5.1 and PowerShell 7.
 
-## The repository is governed by its own polix
+## The repository is governed by its own Polix
 
-This repository uses polix on itself:
+This repository uses Polix on itself:
 
 - `polix.yaml` is its workflow.
 - `ai/rules/` holds the rules of its code (`architecture.yaml`, `go.yaml`, `platform.yaml`), and `retired.yaml`
-  keeps the ids of the retired ones, which polix never reads.
-- `.claude/settings.json` registers the hooks of polix for Claude Code, committed with the repository.
+  keeps the ids of the retired ones, which Polix never reads.
+- `.claude/settings.json` registers the Polix hooks for Claude Code, committed with the repository.
 
 The hooks run `polix` from the `PATH`, so run `just install` once before opening a Claude Code session here, and
-again after every change of the engine, so the hooks run your build.
-Until then, the hooks fail with "command not found", which Claude Code treats as a non blocking error, and the
+again after every change to the engine, so the hooks run your build.
+Until then, the hooks fail with "command not found", which Claude Code treats as a non-blocking error, and the
 workflow does not apply.
-`polix install --skills` adds the plugin of polix (its skills and agents) for your user.
+`polix install --skills` adds the `polix` plugin (its skills and agents) for your user.
 
 In a session, the workflow of `polix.yaml`:
 
@@ -67,12 +100,12 @@ In a session, the workflow of `polix.yaml`:
   the tests of `tests/architecture/`, which run golangci-lint for the import lists of depguard (GOARCH-41 to
   GOARCH-43) and for the limits of size and complexity of GO-4 of `ai/rules/go.yaml` (gocyclo, gocognit and the
   rule `file-length-limit` of revive).
-- [docs/polix.md](docs/polix.md): how polix behaves, its commands and its known limits.
+- [docs/polix.md](docs/polix.md): how Polix behaves, its commands and its known limits.
 - [docs/reference.md](docs/reference.md): every key, event, condition and verb of `polix.yaml`.
 - [docs/use-cases.md](docs/use-cases.md): recipes of `polix.yaml`.
 
-A change of the behaviour, the commands or the format of `polix.yaml` updates `docs/polix.md` in the same change,
-and a change of the format also updates `examples/polix.yaml`.
+A change to the behaviour, the commands or the format of `polix.yaml` updates `docs/polix.md` in the same change,
+and a change to the format also updates `examples/polix.yaml`.
 `plugins/polix/skills/workflow/reference.yaml` is a copy of `examples/polix.yaml`, and a test keeps both equal.
 Add a line for each notable change under `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
 
@@ -91,9 +124,9 @@ The session is real, so every recording differs and spends tokens: watch the GIF
 Regenerate it only when the demo needs to change, and keep it under 2 MB, since every version stays in the history
 of the repository.
 
-## Releases
+## Releases (maintainers)
 
-A release is cut from a clean `main` that matches `origin/main`:
+Only maintainers cut releases. A release is cut from a clean `main` that matches `origin/main`:
 
 ```bash
 just release 0.2.0
