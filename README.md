@@ -2,8 +2,8 @@
 
 # Polix
 
-**A deterministic harness for AI agents: one `polix.yaml` decides what the agent may not touch, what must pass and
-what runs at every step.**
+**A deterministic harness for AI agents.**<br>
+**One `polix.yaml` decides what the agent may not touch, what must pass and what runs at every step.**
 
 Works with Claude Code today: one static binary, about 13 ms per hook call, on Linux, macOS and Windows.
 
