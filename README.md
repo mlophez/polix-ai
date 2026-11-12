@@ -2,7 +2,7 @@
 
 # Polix
 
-**Declarative guardrails for Claude Code: one `polix.yaml` decides what the agent may not touch, what must pass and
+**A deterministic harness for Claude Code: one `polix.yaml` decides what the agent may not touch, what must pass and
 what runs at every step.**
 
 One static binary, about 13 ms per hook call, on Linux, macOS and Windows.
