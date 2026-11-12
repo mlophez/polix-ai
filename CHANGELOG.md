@@ -7,6 +7,16 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- `polix config fmt` and `polix rules fmt` format files with YAML anchors and aliases on values, instead of refusing
+  them, and keep each `&name` and `*name` where it is written: an anchored block collection has its anchor alone at
+  the end of the line of its key or of its dash (`run: &test`, `- &fmt`), with its content below. They still refuse,
+  each with its own message, an anchor or alias in front of a key (`- &fmt when:` anchors the word `when`, not the
+  entry), an anchor on the whole document, an anchor name defined twice and a merge key (`<<`) that uses an anchor or
+  alias. A file whose canonical order of keys would put an alias above its anchor is refused with
+  `line <n>: the alias *<name> would come before its anchor &<name>: move the anchor up`, and nothing is written.
+
 ## [0.7.0] - 2026-11-12
 
 ### Added

@@ -92,37 +92,56 @@ func (p *printer) sequence(n *yaml.Node, indent int, first string) {
 		if i == 0 {
 			dash = prefix(indent, first) + "- "
 		}
-		switch {
-		case block(it):
-			p.pending = join(p.pending, it.LineComment)
-			if it.Kind == yaml.MappingNode {
-				p.mapping(it, indent+2, dash)
-			} else {
-				p.sequence(it, indent+2, dash)
-			}
-		case p.isBody(it):
-			p.line(dash+p.bodies[it].header, p.comment(it))
-			p.body(it, indent)
-		default:
-			p.line(dash+p.inline(it), p.comment(it))
-		}
+		p.item(it, indent, dash)
 		p.lines(p.trail[it], indent, true)
 	}
 }
 
+// item writes the item it of a block sequence at indent after its dash, which ends in a space and may follow other
+// dashes. An anchored block collection has its anchor alone after the dash and its content on the lines below, since
+// its first key after the anchor would be read as the anchor of that key.
+func (p *printer) item(it *yaml.Node, indent int, dash string) {
+	switch {
+	case block(it) && it.Anchor != "":
+		p.line(dash+"&"+it.Anchor, it.LineComment)
+		p.collection(it, indent+2, "")
+	case block(it):
+		p.pending = join(p.pending, it.LineComment)
+		p.collection(it, indent+2, dash)
+	case p.isBody(it):
+		p.line(dash+p.head(it), p.comment(it))
+		p.body(it, indent)
+	default:
+		p.line(dash+p.inline(it), p.comment(it))
+	}
+}
+
+// collection writes the block collection n at indent, as mapping or sequence says.
+func (p *printer) collection(n *yaml.Node, indent int, first string) {
+	if n.Kind == yaml.MappingNode {
+		p.mapping(n, indent, first)
+	} else {
+		p.sequence(n, indent, first)
+	}
+}
+
+// head returns the header of the block scalar n, after its anchor when it has one.
+func (p *printer) head(n *yaml.Node) string {
+	return anchored(n, p.bodies[n].header)
+}
+
 // value writes the value v of the key whose line is head, at the indent of the key, with the line comment lc of
-// the key.
+// the key. The anchor of a block collection goes alone at the end of that line.
 func (p *printer) value(head string, v *yaml.Node, indent int, lc string) {
 	switch {
 	case block(v):
-		p.line(head, join(lc, v.LineComment))
-		if v.Kind == yaml.MappingNode {
-			p.mapping(v, indent+2, "")
-		} else {
-			p.sequence(v, indent+2, "")
+		if v.Anchor != "" {
+			head += " &" + v.Anchor
 		}
+		p.line(head, join(lc, v.LineComment))
+		p.collection(v, indent+2, "")
 	case p.isBody(v):
-		p.line(head+" "+p.bodies[v].header, join(lc, p.comment(v)))
+		p.line(head+" "+p.head(v), join(lc, p.comment(v)))
 		p.body(v, indent)
 	default:
 		if text := p.inline(v); text != "" {
@@ -149,8 +168,17 @@ func (p *printer) body(n *yaml.Node, indent int) {
 	}
 }
 
-// inline writes n on one line: a scalar, or a flow collection with its children.
+// inline writes n on one line, after its anchor when it has one: a scalar, an alias or a flow collection with its
+// children.
 func (p *printer) inline(n *yaml.Node) string {
+	if n.Kind == yaml.AliasNode {
+		return "*" + n.Value
+	}
+	return anchored(n, p.bare(n))
+}
+
+// bare writes n on one line without its anchor.
+func (p *printer) bare(n *yaml.Node) string {
 	switch n.Kind {
 	case yaml.MappingNode:
 		if len(n.Content) == 0 {
@@ -207,7 +235,7 @@ func (p *printer) quoted(n *yaml.Node, q byte) (string, bool) {
 		return "", false
 	}
 	src := p.src[n.Line-1]
-	at := offset(src, n.Column-1)
+	at := skipAnchor(src, offset(src, n.Column-1), n)
 	if at >= len(src) || src[at] != q {
 		return "", false
 	}
@@ -288,9 +316,10 @@ func (p *printer) keeps(n *yaml.Node) bool {
 // oneLine tells whether the item n of a sequence is written on one line: no comment above or below it (a line
 // comment is allowed), and a scalar that is not a block scalar, a flow collection, or a block mapping of one key
 // whose value is one of those two. The key of such a mapping starts on the line of the dash, so no comment of its
-// own goes above or below it.
+// own goes above or below it. An anchored block collection takes more lines: its anchor goes alone on the line of the
+// dash.
 func (p *printer) oneLine(n *yaml.Node) bool {
-	if hasComment(p.lead[n]) || hasComment(p.trail[n]) {
+	if hasComment(p.lead[n]) || hasComment(p.trail[n]) || (block(n) && n.Anchor != "") {
 		return false
 	}
 	if n.Kind == yaml.MappingNode && block(n) && len(n.Content) == 2 {

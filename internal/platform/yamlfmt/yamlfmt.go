@@ -12,10 +12,15 @@
 // blank line above an item travels with it; a comment below the last line of an item, indented deeper than the next
 // item, stays below it. Quoted scalars on one line and block scalars (| and >) keep their source text.
 //
-// A leading document start marker (---) stays as it is. Format refuses what it cannot rewrite safely: anchors,
-// aliases, explicit tags, complex keys, comments inside a flow collection, directives and any other document marker.
-// It checks its own result too: the output must decode to the same data and hold the same comments, or Format fails
-// instead of returning it.
+// A leading document start marker (---) stays as it is. The anchors and aliases of the values stay where they are
+// written: an anchored scalar, flow collection or block scalar keeps its anchor before it, an anchored block
+// collection has it alone at the end of the line of its key or of its dash, with the collection on the lines below,
+// and an alias is written as *name wherever a value goes. Format refuses what it cannot rewrite safely: an anchor or
+// alias in front of a key (which anchors the key and not the entry), an anchor on the whole document, an anchor name
+// defined twice, a merge key that uses an anchor or alias, explicit tags, complex keys, comments inside a flow
+// collection, directives and any other document marker, and a file whose order of keys would put an alias before its
+// anchor, which is not YAML: moving the anchor up fixes it. It checks its own result too: the output must decode to
+// the same data and hold the same comments, or Format fails instead of returning it.
 package yamlfmt
 
 import (
@@ -96,7 +101,10 @@ func Format(src []byte, order Order, spaced Spaced) ([]byte, error) {
 	if root == nil {
 		return src, nil
 	}
-	out := rewrite(lines, root, order, spaced)
+	out, err := rewrite(lines, root, order, spaced)
+	if err != nil {
+		return nil, err
+	}
 	if err := same(text, out); err != nil {
 		return nil, err
 	}
@@ -129,7 +137,7 @@ func parse(text string) ([]string, *yaml.Node, error) {
 	if root.Kind != yaml.MappingNode && root.Kind != yaml.SequenceNode {
 		return lines, nil, nil
 	}
-	if err := supported(root); err != nil {
+	if err := supported(root, true, map[string]bool{}); err != nil {
 		return nil, nil, err
 	}
 	if err := flowComments(lines, root); err != nil {
@@ -149,20 +157,24 @@ func markers(lines []string) error {
 }
 
 // rewrite reads the comments, blank lines and block scalars of the source lines, orders the keys below root, marks
-// the sequences spaced accepts and writes the document again.
-func rewrite(lines []string, root *yaml.Node, order Order, spaced Spaced) string {
+// the sequences spaced accepts and writes the document again. It fails when the order would put an alias before its
+// anchor.
+func rewrite(lines []string, root *yaml.Node, order Order, spaced Spaced) (string, error) {
 	p := &printer{src: lines, claimed: make([]bool, len(lines)+1), lead: map[*yaml.Node][]line{},
 		trail: map[*yaml.Node][]line{}, bodies: map[*yaml.Node]body{}, spaced: map[*yaml.Node]bool{}}
 	p.readBodies(root, 0)
 	p.readTrivia(root, true)
 	if order != nil {
 		reorder(root, nil, order)
+		if err := anchorsFirst(root, map[string]bool{}); err != nil {
+			return "", err
+		}
 	}
 	if spaced != nil {
 		p.markSpaced(root, nil, spaced)
 	}
 	p.write(root)
-	return strings.Join(p.out, "\n") + "\n"
+	return strings.Join(p.out, "\n") + "\n", nil
 }
 
 // markSpaced marks every block sequence below n, at path, whose items spaced separates with one blank line.
@@ -206,20 +218,23 @@ func documentStart(text string) (start, rest string, ok bool) {
 	return "", "", false
 }
 
-// supported fails on what Format cannot rewrite safely: anchors and aliases, which a reorder may break, explicit
-// tags and keys that are not scalars.
-func supported(n *yaml.Node) error {
-	switch {
-	case n.Kind == yaml.AliasNode || n.Anchor != "":
-		return fmt.Errorf("line %d: anchors and aliases are %w", n.Line, ErrUnsupported)
-	case n.Style&yaml.TaggedStyle != 0:
+// supported fails on what Format cannot rewrite safely: explicit tags, keys that are not scalars, anchors and aliases
+// on keys, merge keys that use them, an anchor on the root collection (root tells whether n is it) and an anchor name
+// defined twice (seen holds the names defined so far). Anchors and aliases on values are kept.
+func supported(n *yaml.Node, root bool, seen map[string]bool) error {
+	if n.Style&yaml.TaggedStyle != 0 {
 		return fmt.Errorf("line %d: explicit tags are %w", n.Line, ErrUnsupported)
 	}
+	if err := supportedAnchor(n, root, seen); err != nil {
+		return err
+	}
 	for i, c := range n.Content {
-		if n.Kind == yaml.MappingNode && i%2 == 0 && c.Kind != yaml.ScalarNode {
-			return fmt.Errorf("line %d: keys that are not scalars are %w", c.Line, ErrUnsupported)
+		if n.Kind == yaml.MappingNode && i%2 == 0 {
+			if err := supportedKey(c, n.Content[i+1]); err != nil {
+				return err
+			}
 		}
-		if err := supported(c); err != nil {
+		if err := supported(c, false, seen); err != nil {
 			return err
 		}
 	}

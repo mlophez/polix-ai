@@ -83,9 +83,67 @@ func TestDecideProblem(t *testing.T) {
 	if out.Problem == "" || out.Write != nil || out.Changed {
 		t.Fatalf("got %+v", out)
 	}
-	out = Decide([]byte("a: &x 1\nb: *x\n"), true, false, "")
+	out = Decide([]byte("a: 1\n&x b: 2\n"), true, false, "")
 	if !strings.Contains(out.Problem, "anchors") || out.Write != nil {
 		t.Fatalf("got %+v", out)
+	}
+}
+
+// AC1: an anchor on a value and its alias are formatted and kept where they were, and the result formats to itself.
+func TestDecideAnchors(t *testing.T) {
+	src := `on:
+    stop:
+      - action:
+            run: &test
+                command: just test
+        when: { changed: "*.go" }
+githooks:
+    pre_commit:
+      - action:
+            run: *test
+version: 1
+`
+	want := `version: 1
+on:
+  stop:
+    - when: { changed: "*.go" }
+      action:
+        run: &test
+          command: just test
+githooks:
+  pre_commit:
+    - action:
+        run: *test
+`
+	out := Decide([]byte(src), true, false, "")
+	if out.Problem != "" || !out.Changed || string(out.Write) != want {
+		t.Fatalf("problem %q, got\n%s", out.Problem, out.Write)
+	}
+	if out := Decide(out.Write, true, false, ""); out.Problem != "" || out.Changed || out.Write != nil {
+		t.Fatalf("formatted: %+v", out)
+	}
+}
+
+// AC8: when the order of the sections would put an alias above its anchor, the file is a problem that names the line
+// of the alias, never written, with or without check.
+func TestDecideAliasBeforeAnchor(t *testing.T) {
+	src := `githooks:
+  pre_commit:
+    - action:
+        run: &test
+          command: just test
+on:
+  stop:
+    - action:
+        run: *test
+version: 1
+`
+	want := "line 9: the alias *test would come before its anchor &test: move the anchor up"
+	for _, check := range []bool{false, true} {
+		out := Decide([]byte(src), true, check, "")
+		if !strings.Contains(out.Problem, want) || out.Write != nil || out.Changed {
+			t.Fatalf("check %v: %+v", check, out)
+		}
 	}
 }
 

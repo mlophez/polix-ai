@@ -62,9 +62,18 @@ vocabulary of the domain:
   entry stay together, and the blank lines of the source are kept.
 - The items of a list never move, nor the keys a user names: the variables of `vars`, the globs of `risk.weights`
   and of `rules.run`, whose order decides which one matches first.
-- A leading document start marker (`---`) stays, with the comments above it. It refuses anchors, aliases, explicit
-  tags, keys that are not scalars, comments inside a flow collection, directives and any other document marker. It
-  checks its own result: when the formatted file would decode to other data or lose a comment, it fails instead.
+- A leading document start marker (`---`) stays, with the comments above it.
+- The anchors and aliases of the values stay where they are written: `&name` goes before an anchored scalar, flow
+  collection or block scalar, `*name` is written wherever a value goes, and an anchored block collection has its anchor
+  alone at the end of the line of its key or of its dash (`run: &test`, `- &entry`), with its content on the lines
+  below.
+- It refuses an anchor or alias in front of a key (`- &entry when: ...` anchors the key, not the entry), an anchor on
+  the whole document, an anchor name defined twice, a merge key (`<<`) that uses an anchor or alias, explicit tags,
+  keys that are not scalars, comments inside a flow collection, directives and any other document marker.
+- It refuses a file whose canonical order would put an alias above its anchor, which is not YAML: it prints
+  `line <n>: the alias *<name> would come before its anchor &<name>: move the anchor up`, with the line of the alias,
+  and moving the anchor up fixes it. It checks its own result: when the formatted file would decode to other data or
+  lose a comment, it fails instead.
 
 ## Response
 

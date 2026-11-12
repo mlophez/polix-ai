@@ -87,17 +87,19 @@ check failed.
 
 `polix rules fmt` formats every `*.yaml` of the folder of `rules.path` (`ai/rules` without `polix.yaml`) in place,
 `retired.yaml` included, with the layout of `polix config fmt`: two spaces of indentation, flow collections on one
-line, the comments and the blank lines kept. `rules` goes first, the keys of each rule follow `id`, `description`,
-`scope`, `deterministic`, `check` and `reason`, with any other key after them in its order, and the rules never
-move. Exactly one blank line separates two rules, above the comments of the later one (two rules written in flow
+line, the comments and the blank lines kept, and the anchors and aliases of the values where they are written (an
+anchored block collection has its anchor alone at the end of the line of its key or of its dash). `rules` goes
+first, the keys of each rule follow `id`, `description`, `scope`, `deterministic`, `check` and `reason`, with any
+other key after them in its order, and the rules never move. Exactly one blank line separates two rules, above the comments of the later one (two rules written in flow
 style on one line each, as `- { id: X-1, description: "One.", deterministic: false }`, without comments above or
 below them, stay together), and none follows `rules:`;
 a rule that ends in a block scalar with `+` (`|+`, `>+`) keeps its own blank lines, which belong to the scalar.
 It prints `ok: formatted <file>` for each file it writes, or `ok: the rules are formatted` when none changes; with
 `--check` it writes nothing, prints `<file> is not formatted: run polix rules fmt` to stderr for each file that
-would change and exits with 1. It is all or nothing: when a file cannot be formatted (not YAML, an anchor, an
-alias), it prints `<file>: <problem>` and writes no file at all, and so it does, with or without `--check`, when two
-rules share an id or a rule has the id of a rule of `retired.yaml`, printing
+would change and exits with 1. It is all or nothing: when a file cannot be formatted (not YAML, an anchor or alias in
+front of a key, an anchor on the whole document, an anchor name defined twice, a merge key (`<<`) that uses an anchor or alias, an alias that the order of the keys
+would put above its anchor), it prints `<file>: <problem>` and writes no file at all, and so it does, with or
+without `--check`, when two rules share an id or a rule has the id of a rule of `retired.yaml`, printing
 `<file> <id>: id repeated, also in <other file>`, and when a file is YAML but does not decode as rules (a `scope`
 that is not a list), printing the error of the loader of the rules, since it cannot rule out a repeated id then.
 A missing folder, or one without `*.yaml`, prints

@@ -15,7 +15,7 @@ func (p *printer) readBodies(n *yaml.Node, parent int) {
 		return
 	}
 	for i, c := range n.Content {
-		parent := n.Column - 1 // the dash of a sequence item
+		parent := p.column(n) // the dash of a sequence item
 		if n.Kind == yaml.MappingNode {
 			parent = n.Content[i-i%2].Column - 1 // the key of the pair
 		}
@@ -27,14 +27,17 @@ func (p *printer) readBodies(n *yaml.Node, parent int) {
 // from the lines below, up to the first line indented less than the content. The blank lines that end it are part of
 // it only with the indicator +.
 func (p *printer) readBody(n *yaml.Node, parent int) {
-	b, content := p.bodyHeader(n, parent)
-	last, content := p.bodyEnd(n.Line, parent, content)
+	b, ln, content := p.bodyHeader(n, parent)
+	if b.header == "" {
+		return
+	}
+	last, content := p.bodyEnd(ln, parent, content)
 	if strings.Contains(b.header, "+") {
 		for last < len(p.src) && strings.TrimSpace(p.src[last]) == "" {
 			last++
 		}
 	}
-	for i := n.Line + 1; i <= last; i++ {
+	for i := ln + 1; i <= last; i++ {
 		l := p.src[i-1]
 		p.claimed[i] = true
 		if len(l) > content {
@@ -46,12 +49,25 @@ func (p *printer) readBody(n *yaml.Node, parent int) {
 	p.bodies[n] = b
 }
 
-// bodyHeader reads the header of the block scalar n, whose parent starts at column parent, from its line. It returns
-// the body with its header and its explicit indentation, and the column of its content when the header gives it,
-// else -1.
-func (p *printer) bodyHeader(n *yaml.Node, parent int) (body, int) {
-	src := p.src[n.Line-1]
-	at := offset(src, n.Column-1)
+// bodyHeader reads the header of the block scalar n, whose parent starts at column parent, from its line, or from the
+// next line that is not blank or a comment when its anchor ends its line. It returns the body with its header and its
+// explicit indentation, the line (1-based) of the header, and the column of its content when the header gives it,
+// else -1. The header is empty when no | or > is found there.
+func (p *printer) bodyHeader(n *yaml.Node, parent int) (body, int, int) {
+	ln := n.Line
+	src := p.src[ln-1]
+	at := skipAnchor(src, offset(src, n.Column-1), n)
+	if at >= len(src) || src[at] == '#' {
+		ln = p.nextContent(ln)
+		if ln == 0 {
+			return body{}, n.Line, -1
+		}
+		src = p.src[ln-1]
+		at = indentOf(src)
+	}
+	if at >= len(src) || (src[at] != '|' && src[at] != '>') {
+		return body{}, ln, -1
+	}
 	end := at + 1
 	for end < len(src) && strings.ContainsRune("-+0123456789", rune(src[end])) {
 		end++
@@ -62,7 +78,18 @@ func (p *printer) bodyHeader(n *yaml.Node, parent int) (body, int) {
 		b.indent = int(b.header[i] - '0')
 		content = parent + b.indent
 	}
-	return b, content
+	return b, ln, content
+}
+
+// nextContent returns the first line (1-based) after the line ln that is not blank or a comment, or 0 when there is
+// none.
+func (p *printer) nextContent(ln int) int {
+	for i := ln + 1; i <= len(p.src); i++ {
+		if !trivia(p.src[i-1]) {
+			return i
+		}
+	}
+	return 0
 }
 
 // bodyEnd returns the last line (1-based) of the content of the block scalar whose header is on the line ln and whose
@@ -99,7 +126,7 @@ func (p *printer) readTrivia(n *yaml.Node, top bool) {
 		return
 	}
 	items := p.items(n)
-	col := n.Column - 1
+	col := p.column(n)
 	for i, it := range items {
 		lines := p.above(it.Line)
 		switch {

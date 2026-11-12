@@ -55,9 +55,12 @@ with the sequence that `spaced` separates:
   between `rules:` and the first rule; the blank lines inside a rule stay as they are, and no other sequence (the
   `scope` of a rule in block style) is separated. A rule that ends in a block scalar with `+` (`|+`, `>+`) gets no
   blank line after it, which would be part of the scalar: its own blank lines separate it.
-- It refuses what yamlfmt refuses (anchors, aliases, explicit tags, keys that are not scalars, comments inside a
-  flow collection, directives and other document markers), and a result that would decode to other data or lose a
-  comment.
+- The anchors and aliases of the values stay where they are written; an anchored block collection has its anchor
+  alone at the end of the line of its key or of its dash.
+- It refuses what yamlfmt refuses (an anchor or alias in front of a key, an anchor on the whole document, an anchor
+  name defined twice, a merge key that uses an anchor or alias, explicit tags, keys that are not scalars, comments
+  inside a flow collection, directives and other document markers, and an order of keys that would put an alias above
+  its anchor: move the anchor up), and a result that would decode to other data or lose a comment.
 
 ## Response
 

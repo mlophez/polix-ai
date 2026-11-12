@@ -49,7 +49,7 @@ func TestDecideUnformatted(t *testing.T) {
 // change; the problems and the changed files come sorted by name.
 func TestDecideProblem(t *testing.T) {
 	files := map[string][]byte{
-		"d.yaml": []byte("rules:\n  - &x\n    id: A-1\n"),
+		"d.yaml": []byte("rules:\n  - &x id: A-1\n"),
 		"c.yaml": []byte(unformatted),
 		"b.yaml": []byte("rules: [\n"),
 		"a.yaml": []byte(unformatted),

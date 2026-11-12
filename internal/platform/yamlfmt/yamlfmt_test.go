@@ -264,12 +264,129 @@ func TestFormatDocumentStart(t *testing.T) {
 	}
 }
 
-// Anchors, aliases, tags, complex keys, directives and any other document marker are refused.
+// Merge keys that use an anchor, tags, complex keys, directives and any other document marker are refused.
 func TestFormatUnsupported(t *testing.T) {
-	for _, src := range []string{"a: &x 1\nb: *x\n", "a: !!str 1\n", "? [a]\n: 1\n", "---\na: 1\n---\nb: 2\n",
+	merge := "a: &x { k: 1 }\nb:\n  <<: *x\n"
+	if _, err := Format([]byte(merge), nil, nil); !errors.Is(err, ErrUnsupported) ||
+		err.Error() != "line 3: anchors and aliases are not supported by the formatter" {
+		t.Fatalf("merge: %v", err)
+	}
+	for _, src := range []string{"a: !!str 1\n", "? [a]\n: 1\n", "---\na: 1\n---\nb: 2\n",
 		"%YAML 1.2\n---\na: 1\n", "a: 1\n...\n"} {
 		if _, err := Format([]byte(src), nil, nil); !errors.Is(err, ErrUnsupported) {
 			t.Fatalf("%q: %v", src, err)
+		}
+	}
+}
+
+// The anchors and aliases of the values stay where they are written, on every kind of value: plain, quoted and block
+// scalars, flow collections, and block mappings and sequences, as the value of a key and as an item of a sequence, an
+// alias inside a flow collection included. A second pass changes nothing.
+func TestFormatAnchors(t *testing.T) {
+	for name, c := range map[string][2]string{
+		"plain":           {"a:   &x 1\nb: *x\n", "a: &x 1\nb: *x\n"},
+		"null":            {"a: &x\nb: *x\n", "a: &x\nb: *x\n"},
+		"double quoted":   {"a: &x   \"it's  q\"\nb: *x\n", "a: &x \"it's  q\"\nb: *x\n"},
+		"single quoted":   {"a: &x 'it''s'\nb: *x\n", "a: &x 'it''s'\nb: *x\n"},
+		"block scalar":    {"a: &x |\n    keep\n      this\nb: *x\n", "a: &x |\n  keep\n    this\nb: *x\n"},
+		"block indicator": {"a: &x >-\n    x\n    y\nb: 1\n", "a: &x >-\n  x\n  y\nb: 1\n"},
+		"flow mapping":    {"a: &m {  k: 1 }\nb: *m\n", "a: &m { k: 1 }\nb: *m\n"},
+		"flow sequence":   {"a: &s [ 1,  2 ]\nb: *s\n", "a: &s [1, 2]\nb: *s\n"},
+		"empty flow":      {"a: &m {}\nb: *m\n", "a: &m {}\nb: *m\n"},
+		"block mapping":   {"a: &m\n    k: 1\n    j: 2\nb: *m\n", "a: &m\n  k: 1\n  j: 2\nb: *m\n"},
+		"block sequence":  {"a: &s\n- 1\n- 2\nb: *s\n", "a: &s\n  - 1\n  - 2\nb: *s\n"},
+		"mapping item": {"l:\n  - &m\n      k: 1\n      j: 2\n  - *m\n",
+			"l:\n  - &m\n    k: 1\n    j: 2\n  - *m\n"},
+		"sequence item":     {"l:\n  - &s\n    - 1\n    - 2\n  - *s\n", "l:\n  - &s\n    - 1\n    - 2\n  - *s\n"},
+		"scalar item":       {"l:\n  - &x   1\n  - *x\n", "l:\n  - &x 1\n  - *x\n"},
+		"block after break": {"a: &x\n  |\n  text\nb: *x\n", "a: &x |\n  text\nb: *x\n"},
+		"block in sequence": {"a: &s\n- |\n x\n- y\nb: *s\n", "a: &s\n  - |\n    x\n  - y\nb: *s\n"},
+		"block item":        {"l:\n  - &x |\n     a\n  - *x\n", "l:\n  - &x |\n    a\n  - *x\n"},
+		"nested":            {"l:\n  - &m\n    k: &x 1\n    j: &s\n      - *x\n", "l:\n  - &m\n    k: &x 1\n    j: &s\n      - *x\n"},
+		"in flow":           {"a: &q x\nb: [*q, y]\nc: { k: *q }\n", "a: &q x\nb: [*q, y]\nc: { k: *q }\n"},
+		"anchor in flow": {"a: [ &q x,  *q ]\nb: { k: &r 1, j: *r }\n",
+			"a: [&q x, *q]\nb: { k: &r 1, j: *r }\n"},
+		"line comments": {"a: &x 1 # one\nb: *x # two\n", "a: &x 1 # one\nb: *x   # two\n"},
+	} {
+		got, err := Format([]byte(c[0]), nil, nil)
+		if err != nil || string(got) != c[1] {
+			t.Fatalf("%s:\ngot:\n%s\nwant:\n%s\n%v", name, got, c[1], err)
+		}
+		if twice, err := Format(got, nil, nil); err != nil || string(twice) != c[1] {
+			t.Fatalf("%s: not idempotent:\n%s\n%v", name, twice, err)
+		}
+	}
+}
+
+// An anchored block collection is written alone on the line of its dash, never with its first key after the anchor,
+// which yaml.v3 would read as an anchor on the key.
+func TestFormatAnchorOnItsOwnLine(t *testing.T) {
+	got, err := Format([]byte("l:\n   -   &m\n         k: 1\n         j: 2\n"), nil, nil)
+	if err != nil || string(got) != "l:\n  - &m\n    k: 1\n    j: 2\n" {
+		t.Fatalf("%q %v", got, err)
+	}
+}
+
+// A block scalar whose header is on the line below its anchor keeps its block style and its content, even a line
+// that starts with #, and comes out with the header on the line of its anchor.
+func TestFormatAnchorBlockHeaderBelow(t *testing.T) {
+	for src, want := range map[string]string{
+		"a: &x\n  |\n  # not a comment\nb: *x\n":          "a: &x |\n  # not a comment\nb: *x\n",
+		"a: &x\n\n  >-\n    one\n    two\nb: *x\n":        "a: &x >-\n  one\n  two\nb: *x\n",
+		"l:\n  - &x\n    |2\n       text\n  - *x\n":       "l:\n  - &x |2\n       text\n  - *x\n",
+		"a: &x\n  |+\n  text\n\nb: *x\n":                  "a: &x |+\n  text\n\nb: *x\n",
+		"a: &x\n  | # about a\n  # not a comment\nb: 1\n": "a: &x | # about a\n  # not a comment\nb: 1\n",
+	} {
+		got, err := Format([]byte(src), nil, nil)
+		if err != nil || string(got) != want {
+			t.Errorf("%q: got %q, want %q, %v", src, got, want, err)
+			continue
+		}
+		if twice, err := Format(got, nil, nil); err != nil || string(twice) != want {
+			t.Errorf("%q: not idempotent: %q %v", src, twice, err)
+		}
+	}
+}
+
+// The comments of an anchored sequence item stay where they were: the one above its second key above that key, and
+// the one below its last line, indented deeper than the next item, below it.
+func TestFormatAnchorComments(t *testing.T) {
+	src := "l:\n  - &e\n      a: 1\n      # about b\n      b: 2\n      # below e\n  - c\n"
+	want := "l:\n  - &e\n    a: 1\n    # about b\n    b: 2\n      # below e\n  - c\n"
+	got, err := Format([]byte(src), nil, nil)
+	if err != nil || string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s\n%v", got, want, err)
+	}
+	if twice, err := Format(got, nil, nil); err != nil || string(twice) != want {
+		t.Fatalf("not idempotent:\n%s\n%v", twice, err)
+	}
+	// An anchored sequence: the comments between its items and the one above its first item.
+	src = "a: &s\n  # about 1\n  - 1\n  # about 2\n  - 2\nb: 1\n"
+	if got, err := Format([]byte(src), nil, nil); err != nil || string(got) != src {
+		t.Fatalf("sequence:\n%s\n%v", got, err)
+	}
+	// A comment above an anchored item, and a block scalar below an anchored sequence with explicit indentation.
+	src = "l:\n  # about e\n  - &e\n    a: 1\n  - &s\n    - |2\n          text\n"
+	want = "l:\n  # about e\n  - &e\n    a: 1\n  - &s\n    - |2\n          text\n"
+	if got, err := Format([]byte(src), nil, nil); err != nil || string(got) != want {
+		t.Fatalf("above:\n%s\n%v", got, err)
+	}
+}
+
+// An anchor or alias in front of a key, an anchor on the whole document and an anchor name defined twice are refused
+// with their line.
+func TestFormatAnchorRefusals(t *testing.T) {
+	for src, want := range map[string]string{
+		"&k a: 1\n":                "line 1: anchors and aliases on keys are not supported by the formatter",
+		"l:\n  - &f when: 1\n":     "line 2: anchors and aliases on keys are not supported by the formatter",
+		"x: &k a\n*k: 1\n":         "line 2: anchors and aliases on keys are not supported by the formatter",
+		"&r\na: 1\n":               "line 1: an anchor on the whole document is not supported by the formatter",
+		"&r\n- a\n":                "line 1: an anchor on the whole document is not supported by the formatter",
+		"a: &x 1\nb:\n  c: &x 2\n": "line 3: the anchor &x is defined twice: rename one",
+	} {
+		_, err := Format([]byte(src), nil, nil)
+		if !errors.Is(err, ErrUnsupported) || err.Error() != want {
+			t.Fatalf("%q: got %v, want %s", src, err, want)
 		}
 	}
 }
