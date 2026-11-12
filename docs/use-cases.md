@@ -43,6 +43,7 @@ run again on the same content; an `inject` reaches the AI once per session and a
   - [No commits on main](#no-commits-on-main)
   - [Format every file the agent edits](#format-every-file-the-agent-edits)
   - [Lint feedback right after each edit](#lint-feedback-right-after-each-edit)
+  - [A slow formatter right before `git add`](#a-slow-formatter-right-before-git-add)
   - [Tests that run themselves](#tests-that-run-themselves)
 - The flow of the team, with `on:`
   - Quality gates
@@ -117,7 +118,7 @@ command that writes one with the path it writes, or the protected glob a folder 
 denial as `guardrails.protected_files`. Unlike an entry of `on:`, it also covers files git ignores, so an ignored
 `.env` stays out of reach too, but never an edit outside the repository. On macOS and Windows the globs ignore
 case, so `.ENV` is `.env` there.
-A command the check of its line misses (`python -c ...`, `bash -c '...'`) is caught after it runs: polix puts a
+A command the check of its line misses (`python -c ...`, `bash -c "$CMD"`) is caught after it runs: polix puts a
 protected file git does not ignore back as it was before the command and tells the agent (see
 [Files a command changed](polix.md#files-a-command-changed)).
 
@@ -202,10 +203,10 @@ line the way a shell runs it and matches every command on its own, so it catches
 still goes through. Narrow the patterns, `*rm -rf /*` or `*rm -rf ~*`, if the agent should keep cleaning its own
 build folders.
 
-Each command is matched as written, so this is a guardrail against accidents, not a sandbox: a pattern misses
-another spelling of the same command (`rm -fr`, `rm -r -f`, the flags in another order), and a command run through
-an interpreter or a substitution (`bash -c 'rm -rf dist'`, `$(...)`). That is why the list carries `rm -rf` and
-`rm -fr`, and why the patterns start with `*`, which also covers a wrapper such as `sudo rm -rf /`. A command that is forbidden only on some branches or for some actors is an entry of `on:` with
+Each command is matched as written or normalized (without wrappers such as `sudo`), nested ones in `bash -c` or
+`$(...)` included, so `sudo rm -rf /` and `bash -c 'rm -rf dist'` are caught. It is still a guardrail against
+accidents, not a sandbox: a pattern misses another spelling of the same command (`rm -fr`, `rm -r -f`, the flags in
+another order) and a script that is not literal. That is why the list carries `rm -rf` and `rm -fr`. A command that is forbidden only on some branches or for some actors is an entry of `on:` with
 `command` and those conditions, as in [Keep production out of reach](#keep-production-out-of-reach).
 
 ### No commits on main
@@ -311,6 +312,33 @@ On `post_edit` a failing `run` never blocks, since the edit already happened: th
 agent as context. It reads the warnings in the next step and fixes them while the file is still in its head,
 instead of finding a wall of lint errors at the end of the task. A lint that passed on a file is not run again
 until that file, or any other, changes.
+
+### A slow formatter right before `git add`
+
+A formatter too slow to run after every edit, or at the end of every turn, runs right before the agent stages its
+files: an entry of `pre_command` with the condition `command` on `git add` and `git stage`.
+
+```yaml
+on:
+  pre_command:
+    - when: { command: ["git add*", "git stage*"], changed: ["*.java", pom.xml] }
+      action:
+        run:
+          command: "mvn -s mvnw.xml -q spotless:apply"
+          message: "spotless:apply could not format the Java code:"
+    - when: { command: ["git add*", "git stage*"], changed: ["frontend/**/*.ts", "frontend/**/*.tsx"] }
+      action:
+        run:
+          command: "npm --prefix frontend run eslint -- --fix"
+          message: "ESLint left problems it cannot fix in the frontend: fix them before staging."
+```
+
+polix parses the command line as bash, so the pattern holds on every command that stages, however it is written:
+`git add .`, `cd frontend && git add -A`, `git -C x add .`, `git -c core.x=y add .`, `sudo env FOO=1 git add .`
+and `bash -c 'git add .'`. It does not hold on `git commit -m "add foo"` nor `echo "git add"`, where `add` is only
+an argument. `changed` keeps the formatter off when no file of its kind changed, and a `run` that passed on a
+content does not run again until it changes. On `pre_command` a failing `run` blocks the command, so the agent
+reads the message and the output before it stages anything.
 
 ### Tests that run themselves
 

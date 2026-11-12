@@ -238,8 +238,11 @@ The use case `AnswerHook`, `internal/app/hook/answer` (layout in `docs/architect
 1. The entry of the use case turns the JSON of stdin into neutral events (`internal/app/agent`) through the format
    of the agent, `claude` (Claude Code) or `codex` (Codex support is not implemented, see
    [Known limits](#known-limits)).
-   An edit becomes one `pre_edit` or `post_edit` per path; a `git commit` in a command also produces
-   `pre_commit`; the `SubagentStart` of either agent becomes `subagent_start`, with the type of the subagent as
+   An edit becomes one `pre_edit` or `post_edit` per path; a command line also produces `pre_commit` when one of
+   its commands, nested ones included, is a `git commit` once normalized (`git -C x commit`, `sudo git commit`,
+   `bash -c "git commit -m x"`), but not for the text of a commit in quotes (`echo "git commit"`); a line the bash
+   parser rejects is decided by a regular expression instead, which also counts such a text. The `SubagentStart`
+   of either agent becomes `subagent_start`, with the type of the subagent as
    actor.
 2. The logic of AnswerHook (`internal/app/hook/answer`) applies the [protections](#protections): the built-in protection of the
    state, then `guardrails.protected_files` and `guardrails.forbidden_commands`; then the entries of the event in
@@ -263,8 +266,11 @@ both, and `protected_files` to the edits of files git ignores.
 Likewise a commit in another repository, as `git -C ../other commit`, skips the entries of `pre_commit`, while
 `protected_files` and `forbidden_commands` still apply to it. polix takes a commit as one of another repository
 only through a strict allowlist: every command of the line is `git [-C <folder>]... add|commit ...`, with no
-other option, alias, wrapper or variable; outside quotes the line holds no `$`, backtick, glob, brace, `~`, parenthesis, redirection, `#` comment,
-backslash or second line, and inside double quotes no `$`, backtick or backslash; and the folder of each commit,
+other option, alias, wrapper or variable. On the line parsed as bash, no command is nested (in a subshell, a
+substitution or a `bash -c`), has a redirection or a word that bash expands (`$`, a substitution, a glob, a brace,
+`~`), while a comment is no word (`git -C ../other commit -m x # note` is placed); a line the parser rejects holds,
+outside quotes, no `$`, backtick, glob, brace, `~`, parenthesis, redirection, `#` comment, backslash or second
+line, and inside double quotes no `$`, backtick or backslash. And the folder of each commit,
 the session folder after its `-C` options, is outside the folder of this repository (a repository nested in it
 counts as this one) and inside another existing repository, as git itself resolves it, whose git directory,
 objects and refs are not those of this repository (so a linked worktree of it is not another one). On Windows each
@@ -274,8 +280,18 @@ as a commit of this repository.
 ### Protections
 
 The only built-in protection applies whatever the workflow says, even without one: nobody edits the state
-(`<git-dir>/polix/`), and no command that names it may write files (`rm`, `mv`, `cp`, `tee`, `sed -i`,
-redirections other than `2>&1`...); reading it is allowed, and `polix log` prints it.
+(`<git-dir>/polix/`), and no command line that names it may write files. It errs on the side of the guard. The text
+of the line may write when it holds the name of a writer (`rm`, `mv`, `cp`, `tee`, `sed -i`...) or a `>` other than
+`2>&1` and a redirection into `/dev/null`, even inside quotes (`> nul` counts: under Git Bash it may create a file). On top of that, the line is parsed as bash, and
+it may write when a command of it, nested ones included, redirects into a file other than
+the null device, has a word that writes the files it names (`rm`, `mv`, `cp`, `tee`, `sed -i`..., as the program or
+as an argument, so `find -exec rm`, `xargs rm` and `sudo -u x rm` count), has a word naming one of the shells or
+interpreters polix knows, whose script it does not see whole (such as `sh`, `bash`, `zsh`, `ksh`, `tcsh`, `pwsh`,
+`powershell`, `eval`, `source`, `awk`, `perl`, `python`, `ruby`, `node` or `php`, with any version, as `python3.12`),
+runs `.`, or runs a program whose name is not literal (`$SHELL -c ...`). For this protection names are compared
+without case, since macOS and Windows run `Bash` as `bash`. Reading it is allowed, `cat .git/polix/log.jsonl
+2>/dev/null` included, and `polix log` prints it; a reading line that mentions a writer, an interpreter or a `>`
+(`grep rm .git/polix/log.jsonl`) is refused too.
 A command names the state by its absolute path or below a git directory (`.git/polix`,
 `.git/worktrees/<name>/polix`), followed by a slash, a space, a quote, `;`, `&`, `|`, `)`, `*` or the end of the
 line: the bare word `polix` is the binary, not the state. On macOS and Windows, whose file names ignore case,
@@ -303,15 +319,23 @@ evaluation of the event:
   first item in file order whose pattern matches any command of the line denies it, wherever it comes (`cd tmp &&
   rm -rf /`), with its `reason` or the default `This command is forbidden by polix.yaml: a person must run it.`,
   followed by the line; the log records a `deny` decision of the action `guardrails.forbidden_commands` at the
-  line of the item. Each command is matched as written: like `writes`, a heuristic aimed at accidents. A pattern
-  misses another spelling (`rm -fr /`, `git push -f`), a wrapper (`sudo rm -rf /`, unless the pattern starts
-  with `*`) and a command run through an interpreter or a substitution (`bash -c '...'`, `$(...)`).
+  line of the item. Each command is matched as written and in its normalized form, without assignments, the
+  known wrappers and the global options of git (see the condition `command` in [Conditions](#conditions)), the
+  ones nested in `bash -c '...'`, `sh -c`, `$(...)`, backticks, subshells, `if`, `for` and `eval` included: so
+  `rm -rf*` denies `sudo rm -rf /`, `env X=1 rm -rf /` and `bash -c 'rm -rf /'`. Like `writes`, a check aimed at
+  accidents: a pattern misses another spelling (`rm -fr /`, `git push -f`), a wrapper it does not know or one
+  with an option that takes a value (`timeout 10 rm -rf /`, `sudo -u root rm -rf /`), a script that is not
+  literal (`bash -c "$CMD"`) and a command run through another interpreter (`python -c '...'`).
 
 Unlike the protection of the state, they need a valid `polix.yaml` (see [Failure policy](#failure-policy)).
 `polix graph` draws both lists in a subgraph `guardrails` before the events.
 
-Each command of the line is parsed with its quotes into the program it runs (past variable assignments, `sudo`,
-`env`, `xargs`..., and `git rm` and `git mv` as `rm` and `mv`), its arguments and its redirections. It writes:
+The command line is parsed as bash by a real shell parser (the one of `shfmt`, `mvdan.cc/sh`), which gives each
+command its exact words, quotes removed and `$'...'` decoded, and its redirections. A line it rejects, such as an
+unclosed quote or a line of PowerShell, is read instead by a heuristic that splits it on `&&`, `||`, `|`, `;` and
+`&` and respects quotes and backslashes. Each command of the line gives the program it runs (past variable
+assignments, `sudo`, `env`, `xargs`..., and `git rm` and `git mv` as `rm` and `mv`), its arguments and its
+redirections. It writes:
 
 - the targets of its redirections inside the repository: `>`, `>>`, `>|`, `&>`, `>&file` and `x>AGENTS.md`
   without spaces. `2>&1`, an input, `/dev/null` and a path outside the repository write nothing, nor does `NUL`
@@ -332,17 +356,20 @@ before it runs. It does not see the cases below; when the workflow watches the e
 are still caught after they run, a protected one put back and any other evaluated as an edit (see
 [Files a command changed](#files-a-command-changed)), except the files git ignores:
 
-- a program that writes through an interpreter or another command: `python -c "open(...)"`, `bash -c '...'`,
-  `sh -c`, `find ai -delete` or `find ai -exec rm {} \;`;
+- a program that writes through an interpreter or another command: `python -c "open(...)"`, `find ai -delete` or
+  `find ai -exec rm {} \;`, and a script of `bash -c`, `sh -c` or `eval` that is not literal (`bash -c "$CMD"`):
+  the commands of a literal script, of `$(...)`, backticks, subshells and compound commands are checked as any
+  other;
 - a wrapper with an option that takes a value (`sudo -u root rm`, `nice -n 10 rm`, `xargs -I {} rm`), or one it
   does not know (`timeout 10 rm`): the wrappers it skips are `sudo`, `env`, `command`, `nohup`, `time`, `exec`,
   `xargs` and `nice`, with their options but not their values;
 - a wildcard against a pattern that has wildcards too (`rm -f .env*` for `.env.*`, `rm ai/rules/*` for
   `ai/rules/*.yaml`): wildcards are only compared with literal paths and folders, and with a whole folder of `/**`;
 - a path reached through `cd` (`cd ai && rm -rf rules`) or built by the command itself;
-- quoting other than that of bash: a backslash before an ordinary character stays (for the paths of Windows, so
-  `rm AGENT\S.md` is not `AGENTS.md`), `$'...'` is not decoded, and under PowerShell a quoted path that ends in a
-  backslash (`"ai\rules\"`) is read as an escaped quote.
+- quoting other than that of bash: on Windows a backslash before an ordinary character stays, for its paths (so
+  there `rm AGENT\S.md` is not `AGENTS.md`, as it is on Linux and macOS), and a line the parser rejects is read by
+  the heuristic, where `$'...'` is not decoded and, under PowerShell, a quoted path that ends in a backslash
+  (`"ai\rules\"`) is read as an escaped quote.
 
 ### Files a command changed
 
@@ -403,7 +430,11 @@ repaired after.
 - An invalid workflow blocks edits and commands (fail closed) with the problems found, so a broken file is
   noticed at once, except what fixing it needs: the main session may edit `polix.yaml`, any actor may run
   `polix config check`, `polix config fmt --check`, `polix update`, `polix doctor` and `polix version` (optionally
-  after a `cd`, never with a command substitution or a redirection but `2>&1`), and edits outside the repository or
+  after a `cd`, never with a redirection but `2>&1` or `1>&2`, and every command of the line parsed as bash, the
+  ones nested in a substitution included, must be one of them, so `polix doctor $(rm -rf ai)` is refused while
+  `polix doctor "x>y"` passes, and a line with `if`, `for`, `case`, a function or `[[ ]]` is refused; a line the
+  parser rejects is refused when it holds `$(`, a backtick, `<` or `>`),
+  and edits outside the repository or
   of ignored files go through as always. The built-in protection still applies, but
   `protected_files` and `forbidden_commands` do not: an ignored `.env` of `protected_files` may be edited until the
   file is fixed. It never blocks a stop, which
@@ -639,9 +670,22 @@ Conditions:
 - `command` and `exit`: a command of the line matches a pattern (`*` matches anything) and its exit code.
   `command` only on `pre_command`, `post_command` and `pre_commit`; `exit` only on `post_command`.
   The line is split into its commands (`cd x && just test 2>&1 | tail -3` runs `cd x`, `just test 2>&1` and
-  `tail -3`, quotes respected), and each one is matched on its own.
+  `tail -3`, quotes respected), and each one is matched on its own. The commands nested in it count too: those of
+  a subshell, a block, `if`, `while`, `for`, `case` and a function, of `$(...)`, backticks and `<(...)`, of the
+  literal script of `sh -c`, `bash -c` or `zsh -c` (wrappers such as `sudo` included), of a here-document, read as
+  written with its expansions, or a literal here-string given to one of them reading stdin, directly or through a
+  pipe (`bash <<EOF`, `bash - <<'EOF'`, `cat <<'EOF' | bash`), and of `eval` with literal words. A pattern
+  holds on a command
+  as written or in its normalized form: without its leading assignments, without the wrappers `sudo`, `env`,
+  `command`, `nohup`, `time`, `exec`, `xargs` and `nice` with their options, and without the global options of git
+  before its subcommand (`-C <dir>`, `-c <k=v>`, `--git-dir`, `--work-tree`, `--no-pager`...). So
+  `command: "git add*"` holds for `git add .`, `git -C x add .` and `sudo env FOO=1 git add .`, and not for
+  `git commit -m "add foo"` nor `echo "git add"`, whose `add` is an argument.
   The exit code of the line only counts for a command whose failure propagates to it, alone, last or followed by
-  `&&`: in `just test | tail`, `tail` decides it, so `exit: 1` does not hold. A command of the AI may trigger an
+  `&&`: in `just test | tail`, `tail` decides it, so `exit: 1` does not hold. A command of a subshell or a block
+  propagates as the subshell does, and the last command of a `bash -c` script as the `bash -c`; a command inside
+  `$(...)`, `eval`, a condition, a loop or a branch never does, nor one negated with `!` (`! just test`). A
+  command of the AI may trigger an
   `inject` this way, but it never counts as a check that passed (see
   [What polix observes](#what-polix-observes-and-finished)).
 - `writes`: a command of the line writes files and names a path that matches a glob (or a list), with the same
@@ -1042,7 +1086,7 @@ count: it fails open, lets the agent stop with a warning and records a `loop_gua
 ## The gates of git: githooks
 
 The events of `on` are those of the AI: `on.pre_commit` only runs when polix recognises a `git commit` in a command
-line of the agent, so the commits of people, of an IDE, or of the agent through a form the heuristic misses are not
+line of the agent, so the commits of people, of an IDE, or of the agent through a form the parse misses are not
 gated by it. The section `githooks` of `polix.yaml` holds the gates git itself runs, on every commit, whoever makes
 it: git does not tell a person from an agent, and neither does `githooks`.
 
@@ -1365,8 +1409,12 @@ may outlive the budget, since polix does not kill the whole process tree.
 - Codex is not implemented: an adapter (`polix hook codex`) and an opt-in install (`polix install --agent codex`)
   exist, but they were never tested against a running Codex. Its tool names (`shell`, `apply_patch`...), whether
   it has a subagent stop event and how its hooks set a timeout are still unknown.
-- A `git commit` is recognised by a heuristic (global options and quoted commands included); the text of a
-  commit inside quotes, as in `echo "git commit"`, also triggers `pre_commit`. The `commit` switch of `guidance`
+- A `git commit` is recognised on the line parsed as bash: a command, nested ones included, that is `git commit`
+  once its assignments, wrappers and global options of git are dropped; `echo "git commit"` no longer counts. A
+  commit run through a variable, an alias or a script that is not literal (`$GIT commit`, `bash -c "$CMD"`) is not
+  seen, nor one behind a wrapper polix does not know or a wrapper option that takes a value (`timeout 60 git
+  commit`, `nice -n 10 git commit`, `sudo -u x git commit`), which the former regular expression caught; a line the parser rejects falls back to a regular expression, for which the text of a commit inside
+  quotes counts too. The `commit` switch of `guidance`
   asks the agent to run each commit on its own, so it stays recognisable.
   A commit in another repository skips the entries of `pre_commit` only in the plain forms of the allowlist (see
   [How a hook call is answered](#how-a-hook-call-is-answered)); `cd <folder> && git commit`, `git -C ~/x commit`,

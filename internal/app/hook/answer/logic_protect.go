@@ -8,6 +8,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 	"github.com/mlophez/polix-ai/internal/platform/glob"
+	"github.com/mlophez/polix-ai/internal/platform/shell"
 )
 
 // The reasons of the protection of the state of polix, which comes before the workflow.
@@ -37,12 +38,20 @@ var stateRef = regexp.MustCompile(`\.git/(worktrees/[^/\s'"]+/)?polix(/|[\s'";&|
 // stateRefFold is stateRef ignoring case, for the systems whose file names ignore it.
 var stateRefFold = regexp.MustCompile(`(?i)\.git/(worktrees/[^/\s'"]+/)?polix(/|[\s'";&|)*]|$)`)
 
-// writesFiles recognises commands that can create, change or delete files: a heuristic, since a shell command
-// cannot be fully analysed, aimed at accidents rather than at an agent determined to get around it. A `>`
-// followed by `&` and a digit or `-` duplicates a descriptor (`2>&1`) and writes nothing; `>&file` writes file.
-// It guards the state, which any mention may reach; guardrails.protected_files and the condition writes go through
-// lineWrites instead.
+// writesFiles recognises commands that can create, change or delete files in the text of a line: a heuristic, the
+// fallback of mayWrite for a line the bash parser rejects. A `>` followed by `&` and a digit or `-` duplicates a
+// descriptor (`2>&1`) and writes nothing; `>&file` writes file.
 var writesFiles = regexp.MustCompile(`(^|[\s;&|(])(rm|mv|cp|tee|truncate|dd|touch|ln|install|chmod|rsync)(\s|$)|(sed|perl)\s+(-\S*\s+)*-i|>([^&]|&\s*[^0-9\s-]|$)`)
+
+// interpreters are the programs that run a script polix does not see whole (from stdin, a file, a substitution, a
+// word that is not literal, or the language of another interpreter): for mayWrite they may write.
+var interpreters = map[string]bool{"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "mksh": true,
+	"fish": true, "ash": true, "csh": true, "tcsh": true, "pwsh": true, "powershell": true, "eval": true,
+	"source": true, "awk": true, "gawk": true, "mawk": true, "nawk": true, "perl": true, "python": true, "pypy": true,
+	"ruby": true, "node": true, "deno": true, "bun": true, "php": true, "lua": true}
+
+// version is the version a program name may end with (python3.12, perl5.34), dropped to find its family.
+var version = regexp.MustCompile(`[0-9][0-9.]*$`)
 
 // guardrails returns the workflow whose guardrails the protections apply: the workflow when it is valid, else none.
 func (r *pass) guardrails() workflow.Workflow {
@@ -60,9 +69,76 @@ func (r *pass) deny(from string, line int, reason string) (agent.Answer, bool) {
 	return r.warn(agent.Answer{}.Refuse(reason)), true
 }
 
-// mayWrite reports whether a command line may create, change or delete files, by the heuristic that guards the
-// state.
-func mayWrite(command string) bool { return writesFiles.MatchString(command) }
+// mayWrite reports whether a command line may create, change or delete files, to guard the state. It errs on the
+// side of the guard, since it only refuses a line that also names the state (see namesState), and a refusal costs
+// little: polix log reads it. It is never weaker than the heuristic of the text: writesFiles on the line, without its
+// redirections into the null device (see withoutNullRedirects), decides first, on any line. On a line the bash
+// parser accepts, the line also may write when some command of it, nested ones included:
+//   - redirects into a file other than the null device;
+//   - has a word, its program or an argument, that writes by itself (see writesItself) with the words after it,
+//     so a writer run by find -exec, xargs or a wrapper with a value (`sudo -u x rm`) counts;
+//   - has a word naming one of the shells or interpreters polix knows, with any version (see interpreters and
+//     version, without case), whose script polix does not see whole, runs `.`, or runs a program whose name is not
+//     literal (see unknownProgram).
+func mayWrite(command string, windows bool) bool {
+	if writesFiles.MatchString(withoutNullRedirects(command)) {
+		return true
+	}
+	cmds, ast := shell.Parse(command, windows)
+	if !ast {
+		return false
+	}
+	for _, c := range cmds {
+		for _, w := range c.Writes {
+			if !nullDevice(w, windows) {
+				return true
+			}
+		}
+		// `.` is source only as the program: as an argument it is a folder or a filter (`jq . x`).
+		if name, args := program(c); name == "." || writesItself(strings.ToLower(name), args) || unknownProgram(c) {
+			return true
+		}
+		for i, w := range c.Words {
+			// Without case: macOS and Windows run `Bash` and `PWSH.EXE` as bash and pwsh.
+			name := shell.Program(strings.ToLower(w))
+			if interpreters[version.ReplaceAllString(name, "")] || writesItself(name, c.Words[i+1:]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// unknownProgram reports whether the program of the command c, its first word past the assignments, is not literal
+// (`$SHELL -c ...`, `"$X" ...`): it may be any program, a shell or a writer.
+func unknownProgram(c shell.Command) bool {
+	for i, w := range c.Words {
+		if !assignmentWord.MatchString(w) {
+			return !c.Literal[i]
+		}
+	}
+	return false
+}
+
+// nullRedirect is a redirection into /dev/null (`2>/dev/null`, `&> /dev/null`), which writes no file on any system,
+// Git Bash included: mayWrite drops it from the text before writesFiles reads it. It ends at a blank, the end of the
+// line or an operator (`2>/dev/null|head`), which stays. NUL is left out: under Git Bash `> nul` may create a file.
+var nullRedirect = regexp.MustCompile(`(^|\s)(\d*|&)>>?\s*/dev/null(\s|$|[;&|)])`)
+
+// withoutNullRedirects returns command without its redirections into /dev/null (see nullRedirect), each replaced by
+// a space and the operator after it, so two of them in a row are both dropped.
+func withoutNullRedirects(command string) string {
+	for {
+		next := nullRedirect.ReplaceAllString(command, " $3")
+		if next == command {
+			return command
+		}
+		command = next
+	}
+}
+
+// assignmentWord is a variable set for the command, as in `LANG=C sort`.
+var assignmentWord = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 
 // namesState reports whether a command line names the state folder dir, by its path below a git directory or by
 // dir itself or its real path, without case when fold is true.
@@ -108,10 +184,11 @@ func anyPathFold(patterns []string, p string, fold bool) bool {
 }
 
 // forbidden returns the first of the forbidden commands, in file order, whose pattern matches one of the commands of
-// the line, wherever it comes in it (see matchingCommands); false when none does.
-func forbidden(list []workflow.ForbiddenCommand, line string) (workflow.ForbiddenCommand, bool) {
+// the line, wherever it comes in it (see matchingCommands); false when none does. windows says whether the system is
+// Windows.
+func forbidden(list []workflow.ForbiddenCommand, line string, windows bool) (workflow.ForbiddenCommand, bool) {
 	for _, f := range list {
-		if len(matchingCommands([]string{f.Pattern}, line)) > 0 {
+		if len(matchingCommands([]string{f.Pattern}, line, windows)) > 0 {
 			return f, true
 		}
 	}

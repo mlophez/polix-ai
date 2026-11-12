@@ -22,6 +22,25 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   `line <n>: the alias *<name> would come before its anchor &<name>: move the anchor up`, and nothing is written.
 - `polix doctor` names the git version githooks need in its `ok` line too, `git runs polix githook on pre-commit,
   commit-msg (githooks need git 2.54 or later)`, not only in the warning for an older git.
+- polix reads every command line of the agent with a bash parser (`mvdan.cc/sh`) instead of its own heuristics:
+  the `command`, `writes` and `exit` conditions, `guardrails.protected_files`, `guardrails.forbidden_commands`, the
+  recognition of a commit, the commands allowed with an invalid `polix.yaml` and the commits of another repository
+  all decide on the parsed commands. A line the parser rejects, such as a PowerShell one, is read as before.
+- The commands nested in `bash -c '...'`, `sh -c`, `$(...)`, backticks, subshells, `if`, `for`, `case`, functions,
+  `eval` with literal words and here-documents given to a shell (`bash <<EOF`, `cat <<'EOF' | bash`) now count: `bash -c 'rm -rf /'` meets `forbidden_commands` and
+  `bash -c 'rm AGENTS.md'` meets `protected_files`.
+- A pattern of `command` and of `forbidden_commands` matches a command as written or normalized, without
+  assignments, the wrappers `sudo`, `env`, `command`, `nohup`, `time`, `exec`, `xargs` and `nice`, and the global
+  options of git: `command: "git add*"` holds for `git -C x add .`, and `rm -rf*` denies `sudo rm -rf /`.
+- The protection of the state of polix reads the parsed line on top of its text: reading the log with a
+  redirection into the null device (`cat .git/polix/log.jsonl 2>/dev/null`) is no longer refused, and a line with
+  one of the shells or interpreters polix knows (`bash`, `pwsh`, `eval`, `source`, `awk`, `perl`, `python3.12`...,
+  without case) or a program whose name is not literal (`$SHELL -c`) is refused too, even with no writer nor `>` in
+  its text.
+- A commit is recognised only when a `git commit` runs: the text of one inside quotes, as in an `echo`, no longer
+  triggers `pre_commit`. Neither does a commit behind a wrapper polix does not know or a wrapper option that takes a
+  value (`timeout 60 git commit`, `nice -n 10 git commit`, `sudo -u x git commit`), which the former regular
+  expression caught.
 
 ## [0.7.0] - 2026-11-12
 

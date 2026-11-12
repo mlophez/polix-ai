@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"regexp"
+	"runtime"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	"github.com/mlophez/polix-ai/internal/platform/shell"
 )
 
 // hookInput is the part of the input of a hook both agents share.
@@ -39,10 +41,10 @@ type backgroundTask struct {
 // left empty instead of failing the whole input.
 type looseText string
 
-// gitCommit recognises a git commit anywhere in a command line (`cd x && git commit -m ...`), after global
-// options of git, those with a separate value included (`git -C dir commit`, `git -c k=v commit`), and inside a
-// quoted command (`bash -c "git commit ..."`). It errs on the side of a gate: the text of a commit inside quotes
-// also counts.
+// gitCommit is the fallback of commits for a line the bash parser rejects: it recognises a git commit anywhere in the
+// line (`cd x && git commit -m ...`), after global options of git, those with a separate value included (`git -C
+// dir commit`, `git -c k=v commit`), and inside a quoted command (`bash -c "git commit ..."`). It errs on the side
+// of a gate: the text of a commit inside quotes also counts.
 var gitCommit = regexp.MustCompile(`(^|[;&|(\s'"])git(\s+(-[cC]|--git-dir|--work-tree|--namespace|--config-env)\s+\S+|\s+-\S+)*\s+commit(\s|$|['"])`)
 
 // UnmarshalJSON keeps the text of a JSON string, and leaves t empty for any other value, without error.
@@ -171,7 +173,7 @@ func (in hookInput) commands(ag, name, command string, failed bool) ([]agent.Eve
 		}
 	}
 	names := []string{name}
-	if name == workflow.PreCommand && gitCommit.MatchString(command) {
+	if name == workflow.PreCommand && in.commits(command) {
 		names = append(names, workflow.PreCommit)
 	}
 	var events []agent.Event
@@ -183,4 +185,20 @@ func (in hookInput) commands(ag, name, command string, failed bool) ([]agent.Eve
 		events = append(events, ev)
 	}
 	return events, nil
+}
+
+// commits reports whether a command line commits: a command of it, nested ones included (`bash -c "git commit"`),
+// whose normalized words start with git and commit (`git -C x commit`, `sudo git commit`), so the text of a commit
+// inside quotes (`echo "git commit"`) does not count. A line the bash parser rejects is decided by gitCommit.
+func (in hookInput) commits(command string) bool {
+	cmds, ast := shell.Parse(command, runtime.GOOS == "windows")
+	if !ast {
+		return gitCommit.MatchString(command)
+	}
+	for _, c := range cmds {
+		if ws := c.Normal(); len(ws) > 1 && shell.Program(ws[0]) == "git" && ws[1] == "commit" {
+			return true
+		}
+	}
+	return false
 }

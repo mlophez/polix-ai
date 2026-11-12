@@ -23,12 +23,12 @@ type writeCheck struct {
 // writePaths returns the paths, absolute, that a command line may write, as lineWrites resolves them from cwd and
 // the root: the targets of its redirections and the files named by the programs that write by themselves. Their
 // real paths are what lineWrites needs, so a caller resolves them first.
-func writePaths(command, cwd, root string) []string {
+func writePaths(command, cwd, root string, windows bool) []string {
 	var out []string
-	for _, seg := range shell.Split(command) {
-		c := parseCommand(seg.Text)
-		name, args := c.program()
-		words := c.writes
+	cmds, _ := shell.Parse(command, windows)
+	for _, c := range cmds {
+		name, args := program(c)
+		words := c.Writes
 		if writesItself(name, args) {
 			words = append(slices.Clone(words), operands(name, args)...)
 		}
@@ -54,22 +54,22 @@ func lineWrites(patterns []string, command, cwd, root string, reals map[string]s
 		return "", "", false
 	}
 	w := writeCheck{patterns: patterns, cwd: cwd, root: root, reals: reals, fold: fold, windows: windows}
-	for _, seg := range shell.Split(command) {
-		if p, held, ok := w.segment(seg.Text); ok {
+	cmds, _ := shell.Parse(command, windows)
+	for _, c := range cmds {
+		if p, held, ok := w.command(c); ok {
 			return p, held, true
 		}
 	}
 	return "", "", false
 }
 
-// segment returns the first path the simple command text writes that matches a pattern: one it writes (see written)
-// or, for a program that writes by itself, a folder or a wildcard of its files that holds one (see holds).
-func (w writeCheck) segment(text string) (p, held string, ok bool) {
-	c := parseCommand(text)
-	name, args := c.program()
+// command returns the first path the command c writes that matches a pattern: one it writes (see written) or, for a
+// program that writes by itself, a folder or a wildcard of its files that holds one (see holds).
+func (w writeCheck) command(c shell.Command) (p, held string, ok bool) {
+	name, args := program(c)
 	itself := writesItself(name, args)
 	files := operands(name, args)
-	for _, r := range w.written(c.writes, files, itself) {
+	for _, r := range w.written(c.Writes, files, itself) {
 		if anyPathFold(w.patterns, r, w.fold) {
 			return r, "", true
 		}

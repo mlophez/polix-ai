@@ -32,6 +32,20 @@ func TestCommitDirs(t *testing.T) {
 	if got, ok := commitDirs("git commit", "", root, false); !ok || !slices.Equal(got, []string{root}) {
 		t.Errorf("without a cwd the commit is in the root: %q", got)
 	}
+	// AC10: the line is read as bash reads it, so a comment is no word of the command, and a comment, a backslash or a
+	// quote escaped inside double quotes places each commit where bash runs it.
+	for command, want := range map[string][]string{
+		"git -C /tmp/x commit -m a  # don't forget\ngit commit -m b": {filepath.FromSlash("/tmp/x"), cwd},
+		`git -C /tmp/x commit -m a && git c\ommit -m b`:              {filepath.FromSlash("/tmp/x"), cwd},
+		`git -C /tmp/x \-C /repo commit -m b`:                        {filepath.FromSlash("/repo")},
+		`git -C /tmp/x commit -m "a\"b"`:                             {filepath.FromSlash("/tmp/x")},
+		"git -C ../other commit -m x # note":                         {filepath.FromSlash("/repo/sub/../other")},
+		"git -C ../other add . ; git -C ../other commit -m 'a; b'":   {filepath.FromSlash("/repo/sub/../other")},
+	} {
+		if got, ok := commitDirs(command, cwd, root, false); !ok || !slices.Equal(got, want) {
+			t.Errorf("commitDirs(%q) = %q, %v, want %q", command, got, ok, want)
+		}
+	}
 	for _, command := range []string{
 		"git status",
 		"git commit-tree HEAD^{tree}",
@@ -57,13 +71,15 @@ func TestCommitDirs(t *testing.T) {
 		"git -C /tmp/a commit -m x && echo committed",
 		`bash -c "git -C /tmp/a commit"`,
 		"sudo git -C /tmp/a commit",
-		// Comments, braces and backslashes, which bash reads otherwise than the words.
-		"git -C /tmp/x commit -m a  # don't forget\ngit commit -m b",
+		// Braces, which bash expands into other words.
 		"git -C /tmp/x commit -m a && git -C /tmp/x {-C,/repo} commit -m b",
-		`git -C /tmp/x commit -m a && git c\ommit -m b`,
-		`git -C /tmp/x \-C /repo commit -m b`,
-		`git -C /tmp/x commit -m "a\"b"`,
 		"git -C /tmp/x commit -m 'unclosed",
+		// AC10 and a line the parser rejects, decided as before by the text.
+		`git -C ../other commit -m "$(cat msg)"`, `git -C "$OTHER" commit`, "git -C ~/x commit",
+		"git -C ../other commit > log", "git -C ../other commit 2>&1", `git -C ../other commit -m "a\"b`,
+		// A clause fails closed, and the patterns of case are walked.
+		"case x in $(rm -rf ai)) ;; esac; git -C ../other commit -m x",
+		"if true; then git -C ../other commit -m x; fi", "f() { :; }; git -C ../other commit -m x",
 		// Aliases, subcommands that run programs, settings and programs named git.
 		"git -C /tmp/x commit -m a && git ci -m b",
 		"git -C /tmp/x commit -m a && git rebase -x 'git commit' HEAD~1",

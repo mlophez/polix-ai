@@ -200,8 +200,8 @@ guardrails:
   # messages, in English: "<path> is protected in polix.yaml: only a person changes it.", and for a folder or a
   # wildcard that holds a protected path "<folder> holds <glob>, protected in polix.yaml: only a person changes
   # it.". The log records the denial as `guardrails.protected_files`. A protected file a command changed anyway (a
-  # Python script, `bash -c`) is put back after it ran, and the command is refused naming it (see "Files a command
-  # changed" in docs/polix.md); this, like format_on_edit, pre_edit and post_edit, costs every command two content
+  # Python script, `bash -c "$CMD"`) is put back after it ran, and the command is refused naming it (see "Files a
+  # command changed" in docs/polix.md); this, like format_on_edit, pre_edit and post_edit, costs every command two content
   # hashes, and files git ignores are not put back.
   # Protecting polix.yaml or ai/rules/ keeps the skills `workflow` and `add-rule` from writing them. A glob without
   # `/` matches the name in any folder (`.env` keeps every .env); a leading `/` anchors it to the root, as in
@@ -215,9 +215,13 @@ guardrails:
     # - /polix.yaml       # the workflow itself: then only a person changes it
     # - ai/rules/**       # the rules: then the skill add-rule cannot write them
   # forbidden_commands: commands no agent runs, the main session included, in any position of the line
-  # (`cd tmp && rm -rf /` too). Each command is matched as written: a heuristic aimed at accidents, which misses
-  # another spelling (`rm -fr /`, `git push -f`), a wrapper (`sudo rm -rf /`) and `bash -c '...'` or `$(...)`.
-  # List the usual spellings, and start a pattern with `*` to cover a wrapper. A list of maps with:
+  # (`cd tmp && rm -rf /` too). The line is parsed as bash into its commands, nested ones included (`bash -c '...'`,
+  # `$(...)`, subshells, `if`, `eval`), and each is matched as written or normalized (without assignments, the known
+  # wrappers and the global options of git): `rm -rf*` also denies `sudo rm -rf /`, `env X=1 rm -rf /` and
+  # `bash -c 'rm -rf /'`. A guard aimed at accidents, which misses another spelling (`rm -fr /`, `git push -f`), a
+  # wrapper it does not know or one with an option that takes a value (`timeout 10 rm -rf /`, `sudo -u root rm -rf
+  # /`), a script that is not literal (`bash -c "$CMD"`) and another interpreter (`python -c '...'`). List the usual
+  # spellings. A list of maps with:
   # - pattern: required, a command pattern, as the condition `command` takes it (see the command patterns below);
   # - reason: optional, the message of the denial, followed by the line.
   # The first item, in file order, whose pattern matches any command of the line denies it, on pre_command and
@@ -577,8 +581,10 @@ on:
           rules: "{path}"
           message: "La check de {path} no pasa:"
 
-  # pre_command: before a shell command runs. The line is split into its commands (`cd x && just test | tail -3`
-  # gives `cd x`, `just test` and `tail -3`, quotes respected), and `command` holds when any of them matches.
+  # pre_command: before a shell command runs. The line is parsed as bash into its commands (`cd x && just test |
+  # tail -3` gives `cd x`, `just test` and `tail -3`), nested ones included (`bash -c '...'`, `$(...)`), and
+  # `command` holds when any of them matches, as written or normalized: without assignments, wrappers (sudo, env...)
+  # and the global options of git, so `git add*` holds for `git -C x add .` but not for `git commit -m "add foo"`.
   pre_command:
     # The commands no agent ever runs go to guardrails.forbidden_commands, which denies them before the entries of
     # this event; an entry here takes any condition, an exception in `unless` and any verb (see the warning and `any`

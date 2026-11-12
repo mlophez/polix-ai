@@ -91,6 +91,13 @@ func TestWrites(t *testing.T) {
 		{"sudo \\\n  rm -rf ai/rules", true},
 		{"LANG=C \\\n  rm -rf ai", true},
 		{"echo x > \\\n  AGENTS.md", true},
+		{"rm $'AGENTS.md'", true},
+		{"bash -c 'rm AGENTS.md'", true},
+		{"sh -c \"echo x > AGENTS.md\"", true},
+		{"echo $(rm AGENTS.md)", true},
+		{"eval rm AGENTS.md", true},
+		{"for f in a; do rm -rf ai; done", true},
+		{"bash -c 'cat AGENTS.md'", false},
 	}
 	for _, c := range cases {
 		if _, _, got := lineWrites(patterns, c.command, "", root, nil, false, false); got != c.want {
@@ -120,7 +127,7 @@ func TestWritesRealPaths(t *testing.T) {
 // writePaths lists, absolute, the redirections and the files of the programs that write by themselves.
 func TestWritePaths(t *testing.T) {
 	root := filepath.FromSlash("/repo")
-	got := writePaths("echo x > a.txt && rm -rf ai && cat b.txt", "", root)
+	got := writePaths("echo x > a.txt && rm -rf ai && cat b.txt", "", root, false)
 	want := []string{filepath.Join(root, "a.txt"), filepath.Join(root, "ai")}
 	if !slices.Equal(got, want) {
 		t.Fatalf("writePaths = %q, want %q", got, want)

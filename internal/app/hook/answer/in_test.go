@@ -603,6 +603,30 @@ func TestGitCommit(t *testing.T) {
 	}
 }
 
+// AC7: a pre_command gives a pre_commit when a command of the line, nested included, is normalized to git commit;
+// a line the parser rejects is decided by gitCommit.
+func TestCommitRecognised(t *testing.T) {
+	for command, want := range map[string]bool{
+		"git commit -m x": true, "cd x && git commit -m x": true, "git -C ../repo commit": true,
+		"git -c user.name=a commit -m x": true, "git --git-dir .git --work-tree . commit": true,
+		`bash -c "git commit -m x"`: true, "sh -c 'git commit'": true, "sudo git commit": true,
+		"sudo bash -c 'git commit -m x'": true, `env bash -c "git commit"`: true, "time bash -c 'git commit'": true,
+		"bash <<EOF\ngit commit -m x\nEOF": true, "cat <<EOF\ngit commit -m x\nEOF": false,
+		"bash <<EOF\ngit commit -m \"$MSG\"\nEOF": true, "cat <<'EOF' | bash\ngit commit -m x\nEOF": true,
+		`echo "git commit"`: false, "git commit-tree HEAD^{tree}": false, "git log --grep commit": false,
+		"git status": false, `git log -S "git commit"`: false,
+		`git commit -m "unclosed`: true, `echo "unclosed git commit`: true,
+	} {
+		evs, err := hookInput{Cwd: "/r"}.commands(agent.Claude, workflow.PreCommand, command, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := len(evs) == 2 && evs[1].Name == workflow.PreCommit; got != want {
+			t.Errorf("commands(%q) gives pre_commit %v, want %v", command, got, want)
+		}
+	}
+}
+
 // A relative path (apply_patch) is made absolute from the cwd of the call, so the protections that compare
 // absolute paths see it.
 func TestEditsRelativePath(t *testing.T) {
