@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" width="960" height="380" role="img" aria-labelledby="title desc">
   <title id="title">How Polix works</title>
-  <desc id="desc">Claude Code calls Polix through its hooks; Codex support is not implemented. Polix reads the declarative workflow in polix.yaml and the rules in ai/rules, keeps observations and decisions in a log, and answers each hook by blocking, injecting context or allowing the action.</desc>
+  <desc id="desc">Claude Code calls Polix through its hooks, and git through its hooks on every commit; Codex support is not implemented. Polix reads the declarative workflow in polix.yaml and the rules in ai/rules, keeps observations and decisions in a log, and answers each hook by blocking (a commit is aborted), injecting context or allowing the action.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -45,19 +45,25 @@
 
   <rect class="bg" x="0.5" y="0.5" width="959" height="379" rx="16"/>
 
-  <!-- Agents -->
-  <text class="lbl" x="40" y="96" font-size="11" font-weight="600">YOUR AGENT</text>
-  <rect class="card" x="40" y="110" width="200" height="72" rx="12"/>
-  <text class="t" x="60" y="142" font-size="16" font-weight="600">Claude Code</text>
-  <text class="m" x="60" y="164" font-size="12">hooks</text>
-  <rect class="muted" x="40" y="218" width="200" height="72" rx="12"/>
-  <text class="mt" x="60" y="250" font-size="16" font-weight="600">Codex</text>
-  <text class="mt" x="60" y="272" font-size="12">not implemented</text>
+  <!-- Callers -->
+  <text class="lbl" x="40" y="66" font-size="11" font-weight="600">WHO CALLS IT</text>
+  <rect class="card" x="40" y="80" width="200" height="60" rx="12"/>
+  <text class="t" x="60" y="107" font-size="16" font-weight="600">Claude Code</text>
+  <text class="m" x="60" y="126" font-size="12">hooks</text>
+  <rect class="muted" x="40" y="170" width="200" height="60" rx="12"/>
+  <text class="mt" x="60" y="197" font-size="16" font-weight="600">Codex</text>
+  <text class="mt" x="60" y="216" font-size="12">not implemented</text>
+  <rect class="card" x="40" y="260" width="200" height="60" rx="12"/>
+  <text class="t" x="60" y="287" font-size="16" font-weight="600">Git</text>
+  <text class="m" x="60" y="306" font-size="12">hooks, on every commit</text>
 
-  <!-- Agent hooks to Polix -->
-  <path class="wire" d="M240,146 C305,146 305,186 366,186" marker-end="url(#arrow)"/>
-  <path class="wire-muted" d="M240,254 C305,254 305,214 366,214" marker-end="url(#arrow-muted)"/>
-  <text class="m mono" x="305" y="204" font-size="11" text-anchor="middle">event</text>
+  <!-- Hooks to Polix -->
+  <path class="wire" d="M240,110 C305,110 305,180 366,180" marker-end="url(#arrow)"/>
+  <path class="wire-muted" d="M240,200 L366,200" marker-end="url(#arrow-muted)"/>
+  <path class="wire" d="M240,290 C305,290 305,220 366,220" marker-end="url(#arrow)"/>
+  <text class="m mono" x="250" y="102" font-size="11">event</text>
+  <text class="m mono" x="250" y="308" font-size="11">pre-commit</text>
+  <text class="m mono" x="250" y="322" font-size="11">commit-msg</text>
 
   <!-- Declarative inputs -->
   <text class="lbl" x="480" y="40" font-size="11" font-weight="600" text-anchor="middle">DECLARATIVE POLICY</text>
@@ -82,7 +88,7 @@
   <text class="m" x="480" y="339" font-size="11" text-anchor="middle">observations and decisions</text>
 
   <!-- Outcomes -->
-  <text class="lbl" x="720" y="76" font-size="11" font-weight="600">WHAT THE AGENT GETS</text>
+  <text class="lbl" x="720" y="76" font-size="11" font-weight="600">WHAT THE CALLER GETS</text>
   <path class="wire" d="M590,190 C655,190 655,118 716,118" marker-end="url(#arrow)"/>
   <path class="wire" d="M590,200 L716,200" marker-end="url(#arrow)"/>
   <path class="wire" d="M590,210 C655,210 655,282 716,282" marker-end="url(#arrow)"/>
@@ -90,7 +96,7 @@
   <rect class="card" x="720" y="90" width="200" height="56" rx="12"/>
   <circle class="red" cx="742" cy="118" r="5"/>
   <text class="t" x="758" y="114" font-size="14" font-weight="600">Block</text>
-  <text class="m mono" x="758" y="132" font-size="11">exit 2 + reasons</text>
+  <text class="m mono" x="758" y="132" font-size="11">exit 2 (git: 1) + reasons</text>
 
   <rect class="card" x="720" y="172" width="200" height="56" rx="12"/>
   <circle class="blue" cx="742" cy="200" r="5"/>
