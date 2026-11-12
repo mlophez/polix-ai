@@ -112,26 +112,58 @@ Save this as `polix.yaml` at the root of the repository, or start from
 ```yaml
 version: 1
 
+# The programs the repository needs on the PATH: the first prompt of a session tells the AI which are missing.
+requirements:
+  - go
+  - golangci-lint
+
 guardrails:
-  protected_files: [AGENTS.md, CLAUDE.md, .env]      # no agent writes them, the main session included
-  forbidden_commands:                                 # the reason goes back to the agent
+  # No agent writes these files, the main session included.
+  protected_files:
+    - AGENTS.md
+    - CLAUDE.md
+    - .env
+
+  # No agent runs these commands; the reason goes back to the agent.
+  forbidden_commands:
+    - pattern: "*rm -rf /*"
+
     - pattern: "git push*--force*"
       reason: "Force pushes rewrite shared history: ask a person to run it."
-  protected_branches: [main]                          # nobody commits there
-  format_on_edit:                                     # right after each edit
-    - { run: "golangci-lint fmt {path}", path: "*.go" }
-  run_on_stop:                                        # the agent cannot end its turn while one fails
-    - { run: "go test ./...", changed: "*.go" }
+
+  # The agent commits on none of these branches.
+  protected_branches:
+    - main
+
+  # Each Go file is formatted right after the agent edits it.
+  format_on_edit:
+    - run: golangci-lint fmt {path}
+      path: "*.go"
+
+  # The agent cannot end its turn while the tests fail; they run only when Go code changed.
+  run_on_stop:
+    - run: go test ./...
+      changed: "*.go"
 
 on:
   pre_commit:
-    - unless: { finished: reviewer }                  # the reviewer subagent saw the diff as it is now
-      action: { block: "Review the diff with the reviewer subagent, then commit again." }
+    # A change of Go code of 50 lines or more needs the reviewer to have seen the diff as it is now:
+    # editing a line after the review asks for a new one.
+    - when:
+        changed: ["*.go", go.mod]
+        changed_lines: 50
+      unless:
+        finished: polix:reviewer
+      action:
+        block: "Review the diff with /polix:review, then commit again."
 
 githooks:
-  commit_msg:                                         # every commit, also those a person makes
-    - unless: { message: "^[A-Z]+-[0-9]+: " }
-      action: { block: "Start the message with the key of the ticket, as PLAT-123: ..." }
+  commit_msg:
+    # Git runs it on every commit, also those a person makes: the message starts with the key of the ticket.
+    - unless:
+        message: ["^[A-Z][A-Z0-9]+-[0-9]+: ", "^Merge "]
+      action:
+        block: "Start the message with the key of the ticket, as PLAT-123: {message}"
 ```
 
 Then check it:
