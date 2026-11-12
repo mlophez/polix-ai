@@ -938,6 +938,117 @@ guardrails:
       reason: "The hooks of git are not skipped: fix what they block"
 ```
 
+## Starters by stack
+
+Complete, commented `polix.yaml` starters for common stacks. Each one covers `requirements`, `protected_files`, `protected_branches`, `format_on_edit` and `run_on_stop` with `changed:` globs for that stack. Validate with `polix config check` and format with `polix config fmt`.
+
+### Python (uv, ruff, pytest)
+
+```yaml
+version: 1
+
+# Programs this repository expects on PATH (checked by polix doctor / first prompt).
+requirements: [uv, ruff, git]
+
+guardrails:
+  # Files no agent (including main session) may write.
+  protected_files:
+    - .env
+    - ".env.*"
+    - "*.pem"
+    - "*.key"
+
+  # Branches nobody commits on directly.
+  protected_branches: [main, master]
+
+  # Format Python files after each edit.
+  format_on_edit:
+    - run: "uv run ruff format {path}"
+      path: "*.py"
+    - run: "uv run ruff check --fix {path}"
+      path: "*.py"
+
+  # Checks that must pass before the agent ends its turn.
+  run_on_stop:
+    - run: "uv run ruff check ."
+      changed: ["*.py", "pyproject.toml", "ruff.toml", ".ruff.toml"]
+    - run: "uv run ruff format --check ."
+      changed: ["*.py", "pyproject.toml", "ruff.toml", ".ruff.toml"]
+    - run: "uv run pytest"
+      changed: ["*.py", "pyproject.toml", "uv.lock"]
+```
+
+### TypeScript (npm, eslint, prettier, vitest)
+
+```yaml
+version: 1
+
+# Programs this repository expects on PATH (checked by polix doctor / first prompt).
+requirements: [node, npm, git]
+
+guardrails:
+  # Files no agent (including main session) may write.
+  protected_files:
+    - .env
+    - ".env.*"
+    - "*.pem"
+    - "*.key"
+
+  # Branches nobody commits on directly.
+  protected_branches: [main, master]
+
+  # Format/lint-fix edited files after each edit.
+  format_on_edit:
+    - run: "npx prettier --write {path}"
+      path: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.json", "**/*.css", "**/*.md"]
+    - run: "npx eslint --fix {path}"
+      path: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+
+  # Checks that must pass before the agent ends its turn.
+  run_on_stop:
+    - run: "npx eslint ."
+      changed: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "package.json", "eslint.config.*", ".eslintrc*"]
+    - run: "npx prettier --check ."
+      changed: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.json", "**/*.css", "**/*.md", "package.json", ".prettierrc*", "prettier.config.*"]
+    - run: "npx vitest run"
+      changed: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "package.json", "package-lock.json", "vitest.config.*", "vite.config.*"]
+```
+
+### Rust (cargo fmt, cargo clippy, cargo test)
+
+```yaml
+version: 1
+
+# Programs this repository expects on PATH (checked by polix doctor / first prompt).
+requirements: [cargo, rustc, git]
+
+guardrails:
+  # Files no agent (including main session) may write.
+  protected_files:
+    - .env
+    - ".env.*"
+    - "*.pem"
+    - "*.key"
+
+  # Branches nobody commits on directly.
+  protected_branches: [main, master]
+
+  # Format Rust files after each edit.
+  format_on_edit:
+    - run: "cargo fmt -- {path}"
+      path: "*.rs"
+
+  # Checks that must pass before the agent ends its turn.
+  run_on_stop:
+    - run: "cargo fmt --all -- --check"
+      changed: ["*.rs", "Cargo.toml", "Cargo.lock", "rustfmt.toml", ".rustfmt.toml"]
+    - run: "cargo clippy --all-targets --all-features -- -D warnings"
+      changed: ["*.rs", "Cargo.toml", "Cargo.lock"]
+    - run: "cargo test"
+      changed: ["*.rs", "Cargo.toml", "Cargo.lock"]
+```
+
+
 ## Coming from Claude Code hooks
 
 The [hooks guide of Claude Code](https://code.claude.com/docs/en/hooks-guide) and its
