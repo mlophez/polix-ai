@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" width="960" height="380" role="img" aria-labelledby="title desc">
   <title id="title">How Polix works</title>
-  <desc id="desc">Claude Code calls Polix through its hooks, and git through its hooks on every commit; Codex support is not implemented. Polix reads the declarative workflow in polix.yaml and the rules in ai/rules, keeps observations and decisions in a log, and answers each hook by blocking (a commit is aborted), injecting context or allowing the action.</desc>
+  <desc id="desc">Claude Code calls Polix through its hooks, and git through its hooks on every commit; Codex support is not implemented. Polix reads the declarative workflow in polix.yaml, keeps observations and decisions in a log, and answers each hook by blocking (a commit is aborted), injecting context or allowing the action.</desc>
   <style>
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -67,14 +67,10 @@
 
   <!-- Declarative inputs -->
   <text class="lbl" x="480" y="40" font-size="11" font-weight="600" text-anchor="middle">DECLARATIVE POLICY</text>
-  <rect class="chip" x="340" y="56" width="130" height="50" rx="10"/>
-  <text class="t mono" x="405" y="79" font-size="14" font-weight="600" text-anchor="middle">polix.yaml</text>
-  <text class="m" x="405" y="96" font-size="11" text-anchor="middle">workflow</text>
-  <rect class="chip" x="490" y="56" width="130" height="50" rx="10"/>
-  <text class="t mono" x="555" y="79" font-size="14" font-weight="600" text-anchor="middle">ai/rules/</text>
-  <text class="m" x="555" y="96" font-size="11" text-anchor="middle">rules</text>
-  <path class="wire" d="M405,106 L435,146" marker-end="url(#arrow)"/>
-  <path class="wire" d="M555,106 L525,146" marker-end="url(#arrow)"/>
+  <rect class="chip" x="415" y="56" width="130" height="50" rx="10"/>
+  <text class="t mono" x="480" y="79" font-size="14" font-weight="600" text-anchor="middle">polix.yaml</text>
+  <text class="m" x="480" y="96" font-size="11" text-anchor="middle">workflow</text>
+  <path class="wire" d="M480,106 L480,146" marker-end="url(#arrow)"/>
 
   <!-- Engine -->
   <rect class="core" x="370" y="150" width="220" height="100" rx="14"/>
