@@ -93,7 +93,7 @@ on:
         block:
           once: true
           message: |
-            Before committing, check whether this change affects README.md, docs/**/*.md or internal/**/*.md and update them.
+            Before committing, check whether this change affects README.md, CHANGELOG.md, docs/**/*.md or internal/**/*.md and update them.
             Only Update Markdown files.
             If it does not affect them, commit again.
 
