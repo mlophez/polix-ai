@@ -282,9 +282,9 @@ as a commit of this repository.
 The only built-in protection applies whatever the workflow says, even without one: nobody edits the state
 (`<git-dir>/polix/`), and no command line that names it may write files. It errs on the side of the guard. The text
 of the line may write when it holds the name of a writer (`rm`, `mv`, `cp`, `tee`, `sed -i`...) or a `>` other than
-`2>&1` and a redirection into `/dev/null`, even inside quotes (`> nul` counts: under Git Bash it may create a file). On top of that, the line is parsed as bash, and
-it may write when a command of it, nested ones included, redirects into a file other than
-the null device, has a word that writes the files it names (`rm`, `mv`, `cp`, `tee`, `sed -i`..., as the program or
+`2>&1` and a redirection into `/dev/null`, even inside quotes (`> nul` counts: under Git Bash it may create a
+file). On top of that, the line is parsed as bash, and it may write when a command of it, nested ones included,
+redirects into a file other than `/dev/null`, has a word that writes the files it names (`rm`, `mv`, `cp`, `tee`, `sed -i`..., as the program or
 as an argument, so `find -exec rm`, `xargs rm` and `sudo -u x rm` count), has a word naming one of the shells or
 interpreters polix knows, whose script it does not see whole (such as `sh`, `bash`, `zsh`, `ksh`, `tcsh`, `pwsh`,
 `powershell`, `eval`, `source`, `awk`, `perl`, `python`, `ruby`, `node` or `php`, with any version, as `python3.12`),

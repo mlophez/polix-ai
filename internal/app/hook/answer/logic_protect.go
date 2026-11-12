@@ -72,9 +72,9 @@ func (r *pass) deny(from string, line int, reason string) (agent.Answer, bool) {
 // mayWrite reports whether a command line may create, change or delete files, to guard the state. It errs on the
 // side of the guard, since it only refuses a line that also names the state (see namesState), and a refusal costs
 // little: polix log reads it. It is never weaker than the heuristic of the text: writesFiles on the line, without its
-// redirections into the null device (see withoutNullRedirects), decides first, on any line. On a line the bash
+// redirections into /dev/null (see withoutNullRedirects), decides first, on any line. On a line the bash
 // parser accepts, the line also may write when some command of it, nested ones included:
-//   - redirects into a file other than the null device;
+//   - redirects into a file other than /dev/null (NUL counts, as for the text: under Git Bash it may be a file);
 //   - has a word, its program or an argument, that writes by itself (see writesItself) with the words after it,
 //     so a writer run by find -exec, xargs or a wrapper with a value (`sudo -u x rm`) counts;
 //   - has a word naming one of the shells or interpreters polix knows, with any version (see interpreters and
@@ -90,7 +90,7 @@ func mayWrite(command string, windows bool) bool {
 	}
 	for _, c := range cmds {
 		for _, w := range c.Writes {
-			if !nullDevice(w, windows) {
+			if w != "/dev/null" {
 				return true
 			}
 		}
