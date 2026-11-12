@@ -29,19 +29,14 @@ guardrails:
     - AGENTS.md
     - CLAUDE.md
 
-  # Commits and pull requests never credit Claude, in any line of the message or the body.
+  # Commits and pull requests never credit Claude, in any line of the message or the body. A pattern holds on any
+  # command that carries the phrase; `?` takes Co-Authored-By, Co-authored-by and co-authored-by.
   forbidden_commands:
-    - pattern: "git commit*Co-Authored-By: Claude*"
-      reason: Remove the Co-Authored-By of Claude from the message.
+    - pattern: "*?o-?uthored-?y: Claude*"
+      reason: Remove the Co-Authored-By of Claude from the message of the commit or the pull request.
 
-    - pattern: "git commit*Co-authored-by: Claude*"
-      reason: Remove the Co-Authored-By of Claude from the message.
-
-    - pattern: "gh pr *Generated with [Claude Code]*"
-      reason: Remove the line Generated with Claude Code from the pull request.
-
-    - pattern: "gh pr *Co-Authored-By: Claude*"
-      reason: Remove the Co-Authored-By of Claude from the pull request.
+    - pattern: "*Generated with [Claude Code]*"
+      reason: Remove the line Generated with Claude Code from the message of the commit or the pull request.
 
   # Format each edited Go file, this polix.yaml and the rules files of ai/rules/ right after the edit.
   format_on_edit:
