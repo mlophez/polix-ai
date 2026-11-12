@@ -58,31 +58,6 @@ the copy in the next repository.
 session: what is blocked, what runs and what is injected into the context. The same binary answers every hook in
 milliseconds and keeps an append-only log of what it observed and decided.
 
-```yaml
-version: 1
-
-guardrails:
-  protected_files: [AGENTS.md, CLAUDE.md, .env]      # no agent writes them, the main session included
-  forbidden_commands:                                 # the reason goes back to the agent
-    - pattern: "git push*--force*"
-      reason: "Force pushes rewrite shared history: ask a person to run it."
-  protected_branches: [main]                          # nobody commits there
-  format_on_edit:                                     # right after each edit
-    - { run: "golangci-lint fmt {path}", path: "*.go" }
-  run_on_stop:                                        # the agent cannot end its turn while one fails
-    - { run: "go test ./...", changed: "*.go" }
-
-on:
-  pre_commit:
-    - unless: { finished: reviewer }                  # the reviewer subagent saw the diff as it is now
-      action: { block: "Review the diff with the reviewer subagent, then commit again." }
-
-githooks:
-  commit_msg:                                         # every commit, also those a person makes
-    - unless: { message: "^[A-Z]+-[0-9]+: " }
-      action: { block: "Start the message with the key of the ticket, as PLAT-123: ..." }
-```
-
 `polix.yaml` has three sections. `guardrails:` holds the basics every project wants from the first minute. `on:` is
 where your team orchestrates its flow: reviews, plans, tickets, each an entry that says on which event it applies,
 when, and what it does. `githooks:` carries gates to the hooks of git, so they hold for every commit, whoever makes
@@ -131,8 +106,35 @@ Commit `.claude/settings.json` so the team gets the hooks; each part has a flag 
 
 **3. Write your workflow and check it**
 
-Start from the example [above](#the-idea) or from [`examples/polix.yaml`](examples/polix.yaml), which annotates
-every option, then:
+Save this as `polix.yaml` at the root of the repository, or start from
+[`examples/polix.yaml`](examples/polix.yaml), which annotates every option:
+
+```yaml
+version: 1
+
+guardrails:
+  protected_files: [AGENTS.md, CLAUDE.md, .env]      # no agent writes them, the main session included
+  forbidden_commands:                                 # the reason goes back to the agent
+    - pattern: "git push*--force*"
+      reason: "Force pushes rewrite shared history: ask a person to run it."
+  protected_branches: [main]                          # nobody commits there
+  format_on_edit:                                     # right after each edit
+    - { run: "golangci-lint fmt {path}", path: "*.go" }
+  run_on_stop:                                        # the agent cannot end its turn while one fails
+    - { run: "go test ./...", changed: "*.go" }
+
+on:
+  pre_commit:
+    - unless: { finished: reviewer }                  # the reviewer subagent saw the diff as it is now
+      action: { block: "Review the diff with the reviewer subagent, then commit again." }
+
+githooks:
+  commit_msg:                                         # every commit, also those a person makes
+    - unless: { message: "^[A-Z]+-[0-9]+: " }
+      action: { block: "Start the message with the key of the ticket, as PLAT-123: ..." }
+```
+
+Then check it:
 
 ```bash
 polix config check     # validate polix.yaml and ai/rules/
