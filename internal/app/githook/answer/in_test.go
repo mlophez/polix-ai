@@ -3,6 +3,7 @@ package answer
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -30,6 +31,13 @@ type fake struct {
 	message   string           // the content of the message file
 	msgErr    error            // why the message file cannot be read
 	comment   string           // the comment string of git
+}
+
+// TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
+// of polix.yaml run go test, and these tests run git in repositories of their own.
+func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
+	os.Exit(m.Run())
 }
 
 func (f *fake) Message(_ context.Context, file string) (string, error) {

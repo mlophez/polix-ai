@@ -15,15 +15,15 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
 // TestMain runs the tests without the variables git exports to its hooks about the repository being committed, such as
 // GIT_INDEX_FILE (.git/index, relative) in pre-commit: the githooks of polix.yaml run go test, and the repositories of
 // these tests are their own, so git would read an index that is not theirs, or none in a linked worktree.
 func TestMain(m *testing.M) {
-	for _, v := range []string{"GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY"} {
-		_ = os.Unsetenv(v)
-	}
+	testenv.ClearGitHookEnv()
 	os.Exit(m.Run())
 }
 

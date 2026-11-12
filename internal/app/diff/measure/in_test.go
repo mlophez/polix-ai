@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/diff"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
+	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
 // fakePort answers the port of MeasureDiff from memory and records the calls.
@@ -21,6 +23,13 @@ type fakePort struct {
 	diffErr   error
 	commitErr error
 	calls     []string
+}
+
+// TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
+// of polix.yaml run go test, and these tests run git in repositories of their own.
+func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
+	os.Exit(m.Run())
 }
 
 func (p *fakePort) LoadWorkflow(context.Context, string) (workflow.Workflow, error) {

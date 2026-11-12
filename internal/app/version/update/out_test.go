@@ -20,6 +20,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/version"
 	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 	"github.com/mlophez/polix-ai/internal/platform/github"
+	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
 // fakeEnv makes the test binary act as a fake polix that prints its arguments, so the adapter runs a real
@@ -29,8 +30,10 @@ const (
 	fakeFail = "POLIX_TEST_FAKE_FAIL"
 )
 
-// TestMain runs the fake polix when the adapter starts the test binary as one.
+// TestMain runs the fake polix when the adapter starts the test binary as one, and otherwise the tests without the
+// variables git exports to its hooks (see testenv.ClearGitHookEnv).
 func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
 	if os.Getenv(fakeEnv) != "" {
 		wd, _ := os.Getwd()
 		fmt.Printf("ran %s in %s\n", strings.Join(os.Args[1:], " "), filepath.Base(wd))

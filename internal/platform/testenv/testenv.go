@@ -31,6 +31,25 @@ var (
 	errFake  error
 )
 
+// GitHookVars are the variables a hook inherits about the repository being committed: those git lists with `git
+// rev-parse --local-env-vars`, the ones it clears itself to work in another repository (GIT_INDEX_FILE, the index of
+// the worktree or a temporary one for `git commit -a`, GIT_DIR, GIT_WORK_TREE, GIT_CONFIG_PARAMETERS of a `git -c`...),
+// and GIT_NAMESPACE. The githooks of polix.yaml run go test inside the pre-commit of this repository, so a test that
+// runs git in a repository of its own would otherwise read and write the repository being committed through them,
+// its index, its branch and its config, or take the configuration of its `git -c`.
+var GitHookVars = []string{"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
+	"GIT_CONFIG_COUNT", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE",
+	"GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE",
+	"GIT_COMMON_DIR", "GIT_NAMESPACE"}
+
+// ClearGitHookEnv unsets GitHookVars, so git finds each repository of a test by its folder. Every package whose tests
+// run git calls it first in its TestMain.
+func ClearGitHookEnv() {
+	for _, v := range GitHookVars {
+		_ = os.Unsetenv(v)
+	}
+}
+
 // Read returns the content of p, failing the test when it cannot be read.
 func Read(t *testing.T, p string) string {
 	t.Helper()

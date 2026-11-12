@@ -3,9 +3,11 @@ package refresh
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/setup"
+	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
 // fakePort answers the port of RefreshSetup from memory and records the calls.
@@ -15,6 +17,13 @@ type fakePort struct {
 	filesErr   error           // of MarketplaceFiles
 	changed    bool
 	calls      []string
+}
+
+// TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
+// of polix.yaml run go test, and these tests run git in repositories of their own.
+func TestMain(m *testing.M) {
+	testenv.ClearGitHookEnv()
+	os.Exit(m.Run())
 }
 
 func (f *fakePort) Home(_ context.Context) (string, error)  { return "/h", nil }
