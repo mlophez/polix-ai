@@ -149,19 +149,15 @@ on:
   pre_commit:
     # A change of Go code of 50 lines or more needs the reviewer to have seen the diff as it is now:
     # editing a line after the review asks for a new one.
-    - when:
-        changed: ["*.go", go.mod]
-        changed_lines: 50
-      unless:
-        finished: polix:reviewer
+    - when: { changed: ["*.go", go.mod], changed_lines: 50 }
+      unless: { finished: polix:reviewer }
       action:
         block: "Review the diff with /polix:review, then commit again."
 
 githooks:
   commit_msg:
     # Git runs it on every commit, also those a person makes: the message starts with the key of the ticket.
-    - unless:
-        message: ["^[A-Z][A-Z0-9]+-[0-9]+: ", "^Merge "]
+    - unless: { message: ["^[A-Z][A-Z0-9]+-[0-9]+: ", "^Merge "] }
       action:
         block: "Start the message with the key of the ticket, as PLAT-123: {message}"
 ```
@@ -193,8 +189,7 @@ skill runs only when you or your `polix.yaml` ask for it; Polix enforces a phase
 ```yaml
 on:
   pre_commit:
-    - unless:
-        finished: "polix:reviewer"
+    - unless: { finished: "polix:reviewer" }
       action:
         block: "Review the diff with /polix:review before committing"
 ```

@@ -460,10 +460,8 @@ vars:
     branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 on:
   <event>:
-    - when:                                  # optional: all must hold
-        <condition>: <value>
-      unless:                                # optional: skip the entry when all hold
-        <condition>: <value>
+    - when: { <condition>: <value>, ... }    # optional: all must hold
+      unless: { <condition>: <value>, ... }  # optional: skip the entry when all hold
       action:                                # required: exactly one verb, block, run, inject or notify
         block: <message>                     # or a map of message and once: true
     - action:
@@ -474,10 +472,8 @@ on:
         notify: <message>                    # or a map of message and always
 githooks:             # the gates git runs on every commit, whoever makes it (optional; see below)
   <pre_commit|commit_msg>:
-    - when:
-        <branch|changed|message>: <value>
-      unless:
-        <branch|changed|message>: <value>
+    - when: { <branch|changed|message>: <value>, ... }
+      unless: { <branch|changed|message>: <value>, ... }
       action:
         block: <message>                     # or run: <command>, or a map of command and message
 ```
@@ -675,11 +671,8 @@ vars:
     branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 on:
   pre_edit:
-    - when:
-        not:
-          path: "ai/plans/{key}-*.md"
-      unless:
-        file: "ai/plans/{key}-*.md"
+    - when: { not: { path: "ai/plans/{key}-*.md" } }
+      unless: { file: "ai/plans/{key}-*.md" }
       action:
         block: "There is no plan for {key}: write it with /polix:plan"
 ```
@@ -714,12 +707,8 @@ on:
   pre_commit:
     - when:
         changed: ["*.go", go.mod, go.sum]   # scopes the measures below
-        any:
-          changed_lines: 150
-          changed_files: 5
-          risk_score: 25
-      unless:
-        finished: polix:reviewer
+        any: { changed_lines: 150, changed_files: 5, risk_score: 25 }
+      unless: { finished: polix:reviewer }
       action:
         block: "Cambio de {changed_lines} líneas en {changed_files} ficheros (riesgo {risk_score}): revísalo con polix:reviewer"
 ```
@@ -1061,22 +1050,18 @@ vars:
     branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 githooks:
   pre_commit:
-    - when:
-        changed: "secrets/**"
+    - when: { changed: "secrets/**" }
       action:
         block: "Secrets are never committed"
 
-    - when:
-        changed: "*.go"
+    - when: { changed: "*.go" }
       action:
         run:
           command: go vet ./...
           message: "Fix go vet before committing"
   commit_msg:
-    - when:
-        branch: "^[A-Z]+-[0-9]+"
-      unless:
-        message: "^{key}: "
+    - when: { branch: "^[A-Z]+-[0-9]+" }
+      unless: { message: "^{key}: " }
       action:
         block: "Start the message with the key of the ticket: {key}: {message}"
 ```
@@ -1154,7 +1139,7 @@ The first line of the message is taken as git commits it: the lines that start w
 it picks) and everything from the scissors line (`# ------------------------ >8 ------------------------`, which
 `git commit -v` writes) on are removed, and so are the blank lines before it and the blanks at its end. The merges,
 the reverts and the other messages git writes get no special treatment: an entry lets them through with `unless`,
-as an `unless` with `message: "^(Merge|Revert) "`.
+as `unless: { message: "^(Merge|Revert) " }`.
 
 No log. `polix githook` writes nothing to `<git-dir>/polix`: every `run` runs on every commit, from the root of the
 repository, with no time limit and its output live in the terminal of the commit; when it fails, polix prints its

@@ -75,7 +75,7 @@ of `.claude/agents/` goes by its bare name.
   docs need an update.
 - Write a warning as an `inject`, never as a `block`.
 - Require a check with a `run` of polix; never with a condition on a command the AI ran, which never counts.
-- Require a subagent with `finished: <type>` in `unless`, and name in the `changed` of the `when` every file it
+- Require a subagent with `unless: { finished: <type> }`, and name in the `changed` of the `when` every file it
   looks at.
 - Write an exception as a `not` in `when`, or as a condition in `unless`; never put `contains` inside `any`.
 - Order the entries of an event by priority: the first entry that blocks ends the evaluation.

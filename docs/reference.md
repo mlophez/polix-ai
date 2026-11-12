@@ -74,30 +74,23 @@ vars:                            # variables from the branch name
     branch: "^([A-Z]+-[0-9]+)"
 on:                              # the entries of each event
   pre_command:
-    - when:
-        command: "terraform apply*"
-      unless:
-        branch: "^main$"
+    - when: { command: "terraform apply*" }
+      unless: { branch: "^main$" }
       action:
         block: "terraform apply only runs from main"
   pre_commit:
-    - when:
-        changed: "src/**"
-      unless:
-        finished: polix:reviewer
+    - when: { changed: "src/**" }
+      unless: { finished: polix:reviewer }
       action:
         block: "Lanza polix:reviewer sobre el diff actual"
 githooks:                        # the gates git runs on every commit
   pre_commit:
-    - when:
-        changed: "secrets/**"
+    - when: { changed: "secrets/**" }
       action:
         block: "No se commitean secretos"
   commit_msg:
-    - when:
-        branch: "^[A-Z]+-[0-9]+"
-      unless:
-        message: "^{key}: "
+    - when: { branch: "^[A-Z]+-[0-9]+" }
+      unless: { message: "^{key}: " }
       action:
         block: "El mensaje empieza por {key}: "
 ```
@@ -399,8 +392,7 @@ guardrails:
 # expands into
 on:
   pre_commit:
-    - when:
-        branch: "^(?:main|release/.*)$"
+    - when: { branch: "^(?:main|release/.*)$" }
       action:
         block: "{branch} is protected in polix.yaml: create a branch for this change and commit there."
 ```
@@ -429,12 +421,10 @@ guardrails:
 # expands into
 on:
   post_edit:
-    - when:
-        path: "*.go"
+    - when: { path: "*.go" }
       action:
         run: "gofmt -w {path}"
-    - when:
-        path: ["*.ts", "*.tsx"]
+    - when: { path: ["*.ts", "*.tsx"] }
       action:
         run:
           command: "npx eslint {path}"
@@ -472,17 +462,13 @@ guardrails:
 # expands into
 on:
   stop:
-    - when:
-        changed: ["*.go", go.mod, go.sum]
-        agents_are_running: false
+    - when: { changed: ["*.go", go.mod, go.sum], agents_are_running: false }
       action:
         run:
           command: "go test ./..."
           message: "The tests fail:"
     # ... the entries written in on ...
-    - when:
-        changed: ["*.go", go.mod, go.sum]
-        agents_are_running: true
+    - when: { changed: ["*.go", go.mod, go.sum], agents_are_running: true }
       action:
         notify:
           message: "run_on_stop waits for the subagents still running: its checks run on the next stop after they end."
@@ -503,10 +489,8 @@ entries, before both.
 ## Entries
 
 ```yaml
-- when:                                  # optional: all must hold
-    <condition>: <value>
-  unless:                                # optional: skip the entry when all hold
-    <condition>: <value>
+- when: { <condition>: <value>, ... }    # optional: all must hold
+  unless: { <condition>: <value>, ... }  # optional: skip the entry when all hold
   action:                                # required: exactly one verb
     <verb>: <value>
 ```
@@ -614,8 +598,7 @@ as a list of one. Placeholders are expanded in every string value except `branch
 - Events: all.
 
 ```yaml
-when:
-  branch: "^(main|dev)$"
+when: { branch: "^(main|dev)$" }
 ```
 
 ### var
@@ -625,10 +608,8 @@ when:
 - Events: all. `polix config check` rejects a variable not defined in `vars`.
 
 ```yaml
-unless:
-  var: key
-when:
-  var: [key, release]
+unless: { var: key }
+when: { var: [key, release] }
 ```
 
 ### path
@@ -639,11 +620,8 @@ when:
 - Events: `pre_edit`, `post_edit` only.
 
 ```yaml
-when:
-  path: ["*.ts", "*.tsx"]
-when:
-  not:
-    path: "ai/plans/{key}-*.md"
+when: { path: ["*.ts", "*.tsx"] }
+when: { not: { path: "ai/plans/{key}-*.md" } }
 ```
 
 ### changed
@@ -656,8 +634,7 @@ when:
 - Events: all.
 
 ```yaml
-when:
-  changed: ["*.go", go.mod, go.sum]
+when: { changed: ["*.go", go.mod, go.sum] }
 ```
 
 ### file
@@ -668,8 +645,7 @@ when:
 - Events: all.
 
 ```yaml
-unless:
-  file: "ai/plans/{key}-*.md"
+unless: { file: "ai/plans/{key}-*.md" }
 ```
 
 ### contains
@@ -679,9 +655,7 @@ unless:
 - Never directly inside `any`, where it would hold on its own; inside a `not` within an `any` it is valid.
 
 ```yaml
-unless:
-  file: CHANGELOG.md
-  contains: "{key}"
+unless: { file: CHANGELOG.md, contains: "{key}" }
 ```
 
 ### command
@@ -693,8 +667,7 @@ unless:
 - Events: `pre_command`, `post_command`, `pre_commit`.
 
 ```yaml
-when:
-  command: ["git push*origin main*", "git push --force*"]
+when: { command: ["git push*origin main*", "git push --force*"] }
 ```
 
 ### writes
@@ -710,10 +683,7 @@ when:
 - Events: `pre_command`, `post_command`, `pre_commit`.
 
 ```yaml
-when:
-  writes: ["polix.yaml", "ai/rules/**"]
-  not:
-    actor: session
+when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
 ```
 
 ### exit
@@ -725,12 +695,8 @@ when:
 - Events: `post_command` only.
 
 ```yaml
-when:
-  command: "just test*"
-  exit: 1
-when:
-  command: "npm install*"
-  exit: 0
+when: { command: "just test*", exit: 1 }
+when: { command: "npm install*", exit: 0 }
 ```
 
 ### actor
@@ -743,8 +709,7 @@ when:
 - Events: all.
 
 ```yaml
-unless:
-  actor: [acme:builder, acme:builder-ui]
+unless: { actor: [acme:builder, acme:builder-ui] }
 ```
 
 ### finished
@@ -758,10 +723,8 @@ unless:
 - Events: all.
 
 ```yaml
-unless:
-  finished: polix:reviewer
-unless:
-  finished: [polix:reviewer, acme:security-reviewer]
+unless: { finished: polix:reviewer }
+unless: { finished: [polix:reviewer, acme:security-reviewer] }
 ```
 
 ### agents_are_running
@@ -776,11 +739,8 @@ unless:
 - Events: all.
 
 ```yaml
-when:
-  actor: session
-  agents_are_running: true
-unless:
-  agents_are_running: true
+when: { actor: session, agents_are_running: true }
+unless: { agents_are_running: true }
 ```
 
 ### changed_lines, changed_files, risk_score
@@ -796,12 +756,7 @@ unless:
 - Events: all.
 
 ```yaml
-when:
-  changed: "src/**"
-  any:
-    changed_lines: 150
-    changed_files: 5
-    risk_score: 25
+when: { changed: "src/**", any: { changed_lines: 150, changed_files: 5, risk_score: 25 } }
 ```
 
 ### not
@@ -811,10 +766,7 @@ when:
   only when all of them hold.
 
 ```yaml
-when:   # every edit but those of the main session in docs/
-  not:
-    actor: session
-    path: "docs/**"
+when: { not: { actor: session, path: "docs/**" } }  # every edit but those of the main session in docs/
 ```
 
 ### any
@@ -824,12 +776,7 @@ when:   # every edit but those of the main session in docs/
   scopes the measures inside it.
 
 ```yaml
-when:
-  command: "git push*"
-  any:
-    branch: "^(main|dev)$"
-    not:
-      finished: polix:reviewer
+when: { command: "git push*", any: { branch: "^(main|dev)$", not: { finished: polix:reviewer } } }
 ```
 
 ### Scope of an entry
@@ -971,9 +918,7 @@ is a problem of `polix config check` at the line of its entry.
 ```yaml
 githooks:
   pre_commit:                      # before the commit is made
-    - when:
-        branch: "^main$"
-        changed: "*.go"
+    - when: { branch: "^main$", changed: "*.go" }
       action:
         block: "No se commitea Go en main"
 
@@ -982,8 +927,7 @@ githooks:
           command: go vet ./...
           message: "Arregla go vet"
   commit_msg:                      # once the message is written
-    - unless:
-        message: ["^(feat|fix|docs|chore): ", "^Merge "]
+    - unless: { message: ["^(feat|fix|docs|chore): ", "^Merge "] }
       action:
         block: "Usa un prefijo convencional: {message}"
 ```
