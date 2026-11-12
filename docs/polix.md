@@ -368,7 +368,7 @@ nothing more.
    back by hand; the others are still put back.
 4. Each other path that still exists becomes a `pre_edit` and then a `post_edit` of that path, evaluated in the
    same hook call after the events of the command, as if the agent had edited it with its edit tool: `format_on_edit`
-   formats it and an `inject: { rules: "{path}" }` brings its rules. A file the command removed, as `rm` or `git mv`
+   formats it and an `inject` of `rules: "{path}"` brings its rules. A file the command removed, as `rm` or `git mv`
    do, is not an edit, so no formatter runs on a missing file. As the edit already happened, a `block` and a failing
    `run` on these edits reach the agent as context, logged as `inform`, and never refuse. The protections of an edit
    are not applied again to them: step 3 already applied `protected_files`, and the state of polix lives in the git
@@ -430,12 +430,15 @@ requirements: [go, golangci-lint]  # programs the repository needs on the PATH: 
 guardrails:           # the basics every project wants (optional)
   protected_files: [".env"]                       # path globs no agent writes, the main session included
   forbidden_commands:                             # commands no agent runs, each command of the line as written
-    - { pattern: "git push*--force*", reason: "No force pushes" }
+    - pattern: "git push*--force*"
+      reason: "No force pushes"
   protected_branches: [main]                      # branches nobody commits on
   format_on_edit:                                 # runs on each edited file of its path; a failure informs
-    - { run: "gofmt -w {path}", path: "*.go" }
+    - run: "gofmt -w {path}"
+      path: "*.go"
   run_on_stop:                                    # must pass before the agent ends its turn
-    - { run: "go test ./...", changed: "*.go" }   # waits for running subagents unless wait_agents: false
+    - run: "go test ./..."   # waits for running subagents unless wait_agents: false
+      changed: "*.go"
 guidance:             # instructions injected at session start (optional; by default commit on, edit and layout off)
   commit: true        # run each commit as a git commit of its own
   edit: true          # change files with the edit tool of the agent, not the shell
@@ -453,25 +456,30 @@ risk:
     "*_test.go": 0.5
     "internal/core/**": 3
 vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # first group of the branch name, used as {key}
+  key:   # first group of the branch name, used as {key}
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 on:
   <event>:
-    - when: { <condition>: <value>, ... }    # optional: all must hold
-      unless: { <condition>: <value>, ... }  # optional: skip the entry when all hold
+    - when:                                  # optional: all must hold
+        <condition>: <value>
+      unless:                                # optional: skip the entry when all hold
+        <condition>: <value>
       action:                                # required: exactly one verb, block, run, inject or notify
-        block: <message>                     # or { message: <message>, once: true }
+        block: <message>                     # or a map of message and once: true
     - action:
-        run: <command>                       # or [<arg>, ...], or { command | rules, message, always: true }
+        run: <command>                       # or [<arg>, ...], or a map of command or rules, message, always
     - action:
-        inject: <text>                       # or { file | text | rules, always: true }
+        inject: <text>                       # or a map of file, text or rules, and always
     - action:
-        notify: <message>                    # or { message: <message>, always: true }
+        notify: <message>                    # or a map of message and always
 githooks:             # the gates git runs on every commit, whoever makes it (optional; see below)
   <pre_commit|commit_msg>:
-    - when: { <branch|changed|message>: <value>, ... }
-      unless: { <branch|changed|message>: <value>, ... }
+    - when:
+        <branch|changed|message>: <value>
+      unless:
+        <branch|changed|message>: <value>
       action:
-        block: <message>                     # or run: <command> | { command, message }
+        block: <message>                     # or run: <command>, or a map of command and message
 ```
 
 An entry has two parts: when it applies (`when` and `unless`) and what it does (`action`). A comment of YAML is
@@ -529,8 +537,8 @@ and `ForbiddenCommands`) and the hook applies before every entry, also on the fi
 without exceptions (see [Protections](#protections)):
 
 - `protected_files: [<glob>, ...]`: no actor edits a matching path nor runs a command that writes one.
-- `forbidden_commands: [{ pattern, reason }, ...]`: no actor runs a line in which a command matches a pattern;
-  the reason is the `reason` of the first matching item, or `This command is forbidden by polix.yaml: a person
+- `forbidden_commands`, a list of items with `pattern` and `reason`: no actor runs a line in which a command matches a
+  pattern; the reason is the `reason` of the first matching item, or `This command is forbidden by polix.yaml: a person
   must run it.`, followed by the line.
 
 The other three are only sugar: the loading of polix.yaml (`internal/app/workflow/load`, through
@@ -540,18 +548,17 @@ The other three are only sugar: the loading of polix.yaml (`internal/app/workflo
 - `protected_branches: [<name>, ...]`: a regular entry on `pre_commit` with `branch`, the anchored regular
   expression of the names (`*` matches any text), and the message
   `{branch} is protected in polix.yaml: create a branch for this change and commit there.`
-- `format_on_edit: [{ run, path, message }, ...]`: a regular entry on `post_edit` per item that runs its command,
-  with the condition `path` when it has one (the edited file, not `changed`).
-- `run_on_stop: [{ run, changed, message, wait_agents }, ...]`: a regular entry on `stop` per item that runs its
-  command, with the condition `changed` when it has one. An item waits for the subagents still running by default:
-  its entry also has `agents_are_running: false`, so while a subagent of the session runs, in the background or
-  interrupted without its end reaching polix, its check is skipped, and it runs on the next `stop` after the
-  subagents end. When at least one item waits, one more entry goes last on `stop`, after the entries written in
-  `on`: a `notify` with `always`, under `agents_are_running: true` and a `changed` with the globs of every item that
-  waits (none when one of them has none), so every stop that holds a check back tells the user once
-  `run_on_stop waits for the subagents still running: its checks run on the next stop after they end.`
-  `wait_agents: false` keeps an item running whether subagents run or not, as before; any other value than `true`
-  or `false` is a problem at the line of the item.
+- `format_on_edit`, a list of items with `run`, `path` and `message`: a regular entry on `post_edit` per item that runs
+  its command, with the condition `path` when it has one (the edited file, not `changed`).
+- `run_on_stop`, a list of items with `run`, `changed`, `message` and `wait_agents`: a regular entry on `stop` per item
+  that runs its command, with the condition `changed` when it has one. An item waits for the subagents still running by
+  default: its entry also has `agents_are_running: false`, so while a subagent of the session runs, in the background or
+  interrupted without its end reaching polix, its check is skipped, and it runs on the next `stop` after the subagents
+  end. When at least one item waits, one more entry goes last on `stop`, after the entries written in `on`: a `notify`
+  with `always`, under `agents_are_running: true` and a `changed` with the globs of every item that waits (none when one
+  of them has none), so every stop that holds a check back tells the user once `run_on_stop waits for the subagents
+  still running: its checks run on the next stop after they end.` `wait_agents: false` keeps an item running whether
+  subagents run or not, as before; any other value than `true` or `false` is a problem at the line of the item.
 
 In each event the entries of `protected_branches`, `format_on_edit` and `run_on_stop` come first, then the
 entries written in `on`, each group in the order of the file, the notify of `run_on_stop` aside. Each expanded
@@ -588,7 +595,7 @@ reduced to that rule, and those runs decide them; when the argv of a rule alone 
 tells the rules apart), every rule of the group fails with the shared output. The runs are sequential, and the
 timeout of a check (5 minutes) applies to each invocation. A check that no
 glob matches runs as a program, as before: through its shebang, or on Windows through its interpreter by extension
-(see `run: { rules }` below). On Windows a runner whose program is `bash`, `sh`, `python`, `python3` or `py` runs
+(see `run` with `rules` below). On Windows a runner whose program is `bash`, `sh`, `python`, `python3` or `py` runs
 the program of that name the PATH finds (an active virtualenv wins), unless it is an alias of the Store or, for
 `bash` and `sh`, the bash of WSL in the Windows folder; then the interpreter that lookup finds (the bash of Git for
 Windows, the py launcher, python3 or python), with the arguments of the runner kept. There are no default runners.
@@ -664,12 +671,17 @@ before any other edit, the gate leaves the plan itself out:
 
 ```yaml
 vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+  key:
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 on:
   pre_edit:
-    - when: { not: { path: "ai/plans/{key}-*.md" } }
-      unless: { file: "ai/plans/{key}-*.md" }
-      action: { block: "There is no plan for {key}: write it with /polix:plan" }
+    - when:
+        not:
+          path: "ai/plans/{key}-*.md"
+      unless:
+        file: "ai/plans/{key}-*.md"
+      action:
+        block: "There is no plan for {key}: write it with /polix:plan"
 ```
 
 Globs are relative to the root and use `/`: `*` stays inside a segment, `**` crosses segments, a pattern
@@ -706,7 +718,8 @@ on:
           changed_lines: 150
           changed_files: 5
           risk_score: 25
-      unless: { finished: polix:reviewer }
+      unless:
+        finished: polix:reviewer
       action:
         block: "Cambio de {changed_lines} líneas en {changed_files} ficheros (riesgo {risk_score}): revísalo con polix:reviewer"
 ```
@@ -729,7 +742,7 @@ The `action` of an entry is a map with exactly one verb. Each verb has a short f
 form, a map:
 
 - `block: <message>` blocks the event with a message for the AI (placeholders allowed). The long form is
-  `block: { message: <message>, once: true }`, and `message` is required. Valid on `prompt`, `pre_edit`,
+  a map of `message: <message>` and `once: true`, and `message` is required. Valid on `prompt`, `pre_edit`,
   `pre_command`, `pre_commit`, `stop` and `subagent_stop`; `start`, `subagent_start`, `post_edit` and
   `post_command` already happened, so `polix config check` rejects it there.
 - `run: <command>` runs a command from the root, without a shell (no pipes, redirections or globs). The command is
@@ -737,7 +750,7 @@ form, a map:
   space; placeholders are allowed in each argument, and `{path}` stays one argument. The long form is a map with
   exactly one of `command` (the same command) or `rules`, plus `message`, the text before the output of a failure
   (placeholders allowed), and `always`.
-- `run: { rules: changed }` runs the checks of the deterministic rules whose scope matches the changed files
+- `run` with `rules: changed` runs the checks of the deterministic rules whose scope matches the changed files
   (`rules: "{path}"` for one path); a failure names the rule ids, and a rules file that cannot be loaded fails it.
   Each check runs with the first runner of `rules.run` whose glob matches it, grouped and rerun on failure as
   `polix rules check` does, so the failure names only the rules that fail; a check no runner matches runs as a
@@ -751,7 +764,7 @@ form, a map:
   `stop` or `subagent_stop`, where the agent cannot receive context.
 - `notify: <message>` shows a message to the user (placeholders allowed), the `systemMessage` of the answer of the
   hook, which the agent shows as `polix: <message>`; it never reaches the agent and spends none of its context. The
-  long form is `notify: { message: <message>, always: true }`, and `message` is required. Valid on every event,
+  long form is a map of `message: <message>` and `always: true`, and `message` is required. Valid on every event,
   but only after the entries that may block it: a blocked event shows the user no message, so `polix config check`
   rejects a `notify` followed in its event by a `block`, or by a `run` on an event where a run blocks (see
   [What polix config check reports](#what-polix-config-check-reports)). A message that expands to nothing shows
@@ -797,11 +810,11 @@ enforcing it: try a new gate in a branch, and read its decisions with `polix log
 - A `run` is not run again once it passed on the same content, on the same branch or on another one with the same
   HEAD commit: the second `stop` on unchanged files runs nothing, also after a `git checkout -b`. The repeat is
   keyed by what it runs, the expanded arguments joined by spaces (`rules` and the expanded target for
-  `run: { rules }`), whoever's entry it is, so two entries that run `just test` share it and
+  `run` with `rules`), whoever's entry it is, so two entries that run `just test` share it and
   `{path}` in the command makes one key per path. A failing `run` runs again on the next event, and any edit makes
   it run again. `always: true` runs it every time, for a command whose result depends on more than the files of the
   repository (the network, the clock, a service).
-- An `inject` reaches each actor once per session for each text it expands to, and `inject: { rules }` each rule
+- An `inject` reaches each actor once per session for each text it expands to, and an `inject` of `rules` each rule
   once per actor and session. It is due again after a `start` of the session (a new, resumed, cleared or
   compacted context), for every actor, and, for a subagent, after a `subagent_start` or the end of that subagent
   type in the session, since its run starts with a new context; the start of a subagent leaves the main session and
@@ -858,7 +871,7 @@ the decisions included, also carries `agent_id`, the id the agent gives that sub
 - `started`: a session started, resumed, was cleared or was compacted, on `start`, with the `source` the agent gives
   (`startup`, `resume`, `clear` or `compact`) as key, empty when it gives none, or a subagent started, on
   `subagent_start`, with its type as the actor. Written only when the workflow has an `inject` without `always` on
-  an event other than `start` and `subagent_start` (one that acts once, `inject: { rules }` included),
+  an event other than `start` and `subagent_start` (one that acts once, an `inject` of `rules` included),
   `requirements` or `agents_are_running`. The line of `start` makes the once-only injects due again for every actor;
   the line of a subagent only for its type.
 - `ended`: a subagent the log had open was missing from the list of work in flight that Claude Code sends on a
@@ -940,17 +953,17 @@ It also rejects the problems of the shortcuts of [Guardrails](#guardrails).
 ### Names of the old vocabulary
 
 Earlier builds of polix used other names, and only the new ones are accepted. `polix config check` reports each old name
-with its line and its new spelling: the events `session_start` (`start`) and `turn_stop` (`stop`), the keys of an
-entry `if` (`when`), `why` (a comment of YAML), `mode` (`warn` is an `inject`, a failing `run` on `post_edit` or
-`post_command` already informs, `audit` has no replacement), `deny` and `require` (`block`), `allow` (a `not` in
-`when`, or `unless`), `run` and `context` at the level of the entry (`action: { run }` and `action: { inject }`) and
-`record` (`finished`), the condition `done` (`finished: <subagent>`) and a measure written as `{ at_least: N }` (the
-number alone), also inside an old `if`, all in the same pass. The entries of an old event are checked as those of
-its new name. Three top-level keys were renamed too: `protected` is now `guardrails.protected_files`, `base` is now
-`base_branch`, and the key of the loop guard is now `max_stop_retries`; each old one is reported as an unknown key
-with its new spelling, without the hint of a newer polix. Lines of the kinds `fact`, `injected` and `stop_block` written by those
-builds stay in the log, are ignored by every condition and are shown by `polix log` with their kind (and the name
-of a `fact`): after the upgrade, the reminders, the injects and the loop guard start from zero.
+with its line and its new spelling: the events `session_start` (`start`) and `turn_stop` (`stop`), the keys of an entry
+`if` (`when`), `why` (a comment of YAML), `mode` (`warn` is an `inject`, a failing `run` on `post_edit` or
+`post_command` already informs, `audit` has no replacement), `deny` and `require` (`block`), `allow` (a `not` in `when`,
+or `unless`), `run` and `context` at the level of the entry (now `run` and `inject` inside `action`) and `record`
+(`finished`), the condition `done` (`finished: <subagent>`) and a measure written as a map of `at_least: N` (the number
+alone), also inside an old `if`, all in the same pass. The entries of an old event are checked as those of its new name.
+Three top-level keys were renamed too: `protected` is now `guardrails.protected_files`, `base` is now `base_branch`, and
+the key of the loop guard is now `max_stop_retries`; each old one is reported as an unknown key with its new spelling,
+without the hint of a newer polix. Lines of the kinds `fact`, `injected` and `stop_block` written by those builds stay
+in the log, are ignored by every condition and are shown by `polix log` with their kind (and the name of a `fact`):
+after the upgrade, the reminders, the injects and the loop guard start from zero.
 
 ### How the entries of an event are evaluated
 
@@ -1044,19 +1057,28 @@ it: git does not tell a person from an agent, and neither does `githooks`.
 
 ```yaml
 vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+  key:
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 githooks:
   pre_commit:
-    - when: { changed: "secrets/**" }
-      action: { block: "Secrets are never committed" }
-
-    - when: { changed: "*.go" }
+    - when:
+        changed: "secrets/**"
       action:
-        run: { command: go vet ./..., message: "Fix go vet before committing" }
+        block: "Secrets are never committed"
+
+    - when:
+        changed: "*.go"
+      action:
+        run:
+          command: go vet ./...
+          message: "Fix go vet before committing"
   commit_msg:
-    - when: { branch: "^[A-Z]+-[0-9]+" }
-      unless: { message: "^{key}: " }
-      action: { block: "Start the message with the key of the ticket: {key}: {message}" }
+    - when:
+        branch: "^[A-Z]+-[0-9]+"
+      unless:
+        message: "^{key}: "
+      action:
+        block: "Start the message with the key of the ticket: {key}: {message}"
 ```
 
 What git runs. `polix install` writes two hooks into the local git configuration of the repository (`.git/config`,
@@ -1110,7 +1132,7 @@ abort it, with each line of its reasons on stderr prefixed `polix: `, such as
 
 The vocabulary is small and its own, checked by `polix config check` at the line of each entry:
 
-- Verbs: `block`, with its message (short, or `{ message: ... }`), which aborts the commit; and `run`, with a
+- Verbs: `block`, with its message (short, or a map of `message`), which aborts the commit; and `run`, with a
   command (a string split on spaces, or a list, never run through a shell) and an optional `message`. `inject`
   and `notify` have nobody to reach, and `once`, `rules` and `always` are rejected: githooks keep no log.
 - Conditions: `branch`, a regular expression of the current branch (`""` on a detached HEAD); `changed`, a glob or
@@ -1132,7 +1154,7 @@ The first line of the message is taken as git commits it: the lines that start w
 it picks) and everything from the scissors line (`# ------------------------ >8 ------------------------`, which
 `git commit -v` writes) on are removed, and so are the blank lines before it and the blanks at its end. The merges,
 the reverts and the other messages git writes get no special treatment: an entry lets them through with `unless`,
-as `unless: { message: "^(Merge|Revert) " }`.
+as an `unless` with `message: "^(Merge|Revert) "`.
 
 No log. `polix githook` writes nothing to `<git-dir>/polix`: every `run` runs on every commit, from the root of the
 repository, with no time limit and its output live in the terminal of the commit; when it fails, polix prints its
@@ -1148,8 +1170,10 @@ of them; the agent can do it too, so a `forbidden_commands` pattern keeps it to 
 ```yaml
 guardrails:
   forbidden_commands:
-    - { pattern: "git*--no-verify*", reason: "The hooks of git are not skipped: fix what they block" }
-    - { pattern: "git*hook.polix-*", reason: "The hooks of git are not skipped: fix what they block" }
+    - pattern: "git*--no-verify*"
+      reason: "The hooks of git are not skipped: fix what they block"
+    - pattern: "git*hook.polix-*"
+      reason: "The hooks of git are not skipped: fix what they block"
 ```
 
 How it differs from `on.pre_commit`. The events of the AI never evaluate `githooks`, and `polix githook` never

@@ -88,10 +88,13 @@ guardrails:
       reason: "No force pushes: open a pull request or ask a person"
   protected_branches: [main, "release/*"]
   format_on_edit:
-    - { run: "gofmt -w {path}", path: "*.go" }
+    - run: "gofmt -w {path}"
+      path: "*.go"
   run_on_stop:
-    - { run: "golangci-lint run ./...", changed: "*.go" }
-    - { run: "go test ./...", changed: ["*.go", "go.mod", "go.sum"] }
+    - run: "golangci-lint run ./..."
+      changed: "*.go"
+    - run: "go test ./..."
+      changed: ["*.go", "go.mod", "go.sum"]
 ```
 
 The files and the commands are protections: they deny before every entry of `on:`, also on the files git ignores,
@@ -124,13 +127,23 @@ the edits and `writes` for the commands. The authors of the plugin of polix keep
 ```yaml
 on:
   pre_edit:
-    - when: { path: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
-      unless: { actor: ["polix:workflow-author", "polix:rules-author"] }
-      action: { block: "{path} is the workflow of the repository: only the main session changes it" }
+    - when:
+        path: ["polix.yaml", "ai/rules/**"]
+        not:
+          actor: session
+      unless:
+        actor: ["polix:workflow-author", "polix:rules-author"]
+      action:
+        block: "{path} is the workflow of the repository: only the main session changes it"
   pre_command:
-    - when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
-      unless: { actor: ["polix:workflow-author", "polix:rules-author"] }
-      action: { block: "Only the main session writes the workflow: {command}" }
+    - when:
+        writes: ["polix.yaml", "ai/rules/**"]
+        not:
+          actor: session
+      unless:
+        actor: ["polix:workflow-author", "polix:rules-author"]
+      action:
+        block: "Only the main session writes the workflow: {command}"
 ```
 
 Do not put `polix.yaml` or `ai/rules/` in `protected_files`: it binds the main session too, so the skills
@@ -161,9 +174,12 @@ in which the secret would be committed.
 ```yaml
 on:
   pre_edit:
-    - when: { path: [".env", ".env.*", "*.pem", "*.key", "*.p12"] }
-      unless: { path: ".env.example" }
-      action: { block: "{path} would end up in a commit: keep secrets in an ignored file or a secret store" }
+    - when:
+        path: [".env", ".env.*", "*.pem", "*.key", "*.p12"]
+      unless:
+        path: ".env.example"
+      action:
+        block: "{path} would end up in a commit: keep secrets in an ignored file or a secret store"
 ```
 
 Both keep the agent away; a commit of a person is gated by `githooks:`, as in
@@ -216,8 +232,10 @@ It expands into one regular entry of `pre_commit`, whose `branch` is an anchored
 on:
   pre_commit:
     # from guardrails.protected_branches
-    - when: { branch: "^(?:main|master)$" }
-      action: { block: "{branch} is protected in polix.yaml: create a branch for this change and commit there." }
+    - when:
+        branch: "^(?:main|master)$"
+      action:
+        block: "{branch} is protected in polix.yaml: create a branch for this change and commit there."
 ```
 
 `pre_commit` runs for any command line that holds a `git commit`, also inside `git add . && git commit -m ...`.
@@ -229,8 +247,10 @@ Copy the entry into `on:` to change its message, or to add an `unless` for a rel
 ```yaml
 githooks:
   pre_commit:
-    - when: { branch: "^(?:main|master)$" }
-      action: { block: "{branch} is protected: create a branch for this change and commit there." }
+    - when:
+        branch: "^(?:main|master)$"
+      action:
+        block: "{branch} is protected: create a branch for this change and commit there."
 ```
 
 ### Format every file the agent edits
@@ -240,8 +260,10 @@ The formatter rewrites the file right after each edit, so the diff never carries
 ```yaml
 guardrails:
   format_on_edit:
-    - { run: "npx prettier --write {path}", path: ["**/*.ts", "**/*.tsx", "**/*.css", "**/*.json"] }
-    - { run: "gofmt -w {path}", path: "*.go" }
+    - run: "npx prettier --write {path}"
+      path: ["**/*.ts", "**/*.tsx", "**/*.css", "**/*.json"]
+    - run: "gofmt -w {path}"
+      path: "*.go"
 ```
 
 Each item expands into one regular entry of `post_edit` that runs its command on the edits of its `path`, or on
@@ -251,11 +273,15 @@ every edit without one:
 on:
   post_edit:
     # from guardrails.format_on_edit
-    - when: { path: ["**/*.ts", "**/*.tsx", "**/*.css", "**/*.json"] }
-      action: { run: "npx prettier --write {path}" }
+    - when:
+        path: ["**/*.ts", "**/*.tsx", "**/*.css", "**/*.json"]
+      action:
+        run: "npx prettier --write {path}"
     # from guardrails.format_on_edit
-    - when: { path: "*.go" }
-      action: { run: "gofmt -w {path}" }
+    - when:
+        path: "*.go"
+      action:
+        run: "gofmt -w {path}"
 ```
 
 The filter is `path`, the edited file, not `changed`, which holds for any file not committed yet and would run a
@@ -273,19 +299,28 @@ It is the same shortcut as the formatter, with an optional `message` before the 
 ```yaml
 guardrails:
   format_on_edit:
-    - { run: "uv run ruff check {path}", path: "**/*.py" }
-    - { run: "npx eslint {path}", path: ["**/*.ts", "**/*.tsx"], message: "eslint found problems in {path}:" }
+    - run: "uv run ruff check {path}"
+      path: "**/*.py"
+    - run: "npx eslint {path}"
+      path: ["**/*.ts", "**/*.tsx"]
+      message: "eslint found problems in {path}:"
 ```
 
 ```yaml
 on:
   post_edit:
     # from guardrails.format_on_edit
-    - when: { path: "**/*.py" }
-      action: { run: "uv run ruff check {path}" }
+    - when:
+        path: "**/*.py"
+      action:
+        run: "uv run ruff check {path}"
     # from guardrails.format_on_edit
-    - when: { path: ["**/*.ts", "**/*.tsx"] }
-      action: { run: { command: "npx eslint {path}", message: "eslint found problems in {path}:" } }
+    - when:
+        path: ["**/*.ts", "**/*.tsx"]
+      action:
+        run:
+          command: "npx eslint {path}"
+          message: "eslint found problems in {path}:"
 ```
 
 On `post_edit` a failing `run` never blocks, since the edit already happened: the output of the linter reaches the
@@ -300,7 +335,8 @@ Instead of asking the agent to run the tests, polix runs them when the agent tri
 ```yaml
 guardrails:
   run_on_stop:
-    - { run: just test, changed: ["*.go", "go.mod", "go.sum"] }
+    - run: just test
+      changed: ["*.go", "go.mod", "go.sum"]
 ```
 
 Each item expands into one regular entry of `stop` that runs its command when its `changed` holds, or always
@@ -310,8 +346,10 @@ without one:
 on:
   stop:
     # from guardrails.run_on_stop
-    - when: { changed: ["*.go", "go.mod", "go.sum"] }
-      action: { run: just test }
+    - when:
+        changed: ["*.go", "go.mod", "go.sum"]
+      action:
+        run: just test
 ```
 
 How it works:
@@ -325,7 +363,7 @@ How it works:
   alias, another folder, a run still going in the background). Only the runs of polix spare a later one.
 - When the result depends on more than the files, as for integration tests against a service, write the entry in
   `on:` with `always: true` in the long form of `run`, which the shortcut does not take, so it runs on every stop:
-  `- action: { run: { command: just test-integration, always: true } }` under `stop`.
+  an entry of `stop` whose `action` is a `run` of `command: just test-integration` and `always: true`.
 - `run` executes without a shell and shares a budget of 10 minutes per hook call. The hook timeout that
   `polix install` writes (900 seconds) is above it.
 - A check that should also gate the end of a subagent, or wait for a reviewer, is an entry of `on:`: see
@@ -344,13 +382,18 @@ The agent may not end its turn, nor commit, until a reviewer has looked at the d
 on:
   # polix observes the end of polix:reviewer by itself, since a finished names it.
   stop:
-    - when: { changed: ["src/**", "internal/**"] }
-      unless: { finished: "polix:reviewer" }
-      action: { block: "Launch the polix:reviewer subagent on the current diff before you finish" }
+    - when:
+        changed: ["src/**", "internal/**"]
+      unless:
+        finished: "polix:reviewer"
+      action:
+        block: "Launch the polix:reviewer subagent on the current diff before you finish"
 
   pre_commit:
-    - unless: { finished: "polix:reviewer" }
-      action: { block: "The diff is not reviewed: launch the polix:reviewer subagent before committing" }
+    - unless:
+        finished: "polix:reviewer"
+      action:
+        block: "The diff is not reviewed: launch the polix:reviewer subagent before committing"
 ```
 
 How it works:
@@ -375,10 +418,14 @@ per content instead, make the block of the stop a reminder with `once: true`:
 ```yaml
 on:
   stop:
-    - when: { changed: ["src/**", "internal/**"] }
-      unless: { finished: "polix:reviewer" }
+    - when:
+        changed: ["src/**", "internal/**"]
+      unless:
+        finished: "polix:reviewer"
       action:
-        block: { message: "Launch the polix:reviewer subagent on the current diff before you finish", once: true }
+        block:
+          message: "Launch the polix:reviewer subagent on the current diff before you finish"
+          once: true
 ```
 
 The reminder then stops enforcing: a second stop on the same content passes even if no review ran, and an edit of
@@ -392,9 +439,12 @@ has run on the final code.
 ```yaml
 on:
   stop:
-    - when: { changed: ["src/**", "internal/**", "cmd/**"] }
-      unless: { finished: documenter }
-      action: { block: "Launch the documenter subagent on the final diff before you finish" }
+    - when:
+        changed: ["src/**", "internal/**", "cmd/**"]
+      unless:
+        finished: documenter
+      action:
+        block: "Launch the documenter subagent on the final diff before you finish"
 ```
 
 `documenter` is an agent of your own, for example `.claude/agents/documenter.md`. polix observes its end with the
@@ -407,9 +457,12 @@ warns without blocking, once per session and agent; `always: true` would repeat 
 ```yaml
 on:
   pre_commit:
-    - when: { changed: "internal/**" }
-      unless: { changed: "docs/**" }
-      action: { inject: "The code changed and docs/ did not: check whether the docs need an update" }
+    - when:
+        changed: "internal/**"
+      unless:
+        changed: "docs/**"
+      action:
+        inject: "The code changed and docs/ did not: check whether the docs need an update"
 ```
 
 To ask once per content instead, a reminder blocks the first commit and lets the next one through:
@@ -417,10 +470,14 @@ To ask once per content instead, a reminder blocks the first commit and lets the
 ```yaml
 on:
   pre_commit:
-    - when: { changed: "internal/**" }
-      unless: { changed: "docs/**" }
+    - when:
+        changed: "internal/**"
+      unless:
+        changed: "docs/**"
       action:
-        block: { message: "The code changed and docs/ did not: update the docs, or commit again if they need nothing", once: true }
+        block:
+          message: "The code changed and docs/ did not: update the docs, or commit again if they need nothing"
+          once: true
 ```
 
 Keep in mind that the documenter edits files, so it changes the content: a `run` that passed before it runs again,
@@ -435,14 +492,20 @@ Some paths deserve a second, specialised reviewer. A subagent type of its own ke
 ```yaml
 on:
   stop:
-    - when: { changed: ["**/auth/**", "**/crypto/**", "**/signing/**", "migrations/**"] }
-      unless: { finished: security-reviewer }
-      action: { block: "This change touches auth, crypto, signing or the schema: launch the security-reviewer subagent" }
+    - when:
+        changed: ["**/auth/**", "**/crypto/**", "**/signing/**", "migrations/**"]
+      unless:
+        finished: security-reviewer
+      action:
+        block: "This change touches auth, crypto, signing or the schema: launch the security-reviewer subagent"
 
   pre_commit:
-    - when: { changed: ["**/auth/**", "**/crypto/**", "**/signing/**", "migrations/**"] }
-      unless: { finished: security-reviewer }
-      action: { block: "Security review missing for a sensitive path" }
+    - when:
+        changed: ["**/auth/**", "**/crypto/**", "**/signing/**", "migrations/**"]
+      unless:
+        finished: security-reviewer
+      action:
+        block: "Security review missing for a sensitive path"
 ```
 
 A change to a `README` never pays for a security review; a change to the signing code always does. The scope of
@@ -456,18 +519,23 @@ Every change is tracked by a ticket, and the ticket comes from the name of the b
 
 ```yaml
 vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # PLAT-123-add-retry -> PLAT-123
+  key:   # PLAT-123-add-retry -> PLAT-123
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 
 on:
   # A gentle nudge when the conversation starts on a branch without a ticket.
   prompt:
-    - unless: { var: key }
-      action: { inject: "The branch {branch} has no ticket: create a branch like PLAT-123-short-name first." }
+    - unless:
+        var: key
+      action:
+        inject: "The branch {branch} has no ticket: create a branch like PLAT-123-short-name first."
 
   # And a hard stop at the first edit.
   pre_edit:
-    - unless: { var: key }
-      action: { block: "No ticket in the branch name: create the branch from a ticket" }
+    - unless:
+        var: key
+      action:
+        block: "No ticket in the branch name: create the branch from a ticket"
 ```
 
 `{key}` is then available in every string of the workflow: in messages, in paths and in `contains`. The nudge of
@@ -481,17 +549,27 @@ The agent writes a plan for the ticket before it touches the code, and the plan 
 
 ```yaml
 vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+  key:
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 
 on:
   pre_edit:
     # Writing the plan itself is always allowed.
-    - when: { not: { path: "ai/plans/{key}-*.md" } }
-      unless: { file: "ai/plans/{key}-*.md" }
-      action: { block: "There is no plan for {key}: write it with /polix:plan" }
-    - when: { not: { path: "ai/plans/{key}-*.md" } }
-      unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
-      action: { block: "The plan of {key} lacks the line 'Ticket: {key}'" }
+    - when:
+        not:
+          path: "ai/plans/{key}-*.md"
+      unless:
+        file: "ai/plans/{key}-*.md"
+      action:
+        block: "There is no plan for {key}: write it with /polix:plan"
+    - when:
+        not:
+          path: "ai/plans/{key}-*.md"
+      unless:
+        file: "ai/plans/{key}-*.md"
+        contains: "Ticket: {key}"
+      action:
+        block: "The plan of {key} lacks the line 'Ticket: {key}'"
 ```
 
 The `not` in `when` is the exception: the plan itself can always be written, while every other edit waits for it.
@@ -505,12 +583,16 @@ deterministic version of asking a model "are all the tasks done?" on every stop.
 
 ```yaml
 vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+  key:
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 
 on:
   stop:
-    - when: { file: "ai/plans/{key}-*.md", contains: "- [ ]" }
-      action: { block: "The plan of {key} has unchecked steps: finish them, or mark the ones left out as - [-] and say why" }
+    - when:
+        file: "ai/plans/{key}-*.md"
+        contains: "- [ ]"
+      action:
+        block: "The plan of {key} has unchecked steps: finish them, or mark the ones left out as - [-] and say why"
 ```
 
 `file` with `contains` reads the files of the repository, so the agent ticks the boxes as it goes and the plan
@@ -525,14 +607,22 @@ builder cannot hand back work whose tests do not pass.
 ```yaml
 on:
   pre_edit:
-    - when: { path: ["src/**", "tests/**"] }
-      unless: { actor: builder }
-      action: { block: "Only the builder subagent edits the code: delegate the step to it" }
+    - when:
+        path: ["src/**", "tests/**"]
+      unless:
+        actor: builder
+      action:
+        block: "Only the builder subagent edits the code: delegate the step to it"
 
   # polix runs the tests itself when the builder hands the step back.
   subagent_stop:
-    - when: { actor: builder, changed: "src/**" }
-      action: { run: { command: just test, message: "The tests fail: fix them before you hand the step back" } }
+    - when:
+        actor: builder
+        changed: "src/**"
+      action:
+        run:
+          command: just test
+          message: "The tests fail: fix them before you hand the step back"
 ```
 
 A failing `run` on `subagent_stop` blocks the subagent, not the main session: the builder gets the message and the
@@ -545,9 +635,12 @@ session ends its turn, and blocks of subagents never use up the loop guard of th
 ```yaml
 on:
   stop:
-    - when: { changed: ["src/**", "internal/**"] }
-      unless: { changed: "CHANGELOG.md" }
-      action: { block: "Add an entry to CHANGELOG.md under Unreleased describing this change" }
+    - when:
+        changed: ["src/**", "internal/**"]
+      unless:
+        changed: "CHANGELOG.md"
+      action:
+        block: "Add an entry to CHANGELOG.md under Unreleased describing this change"
 ```
 
 The release notes are written by the agent that knows the change best, at the moment it knows it best.
@@ -561,14 +654,24 @@ Commands are split the way a shell runs them, so `cd infra && terraform apply -a
 ```yaml
 on:
   pre_command:
-    - when: { command: ["git push*--force*", "git push*-f *"] }
-      action: { block: "No force pushes: open a pull request or ask a person" }
-    - when: { command: ["git push*origin main*", "git push*origin HEAD:main*"] }
-      action: { block: "No direct pushes to main: open a pull request" }
-    - when: { command: "terraform apply*", not: { branch: "^main$" } }
-      action: { block: "terraform apply only runs from the pipeline of main" }
-    - when: { command: ["kubectl*--context*prod*", "aws*--profile*prod*"] }
-      action: { block: "The agent never acts on production: run it yourself, or use a staging context" }
+    - when:
+        command: ["git push*--force*", "git push*-f *"]
+      action:
+        block: "No force pushes: open a pull request or ask a person"
+    - when:
+        command: ["git push*origin main*", "git push*origin HEAD:main*"]
+      action:
+        block: "No direct pushes to main: open a pull request"
+    - when:
+        command: "terraform apply*"
+        not:
+          branch: "^main$"
+      action:
+        block: "terraform apply only runs from the pipeline of main"
+    - when:
+        command: ["kubectl*--context*prod*", "aws*--profile*prod*"]
+      action:
+        block: "The agent never acts on production: run it yourself, or use a staging context"
 ```
 
 In a command pattern `*` matches anything, spaces and slashes included, so `kubectl*--context*prod*` holds wherever
@@ -581,10 +684,14 @@ Generated files are rewritten by a tool, not by hand. The agent is sent to the s
 ```yaml
 on:
   pre_edit:
-    - when: { path: ["**/*.pb.go", "**/*_generated.go", "**/zz_generated.*"] }
-      action: { block: "{path} is generated: edit its source (.proto, schema...) and run just gen" }
-    - when: { path: ["package-lock.json", "pnpm-lock.yaml", "go.sum", "poetry.lock", "uv.lock"] }
-      action: { block: "{path} is written by the package manager: change the manifest and let the tool update it" }
+    - when:
+        path: ["**/*.pb.go", "**/*_generated.go", "**/zz_generated.*"]
+      action:
+        block: "{path} is generated: edit its source (.proto, schema...) and run just gen"
+    - when:
+        path: ["package-lock.json", "pnpm-lock.yaml", "go.sum", "poetry.lock", "uv.lock"]
+      action:
+        block: "{path} is written by the package manager: change the manifest and let the tool update it"
 ```
 
 A pattern without `/` matches the base name anywhere, like `.gitignore`, so `go.sum` also covers `tools/go.sum`.
@@ -600,8 +707,10 @@ of the session.
 ```yaml
 on:
   pre_edit:
-    - when: { path: ".claude/settings.json" }
-      action: { block: "{path} registers the hooks of polix: change it yourself, the agent does not" }
+    - when:
+        path: ".claude/settings.json"
+      action:
+        block: "{path} registers the hooks of polix: change it yourself, the agent does not"
 ```
 
 polix only protects its own state without any entry: `AGENTS.md`, `CLAUDE.md`, `ai/rules/` and `polix.yaml` are
@@ -622,10 +731,14 @@ so it gets the rules on its own first edit, and again on its next run.
 ```yaml
 on:
   start:
-    - action: { inject: { file: "docs/architecture.md" } }
+    - action:
+        inject:
+          file: "docs/architecture.md"
 
   pre_edit:
-    - action: { inject: { rules: "{path}" } }
+    - action:
+        inject:
+          rules: "{path}"
 ```
 
 With a rule like this in `ai/rules/frontend.yaml`, the agent reads it the first time it edits a component, and
@@ -646,16 +759,20 @@ When the context window fills up, Claude Code compacts the conversation and deta
 
 ```yaml
 vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+  key:
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 
 on:
   start:
-    - action: { inject: "Branch {branch}, ticket {key}. Use bun, not npm. Run just test before committing." }
-    - action: { inject: { file: "docs/conventions.md" } }
+    - action:
+        inject: "Branch {branch}, ticket {key}. Use bun, not npm. Run just test before committing."
+    - action:
+        inject:
+          file: "docs/conventions.md"
 ```
 
 Keep it short: it is injected at every start, resume and compaction. `file` takes one path, not a glob. Rules
-injected by `inject: { rules }` and the other injects that act once come back too: a compaction starts a new
+injected by an `inject` of `rules` and the other injects that act once come back too: a compaction starts a new
 context, so after it each one is due again on its next event.
 
 ### The same checks for the agent and for CI
@@ -668,8 +785,11 @@ The agent runs the checks of the changed files before it stops, and CI runs the 
 ```yaml
 on:
   stop:
-    - when: { changed: "**" }
-      action: { run: { rules: changed } }
+    - when:
+        changed: "**"
+      action:
+        run:
+          rules: changed
 ```
 
 ```yaml
@@ -741,35 +861,56 @@ version: 1
 base_branch: main
 max_stop_retries: 3
 vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+  key:
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 
 guardrails:
   protected_files: [".env", ".env.*"]
   protected_branches: [main]
   format_on_edit:
-    - { run: "npx prettier --write {path}", path: ["src/**/*.ts", "src/**/*.tsx"] }
+    - run: "npx prettier --write {path}"
+      path: ["src/**/*.ts", "src/**/*.tsx"]
 
 on:
   pre_edit:
-    - unless: { var: key }
-      action: { block: "No ticket in the branch name: create the branch from a ticket" }
-    - action: { inject: { rules: "{path}" } }
+    - unless:
+        var: key
+      action:
+        block: "No ticket in the branch name: create the branch from a ticket"
+    - action:
+        inject:
+          rules: "{path}"
 
   stop:
-    - when: { changed: "src/**" }
-      unless: { finished: documenter }
-      action: { block: "Launch the documenter subagent first: it edits files, so it goes before the tests and the review" }
+    - when:
+        changed: "src/**"
+      unless:
+        finished: documenter
+      action:
+        block: "Launch the documenter subagent first: it edits files, so it goes before the tests and the review"
     # Tests only once the docs are written, review only once the tests pass: a failing run ends the evaluation.
-    - when: { changed: "src/**", finished: documenter }
-      action: { run: just test }
-    - when: { changed: "src/**", finished: documenter }
-      unless: { finished: "polix:reviewer" }
-      action: { block: "Launch the polix:reviewer subagent on the final diff" }
+    - when:
+        changed: "src/**"
+        finished: documenter
+      action:
+        run: just test
+    - when:
+        changed: "src/**"
+        finished: documenter
+      unless:
+        finished: "polix:reviewer"
+      action:
+        block: "Launch the polix:reviewer subagent on the final diff"
 
   pre_commit:
-    - unless: { finished: [documenter, "polix:reviewer"] }
-      action: { block: "Document and review this exact diff before committing ({key})" }
-    - action: { run: { command: just test, message: "The tests fail on this exact diff ({key})" } }
+    - unless:
+        finished: [documenter, "polix:reviewer"]
+      action:
+        block: "Document and review this exact diff before committing ({key})"
+    - action:
+        run:
+          command: just test
+          message: "The tests fail on this exact diff ({key})"
 ```
 
 If the reviewer finds a bug and the agent fixes it in `src/`, `finished: documenter` and
@@ -799,13 +940,17 @@ through.
 
 ```yaml
 vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # PLAT-123-add-retry -> PLAT-123
+  key:   # PLAT-123-add-retry -> PLAT-123
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
 
 githooks:
   commit_msg:
-    - when: { branch: "^[A-Z][A-Z0-9]+-[0-9]+" }
-      unless: { message: ["^{key}: ", "^Merge "] }
-      action: { block: "Start the message with the key of the ticket: {key}: {message}" }
+    - when:
+        branch: "^[A-Z][A-Z0-9]+-[0-9]+"
+      unless:
+        message: ["^{key}: ", "^Merge "]
+      action:
+        block: "Start the message with the key of the ticket: {key}: {message}"
 ```
 
 `git commit -m "fix the login"` on `PLAT-123-login` fails with
@@ -820,12 +965,17 @@ commits.
 ```yaml
 githooks:
   pre_commit:
-    - when: { changed: "secrets/**" }
-      action: { block: "Nothing of secrets/ is committed: unstage it with git restore --staged" }
+    - when:
+        changed: "secrets/**"
+      action:
+        block: "Nothing of secrets/ is committed: unstage it with git restore --staged"
   commit_msg:
-    - when: { changed: ["db/migrations/**", "*.sql"] }
-      unless: { message: "^migration: " }
-      action: { block: "A commit with migrations starts with \"migration: \"" }
+    - when:
+        changed: ["db/migrations/**", "*.sql"]
+      unless:
+        message: "^migration: "
+      action:
+        block: "A commit with migrations starts with \"migration: \""
 ```
 
 `changed` only looks at the staged files: a migration edited and left out of the commit does not ask for the
@@ -838,9 +988,12 @@ The linter runs on every commit that stages Go code, and its output shows in the
 ```yaml
 githooks:
   pre_commit:
-    - when: { changed: ["*.go", go.mod] }
+    - when:
+        changed: ["*.go", go.mod]
       action:
-        run: { command: golangci-lint run ./..., message: "Fix the lint before committing" }
+        run:
+          command: golangci-lint run ./...
+          message: "Fix the lint before committing"
 ```
 
 A failure aborts the commit with the message and `golangci-lint run ./... failed: exit status 1`.
@@ -853,8 +1006,10 @@ People may still do it; the agent may not:
 ```yaml
 guardrails:
   forbidden_commands:
-    - { pattern: "git*--no-verify*", reason: "The hooks of git are not skipped: fix what they block" }
-    - { pattern: "git*hook.polix-*", reason: "The hooks of git are not skipped: fix what they block" }
+    - pattern: "git*--no-verify*"
+      reason: "The hooks of git are not skipped: fix what they block"
+    - pattern: "git*hook.polix-*"
+      reason: "The hooks of git are not skipped: fix what they block"
 ```
 
 ## Coming from Claude Code hooks

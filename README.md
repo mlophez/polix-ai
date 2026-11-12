@@ -193,8 +193,10 @@ skill runs only when you or your `polix.yaml` ask for it; Polix enforces a phase
 ```yaml
 on:
   pre_commit:
-    - unless: { finished: "polix:reviewer" }
-      action: { block: "Review the diff with /polix:review before committing" }
+    - unless:
+        finished: "polix:reviewer"
+      action:
+        block: "Review the diff with /polix:review before committing"
 ```
 
 ## Learn more

@@ -91,8 +91,10 @@ max_stop_retries: 3
 # - A variable cannot be called path, command, branch, changed_lines, changed_files or risk_score, the built-in
 #   placeholders, and its only key is `branch`.
 vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" } # first group: PLAT-123-add-retry -> PLAT-123
-  release: { branch: "^release/[0-9.]+$" }    # no group, the whole match: release/2.4 -> release/2.4
+  key: # first group: PLAT-123-add-retry -> PLAT-123
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
+  release: # no group, the whole match: release/2.4 -> release/2.4
+    branch: "^release/[0-9.]+$"
 
 # Optional. The rules on how to write the code, which polix injects and checks.
 # - `path`, default ai/rules: the folder of the rules, relative to the root (no absolute path, no `..` out of the
@@ -110,7 +112,7 @@ vars:
 # tests/architecture/ below runs once for that folder, `go test ./tests/architecture -run ^Test(GOARCH1|GOARCH2)$`.
 # When a shared invocation fails, each rule of it runs again alone to tell which ones fail.
 # A check no glob matches runs as a program (its shebang; on Windows a .sh with the bash of Git for Windows and a
-# .py with py -3, python3 or python). Used by `polix rules check` and by `run: { rules }`; `polix config check`
+# .py with py -3, python3 or python). Used by `polix rules check` and by a `run` with `rules`; `polix config check`
 # reports an empty argv, an empty glob, an unknown placeholder or {files} or {dirs} inside a longer argument.
 rules:
   path: ai/rules
@@ -318,7 +320,7 @@ guardrails:
 #
 # agents_are_running: true or false, whether subagents of the session, of any type, are still running, the one that
 # acts aside (on subagent_stop the subagent that stops does not count itself). It holds on any event, so a commit or
-# the end of a turn can wait for every subagent: `when: { agents_are_running: false }`. polix counts them from the
+# the end of a turn can wait for every subagent: `agents_are_running: false` in `when`. polix counts them from the
 # starts and ends of subagents in its log, corrected on each stop of Claude Code with the list of work still in
 # flight it sends (an interrupted subagent missing from it counts as ended); a new session, a resume or a clear
 # closes them all, a compaction does not. Codex sends no such list, so it counts by the log alone.
@@ -410,7 +412,8 @@ on:
         inject:
           file: docs/flujo.md
 
-    - when: { var: key }
+    - when:
+        var: key
       action:
         inject:
           file: "ai/plans/{key}-plan.md"
@@ -428,20 +431,23 @@ on:
   prompt:
     # var: every variable of the list has a value (a string is a list of one).
     # A warning repeated on every prompt is an inject with always: true.
-    - unless: { var: key }
+    - unless:
+        var: key
       action:
         inject:
           always: true
           text: "No hay ticket en la rama: créalo con /ticket antes de cambiar nada."
 
     # A variable without group: the whole branch name is the value.
-    - when: { var: release }
+    - when:
+        var: release
       action:
         inject: "Rama de release {release}: solo se admiten fixes, ninguna funcionalidad nueva."
 
     # branch: the current branch matches a regular expression. It is not anchored: use ^ and $ for a whole match.
     # A block on prompt rejects it; with once: true, only the first prompt of the session, as a reminder.
-    - when: { branch: "^(main|dev)$" }
+    - when:
+        branch: "^(main|dev)$"
       action:
         block:
           once: true
@@ -450,7 +456,8 @@ on:
     # notify: a message for the user, shown by the agent, which never reaches the AI and costs it no context. The
     # short form is the message (placeholders allowed); the long form a map with `message` (required) and `always`.
     # Valid on every event, after the entries that may block it: a blocked event shows the user no message.
-    - when: { var: release }
+    - when:
+        var: release
       action:
         notify: "Rama de release {release}: avisa a QA antes de publicar."
 
@@ -460,7 +467,8 @@ on:
   # A subagent that only reads, such as a reviewer, never edits nor runs a command, so pre_edit never gives it the
   # rules: give them at its start.
   subagent_start:
-    - when: { actor: polix:reviewer }
+    - when:
+        actor: polix:reviewer
       action:
         inject: "Revisa el diff contra las reglas de ai/rules/: cada hallazgo cita el id de la regla que incumple."
 
@@ -472,7 +480,8 @@ on:
     # long form a map with `message` (required) and `once`. Valid on prompt, pre_edit, pre_command, pre_commit,
     # stop and subagent_stop; the other events already happened.
     # Every change is tracked by a Jira ticket (short form):
-    - unless: { var: key }
+    - unless:
+        var: key
       action:
         block: "No hay ticket: crea la rama con /ticket"
 
@@ -481,15 +490,22 @@ on:
     # not: a map of nested conditions; it holds unless every one of them holds (with one nested condition, it is its
     # negation).
     # file: a file of the repository, tracked or untracked but not ignored, matches a glob (or one of a list).
-    - when: { not: { path: "ai/plans/{key}-*.md" } }
-      unless: { file: "ai/plans/{key}-*.md" }
+    - when:
+        not:
+          path: "ai/plans/{key}-*.md"
+      unless:
+        file: "ai/plans/{key}-*.md"
       action:
         block: "No hay plan: escríbelo con /plan"
 
     # file + contains: some matching file also holds this text (plain substring, placeholders allowed). contains is
     # only valid next to file, and never directly inside any, where it would hold on its own.
-    - when: { not: { path: "ai/plans/{key}-*.md" } }
-      unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
+    - when:
+        not:
+          path: "ai/plans/{key}-*.md"
+      unless:
+        file: "ai/plans/{key}-*.md"
+        contains: "Ticket: {key}"
       action:
         block: "El plan no tiene la línea Ticket: {key}"
 
@@ -497,8 +513,11 @@ on:
     # a plugin is named with its prefix, `plugin:agent`, as polix:reviewer or acme:builder (a builder agent of a
     # plugin acme); an agent of .claude/agents/ by its bare name.
     # The main session orchestrates and only writes the plans and the docs; the builders build:
-    - when: { not: { path: ["ai/plans/**", "docs/**"] } }
-      unless: { actor: [acme:builder, acme:builder-ui] }
+    - when:
+        not:
+          path: ["ai/plans/**", "docs/**"]
+      unless:
+        actor: [acme:builder, acme:builder-ui]
       action:
         block: "Solo los subagentes acme:builder y acme:builder-ui editan el proyecto: usa /build"
 
@@ -506,13 +525,16 @@ on:
     # except the main session adding a new one. A list in path holds when any glob matches.
     - when:
         path: ["db/migrations/**", "src/**/migrations/**"]
-        not: { actor: session, file: "db/migrations/.allow-{key}" }
+        not:
+          actor: session
+          file: "db/migrations/.allow-{key}"
       action:
         block: "Las migraciones publicadas no se editan: crea una nueva con el ticket {key}."
 
     # A reminder on pre_edit: the first edit of a generated file by each actor is blocked once, the next goes
     # through.
-    - when: { path: ["**/*.gen.go", "**/generated/**"] }
+    - when:
+        path: ["**/*.gen.go", "**/generated/**"]
       action:
         block:
           once: true
@@ -524,7 +546,8 @@ on:
           rules: "{path}"
 
     # inject with always: true reaches the AI on every edit of a matching path, not once per session.
-    - when: { path: "src/auth/**" }
+    - when:
+        path: "src/auth/**"
       action:
         inject:
           always: true
@@ -550,18 +573,21 @@ on:
     # like these; write an entry here for anything else after an edit, or when it needs more than a path: another
     # condition, `always` or the checks of the rules.
     # Short form, a string split on spaces: the code generated from a proto file, rebuilt after its edit.
-    - when: { path: "proto/**/*.proto" }
+    - when:
+        path: "proto/**/*.proto"
       action:
         run: "buf generate"
 
     # Short form, a list of arguments, where each argument stays one ({path} too, even when it holds a space):
-    - when: { path: "db/migrations/*.sql" }
+    - when:
+        path: "db/migrations/*.sql"
       action:
         run: [sqlfluff, lint, --dialect, postgres, "{path}"]
 
     # Long form with command, message and always: the check asks the schema registry, so its result depends on more
     # than the files.
-    - when: { path: "schemas/**/*.avsc" }
+    - when:
+        path: "schemas/**/*.avsc"
       action:
         run:
           command: "just schema-compat {path}"
@@ -569,7 +595,8 @@ on:
           always: true
 
     # Long form with rules: the checks of the rules whose scope matches the edited path.
-    - when: { path: "checks/**" }
+    - when:
+        path: "checks/**"
       action:
         run:
           rules: "{path}"
@@ -582,13 +609,17 @@ on:
     # this event; an entry here takes any condition, an exception in `unless` and any verb (see the warning and `any`
     # below).
     # command: a command of the line matches a pattern, or one of a list.
-    - when: { command: ["git push*origin main*", "git push*origin HEAD:main*", "git push --force*", "git push -f*"] }
+    - when:
+        command: ["git push*origin main*", "git push*origin HEAD:main*", "git push --force*", "git push -f*"]
       action:
         block: "No se hace push directo a main ni push forzado: abre un PR"
 
     # A warning is an inject: the AI is told, nothing is blocked. With {command} in the text it is a new text on
     # every command, so it is injected every time.
-    - when: { command: "terraform apply*", not: { branch: "^main$" } }
+    - when:
+        command: "terraform apply*"
+        not:
+          branch: "^main$"
       action:
         inject: "Aviso: {command} solo se lanza desde el pipeline de main."
 
@@ -598,7 +629,10 @@ on:
     # for ai/rules/**). A heuristic: reads do not count, and `python -c` that opens a file is not seen. Only on
     # pre_command, post_command and pre_commit. With `actor`, only the subagents are kept away
     # (guardrails.protected_files keeps everybody).
-    - when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
+    - when:
+        writes: ["polix.yaml", "ai/rules/**"]
+        not:
+          actor: session
       action:
         block: "Solo la sesión principal cambia {command}"
 
@@ -609,7 +643,8 @@ on:
         command: "git push*"
         any:
           branch: "^(main|dev)$"
-          not: { finished: polix:reviewer }
+          not:
+            finished: polix:reviewer
       action:
         block: "No se hace push desde {branch} ni sin la revisión de polix:reviewer sobre el contenido actual."
 
@@ -620,7 +655,9 @@ on:
     # the line: alone, last, or followed by && (`just test | tail` is decided by tail, so it never holds).
     # A command that failed to run (PostToolUseFailure) without an exit code counts as 1.
     # always: true tells the AI on every failure, not only the first one of the session.
-    - when: { command: "just test*", exit: 1 }
+    - when:
+        command: "just test*"
+        exit: 1
       action:
         inject:
           always: true
@@ -628,7 +665,9 @@ on:
 
     # exit: 0 for what follows a command that worked. A run on post_command never blocks: when it fails, its message
     # and output reach the AI as context.
-    - when: { command: ["npm install*", "npm i *"], exit: 0 }
+    - when:
+        command: ["npm install*", "npm i *"]
+        exit: 0
       action:
         run:
           command: npm audit --audit-level=high
@@ -639,7 +678,8 @@ on:
   pre_commit:
     # changed: some file not committed yet (changed since HEAD, or untracked and not ignored) matches a glob, or one
     # of a list. Secrets never land in a commit:
-    - when: { changed: ["*.pem", "*.key", "*.p12", "*.pfx", "**/secrets/**"] }
+    - when:
+        changed: ["*.pem", "*.key", "*.p12", "*.pfx", "**/secrets/**"]
       action:
         block: "El cambio incluye ficheros con secretos o certificados: sácalos del commit y añádelos a .gitignore."
 
@@ -665,25 +705,32 @@ on:
           changed_lines: 150
           changed_files: 5
           risk_score: 25
-      unless: { finished: polix:reviewer }
+      unless:
+        finished: polix:reviewer
       action:
         block: "Cambio de {changed_lines} líneas en {changed_files} ficheros (riesgo {risk_score}): lanza el subagente polix:reviewer"
 
     # finished with a list: sensitive code waits for both reviews, each on the content as it is now.
-    - when: { changed: ["src/auth/**", "src/crypto/**"] }
-      unless: { finished: [polix:reviewer, acme:security-reviewer] }
+    - when:
+        changed: ["src/auth/**", "src/crypto/**"]
+      unless:
+        finished: [polix:reviewer, acme:security-reviewer]
       action:
         block: "El cambio toca código sensible: lanza polix:reviewer y acme:security-reviewer sobre el diff actual."
 
     # The changelog travels with the change: file + contains in unless.
-    - when: { changed: "src/**" }
-      unless: { file: CHANGELOG.md, contains: "{key}" }
+    - when:
+        changed: "src/**"
+      unless:
+        file: CHANGELOG.md
+        contains: "{key}"
       action:
         block: "Añade a CHANGELOG.md una entrada con {key} en este mismo commit."
 
     # A reminder: once: true blocks the first commit of each actor in a session on this content, and lets the next
     # one through. The docs it asks for are outside its scope, so editing them does not remind it again.
-    - when: { changed: "src/**" }
+    - when:
+        changed: "src/**"
       action:
         block:
           once: true
@@ -693,15 +740,19 @@ on:
   # when the main session ends its turn. inject is rejected here.
   subagent_stop:
     # The builder does not finish until the tests pass: polix runs them, it never trusts that the builder ran them.
-    - when: { actor: acme:builder, changed: "src/**" }
+    - when:
+        actor: acme:builder
+        changed: "src/**"
       action:
         run:
           command: just test
           message: "Los tests no pasan: arréglalos antes de terminar."
 
     # The reviewer does not finish without saving its report in the folder of reports.
-    - when: { actor: polix:reviewer }
-      unless: { file: "ai/reports/{key}-review*.md" }
+    - when:
+        actor: polix:reviewer
+      unless:
+        file: "ai/reports/{key}-review*.md"
       action:
         block: "Guarda tu informe en ai/reports/{key}-review.md antes de terminar."
 
@@ -710,22 +761,26 @@ on:
   # when it stops. The checks of guardrails.run_on_stop, the lint and the tests, come before these entries, and its
   # notice for the stops that hold the tests back while subagents run comes after them.
   stop:
-    # run: { rules: changed }: the checks of the rules whose scope matches the changed files.
-    - when: { changed: "**" }
+    # run with rules: changed: the checks of the rules whose scope matches the changed files.
+    - when:
+        changed: "**"
       action:
         run:
           rules: changed
 
     # always: true runs it on every turn, also on a content it passed on: its result depends on more than the files.
-    - when: { changed: "src/**" }
+    - when:
+        changed: "src/**"
       action:
         run:
           command: just test-integration
           always: true
 
     # A reminder on stop, once per content: ask for the review at the end of the task.
-    - when: { changed: "src/**" }
-      unless: { finished: polix:reviewer }
+    - when:
+        changed: "src/**"
+      unless:
+        finished: polix:reviewer
       action:
         block:
           once: true
@@ -740,9 +795,9 @@ on:
 # reasons on stderr prefixed `polix: `.
 # - Events: pre_commit, before the commit is made; commit_msg, once its message is written.
 # - Entries: when, unless and action, as in `on`, in file order; the first entry that blocks ends the evaluation.
-# - Verbs: block (a message, or { message }) and run (a command, or { command, message }); inject, notify, once,
-#   rules and always are rejected. Every run runs on every commit, from the root, with no time limit and its output
-#   live in the terminal: githooks keep no log.
+# - Verbs: block (a message, or a map of message) and run (a command, or a map of command and message); inject,
+#   notify, once, rules and always are rejected. Every run runs on every commit, from the root, with no time limit
+#   and its output live in the terminal: githooks keep no log.
 # - Conditions: branch (a regular expression of the branch, placeholders not expanded), changed (globs of the files
 #   staged for the commit, the index against HEAD) and, only in commit_msg, message (regular expressions of the
 #   first line of the message, without the comment lines of git nor what follows the scissors line). A list holds
@@ -759,11 +814,14 @@ on:
 githooks:
   pre_commit:
     # Nothing of secrets/ is committed, by anyone.
-    - when: { changed: "secrets/**" }
-      action: { block: "No se commitea nada de secrets/: sácalo del índice con git restore --staged" }
+    - when:
+        changed: "secrets/**"
+      action:
+        block: "No se commitea nada de secrets/: sácalo del índice con git restore --staged"
 
     # The linter runs on every commit that stages Go code; its output shows in the terminal of the commit.
-    - when: { changed: ["*.go", go.mod] }
+    - when:
+        changed: ["*.go", go.mod]
       action:
         run:
           command: golangci-lint run ./...
@@ -771,7 +829,9 @@ githooks:
 
   commit_msg:
     # On a ticket branch the first line starts with the key of the ticket; merges go through.
-    - when: { branch: "^[A-Z][A-Z0-9]+-[0-9]+" }
-      unless: { message: ["^{key}: ", "^Merge "] }
+    - when:
+        branch: "^[A-Z][A-Z0-9]+-[0-9]+"
+      unless:
+        message: ["^{key}: ", "^Merge "]
       action:
         block: "Empieza el mensaje por la clave del ticket: «{key}: {message}»"

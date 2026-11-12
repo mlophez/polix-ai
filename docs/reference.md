@@ -44,12 +44,15 @@ requirements: [go, golangci-lint]  # programs needed on the PATH, told to the AI
 guardrails:                      # the basics every project wants
   protected_files: [.env, /AGENTS.md]           # path globs no agent writes, before every entry
   forbidden_commands:                           # commands no agent runs, before every entry
-    - { pattern: "git push --force*", reason: "No force pushes" }
+    - pattern: "git push --force*"
+      reason: "No force pushes"
   protected_branches: [main, "release/*"]       # branches nobody commits on
   format_on_edit:                               # runs after each edit of its path
-    - { run: "gofmt -w {path}", path: "*.go" }
+    - run: "gofmt -w {path}"
+      path: "*.go"
   run_on_stop:                                  # must pass before the agent ends its turn
-    - { run: "go test ./...", changed: "*.go" }
+    - run: "go test ./..."
+      changed: "*.go"
 rules:
   path: ai/rules                 # folder of the rules
   run:                           # runner of each check, by glob
@@ -67,26 +70,36 @@ guidance:                        # instructions injected on start
   edit: true
   layout: true
 vars:                            # variables from the branch name
-  key: { branch: "^([A-Z]+-[0-9]+)" }
+  key:
+    branch: "^([A-Z]+-[0-9]+)"
 on:                              # the entries of each event
   pre_command:
-    - when: { command: "terraform apply*" }
-      unless: { branch: "^main$" }
+    - when:
+        command: "terraform apply*"
+      unless:
+        branch: "^main$"
       action:
         block: "terraform apply only runs from main"
   pre_commit:
-    - when: { changed: "src/**" }
-      unless: { finished: polix:reviewer }
+    - when:
+        changed: "src/**"
+      unless:
+        finished: polix:reviewer
       action:
         block: "Lanza polix:reviewer sobre el diff actual"
 githooks:                        # the gates git runs on every commit
   pre_commit:
-    - when: { changed: "secrets/**" }
-      action: { block: "No se commitean secretos" }
+    - when:
+        changed: "secrets/**"
+      action:
+        block: "No se commitean secretos"
   commit_msg:
-    - when: { branch: "^[A-Z]+-[0-9]+" }
-      unless: { message: "^{key}: " }
-      action: { block: "El mensaje empieza por {key}: " }
+    - when:
+        branch: "^[A-Z]+-[0-9]+"
+      unless:
+        message: "^{key}: "
+      action:
+        block: "El mensaje empieza por {key}: "
 ```
 
 ## Top-level keys
@@ -213,7 +226,7 @@ injects of the `start` entries, and only with a valid file. They ask for coopera
 
 ### vars
 
-- Type: a map of name to `{ branch: <regex> }`. Default: none.
+- Type: a map of name to a map of `branch: <regex>`. Default: none.
 - Each variable is extracted from the current branch name with a Go (RE2) regular expression: its value is the
   first group, or the whole match without groups. When the regex does not match, the variable has no value: the
   condition [`var`](#var) fails and `{name}` is left as is.
@@ -223,8 +236,10 @@ injects of the `start` entries, and only with a valid file. They ask for coopera
 
 ```yaml
 vars:
-  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }   # PLAT-123-add-retry -> PLAT-123
-  release: { branch: "^release/[0-9.]+$" }      # release/2.4 -> release/2.4
+  key:   # PLAT-123-add-retry -> PLAT-123
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
+  release:      # release/2.4 -> release/2.4
+    branch: "^release/[0-9.]+$"
 ```
 
 ### requirements
@@ -295,10 +310,13 @@ guardrails:
       reason: "No force pushes: open a pull request"
   protected_branches: [main, "release/*"]
   format_on_edit:
-    - { run: "gofmt -w {path}", path: "*.go" }
+    - run: "gofmt -w {path}"
+      path: "*.go"
   run_on_stop:
-    - { run: "golangci-lint run ./...", changed: "*.go" }
-    - { run: "go test ./...", changed: ["*.go", go.mod, go.sum] }
+    - run: "golangci-lint run ./..."
+      changed: "*.go"
+    - run: "go test ./..."
+      changed: ["*.go", go.mod, go.sum]
 ```
 
 `protected_files` and `forbidden_commands` are protections of the engine: with a valid file, the hook applies them
@@ -381,8 +399,10 @@ guardrails:
 # expands into
 on:
   pre_commit:
-    - when: { branch: "^(?:main|release/.*)$" }
-      action: { block: "{branch} is protected in polix.yaml: create a branch for this change and commit there." }
+    - when:
+        branch: "^(?:main|release/.*)$"
+      action:
+        block: "{branch} is protected in polix.yaml: create a branch for this change and commit there."
 ```
 
 ### format_on_edit
@@ -401,15 +421,24 @@ on:
 ```yaml
 guardrails:
   format_on_edit:
-    - { run: "gofmt -w {path}", path: "*.go" }
-    - { run: "npx eslint {path}", path: ["*.ts", "*.tsx"], message: "eslint:" }
+    - run: "gofmt -w {path}"
+      path: "*.go"
+    - run: "npx eslint {path}"
+      path: ["*.ts", "*.tsx"]
+      message: "eslint:"
 # expands into
 on:
   post_edit:
-    - when: { path: "*.go" }
-      action: { run: "gofmt -w {path}" }
-    - when: { path: ["*.ts", "*.tsx"] }
-      action: { run: { command: "npx eslint {path}", message: "eslint:" } }
+    - when:
+        path: "*.go"
+      action:
+        run: "gofmt -w {path}"
+    - when:
+        path: ["*.ts", "*.tsx"]
+      action:
+        run:
+          command: "npx eslint {path}"
+          message: "eslint:"
 ```
 
 ### run_on_stop
@@ -437,14 +466,23 @@ on:
 ```yaml
 guardrails:
   run_on_stop:
-    - { run: "go test ./...", changed: ["*.go", go.mod, go.sum], message: "The tests fail:" }
+    - run: "go test ./..."
+      changed: ["*.go", go.mod, go.sum]
+      message: "The tests fail:"
 # expands into
 on:
   stop:
-    - when: { changed: ["*.go", go.mod, go.sum], agents_are_running: false }
-      action: { run: { command: "go test ./...", message: "The tests fail:" } }
+    - when:
+        changed: ["*.go", go.mod, go.sum]
+        agents_are_running: false
+      action:
+        run:
+          command: "go test ./..."
+          message: "The tests fail:"
     # ... the entries written in on ...
-    - when: { changed: ["*.go", go.mod, go.sum], agents_are_running: true }
+    - when:
+        changed: ["*.go", go.mod, go.sum]
+        agents_are_running: true
       action:
         notify:
           message: "run_on_stop waits for the subagents still running: its checks run on the next stop after they end."
@@ -465,9 +503,11 @@ entries, before both.
 ## Entries
 
 ```yaml
-- when: { <condition>: <value>, ... }     # optional: all must hold
-  unless: { <condition>: <value>, ... }   # optional: skip the entry when all hold
-  action:                                 # required: exactly one verb
+- when:                                  # optional: all must hold
+    <condition>: <value>
+  unless:                                # optional: skip the entry when all hold
+    <condition>: <value>
+  action:                                # required: exactly one verb
     <verb>: <value>
 ```
 
@@ -574,7 +614,8 @@ as a list of one. Placeholders are expanded in every string value except `branch
 - Events: all.
 
 ```yaml
-when: { branch: "^(main|dev)$" }
+when:
+  branch: "^(main|dev)$"
 ```
 
 ### var
@@ -584,8 +625,10 @@ when: { branch: "^(main|dev)$" }
 - Events: all. `polix config check` rejects a variable not defined in `vars`.
 
 ```yaml
-unless: { var: key }
-when: { var: [key, release] }
+unless:
+  var: key
+when:
+  var: [key, release]
 ```
 
 ### path
@@ -596,8 +639,11 @@ when: { var: [key, release] }
 - Events: `pre_edit`, `post_edit` only.
 
 ```yaml
-when: { path: ["*.ts", "*.tsx"] }
-when: { not: { path: "ai/plans/{key}-*.md" } }
+when:
+  path: ["*.ts", "*.tsx"]
+when:
+  not:
+    path: "ai/plans/{key}-*.md"
 ```
 
 ### changed
@@ -610,7 +656,8 @@ when: { not: { path: "ai/plans/{key}-*.md" } }
 - Events: all.
 
 ```yaml
-when: { changed: ["*.go", go.mod, go.sum] }
+when:
+  changed: ["*.go", go.mod, go.sum]
 ```
 
 ### file
@@ -621,7 +668,8 @@ when: { changed: ["*.go", go.mod, go.sum] }
 - Events: all.
 
 ```yaml
-unless: { file: "ai/plans/{key}-*.md" }
+unless:
+  file: "ai/plans/{key}-*.md"
 ```
 
 ### contains
@@ -631,7 +679,9 @@ unless: { file: "ai/plans/{key}-*.md" }
 - Never directly inside `any`, where it would hold on its own; inside a `not` within an `any` it is valid.
 
 ```yaml
-unless: { file: CHANGELOG.md, contains: "{key}" }
+unless:
+  file: CHANGELOG.md
+  contains: "{key}"
 ```
 
 ### command
@@ -643,7 +693,8 @@ unless: { file: CHANGELOG.md, contains: "{key}" }
 - Events: `pre_command`, `post_command`, `pre_commit`.
 
 ```yaml
-when: { command: ["git push*origin main*", "git push --force*"] }
+when:
+  command: ["git push*origin main*", "git push --force*"]
 ```
 
 ### writes
@@ -659,7 +710,10 @@ when: { command: ["git push*origin main*", "git push --force*"] }
 - Events: `pre_command`, `post_command`, `pre_commit`.
 
 ```yaml
-when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
+when:
+  writes: ["polix.yaml", "ai/rules/**"]
+  not:
+    actor: session
 ```
 
 ### exit
@@ -671,8 +725,12 @@ when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
 - Events: `post_command` only.
 
 ```yaml
-when: { command: "just test*", exit: 1 }
-when: { command: "npm install*", exit: 0 }
+when:
+  command: "just test*"
+  exit: 1
+when:
+  command: "npm install*"
+  exit: 0
 ```
 
 ### actor
@@ -685,7 +743,8 @@ when: { command: "npm install*", exit: 0 }
 - Events: all.
 
 ```yaml
-unless: { actor: [acme:builder, acme:builder-ui] }
+unless:
+  actor: [acme:builder, acme:builder-ui]
 ```
 
 ### finished
@@ -699,8 +758,10 @@ unless: { actor: [acme:builder, acme:builder-ui] }
 - Events: all.
 
 ```yaml
-unless: { finished: polix:reviewer }
-unless: { finished: [polix:reviewer, acme:security-reviewer] }
+unless:
+  finished: polix:reviewer
+unless:
+  finished: [polix:reviewer, acme:security-reviewer]
 ```
 
 ### agents_are_running
@@ -715,8 +776,11 @@ unless: { finished: [polix:reviewer, acme:security-reviewer] }
 - Events: all.
 
 ```yaml
-when: { actor: session, agents_are_running: true }
-unless: { agents_are_running: true }
+when:
+  actor: session
+  agents_are_running: true
+unless:
+  agents_are_running: true
 ```
 
 ### changed_lines, changed_files, risk_score
@@ -747,7 +811,10 @@ when:
   only when all of them hold.
 
 ```yaml
-when: { not: { actor: session, path: "docs/**" } }   # every edit but those of the main session in docs/
+when:   # every edit but those of the main session in docs/
+  not:
+    actor: session
+    path: "docs/**"
 ```
 
 ### any
@@ -761,7 +828,8 @@ when:
   command: "git push*"
   any:
     branch: "^(main|dev)$"
-    not: { finished: polix:reviewer }
+    not:
+      finished: polix:reviewer
 ```
 
 ### Scope of an entry
@@ -847,7 +915,7 @@ Injects a text for the AI, as context.
   plus:
   - `always`: boolean, default `false`.
 - Repeat: each actor gets each expanded text once per session, and again after a compaction or, for a subagent, on
-  its next run (its `subagent_start` or the end of the previous one); `inject: { rules }` gives each rule once per
+  its next run (its `subagent_start` or the end of the previous one); an `inject` of `rules` gives each rule once per
   actor and session. A placeholder that changes on every event (`{command}`, a measure) makes a new text each time.
   `always: true` injects it on every event. On `start` and `subagent_start` every inject acts every time.
 
@@ -903,14 +971,21 @@ is a problem of `polix config check` at the line of its entry.
 ```yaml
 githooks:
   pre_commit:                      # before the commit is made
-    - when: { branch: "^main$", changed: "*.go" }
-      action: { block: "No se commitea Go en main" }
+    - when:
+        branch: "^main$"
+        changed: "*.go"
+      action:
+        block: "No se commitea Go en main"
 
     - action:
-        run: { command: go vet ./..., message: "Arregla go vet" }
+        run:
+          command: go vet ./...
+          message: "Arregla go vet"
   commit_msg:                      # once the message is written
-    - unless: { message: ["^(feat|fix|docs|chore): ", "^Merge "] }
-      action: { block: "Usa un prefijo convencional: {message}" }
+    - unless:
+        message: ["^(feat|fix|docs|chore): ", "^Merge "]
+      action:
+        block: "Usa un prefijo convencional: {message}"
 ```
 
 Events:
@@ -921,10 +996,10 @@ Events:
 
 Verbs:
 
-- `block`: a message, or `{ message: ... }`; it aborts the commit with the message. `once` is rejected: githooks
+- `block`: a message, or a map of `message`; it aborts the commit with the message. `once` is rejected: githooks
   keep no log.
 - `run`: a command (a string split on spaces, or a list of arguments, never run through a shell), or
-  `{ command: ..., message: ... }`. It runs from the root on every commit, without a time limit, with its output
+  a map of `command` and `message`. It runs from the root on every commit, without a time limit, with its output
   live in the terminal; when it fails the commit is aborted with its `message` and `<command> failed: <error>`.
   `rules` and `always` are rejected.
 - `inject` and `notify` are rejected: they have nobody to reach.

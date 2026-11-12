@@ -187,7 +187,7 @@ The rules it follows, as before this use case:
      known. With `always: true` it runs on every event.
    - `inject` acts once by default, except on `start` and `subagent_start`, which begin a new context and always
      inject: keyed by the session, the
-     actor, the line of its entry and the expanded text or file path (one key per rule id for `inject: { rules }`),
+     actor, the line of its entry and the expanded text or file path (one key per rule id for an `inject` of `rules`),
      it is skipped while not due and writes `injected`, without hash, when it reaches the AI: the lines are written
      once the answer of the event is known, in the order of the injects, and not at all when the answer to a `prompt`
      refuses, since the AI never sees the contexts of a rejected prompt (on the other events they reach the AI with
