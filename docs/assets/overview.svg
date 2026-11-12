@@ -92,7 +92,7 @@
   <rect class="card" x="720" y="90" width="200" height="56" rx="12"/>
   <circle class="red" cx="742" cy="118" r="5"/>
   <text class="t" x="758" y="114" font-size="14" font-weight="600">Block</text>
-  <text class="m mono" x="758" y="132" font-size="11">exit 2 (git: 1) + reasons</text>
+  <text class="m mono" x="758" y="132" font-size="11">exit 2 (git 1), reason</text>
 
   <rect class="card" x="720" y="172" width="200" height="56" rx="12"/>
   <circle class="blue" cx="742" cy="200" r="5"/>
