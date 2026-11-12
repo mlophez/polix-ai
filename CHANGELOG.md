@@ -14,6 +14,9 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   times while each run marks a task, and a run resumed after an interruption does the same. The builder ends its turn
   only once every task is `[x]` or `[-]`, rereading `Progress` before the verification of the plan. A plan left
   `partial` builds again without adjusting it with `/polix:plan`.
+- The context of the missing programs of `requirements` no longer asks the AI to install them: it now asks it to
+  tell the user which ones are missing and propose the commands that would install them, installing nothing without
+  the user's approval. An agent with broad permissions installed them on its own at the start of a session.
 
 ## [0.8.0] - 2026-11-12
 

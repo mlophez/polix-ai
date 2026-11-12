@@ -531,7 +531,8 @@ requirements: [go, golangci-lint]
   `git`. It never derives the programs from the commands of the workflow, and it never checks their versions.
 - On the first `prompt` of a session, before the entries, the hook looks each program up and, when some are not
   on the PATH, tells the AI, as a context, `These programs that polix.yaml requires are not on the PATH: <names>.
-  Before doing anything else, install them, or ask the user to install them if you cannot.` It is a once-only
+  Before doing anything else, tell the user which ones are missing and propose the commands that would install
+  them; install nothing without the user's approval.` It is a once-only
   context of the session, as a once-only `inject`: the later prompts of the session do not repeat it, it is due
   again after a `start` of the session (a new session, a resume, a clear or a compaction) and when the set of
   missing programs changes, and a prompt that an entry refuses does not count it as told. `start` never tells

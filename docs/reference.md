@@ -244,7 +244,8 @@ vars:
   requirement): it never derives them from the commands of the workflow nor checks versions.
 - On the first `prompt` of a session, before the entries, the hook looks them up and, when some are missing, tells
   the AI as a context: `These programs that polix.yaml requires are not on the PATH: <names>. Before doing anything
-  else, install them, or ask the user to install them if you cannot.` It is a once-only context: the later prompts
+  else, tell the user which ones are missing and propose the commands that would install them; install nothing
+  without the user's approval.` It is a once-only context: the later prompts
   of the session do not repeat it; it is due again after a `start` of the session (startup, resume, clear,
   compaction) and when the set of missing programs changes; a refused prompt does not count it as told. `start`
   never tells it, and it never blocks.

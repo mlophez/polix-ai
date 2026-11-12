@@ -165,7 +165,8 @@ risk:
 # polix checks only these, plus git, which it adds at the end when the list does not name it (a missing git is the
 # fail of the area git of polix doctor), never the commands of the workflow, and it never blocks because of them:
 # - On the first prompt of a session, before the entries, the hook looks them up and, when some are missing, tells
-#   the AI, in English, which ones, asking it to install them, or to ask the user to, before anything else. It is a
+#   the AI, in English, which ones, asking it to tell the user and propose how to install them, before anything
+#   else, and never to install them without the user's approval. It is a
 #   once-only context: due again after a start of the session (startup, resume, clear, compaction) or when the set
 #   of missing programs changes, never on start itself, and a refused prompt does not count it as told.
 # - `polix doctor` warns once per missing program in the area `requirements`, or gives one OK line when the PATH runs

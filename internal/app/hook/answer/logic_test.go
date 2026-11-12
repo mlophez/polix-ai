@@ -2276,7 +2276,8 @@ on:
       action: { block: "No" }
 `
 	const text = "These programs that polix.yaml requires are not on the PATH: does-not-exist. Before doing anything " +
-		"else, install them, or ask the user to install them if you cannot."
+		"else, tell the user which ones are missing and propose the commands that would install them; install nothing " +
+		"without the user's approval."
 	prompt := eval(t, yaml, workflow.Prompt)
 	var st state.State
 	step := func(ev hook.Evaluation, branch string, missing []string) (Output, []hook.Step) {

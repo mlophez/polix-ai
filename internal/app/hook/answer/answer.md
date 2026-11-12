@@ -314,7 +314,8 @@ The rules it follows, as before this use case:
 14. On `prompt`, before the entries, when the workflow declares `requirements` (`workflow.Workflow.Requirements`),
     its programs followed by git (`workflow.Workflow.Programs`) are looked up once per call (`hook.Step.Programs`,
     answered by `Missing`) and, when some are not on the PATH, the AI gets one context: `These programs that polix.yaml requires are not on the PATH: <names>. Before
-    doing anything else, install them, or ask the user to install them if you cannot.` It is a once-only inject of
+    doing anything else, tell the user which ones are missing and propose the commands that would install them;
+    install nothing without the user's approval.` It is a once-only inject of
     rule 6 at line 0, keyed by `requirements: ` and the missing names joined by `, `: it is due again after a
     `started` of the session (`ObservesStart` holds with requirements, so `start` writes it) or when the set of missing
     programs changes, its skip is logged as a `skip` decision of the action `requirements`, and a refused prompt does

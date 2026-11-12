@@ -92,7 +92,8 @@ func (r *pass) requirements(ans agent.Answer) agent.Answer {
 	}
 	r.injected = append(r.injected, passInject{line: 0, key: key})
 	return ans.Inform("These programs that polix.yaml requires are not on the PATH: " + names + ". Before doing " +
-		"anything else, install them, or ask the user to install them if you cannot.")
+		"anything else, tell the user which ones are missing and propose the commands that would install them; " +
+		"install nothing without the user's approval.")
 }
 
 // guidance adds to ans the built-in guidance of the workflow for the session, when it has any.
