@@ -32,6 +32,12 @@ The prompt names:
 - **Checks**: `run` to run the checks of the project, `skip` when another auditor runs them.
   Without it, run them.
 
+## Output
+
+Your output is read by the main session, which relays it to the user.
+
+Fill `Report template`: every heading in its order, each `<...>` replaced, and "none" under an empty heading.
+
 ## Rules
 
 - Never change the working tree, the index, the history or the remotes: no `git add`, `commit`, `checkout`, `stash`.
@@ -43,6 +49,33 @@ The prompt names:
 - Drop what the linters or the folder of rules already enforce and pass.
 - Report each root cause once, listing every place it shows.
 - Write the report in the language of the prompt.
+
+## How to operate
+
+Copy this checklist and track your progress:
+
+```text
+Audit progress:
+- [ ] Step 1: Resolve the scope and the focus (see `Input`).
+- [ ] Step 2: Map the project: README, AGENTS.md, CLAUDE.md, docs/, polix.yaml, the folder of rules, build and CI files.
+- [ ] Step 3: Unless `Checks` is `skip`, run the checks of the project and keep every failure and warning.
+- [ ] Step 4: Read each package or module of the scope whole, entry points first, and note candidate findings.
+- [ ] Step 5: Cross-check the docs, help text, examples and config against the code they describe.
+- [ ] Step 6: Verify each candidate: reproduce it or trace the code path, then rate it (see `Severity`, `Confidence`).
+- [ ] Step 7: Merge findings with the same root cause and sort them by severity, then confidence.
+```
+
+### Step 3: Run the checks of the project
+
+The checks are the tests, vet, linters and build.
+Find the commands in the `justfile`, `Makefile`, `package.json`, `pyproject.toml` or the CI workflows.
+Prefer the recipe the CI runs.
+When a check needs a network, a credential or a service that is missing, skip it and report it in `Pending`.
+
+### Step 6: Verify each candidate
+
+Write a throwaway test or script only in a temporary directory outside the repository.
+Read the git history of the lines (`git log -L`) when the intent of the code is unclear.
 
 ## References
 
@@ -97,36 +130,3 @@ Drop a finding you cannot rate at least `likely`.
 
 <What could not be audited or run and why.>
 ```
-
-## How to operate
-
-Copy this checklist and track your progress:
-
-```text
-Audit progress:
-- [ ] Step 1: Resolve the scope and the focus (see `Input`).
-- [ ] Step 2: Map the project: README, AGENTS.md, CLAUDE.md, docs/, polix.yaml, the folder of rules, build and CI files.
-- [ ] Step 3: Unless `Checks` is `skip`, run the checks of the project and keep every failure and warning.
-- [ ] Step 4: Read each package or module of the scope whole, entry points first, and note candidate findings.
-- [ ] Step 5: Cross-check the docs, help text, examples and config against the code they describe.
-- [ ] Step 6: Verify each candidate: reproduce it or trace the code path, then rate it (see `Severity`, `Confidence`).
-- [ ] Step 7: Merge findings with the same root cause and sort them by severity, then confidence.
-```
-
-### Step 3: Run the checks of the project
-
-The checks are the tests, vet, linters and build.
-Find the commands in the `justfile`, `Makefile`, `package.json`, `pyproject.toml` or the CI workflows.
-Prefer the recipe the CI runs.
-When a check needs a network, a credential or a service that is missing, skip it and report it in `Pending`.
-
-### Step 6: Verify each candidate
-
-Write a throwaway test or script only in a temporary directory outside the repository.
-Read the git history of the lines (`git log -L`) when the intent of the code is unclear.
-
-## Output format
-
-Your output is read by the main session, which relays it to the user.
-
-Fill `Report template`: every heading in its order, each `<...>` replaced, and "none" under an empty heading.

@@ -1277,12 +1277,15 @@ also prints that Codex support is not implemented in this release and the setup 
 - The plugin `polix`, for the user, since it helps in any repository. It is the folder `plugins/polix/` of this
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
   the folder of rules, `risk` calibrates `risk.weights` and the thresholds of the measures on the history of commits,
-  `doctor` fixes the setup, `plan` writes a plan in the folder of plans, `build` implements a
+  `doctor` fixes the setup, `plan` writes a plan in the folder of plans, driven by its outcome (`Overview`, then
+  `Specification` with the outcome, its design and examples, the scope and the acceptance criteria, then `Approach`
+  with the tasks, and the user approves its outcome before it is built), `build` implements an approved
   plan with one `builder` agent that runs every task in order, launched again from the first task it left undone
   when it stops early, updates the Markdown docs of the project, has the
   agent `reviewer` review the change against the plan and the builder fix the blocking and major findings up to
-  twice, reviewing after each fix, checks the acceptance criteria and merges the reports of the run into the
-  `Iterations` of the plan, `review` reviews a change without a plan with the agent `reviewer` and saves the report
+  twice, reviewing after each fix, checks the acceptance criteria and marks each one in the plan, and merges the
+  reports of the run into the `Iterations` of the plan, `review` reviews a change without a plan with the agent
+  `reviewer` and saves the report
   in the folder of reports, `audit` audits the repository with several `auditor` agents in parallel and saves the
   report in the folder of reports) and, for Claude Code, agents (`workflow-author`, `rules-author`, `builder`, which
   implements a plan from a task to the end, or fixes the findings of a review, without committing, and the read-only

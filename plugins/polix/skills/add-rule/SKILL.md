@@ -1,8 +1,7 @@
 ---
 name: add-rule
 description: >
-  Adds rules on how the code of the project must be written to the folder of rules (ai/rules/ by default), the
-  rules polix injects and checks.
+  Adds rules on how to write the code to the folder of rules (ai/rules/ by default), which polix injects and checks.
   It runs only when the user or the workflow of polix asks for it.
   It never changes the code nor polix.yaml.
 effort: medium
@@ -28,6 +27,13 @@ Polix reads `id`, `description`, `scope`, `deterministic` and `check`; any other
 
 - **Request**: the rules to add, or the document to migrate them from, from the arguments or the conversation.
 
+## Output
+
+- **Rules**: each rule added, with its id and file.
+- **Duplicates**: the rules skipped and the existing ids they repeat, or "none".
+- **Contradictions**: the pairs of ids left to the user, or "none".
+- **Pending**: the deterministic rules left without `check`, or "none".
+
 ## Rules
 
 - Word each rule with its trigger, exact names and the alternative of every prohibition; no vague words.
@@ -38,6 +44,21 @@ Polix reads `id`, `description`, `scope`, `deterministic` and `check`; any other
 - Only write the folder of rules and the migrated sources.
 - When the request is about when rules are injected or checked, point to the skill `workflow` of polix.
 - Talk to the user in the language of the session.
+
+## How to operate
+
+Copy this checklist and track your progress:
+
+```text
+Rules progress:
+- [ ] Step 1: Read every file of the folder of rules, retired.yaml included, to know the topics and the free ids.
+- [ ] Step 2: Split the request or the source into one rule per item, each with its file and id (see `Rule format`).
+- [ ] Step 3: Propose `scope` and `check` from the code of the project, saying where each proposal comes from.
+- [ ] Step 4: Show the rules to write, the duplicates and the contradictions, and confirm once before writing.
+- [ ] Step 5: Write the rules, creating the missing files with a `rules:` list ordered by id.
+- [ ] Step 6: Remove each migrated rule from its source.
+- [ ] Step 7: Run `polix config check` until it reports no problem, and `polix rules check` when a rule has a `check`.
+```
 
 ## References
 
@@ -60,27 +81,6 @@ rules:
   Its ids stay taken.
 - Globs use `/` and are relative to the root: `*` stays in a segment, `**` crosses segments, `*.md` matches anywhere.
 - `check` names any file, relative to the root: a script, a Go test, any file a command can run.
-  The first runner of `rules.run` in `polix.yaml` whose glob matches it (its base name, or its path when the glob has a `/`) runs it, from the root and
-  without a shell; with no runner it runs as a program, on Windows with `bash` or `python` by its extension.
-
-## How to operate
-
-Copy this checklist and track your progress:
-
-```text
-Rules progress:
-- [ ] Step 1: Read every file of the folder of rules, retired.yaml included, to know the topics and the free ids.
-- [ ] Step 2: Split the request or the source into one rule per item and give each its file and id (see `Rule format`).
-- [ ] Step 3: Propose `scope` and `check` from the code of the project, saying where each proposal comes from.
-- [ ] Step 4: Show the rules to write, the duplicates and the contradictions, and confirm once before writing.
-- [ ] Step 5: Write the rules, creating the missing files with a `rules:` list ordered by id.
-- [ ] Step 6: Remove each migrated rule from its source.
-- [ ] Step 7: Run `polix config check` until it reports no problem, and `polix rules check` when a rule has a `check`.
-```
-
-## Output format
-
-- **Rules**: each rule added, with its id and file.
-- **Duplicates**: the rules skipped and the existing ids they repeat, or "none".
-- **Contradictions**: the pairs of ids left to the user, or "none".
-- **Pending**: the deterministic rules left without `check`, or "none".
+  The first runner of `rules.run` in `polix.yaml` whose glob matches it runs it, from the root and without a shell.
+  A glob matches the base name of the file, or its path when the glob has a `/`.
+  With no runner it runs as a program, on Windows with `bash` or `python` by its extension.

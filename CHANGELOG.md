@@ -7,6 +7,38 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- `/polix:plan` plans by outcome: the plan has three level-2 sections, `Overview` (with `Problem`, `Affected`, `Context`
+  and `Terms`, the terms a new reader would not know), `Specification` and `Approach`, then `Iterations`.
+  `Specification` holds the `Outcome`, the result expected as its users see it with its `Interface` and its `Journeys`,
+  the `Scope` (`In scope`, the areas it touches, and `Out of scope`), the `Constraints`, the `Acceptance criteria` and
+  the `Decisions` on the outcome. `Approach` holds the technical design behind that interface, with the path of each
+  journey through the components and the cross-cutting concerns (observability, security, privacy, existing data and
+  rollback), the technical decisions in the manner of an ADR (source, discarded alternatives and consequence), the
+  risks, the starting point, the verification, `Progress` and the tasks, now `#### Task N`. It explores the code with
+  one `Explore` subagent of Claude Code per area, in parallel, while it runs the tests once. After settling the split
+  and the approach, the skill walks the sections of the plan in order: it drafts each one, asks the user only what it
+  lacks and writes it into the plan file before the next. Every journey is checked by a criterion. The section `Request`
+  is gone: every requirement of the user goes to `Outcome`, which the review checks the work against. A contract
+  consumed outside the repository changes by expand-contract. The section `Missing docs` leaves the plan for the report.
+- The properties of a plan move to a YAML frontmatter: `title`, `status`, `risk`, `risk_reason`, `reference`,
+  `artifacts`, `created` and `tasks`; the body still opens with the `#` title. `artifacts` lists the external resources
+  of the change, such as an artifact of Claude Design, a prototype or a document. `status` takes `planned`, `approved`,
+  `in-progress`, `blocked` and `done`. `/polix:plan` ends by showing the user the outcome of the plan, its scope and its
+  acceptance criteria, and sets `approved` once the user approves it; `/polix:build` refuses a plan still `planned`,
+  sets `in-progress` while it runs and ends it `done` or `blocked`, where it used `building`, `built` and `partial`. A
+  plan of the earlier format, with a `- Status:` header, keeps its values and needs no approval.
+- The `Journeys` of `Outcome` are critical user journeys, `##### CUJ-01`, each with `Given:`, `When:` and `Then:`, and
+  `And:` and `But:` when they need more steps. A step may carry a block of literal data, the request, body or output of
+  the contract, saying whether it is exact or partial; it is the only block a plan allows. A change with no visible
+  effect, such as a refactor, gives the structure after it in the `Interface` of `Outcome`, and journeys `(kept)` and
+  criteria of the existing behaviour, verified against the base version. The acceptance criteria are a checklist, `- [ ]
+  AC-01: <title>`, with one block each: its `Requirement:` in one EARS sentence (Easy Approach to Requirements Syntax),
+  the journeys it checks and how to verify it. A non-functional requirement is a criterion of its own, with a measurable
+  threshold and no journeys. `/polix:build` marks each line `[x]` when met or `[-]` with why. Plans of the earlier
+  format build and review as before.
+
 ## [0.8.1] - 2026-11-12
 
 ### Fixed

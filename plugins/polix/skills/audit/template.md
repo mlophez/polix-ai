@@ -1,7 +1,8 @@
 # Audit of <scope>
 
-<The date as YYYY-MM-DD; the base: `git rev-parse --short HEAD`, the branch and whether the working tree had
-uncommitted changes; the areas and their auditors; and what was out of scope.>
+<The date as YYYY-MM-DD.
+The base: `git rev-parse --short HEAD`, the branch and whether the working tree had uncommitted changes.
+The areas and their auditors, and what was out of scope.>
 
 ## Summary
 
