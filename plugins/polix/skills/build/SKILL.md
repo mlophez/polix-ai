@@ -1,9 +1,9 @@
 ---
 name: build
 description: >
-  Implements a plan of the plans folder with polix:builder, updates the docs and has polix:reviewer review the change.
-  It has the builder fix the findings, checks the acceptance criteria and merges the run into the plan; never commits.
-  It runs only when the user or the workflow of polix asks for it.
+  Implements a plan with polix:builder, then has polix:verifier check it against the plan and polix:reviewer review it.
+  It iterates until the plan is done or stalls, without asking once it starts, and records each iteration in the plan.
+  It never commits, and returns the stats of the build. It runs only when the user or the workflow of polix asks for it.
 effort: low
 model: sonnet
 user-invocable: true
@@ -13,8 +13,9 @@ argument-hint: "[plan and optional first task, e.g. ai/plans/add-retries.md 3; e
 
 # Building
 
-Run a plan to its end: one `polix:builder` subagent implements every task, in order and in one go.
-Then update the docs, have `polix:reviewer` review the change and the builder fix it, and check the acceptance criteria.
+Run a plan to its end, unattended: once it starts, it ends `done`, or `blocked` for what only a person can solve.
+You coordinate and never build: each iteration launches the builder, then the verifier and the reviewer in parallel.
+You add their reports to the plan, count the iteration, and launch the builder again on what is still open.
 The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it.
 
 ## Requirements
@@ -22,52 +23,55 @@ The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it.
 - A plan file of the folder of plans with `#### Task N:` sections under `### Tasks`, as the skill plan writes it.
   A plan of the earlier format, with `### Task N:` sections, also works.
   Without a plan, stop and offer `/polix:plan`: never build without a plan nor write one yourself.
-- The subagents `polix:builder` and `polix:reviewer`.
-  Without them, as in Codex, read `../../agents/builder.md` and `../../agents/reviewer.md` next to this skill.
+- The subagents `polix:builder`, `polix:verifier` and `polix:reviewer`.
+  `polix:verifier` checks that the change meets the plan, and `polix:reviewer` that its code is well written.
+  Without them, as in Codex, read `builder.md`, `verifier.md` and `reviewer.md` in `../../agents/`, next to this skill.
   Follow each yourself when its turn comes, with the `subagent_start` injects of `polix.yaml` for it.
-  The rules of this skill win over theirs, and the review is not independent: say so in the report.
+  The rules of this skill win over theirs, and the checks are not independent: say so in the report.
 
 ## Input
 
 - **Plan**: the path from the arguments, or the plan named, written or discussed in the conversation.
-  Without either, list the plans of the folder of plans, leaving out the run files (see `Run files`).
-  Ask the user which one; never pick one yourself.
-- **From**: the task number from the arguments, to start there, for example to resume a build.
+  Without either, list the plans of the folder of plans and ask the user which one; never pick one yourself.
+- **From**: the task number from the arguments, to start there.
   Without it, the first task whose line of `Progress` is not `[x]`, so a task `[-]` is tried again.
   Without `Progress`, Task 1.
 - **Approval**: a plan with `status: planned` in its frontmatter is not approved.
   Stop and ask the user to approve it with `/polix:plan <plan>`; never approve it yourself.
   A plan of the earlier format, with a `- Status:` header instead of the frontmatter, needs no approval.
-- **Resume**: when the plan is `in-progress` or has run files, the last run did not end: resume it (see `Resume`).
-  When the plan is back to `approved` and has run files, it was adjusted since.
-  Then close that run (see `Iterations`) with `Status: interrupted` and start a new iteration.
-  Otherwise, when every line of `Progress` is `[x]`, tell the user the `status` of the plan and stop.
-  A plan `blocked` needs no adjustment to build again: a new iteration starts at the first task not `[x]`.
+- **Resume**: a plan `in-progress` whose last `### Iteration N` has no `#### Result` was interrupted: resume it.
+  Continue that iteration at its first missing part: the builder, the checks, then the result (see `Iteration`).
+  Otherwise, when every line of `Progress` is `[x]` and the plan is `done`, tell the user and stop.
+  A plan `approved` or `blocked` starts a new iteration at the first task not `[x]`; its earlier ones stay.
   In a plan of the earlier format, `building` stands for `in-progress` and `planned` for `approved`.
   There, `partial` stands for `blocked` and `built` for `done`.
 
 ## Output
 
-- **Plan**: the path of the plan file, its `status` and the iteration number.
-- **Tasks**: each task with its line of `Progress`: `done` with its evidence, or `departed` and why.
+- **Plan**: the path of the plan file and its `status`.
+- **Tasks**: each task with its line of `Progress`: `done` with its evidence, `departed` or `blocked` and why.
 - **Changes**: the files changed, by task and by fix.
-- **Departures**: the departures the builder recorded, or "none".
 - **Docs**: each Markdown file updated and what changed in it, or why none needed it.
-- **Review**: each round: its number, the verdict, the findings and the ones the builder fixed or skipped.
 - **Acceptance**: each AC with `met`, `not met` or `not verified` and its evidence.
-- **Pending**: the findings still open and the failures the builder reported outside its tasks.
-  Also the changes `AGENTS.md`, `CLAUDE.md` or a protected file need, and the ACs not met or not verified; or "none".
+- **Blockers**: when the plan ends `blocked`, each reason and what a person must do to clear it; or "none".
+- **Pending**: the minor findings, the manual checks and the failures that are not the change's.
+  Also the changes `AGENTS.md`, `CLAUDE.md` or a protected file need, and the changes made before the run; or "none".
+- **Stats**: the build in figures (see `Stats`).
 
 ## Rules
 
+- Ask only in `Input`, before Step 4: from then on, never ask the user nor wait for an answer.
+  Decide what is open as the builder would (see its `Departures`), and record it.
+- Never end your turn before Step 9: a subagent that returns, a failed check or a long run is never the end.
+  The run ends only when the plan is done or the loop stops (see `Loop`).
 - Never edit the code yourself: only the builder changes it, except in the fallback of `Requirements`.
-  You edit only the Markdown docs of the project (see `Docs`), the run files and three parts of the plan.
-  Those are the `status`, the checklist of `Acceptance criteria` and the `Iterations`.
+  You edit only the Markdown docs of the project (see `Docs`) and four parts of the plan.
+  Those are the `status` and `iterations` of the frontmatter, the checklist of `Acceptance criteria` and `Iterations`.
 - Never commit, stage, stash, reset, checkout nor create branches.
-- Launch one builder for all the tasks and one for each fix, in the foreground, and wait for each: never one per task.
-  Launch another only to continue the tasks a builder left `[ ]` (see `Continuation`).
+- Launch one builder per iteration, for all its open tasks or all its open findings, in the foreground, and wait.
+- Count nothing as closed on the builder's word: only the verifier's and the reviewer's reports close it.
 - Never run a command that installs, generates or formats, even when the plan or `AGENTS.md` lists it.
-- Relay what the builder and the reviewer report as it is: add no findings of your own and drop none.
+- Add what the builder, the verifier and the reviewer report as it is: no findings of your own, and none dropped.
 - Talk to the user in the language of the session.
 
 ## How to operate
@@ -77,56 +81,67 @@ Copy this checklist and track your progress:
 ```text
 Build progress:
 - [ ] Step 1: Resolve the plan, its approval, the first task and whether to resume (see `Input`); read it whole.
-- [ ] Step 2: Check the working tree.
-- [ ] Step 3: Show the user the tasks to build, in order.
-- [ ] Step 4: Set the plan `in-progress` (see `Status`), launch the builder (see `Builder prompt`) and wait for it.
-- [ ] Step 5: Write its report to the `.iterNN.md` file (see `Run files`).
-- [ ] Step 6: Continue the tasks it left `[ ]`, if any (see `Continuation`).
-- [ ] Step 7: Update the docs of the project (see `Docs`).
-- [ ] Step 8: Review the change against the plan and have the builder fix it (see `Review rounds`).
-- [ ] Step 9: Verify the acceptance criteria of the plan (see `Acceptance criteria`).
-- [ ] Step 10: Set the plan `done` or `blocked` (see `Status`) and merge the run files (see `Iterations`).
-- [ ] Step 11: Report (see `Output`), stop and return control to the user.
+- [ ] Step 2: Note the changes made before the run (see Step 2).
+- [ ] Step 3: Show the user the tasks to build, in order, and go on without waiting.
+- [ ] Step 4: Set the plan `in-progress` (see `Status`).
+- [ ] Step 5: Run iterations until the plan is done or the loop stops (see `Iteration` and `Loop`).
+- [ ] Step 6: Mark the acceptance criteria from the last verification (see `Acceptance criteria`).
+- [ ] Step 7: Set the plan `done` or `blocked` (see `Status`).
+- [ ] Step 8: Gather the stats of the build (see `Stats`).
+- [ ] Step 9: Report (see `Output`), stop and return control to the user.
 ```
 
-### Step 2: Check the working tree
+### Step 2: Note the changes made before the run
 
 Run `git status --porcelain`.
-Leave out the plan, its run files and the `Files:` of the tasks marked `[x]` or `[-]`.
-Leave out the docs the `Iterations` of the plan record too: earlier runs changed them.
-When it shows other changes, tell the user that the builder works on top of them and the review will include them.
-Ask whether to go on.
+Leave out the plan and the files of the tasks marked `[x]` or `[-]`.
+A task's files are the `files` of its `yaml` block, or its `Files:` in a plan of the earlier format.
+Leave out the docs the `Iterations` of the plan record too: earlier iterations changed them.
+The paths left are the changes made before the run: keep them for `Pre-existing` and `Pending`, and go on.
+The builder works on top of them, and never reverts nor fixes them.
 
 ## References
 
-### Run files
+### Iteration
 
-Each run of the plan is an iteration, and it keeps its reports next to the plan, `<plans>/<plan>.md`:
+Each iteration is one subsection of `## Iterations`, at the end of the plan, built as it happens:
 
-- `<plans>/<plan>.iterNN.md`: the reports of the builder in iteration `NN`, the build first and each fix after it.
-- `<plans>/<plan>.revNN.md`: one review report each, numbered across the iterations of the plan.
+1. Add `### Iteration N: <today as YYYY-MM-DD>`, where `N` is the `iterations` of the frontmatter plus one.
+   Create `## Iterations` when missing, and replace its `none`.
+2. **Builder**: launch it on what is open (see `Builder prompt`), wait, and add its report under `#### Builder`.
+   Open are the tasks from `From` on that are `[ ]` or `[-]` with `Departure:`; without any, the open findings.
+   A task `[-]` with `Blocked:` waits for a person: never send it again in this run.
+3. **Docs**: after a builder that changed what a reader sees, update the docs (see `Docs`).
+4. **Checks**: launch the verifier and the reviewer in one message, so they run in parallel, and wait for both.
+   Add their reports under `#### Verification` and `#### Review`.
+   Skip the checks when the builder left a task `[ ]`: the next iteration continues the tasks first.
+5. **Result**: add `#### Result` with what the iteration closed and what is still open (see `Loop`).
+   Then set `iterations: N` in the frontmatter: the iteration is counted once its result is written.
 
-`NN` has two digits:
+Add each report as the subagent returns it, with its headings demoted below `####`: a `##` becomes `#####`.
+Each line of the plan stays one sentence; keep the reports' lines as they come.
 
-- The iteration is the last `### Iteration NN` of the plan plus one.
-  For a run that did not end, it is the `NN` of its `.iterNN.md`.
-- A review is the last `revNN` named in the `Iterations` of the plan or found on disk, plus one.
+### Loop
 
-Start the `.iterNN.md` file with `# Iteration NN of <plan>`.
-Then add each builder report under `## Build`, `## Continue N` or `## Fix N`.
-Write each `.revNN.md` file as the reviewer returns its report, under a first line `# Review NN of <plan>`.
+Open after an iteration are the tasks not `[x]`, but those `Blocked:`, and the findings of its checks.
+Those are the verifier's findings, its criteria `not met` among them, and the reviewer's `blocking` and `major`.
+A finding the builder skipped twice for the same reason is closed.
 
-### Resume
+`#### Result` holds two lines:
 
-Resume a run that did not end in the same iteration, at the first step it has not done:
+- **Closed:** the tasks that turned `[x]`, the findings fixed and the criteria that turned `met`, or "nothing".
+- **Open:** what is still open, by kind, or "nothing".
 
-1. The builder, when the `.iterNN.md` is missing or has no `## Build`, from the first task not `[x]`.
-   Also when a line of `Progress` is still `[ ]`, from that task (see `Continuation`).
-2. Else the docs, when the iteration has no `.revNN.md` yet.
-3. Else the review rounds, counting the reviews of the iteration on disk and the fixes in its `.iterNN.md`.
-4. Else the acceptance criteria.
+An iteration progresses when it closed anything.
+The plan is done when nothing is open: the last verification is `met` and the last review has no open finding.
+Then go to Step 6.
+Stop the loop, leaving the plan `blocked`, in any of these cases:
 
-A task the builder of this run left `[-]` waits for the next run.
+- Two iterations in a row closed nothing: the work stalled.
+- This run reached ten iterations: the guard against a fix that breaks something else every time.
+- Only `Blocked:` tasks are left: each waits for a person.
+
+Each reason goes to `Blockers`, with what a person must do: install, grant, adjust the plan or decide.
 
 ### Builder prompt
 
@@ -134,24 +149,23 @@ Send the builder this block, in the language of the session:
 
 ```text
 Plan: <path of the plan file>
-From: <number and title of the first task, resolved in `Input`>
-Findings: none
-Iteration: <path of the .iterNN.md file, or "none" while it does not exist>
+From: <number and title of the first open task, or "none" to fix findings>
+Findings: <"none", or the iteration of the plan whose checks hold the findings to fix, and which ones>
 ```
 
-To fix a review, send the same block with `From: none`.
-Set `Findings: <path of the .revNN.md file>, <the blocking and major findings to fix>`.
+To fix findings, name `Iteration N` of the plan and list them.
+They are the findings of its `#### Verification`, the criteria `not met` among them.
+They are also the `blocking` and `major` findings of its `#### Review`.
 
-### Continuation
+### Verifier prompt
 
-A builder that returns with a line `[ ]` in `Progress` from `From` on stopped before the end of the plan:
+Send the verifier this block, in the language of the session:
 
-1. Launch the builder again (see `Builder prompt`) with `From:` the first task `[ ]`, and wait.
-2. Add its report to the `.iterNN.md` file under `## Continue N`.
-3. Repeat while a line is `[ ]` and the last builder marked at least one task, up to three continuations.
-4. A task still `[ ]` goes to `Pending` and leaves the plan `blocked`.
-
-A task `[-]` is never continued: it waits for the next run (see `Resume`).
+```text
+Plan: <path of the plan file>
+Previous: <"Iteration N" of the plan with the previous verification, or "none">
+Pre-existing: <the paths changed before the run, from Step 2, or "none">
+```
 
 ### Reviewer prompt
 
@@ -159,28 +173,29 @@ Send the reviewer this block, in the language of the session:
 
 ```text
 Plan: <path of the plan file>
-Previous: <path of the previous .revNN.md file of this iteration, or "none">
+Previous: <"Iteration N" of the plan with the previous review, or "none">
 Skipped: <the findings of the previous review the builder skipped, with why, or "none">
-Iteration: <path of the .iterNN.md file, or "none" while it does not exist>
+Pre-existing: <the paths changed before the run, from Step 2, or "none">
 ```
 
 ### Status
 
 Edit only the `status` of the frontmatter of the plan:
 
-- `in-progress` right before launching the builder.
+- `in-progress` right before the first iteration.
 - `done` at the end when three things hold.
   Every line of `Progress` is `[x]`, or the builder reported every task done in a plan without `Progress`.
-  Every AC is `met`, or a manual `not verified` with its steps in `Pending`.
-  The last review has no `blocking` nor `major` finding.
+  The last verification is `met`: every AC `met`, or a manual `not verified` with its steps in `Pending`.
+  The last review has no `blocking` nor `major` finding, but those a builder skipped twice for the same reason.
 - `blocked` at the end otherwise.
 
 A plan of the earlier format keeps its `- Status:` line and its values: `building`, then `built` or `partial`.
 A plan without a status gets none: never add the frontmatter nor the header to it.
+A plan without `iterations` in its frontmatter gets it at its first iteration, after `tasks`.
 
 ### Docs
 
-Each task updates the docs of what it changes; once the builder ends, bring in line what the tasks missed:
+Each task updates the docs of what it changes; after the builder, bring in line what the tasks missed:
 
 1. Read the diff of the change and list what a reader of the docs would see differently.
    That is behaviour, commands, flags, configuration, contracts, files and folders, install or setup steps.
@@ -193,48 +208,27 @@ Each task updates the docs of what it changes; once the builder ends, bring in l
 4. Never edit `AGENTS.md`, `CLAUDE.md` nor a file protected by `polix.yaml`: the instructions belong to a person.
    Write the change they need in `Pending`.
 
-Leave the docs alone when the change alters nothing a reader sees, and say so.
-After a fix that changes what a reader sees, run these steps again.
-
-### Review rounds
-
-1. Launch the reviewer (see `Reviewer prompt`), wait, and write its report to a `.revNN.md` file.
-2. While the last review has `blocking` or `major` findings and fewer than two fixes ran, have the builder fix them.
-   Use the fix block of `Builder prompt`, wait, add its report to the `.iterNN.md` file, and review again.
-3. The findings of the last review still open, and every `minor` one, go to `Pending`.
-
-A fix never reopens a task `[-]`: the next run tries it again, after the user adjusts the plan or as it is.
+Leave the docs alone when the change alters nothing a reader sees, and say so in `#### Result`.
 
 ### Acceptance criteria
 
-Check every `AC` of the `Acceptance criteria` of the plan against the working tree, after the review rounds:
+At Step 6, take the criteria of the last `#### Verification` as they are:
 
-1. Run the commands of the `Verification` section of the plan and of the `Verify:` of each AC, as the plan writes them.
-   Also run the end to end checks that a command of the project can run.
-2. For each AC, gather its evidence: the result of those commands and the code at `file:line` that fulfils it.
-   Add the evidence of `Progress` of the tasks whose `Covers:` name it.
-3. Mark each AC `met`, `not met` or `not verified`, with its evidence in one line.
-   It is `not met` when a check fails or a task that covers it is not `[x]`.
-   It is `not verified` when no command or code can show it, such as a manual step.
-   A manual step goes to `Pending` with the steps for the user.
-4. When the plan has the checklist `- [ ] AC-NN: <title>`, mark each line, again on every run.
+1. Each AC is `met`, `not met` or `not verified`, with its evidence; a manual step goes to `Pending` for the user.
+2. When the plan has the checklist `- [ ] AC-NN: <title>`, mark each line, again on every run.
    Write `- [x] AC-NN: <title>. Evidence: <...>.` when `met`.
    Write `- [-] AC-NN: <title>. <Not met or Not verified>: <why>.` otherwise.
    A plan whose criteria have no checklist gets none: never add it.
+3. When the loop stopped before a verification of the last change, launch the verifier once more first.
+   Add its report to the last iteration, under a second `#### Verification`.
 
-Run only commands that read or verify: tests, linters, builds and checks, with their outputs outside the repository.
+### Stats
 
-### Iterations
+Gather the figures of this run from the plan and from git, and give them as a short list:
 
-Merge the run files into the plan, so the plan alone holds the final state of every run:
-
-1. Add one subsection `### Iteration NN: <today as YYYY-MM-DD>` to the section `## Iterations` at the end of the plan.
-   Create the section when missing and replace its `none`.
-   Give the subsection one line each:
-   - **Tasks**: each task built, `done` or `departed` and why.
-   - **Departures**: the departures the builder recorded, or "none".
-   - **Docs**: the Markdown files the docs step updated, or "none".
-   - **Review revNN**: for each review, its verdict, the findings fixed, skipped with why, and left open.
-   - **Acceptance**: each AC with `met`, `not met` or `not verified`, or `not checked` for a run closed before.
-   - **Status**: the `status` the plan ends with, or `interrupted` for a run closed before its end.
-2. Delete the run files of the iteration with `rm`, once their content is in the plan.
+- **Iterations**: those of this run, and the plan's total in `iterations`.
+- **Tasks**: done, departed and blocked, of the total.
+- **Criteria**: met, not met and not verified, of the total.
+- **Findings**: the verifier's found and fixed, and the reviewer's found and fixed by severity.
+- **Agents**: how many times the builder, the verifier and the reviewer ran.
+- **Code**: the files changed and the lines added and removed, from `git diff --shortstat` and the untracked files.

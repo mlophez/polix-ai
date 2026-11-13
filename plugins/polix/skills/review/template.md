@@ -2,7 +2,7 @@
 
 <The date as YYYY-MM-DD.
 The base: `git rev-parse --short HEAD`, the branch and whether the working tree had uncommitted changes.
-The intent reviewed, marked as given or inferred.>
+The files or the range reviewed.>
 
 ## Verdict
 

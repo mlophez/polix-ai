@@ -16,15 +16,31 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   the `Decisions` on the outcome. `Approach` holds the technical design behind that interface, with the path of each
   journey through the components and the cross-cutting concerns (observability, security, privacy, existing data and
   rollback), the technical decisions in the manner of an ADR (source, discarded alternatives and consequence), the
-  risks, the starting point, the verification, `Progress` and the tasks, now `#### Task N`. It explores the code with
-  one `Explore` subagent of Claude Code per area, in parallel, while it runs the tests once. After settling the split
-  and the approach, the skill walks the sections of the plan in order: it drafts each one, asks the user only what it
-  lacks and writes it into the plan file before the next. Every journey is checked by a criterion. The section `Request`
+  risks, the starting point, the verification, `Progress` and the tasks, now `#### Task N`. It explores the code itself
+  with `rg` and targeted reads while it runs the tests once, and delegates to at most two `Explore` subagents of
+  Claude Code, on `haiku` with breadth "medium", only a sweep that would flood its context: subagents on the model of
+  the session cost several times the rest of the plan and repeated reads the skill makes anyway. After settling the
+  problem and the split, the skill writes the plan in two parts: it drafts `Overview` and `Specification`, asks the user
+  what they lack in rounds, the questions that change the most first, and writes them; then it does the same with
+  `Approach`, asking the approach first, once the outcome settles what it must build. The report after the approval
+  gives the path, the status, the delegated decisions and what is pending, without repeating the outcome the approval
+  showed. Every journey is checked by a criterion. The section `Request`
   is gone: every requirement of the user goes to `Outcome`, which the review checks the work against. A contract
   consumed outside the repository changes by expand-contract. The section `Missing docs` leaves the plan for the report.
+  The plan also reads for a human reviewer: `Overview` is a summary of about ten lines in plain language, with what
+  changes, what not, the risk and size, and one minimal example; each fact is said once, in the section that owns it;
+  the files, tests and changes of a task are nested lists; every requirement reads alone and every `Verify:` names the
+  tests that prove its criterion; the English prefers the possessive to chains of "of"; and blank lines separate the
+  paragraphs, of at most three sentences, while lists stay tight. Each task is prose
+  for the reviewer, what it delivers and how, how its tests prove it and its high risk, then a `yaml` block with its
+  data for the executor: `covers`, `files` (under `create` and `modify`, each with what changes), `tests` (by test
+  file, `new` and `kept`), `rules`, `reuse`, `verification` and `differential`; `Changes:` is gone into `files`. The
+  builder, the reviewer and `/polix:build` read that block, and still read the bullets of a plan of the earlier format.
+  A bullet that opens with a label writes it in bold, such as `- **Given:**` or `- **Source:**`.
 - The properties of a plan move to a YAML frontmatter: `title`, `status`, `risk`, `risk_reason`, `reference`,
-  `artifacts`, `created` and `tasks`; the body still opens with the `#` title. `artifacts` lists the external resources
-  of the change, such as an artifact of Claude Design, a prototype or a document. `status` takes `planned`, `approved`,
+  `artifacts`, `created`, `tasks` and `iterations`, which the build counts; the body still opens with the `#` title.
+  `artifacts` lists the external resources of the change, such as an artifact of Claude Design, a prototype or a
+  document. `status` takes `planned`, `approved`,
   `in-progress`, `blocked` and `done`. `/polix:plan` ends by showing the user the outcome of the plan, its scope and its
   acceptance criteria, and sets `approved` once the user approves it; `/polix:build` refuses a plan still `planned`,
   sets `in-progress` while it runs and ends it `done` or `blocked`, where it used `building`, `built` and `partial`. A
@@ -38,6 +54,24 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   the journeys it checks and how to verify it. A non-functional requirement is a criterion of its own, with a measurable
   threshold and no journeys. `/polix:build` marks each line `[x]` when met or `[-]` with why. Plans of the earlier
   format build and review as before.
+- `/polix:build` runs a plan unattended: it asks only before it starts, and never during the run, nor about the changes
+  made before it, which it notes and the reviewer leaves out. It coordinates and never builds: each iteration launches
+  `polix:builder` on what is open, the tasks `[ ]` or `[-]` first, which it tries again another way from their
+  departure, else the findings; then `polix:verifier` and `polix:reviewer` in parallel. Their reports go into the plan,
+  under `### Iteration N` of `## Iterations`, with a result of what the iteration closed and what is still open, and
+  the frontmatter counts them in `iterations`. The run files `<plan>.iterNN.md` and `<plan>.revNN.md` are gone. The run
+  ends `done` when nothing is open, or `blocked` when two iterations in a row close nothing, after ten iterations, or
+  when only tasks a person must unblock are left; the builder marks those `Blocked:` instead of `Departure:`, and the
+  report lists each blocker with what to do, and the stats of the build: iterations, tasks, criteria, findings found and
+  fixed, agents run and lines changed.
+- A new agent, `polix:verifier`, checks a built change against its plan: the outcome and its journeys, that the diff
+  backs every task marked done, the acceptance criteria (running each `Verify:` and the plan's verification), the
+  scope and the decisions, and the docs. `polix:reviewer` now judges only the code's quality: design, architecture and
+  rules, unnecessary abstractions, readability, bugs, security, compatibility and tests; its category `intent` is
+  gone. `/polix:build` marks the criteria from the last verification instead of checking them itself.
+  `/polix:review`, which has no plan, reviews only the code and no longer takes an intent. The builder works test
+  first and marks a task done only when its tests, its verification and the plan's whole verification, architecture
+  tests and linters included, pass.
 
 ## [0.8.1] - 2026-11-12
 

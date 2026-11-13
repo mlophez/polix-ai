@@ -67,12 +67,17 @@ on:
         inject: |
           - Always push to remote after commit.
 
-  # The builders and the reviewer start with a clean context: give them the habits the plan of each build needs.
+  # The builders, the verifier and the reviewer start with a clean context: give them the habits each build needs.
   subagent_start:
     - when: { actor: polix:builder }
       action:
         inject: |
           - Never run `just install` nor `just check`: they overwrite the polix binary the hooks of this session run.
+
+    - when: { actor: polix:verifier }
+      action:
+        inject: |
+          - Never run `just install` nor `just check`: build the binary into a temporary folder and run it from there.
 
     - when: { actor: polix:reviewer }
       action:
