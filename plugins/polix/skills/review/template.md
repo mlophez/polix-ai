@@ -1,7 +1,8 @@
 # Review of <change>
 
-<The date as YYYY-MM-DD; the base: `git rev-parse --short HEAD`, the branch and whether the working tree had
-uncommitted changes; and the intent reviewed, marked as given or inferred.>
+<The date as YYYY-MM-DD.
+The base: `git rev-parse --short HEAD`, the branch and whether the working tree had uncommitted changes.
+The intent reviewed, marked as given or inferred.>
 
 ## Verdict
 

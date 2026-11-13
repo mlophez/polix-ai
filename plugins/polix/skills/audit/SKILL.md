@@ -1,9 +1,8 @@
 ---
 name: audit
 description: >
-  Audits the repository, or part of it, for bugs, flaws and inconsistencies with several polix:auditor subagents in
-  parallel, one per area, and merges their reports into one ranked by severity, saved in the folder of reports.
-  It never fixes what it finds.
+  Audits the repository, or part of it, for bugs, flaws and inconsistencies with polix:auditor subagents in parallel.
+  It merges their reports into one ranked by severity, saves it in the folder of reports and fixes nothing.
   It runs only when the user or the workflow of polix asks for it.
 effort: medium
 model: sonnet
@@ -31,6 +30,15 @@ Save the merged report in the folder of reports: `reports.path` of `polix.yaml`,
 - **Focus**: the kinds of finding from the arguments: bug, security, robustness, inconsistency, dead or stale, tests.
   Without them, all.
 
+## Output
+
+- **Report**: the path of the report file.
+- **Summary**: the scope, the areas and their auditors, the findings per severity and the three that matter most.
+- **Findings**: each as severity, category, confidence, `file:line`, what is wrong, the evidence and the fix direction.
+- **Checks**: the checks run and their result.
+- **Coverage**: what was read whole, and what was only skimmed or skipped.
+- **Pending**: what could not be audited and why, and the question of which findings to fix.
+
 ## Rules
 
 - Never edit a file of the project: the report file is the only file you write.
@@ -40,6 +48,22 @@ Save the merged report in the folder of reports: `reports.path` of `polix.yaml`,
 - Let only the first auditor run the checks of the project; the others get `Checks: skip`.
 - Add no findings of your own; drop only duplicates.
 - Talk to the user in the language of the session.
+
+## How to operate
+
+Copy this checklist and track your progress:
+
+```text
+Audit progress:
+- [ ] Step 1: Resolve the scope and the focus (see `Input`).
+- [ ] Step 2: Split the scope into areas (see `Areas`) and show them to the user in one line each.
+- [ ] Step 3: Launch one `polix:auditor` per area in a single message (see `Prompt`) and wait for every report.
+- [ ] Step 4: Relaunch once each auditor that failed or returned no report; report it in `Pending` if it fails again.
+- [ ] Step 5: Merge the reports (see `Merge`).
+- [ ] Step 6: Write the merged report to its file from `template.md` (see `Report file`).
+- [ ] Step 7: Relay the merged report and the path of its file (see `Output`).
+- [ ] Step 8: Stop and return control to the user.
+```
 
 ## References
 
@@ -72,36 +96,10 @@ Checks: <run for the first auditor, skip for the others>
 
 Path: a file of the folder of reports, `<reports>`.
 Name it as the project names its reports: the convention of `AGENTS.md`, of `polix.yaml` or of the reports there.
-Without one, `<reports>/<date>-audit-<name>.md`, where `<date>` is today as `YYYY-MM-DD` and `<name>` is short
-kebab-case English from the scope and the focus (`repository` for the whole one).
+Without one, name it `<reports>/<date>-audit-<name>.md`, where `<date>` is today as `YYYY-MM-DD`.
+`<name>` is short kebab-case English from the scope and the focus (`repository` for the whole one).
 When the file exists, add a numeric suffix (`-2`) instead of overwriting it.
 
 - Fill `template.md`: its sections in its order, every `<...>` replaced.
 - Write it in the language of the docs of the repository, English when there are none.
 - One sentence per line, each line at most 120 characters, with no tables.
-
-## How to operate
-
-Copy this checklist and track your progress:
-
-```text
-Audit progress:
-- [ ] Step 1: Resolve the scope and the focus (see `Input`).
-- [ ] Step 2: Split the scope into areas (see `Areas`) and show them to the user in one line each.
-- [ ] Step 3: Launch one `polix:auditor` per area in a single message (see `Prompt`) and wait for every report.
-- [ ] Step 4: Relaunch once each auditor that failed or returned no report; report it in `Pending` if it fails again.
-- [ ] Step 5: Merge the reports (see `Merge`).
-- [ ] Step 6: Write the merged report to its file from `template.md` (see `Report file`).
-- [ ] Step 7: Relay the merged report and the path of its file (see `Output format`).
-- [ ] Step 8: Stop and return control to the user.
-```
-
-## Output format
-
-- **Report**: the path of the report file.
-- **Summary**: the scope, the areas and their auditors, the findings per severity and the three that matter most.
-- **Findings**: each as severity, category, confidence, `file:line`, what is wrong, the evidence and the direction
-  of the fix.
-- **Checks**: the checks run and their result.
-- **Coverage**: what was read whole, and what was only skimmed or skipped.
-- **Pending**: what could not be audited and why, and the question of which findings to fix.

@@ -29,11 +29,19 @@ The prompt names:
   Required: without it, stop and report it in `Pending`.
 - **Approved entries**: the entries the user already confirmed, when the launcher showed them first.
 
+## Output
+
+Your output is read by the main session, which relays it to the user.
+
+- **Entries**: the entries proposed or added, with their event, their verb and their kind: gate, reminder or warning.
+- **Diagram**: the output of `polix graph` for the events changed, when written.
+- **Pending**: the open questions with their options, or what was not done, or "none".
+
 ## Rules
 
 - Apply the `Rules` of the skill `workflow`.
-- When the request leaves an event, a condition or a verb open, or whether a block is a gate or a reminder, stop
-  and return the question with its options.
+- When the request leaves an event, a condition or a verb open, stop and return the question with its options.
+  Do the same when it leaves open whether a block is a gate or a reminder.
 
 ## How to operate
 
@@ -45,12 +53,3 @@ Workflow author progress:
 - [ ] Step 2: Without approved entries, return the entries to add and stop.
 - [ ] Step 3: With approved entries, run steps 4 and 5 of the skill `workflow`.
 ```
-
-## Output format
-
-Your output is read by the main session, which relays it to the user.
-
-- **Entries**: the entries proposed or added, with their event, their verb and whether each is a gate, a reminder
-  or a warning.
-- **Diagram**: the output of `polix graph` for the events changed, when written.
-- **Pending**: the open questions with their options, or what was not done, or "none".
