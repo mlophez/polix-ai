@@ -36,7 +36,7 @@ func TestPluginNames(t *testing.T) {
 	if got := strings.Join(p.Skills(), " "); got != "add-rule audit build doctor init plan review risk workflow" {
 		t.Fatalf("skills: %s", got)
 	}
-	want := "auditor builder reviewer rules-author rules-reviewer workflow-author"
+	want := "auditor builder reviewer rules-author rules-reviewer verifier workflow-author"
 	if got := strings.Join(p.Agents(), " "); got != want {
 		t.Fatalf("agents: %s", got)
 	}
