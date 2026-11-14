@@ -44,3 +44,8 @@ go.work.sum
 
 # Worktrees of Claude Code sessions
 /.claude/worktrees/
+
+# Working files of the AI: only ai/rules/ is versioned
+/ai/plans/
+/ai/reports/
+/ai/tasks/
