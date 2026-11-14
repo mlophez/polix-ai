@@ -58,9 +58,10 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   the files of the tasks, and the builder takes the `verification` of the plan as its baseline. Prose goes in literal
   blocks `|`, so it needs no quoting. `/polix:build` builds the tasks, then checks them with the verifier and the
   reviewer; when they leave something to fix, it appends an iteration (`ITR-NN`) to `iterations` with the tasks still to
-  do and the findings to fix (`FND-NN`, numbered across the plan), and launches the builder on it, which sets the
-  `status` and `evidence` of each finding. The reports of the agents keep their format and no longer go into the plan.
-  The agents `builder`, `verifier` and `reviewer` read the keys of the plan. A plan in Markdown is still adjusted with
+  do and the findings to fix (`FND-NN`, numbered across the plan), and launches the builder on it. The builder never
+  edits the plan: it reports the `status` and `evidence` of each task and finding, and `/polix:build`, which
+  coordinates the run, writes them in the plan. The reports of the agents keep their format and no longer go into the
+  plan. The agents `builder`, `verifier` and `reviewer` read the keys of the plan. A plan in Markdown is still adjusted with
   `template.md` and built in its own format.
 - The start context is injected on every `start` of a valid `polix.yaml`, to Claude Code and Codex, with no switch:
   the rules on commits, the root and the four folders below `path`. The skills of the plugin take their folders from

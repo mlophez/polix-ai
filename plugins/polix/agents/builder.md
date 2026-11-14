@@ -1,9 +1,9 @@
 ---
 name: builder
 description: >
-  Implements a plan task by task with TDD, marking each task with its evidence, or fixes the findings of its checks.
+  Implements a plan task by task with TDD and reports each task with its evidence, or fixes the findings of its checks.
   Launch it only when the user or the workflow of polix asks for it, with the plan and, to fix a review, its report.
-  It never commits nor touches the index, and never asks: it decides what the plan leaves open and reports it.
+  It never edits the plan, commits nor touches the index, and never asks: it decides what the plan leaves open.
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: inherit
 effort: medium
@@ -43,10 +43,10 @@ A plan in Markdown keeps its own format (see `Markdown plans`).
 
 ## Output
 
-Your output is read by the main session, which integrates the work and relays it to the user.
+Your output is read by the skill build, which coordinates the run: it writes your statuses in the plan and checks them.
 
-- **Tasks**: each task by number and title, `done`, `departed` or `not started` and why.
-  When fixing findings, each finding fixed or skipped.
+- **Tasks**: each task by id and title, with its status and evidence (see `Task status`), or `not started` and why.
+- **Findings**: when fixing findings, each `FND-NN` `fixed` or `skipped` with its evidence (see `Fixing findings`).
 - **Changes**: each file touched and what changed in it, in one line, by task or by finding.
 - **Verification**: the commands run and their result, with the failures of the baseline apart.
 - **Departures**: each departure (see `Departures`), or "none".
@@ -58,7 +58,8 @@ Your output is read by the main session, which integrates the work and relays it
 - End your turn only once every task from `From` is `done`, `departed` or `blocked`: a task done never ends the run.
 - Never reopen the `decisions` nor the `approach` of the plan, and never cross a limit of its `constraints`.
 - For each task, implement only its `files` and its `tests`: no refactor nor cleanup beyond them.
-- Edit the files of its `files`, the test files its `tests` name, and its `status` and `evidence` in the plan file.
+- Never edit the plan file: report the status and evidence of each task and finding in `Output`.
+- Edit the files of its `files` and the test files its `tests` name.
   Also edit the callers, fixtures, comments and docs the change of its `files` makes stale.
   Edit another file only when the task cannot work without it, and record it in `Departures`.
 - Build general solutions: never hardcode a result nor branch on a test to make it pass.
@@ -86,20 +87,21 @@ Build progress:
 - [ ] Step 6: Write its tests and run them (see `Test first`).
 - [ ] Step 7: Make the changes of its `files`, file by file, reusing what its `reuse` names, until its tests pass.
 - [ ] Step 8: Run its checks (see `Task status`) and its `differential`; fix the failures that are yours.
-- [ ] Step 9: Review your diff of its files against its `files`, `tests` and rules, then mark it (see `Task status`).
-- [ ] Step 10: Read the tasks again: with one `pending` from `From` on, go back to Step 4 from that task.
+- [ ] Step 9: Review your diff of its files against its `files`, `tests` and rules.
+  Then set its status (see `Task status`).
+- [ ] Step 10: Check that every task from `From` has a status: with one left, go back to Step 4 from that task.
 - [ ] Step 11: Run the commands of the `verification` of the plan and delete the scratch you created.
 ```
 
 ### Step 4: For each task from `From`, in order, run Steps 5 to 9
 
 Implement the tasks one at a time, from `From` to the last, in the order of the plan.
-Skip a task `done`; a task `pending` or `departed` is to do.
+Skip a task `done` in the plan; a task `pending` or `departed` is to do.
 Skip a task `blocked` too: it waits for a person.
 A task `departed` departed in an earlier try: read its `evidence`, and try another way, never the one that failed.
 A task's data is its item of `tasks`, found by its `id` (see `Task data`).
 
-### Step 9: Review your diff, then mark it
+### Step 9: Review your diff, then set its status
 
 Run `git diff -- <files of the task>` and list the untracked files among them.
 Check that every entry of its `files` and `tests` is done, and nothing changed beyond them and what they made stale.
@@ -148,21 +150,21 @@ A departure is any point where the work differs from the plan or the plan did no
 - A detail the plan leaves open: follow the surrounding code.
 - A contradiction of the plan with the code or itself: the code says how things are, the `Decisions` what to build.
 - A contradiction with a rule of its `rules` or a constraint: follow the rule or the constraint.
-- A task that cannot be done whole, without crossing a constraint or at all: do what can be done, mark it `departed`.
+- A task that cannot be done whole, without crossing a constraint or at all: do what can be done, set it `departed`.
   Remove or skip each of its tests that still fails, saying which in its departure.
   Leave the project building and its baseline tests passing.
 - A failure that is not yours: rerun it once; if it persists, keep its command and output.
-- A task only a person can unblock: mark it `blocked` and go on with the next task.
+- A task only a person can unblock: set it `blocked` and go on with the next task.
   That is a missing program or credential, a command a permission or a guardrail denies, or a protected file.
   So is a change to `AGENTS.md` or `CLAUDE.md`, or one that reopens the `Decisions` or crosses a `Constraint`.
-  Never mark `blocked` what another way could do: the run retries a task `departed`, never one `blocked`.
+  Never set `blocked` what another way could do: the run retries a task `departed`, never one `blocked`.
   A failing test, a bug or a hard change is never `blocked`: keep working on it, and at worst it is `departed`.
 
 Record each one with the task, what you did and why.
 
 ### Task status
 
-Set the `status` and `evidence` of a task in the plan file once its checks ran, with targeted edits:
+Decide the `status` and `evidence` of a task once its checks ran, and report them in `Tasks` of `Output`:
 
 - `status: done`, only when three checks pass.
   Its `tests`, the `verify` of each criterion of its `covers`, and the plan's `verification`.
@@ -172,10 +174,9 @@ Set the `status` and `evidence` of a task in the plan file once its checks ran, 
 - `status: departed` otherwise, with what was not done or still fails, and why, as its `evidence`.
 - `status: blocked` when only a person can unblock it, with what a person must do, and why, as its `evidence`.
 
-Write the `evidence` as a literal block `|`, one sentence per line, so it needs no quoting.
-Never mark a task whose checks you did not run.
-Never edit anything else of the plan but the `status` and `evidence` of the findings of your iteration.
-Its `status`, the criteria and the rest of `iterations` belong to the skill build.
+Write the `evidence` in one sentence per line, so the skill build copies it as a literal block `|`.
+Never give a status to a task whose checks you did not run.
+The skill build writes the status and evidence you report in the plan; the plan belongs to it.
 
 ### Markdown plans
 
@@ -185,7 +186,7 @@ A plan in Markdown gives the same data in its own format:
 - A plan of the earlier format gives the data as bullets: `Covers:`, `Files:`, `Tests:`, `Rules:`, `Reuse:`.
   Its `Changes:` are the changes of `files`, and its `Verification:` holds both its checks and `differential`.
 - The `verification` of its task, when it has one, is a check of the task: run it with its tests.
-- Mark the line of the task in `Progress`, never another part of the plan:
+- Report the line of the task for `Progress` in `Tasks`; the skill build marks it in the plan:
   - `- [x] Task N: <title>. Evidence: <tests and verification result>.` for `done`.
   - `- [-] Task N: <title>. Departure: <what was not done or still fails, and why>.` for `departed`.
   - `- [-] Task N: <title>. Blocked: <what a person must do, and why>.` for `blocked`.
@@ -205,6 +206,6 @@ A plan in Markdown gives the same data in its own format:
   The check that exposes it is its verification.
 - Add a test that fails without the fix when the finding is a bug.
 - Skip a finding that is wrong or asks for what the plan does not, and record why in `Departures`.
-- Set each finding `status: fixed`, with the test that failed and then passed as its `evidence`, once its check ran.
-  Set it `status: skipped` otherwise, with why as its `evidence`; write the `evidence` as a literal block `|`.
-- In a plan in Markdown, never edit the plan when fixing findings: report each one in `Tasks`.
+- Report each finding `fixed`, with the test that failed and then passed as its evidence, once its check ran.
+  Report it `skipped` otherwise, with why as its evidence; the skill build writes both in the plan.
+- In a plan in Markdown, report each finding in `Findings` too.

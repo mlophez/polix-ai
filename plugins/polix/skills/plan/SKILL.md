@@ -330,7 +330,7 @@ The executor runs every task in one go, in order, each on the tree the earlier o
     It never restates its tests nor its criteria: `tests` and `covers` hold them.
   - `files` lists the paths the behaviour of the task lives in, with no description: the `design` says what changes.
     Never list the callers, comments, fixtures or docs that only follow the change: the build finds them.
-  - `status: pending` and `evidence: none`: the builder sets them.
+  - `status: pending` and `evidence: none`: the build sets them from the builder's report.
 
 ### High risk
 

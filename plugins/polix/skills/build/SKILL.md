@@ -14,8 +14,10 @@ argument-hint: "[plan and optional first task, e.g. add-retries.yaml T3; empty t
 # Building
 
 Run a plan to its end, unattended: once it starts, it ends `done`, or `blocked` for what only a person can solve.
-You coordinate and never build: the builder builds the tasks, then the verifier and the reviewer check them in parallel.
+You coordinate and never build: the builder builds the tasks and reports what it built, and you write it in the plan.
+Then you launch the verifier and the reviewer in parallel to check it.
 When the checks leave something to fix, you add an iteration with it to the plan and launch the builder on it.
+You are the only one that edits the plan: the subagents read it and report.
 The folder of plans is the one the start context of polix names, below the root.
 
 ## Requirements
@@ -68,12 +70,14 @@ The folder of plans is the one the start context of polix names, below the root.
 - Never end your turn before Step 9: a subagent that returns, a failed check or a long run is never the end.
   The run ends only when the plan is done or the loop stops (see `Loop`).
 - Never edit the code yourself: only the builder changes it, except in the fallback of `Requirements`.
-  You edit only the Markdown docs of the project (see `Docs`) and three parts of the plan.
-  Those are its `status`, the `status` and `evidence` of each criterion, and the iterations you add and their `status`.
+  You edit only the Markdown docs of the project (see `Docs`) and four parts of the plan.
+  Those are its `status`, the `status` and `evidence` of each task and of each criterion, and the iterations you add.
+  Of the iterations, you set their `status` and the `status` and `evidence` of their findings.
 - Edit the plan with targeted edits that keep it valid YAML, never writing it again whole.
 - Never commit, stage, stash, reset nor create branches.
   The only checkout is the switch to the plan's `branch` in Step 1 (see `Input`).
-- Count nothing as closed on the builder's word: only the verifier's and the reviewer's reports close it.
+- Write the status of the tasks and findings as the builder reports them, never your own.
+  Still, count nothing as closed on the builder's word: only the verifier's and the reviewer's reports close it.
 - Never run a command that installs, generates or formats, even when the plan or `AGENTS.md` lists it.
 - Add the findings the verifier and the reviewer report as they are: no findings of your own, and none dropped.
 - Talk to the user in the language of the session.
@@ -89,7 +93,9 @@ Build progress:
 - [ ] Step 2: Note the changes made before the run (see Step 2).
 - [ ] Step 3: Show the user the tasks to build, in order, and go on without waiting.
 - [ ] Step 4: Set the plan `in-progress` (see `Status`).
-- [ ] Step 5: Build the tasks with the builder (see `Builder prompt`), then update the docs (see `Docs`).
+- [ ] Step 5: Build the tasks with the builder (see `Builder prompt`).
+  Write its report in the plan (see `Builder report`).
+  Then update the docs (see `Docs`).
 - [ ] Step 6: Check and fix until nothing is open or the loop stops (see `Loop` and `Iteration`).
 - [ ] Step 7: Set the plan `done` or `blocked` (see `Status`).
 - [ ] Step 8: Gather the stats of the build (see `Stats`).
@@ -101,6 +107,8 @@ Build progress:
 Run `git status --porcelain`.
 Leave out the plan and the files of the tasks `done` or `departed`: the `files` of each task.
 Leave out the files the findings of the `iterations` of the plan name too: earlier iterations changed them.
+When resuming a plan `in-progress`, leave out the `files` of the tasks still to do too.
+An interrupted builder may have changed them, and the plan does not say so: it records only what a builder reported.
 The paths left are the changes made before the run: keep them for `Pre-existing` and `Pending`, and go on.
 The builder works on top of them, and never reverts nor fixes them.
 
@@ -111,7 +119,7 @@ The builder works on top of them, and never reverts nor fixes them.
 After the builder, check, and repeat until nothing is open:
 
 1. **Checks**: launch the verifier and the reviewer in one message, so they run in parallel, and wait for both.
-   Skip them when the builder left a task `pending`: launch it again from that task first.
+   Skip them when the builder left a task `not started`: launch it again from that task first.
    Set the iteration the builder worked on, if any, to `status: checked`.
 2. **Criteria**: set the criteria from the verification (see `Acceptance criteria`).
 3. **Open**: list what is still open.
@@ -125,7 +133,8 @@ After the builder, check, and repeat until nothing is open:
    - This run reached ten iterations: the guard against a fix that breaks something else every time.
    - Only `blocked` tasks are open: each waits for a person.
 6. **Iteration**: otherwise, add an iteration with what is open (see `Iteration`).
-   Launch the builder on it (see `Builder prompt`), set it `status: built`, update the docs, and go back to 1.
+   Launch the builder on it (see `Builder prompt`) and write its report in the plan (see `Builder report`).
+   Set it `status: built`, update the docs, and go back to 1.
 
 ### Iteration
 
@@ -141,7 +150,7 @@ An iteration is one pass of the builder on what the checks left open, appended t
   - `where`: the `file:line` or the id of the plan it is about.
   - `problem` and `fix`: what is wrong and what to change, from the report, as literal blocks.
   - `repeats`: the `FND-NN` of an earlier iteration the checks report again, or `none`.
-  - `status: open` and `evidence: none`: the builder sets `fixed` or `skipped`, with why.
+  - `status: open` and `evidence: none`: you set `fixed` or `skipped`, with why, from the builder's report.
 
 Copy each finding from its report as it is: never merge, reword nor judge it.
 The criteria go to `acceptance`, never to the iteration, and the rest of the reports goes to `Output`.
@@ -191,6 +200,16 @@ Branch: <the branch of Step 1, or "current" for a plan without `branch`>
 From: <id and title of the first task to build, or "none" when it works on an iteration>
 Iteration: <the `ITR-NN` of the plan to work on, its tasks and findings, or "none">
 ```
+
+### Builder report
+
+The builder never edits the plan: it reports what it built, and you write it in the plan once it returns.
+
+- **Tasks**: for each task of its `Tasks`, set its `status` and `evidence` as the builder reports them.
+  `done`, `departed` or `blocked`; a task `not started` keeps its `status`.
+- **Findings**: for each finding of its `Findings`, set its `status` (`fixed` or `skipped`) and `evidence`.
+- Write each `evidence` as a literal block `|`, one sentence per line, with the builder's words.
+- A task or finding of the prompt that the report leaves out keeps its `status`: say so in `Pending`.
 
 ### Verifier prompt
 
@@ -267,6 +286,7 @@ A plan in Markdown keeps its format: never convert it.
 Its tasks are `Task N`, and its line of `Progress` is their status.
 `[x]` is `done`, `[-]` with `Departure:` is `departed`, `[-]` with `Blocked:` is `blocked`, and `[ ]` is `pending`.
 Without `Progress`, start at Task 1, and a task is done when the builder reports it so.
+With `Progress`, mark the line of each task with the one the builder reports (see `Builder report`).
 A task's files are the `files` of its `yaml` block, or its `Files:` in a plan of the earlier format.
 
 - **Status**: the `status` of its frontmatter.

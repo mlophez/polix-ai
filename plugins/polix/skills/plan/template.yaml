@@ -155,8 +155,8 @@ tasks:
         where: <its path>
         why: <what for>
     differential: []  # for a high-risk task, the steps of its differential check against the base version
-    status: pending  # the builder sets done, departed or blocked
-    evidence: none  # the builder sets the evidence of done, or why it departed or is blocked
+    status: pending  # the build sets done, departed or blocked, as the builder reports it
+    evidence: none  # the build sets the evidence of done, or why it departed or is blocked, from the builder's report
 
 iterations:  # the plan writes []; the build adds one item per pass of the builder on what the checks left open
   - id: ITR-01  # ITR-01, ITR-02... in the order they run
@@ -173,5 +173,5 @@ iterations:  # the plan writes []; the build adds one item per pass of the build
         fix: |
           <What to change, as the report says it.>
         repeats: none  # or the FND-NN of an earlier iteration the checks report again
-        status: open  # the builder sets fixed or skipped
-        evidence: none  # the builder sets the evidence of the fix, or why it skipped it
+        status: open  # the build sets fixed or skipped, as the builder reports it
+        evidence: none  # the build sets the evidence of the fix, or why it was skipped, from the builder's report
