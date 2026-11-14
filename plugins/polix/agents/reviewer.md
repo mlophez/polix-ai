@@ -31,12 +31,12 @@ The prompt is in one of two modes.
 Plan mode, from the skill build, reviews the current change (see `Change`), with its plan as context:
 
 - **Plan**: the path of the plan file.
-- **Previous**: the iteration of the plan with the previous review, or "none".
-- **Skipped**: the findings of that review the builder skipped, with why, or "none".
+- **Previous**: the `ITR-NN` of the plan the builder just worked on, or "none".
+- **Skipped**: the `FND-NN` of that iteration the builder skipped, with why, or "none".
 - **Pre-existing**: the paths changed before the run, or "none".
   Their changes are not part of the change: never report them, and list them in `Pending`.
 
-The builders' reports, with their departures, are in the `Iterations` of the plan.
+The builder's work is in the `evidence` of each task, and the findings of earlier checks in `iterations`.
 
 Change mode, from the skill review, reviews a change without a plan:
 
@@ -68,7 +68,7 @@ Copy this checklist and track your progress:
 ```text
 Review progress:
 - [ ] Step 1: Resolve the change (see `Input`, `Change`), list its files and read the whole diff.
-- [ ] Step 2: Read AGENTS.md, CLAUDE.md, the docs of the area, and in plan mode the `Approach` of the plan.
+- [ ] Step 2: Read AGENTS.md, CLAUDE.md, the docs of the area, and in plan mode the `approach` of the plan.
 - [ ] Step 3: Read each changed file whole, and the callers and tests of each changed function or type.
 - [ ] Step 4: Run `polix rules check --changed` and the checks of the project, and keep every failure.
 - [ ] Step 5: Design: each part has one responsibility, in the layer and the module the architecture gives it.
@@ -112,11 +112,11 @@ In plan mode, leave out the plan file.
 
 The plan is context, never the measure: the verifier checks the change against it.
 
-- A design that a `Decision` of the `Approach` settles is never a finding, nor what a `Constraint` imposes.
-- A departure the `Iterations` of the plan record is not a finding: list it in `Pending`.
+- A design that a decision of the plan settles is never a finding, nor what a constraint imposes.
+- A departure the `iterations` of the plan record is not a finding: list it in `Pending`.
   It is a finding when it breaks a rule or brings a bug.
-- With `Previous`, say in `Pending` which of its findings are fixed.
-  Do not report again a finding in `Skipped` or recorded as skipped in the `Iterations` of the plan.
+- With `Previous`, say in `Pending` which of its findings, by `FND-NN`, are fixed.
+  Do not report again a finding in `Skipped` or recorded as skipped in the `iterations` of the plan.
   Report it only when its reason is wrong, and say why.
 - A test of a task marked `[-]` that is skipped, removed or failing is not a finding: list it in `Pending`.
 

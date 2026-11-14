@@ -1,0 +1,177 @@
+# Template of a plan. Every <...> is replaced, and every comment of this template is deleted from the plan.
+# Each fact lives in one place: others name it by its id (LIT, CUJ, AC, CON, DEC, T), never restate it.
+# A literal lives in the step of the first journey that shows it, and every other place names its id.
+# Every collection is a list of objects with named fields; no key is free text.
+# A value is plain only when it holds no ": " nor " #" and does not start with ` " ' [ { * & ! | > % @ - ? or ,.
+# Any other text goes in a literal block "|", one sentence per line, even when it is one line.
+
+version: 1
+title: <One-line description of the change>
+status: planned  # planned | approved | in-progress | blocked | done
+risk: <low | medium | high>
+risk_reason: <the reason in one line>
+reference: <the ticket, issue, task file or link the change comes from, or none>
+artifacts: []  # or a list of links or paths
+branch: <the git branch the plan builds on>
+created: <today as YYYY-MM-DD>
+
+overview:
+  summary: |
+    <One sentence with the outcome, for a reviewer who reads nothing else.
+    The overview names no path, identifier or code jargon.>
+  changes:
+    - <What its users notice, in plain language; one to three items.>
+  not_changes:
+    - <The main limit or what is left out; one to three items.>
+  risk_and_size: <the risk in plain words and why, and the number of tasks>
+  example: <the id of the simplest journey, e.g. CUJ-01, or none when nothing is visible>
+
+  problem: |
+    <Who suffers what today, what it costs them and why it is addressed now, in two or three sentences.
+    Give the cost as a figure when the request or the interview gives one.>
+
+  affected:
+    - who: <a user, team or system the change reaches>
+      how: <how it reaches it>
+
+  context: |
+    <How the code behaves today in the change's area, in two or three sentences.>
+
+  terms:  # [] when the plan uses no term a new reader would not know
+    - term: <a project or domain term>
+      meaning: <what it means here>
+
+specification:
+  outcome: |
+    <What exists once the change is done, as its users and callers see it: the behaviour, the outputs, the state left.
+    Give enough detail that two executors would build the same result, never how it is built.
+    This is the only place that states the behaviour; the others name it.>
+
+  interface:
+    - name: <a command, option, message, file, format, API, event or screen it adds or changes>
+      details:
+        - <its names, fields, defaults and errors, one item each>
+
+  journeys:
+    - id: CUJ-01
+      title: <the journey of a user or caller, named by what they achieve>
+      kept: false  # true when it holds an existing behaviour the change puts at risk
+      given:
+        - step: <the starting state, with literal values>
+      when:
+        - step: <the input or action, quoting verbatim the command, message or value>
+      then:
+        - step: <the exact result, as the output, the exit code or error and the state left>
+          literal:  # only when the step shows exact data; delete it otherwise
+            id: LIT-01
+            match: <exactly | contains>
+            text: |
+              <the literal data, line by line as the code must reproduce it; <variable> for a value of each run>
+      but:  # [] when nothing must stay unchanged
+        - step: <what must not happen or must stay unchanged, such as a file not written>
+
+  scope:
+    in:
+      - <an area the plan touches, such as a module, command, file or screen>
+    out:
+      - area: <what the plan deliberately leaves out>
+        why: <why>
+
+  constraints:  # [] when there are none
+    - id: CON-01
+      text: <a limit on how the solution is built, such as compatibility, platforms, versions or a contract kept>
+      source: <request | interview | artifact | rule <id> | docs | code>
+
+  acceptance:
+    - id: AC-01
+      title: <title of AC-01>
+      requirement: <one EARS sentence of the general rule, never the values of its journeys>
+      cujs: [<CUJ-01>]  # [] for a non-functional criterion
+      verify:
+        - run: <command>
+          expect: <the result, naming the tests or cases that prove this criterion>
+        - manual: <a step that needs a person>
+          expect: <its result>
+      status: pending  # the build sets met, not met or not verified
+      evidence: none  # the build sets it
+
+decisions:
+  - id: DEC-01
+    on: <outcome | approach>
+    choice: <the choice in a line or two, never the behaviour the outcome states>
+    source: <interview | request | docs | code | rule <id> | delegated>
+    discarded:  # [] when there was no alternative
+      - option: <an alternative not taken>
+        why: <one-line reason>
+    consequence: <what it costs or makes possible later, or none>
+
+approach:
+  design:
+    - component: <a module, package or component>
+      changes:
+        - <its responsibility, or a change to a type, function or contract other modules use; never a private helper>
+
+  runtime:
+    - journey: <CUJ-01>
+      path: <the components the journey crosses, in order, and what each one does in it>
+
+  cross_cutting:
+    observability: <the logs, metrics or traces the change adds or changes, or none>
+    security: <who may trigger the change, what it trusts and what it exposes, or none>
+    privacy: <the personal data it reads, stores or sends, and where, or none>
+    existing_data: <how the data, files and settings already there reach the new behaviour, or none>
+    rollback: <how to undo the change once shipped, or none>
+
+  risks:
+    - risk: <what could break, from the pre-mortem>
+      mitigation: <how to mitigate it, or the cross-cutting concern that covers it>
+
+  verification:
+    - run: <a check of the whole project, such as the full test suite, the linter or the build>
+      expect: <its result>
+
+tasks:
+  - id: T1
+    title: <What the task delivers>
+    summary: |
+      <What the task delivers and how, in two or three sentences, naming the part of the design it builds.
+      Never its tests nor its criteria: `tests` and `covers` hold them.>
+    risk: none  # or a literal block with its items of high risk and how its tests and differential guard them
+    covers: [<AC-01>]  # [] for a supporting task
+    files:
+      create: [<path>]  # the files the behaviour of the task lives in
+      modify: [<path>]  # never the callers, comments and docs that only follow: the build finds them
+    tests:  # only kept tests, or [], for a refactor or a change no test can observe; its summary says why
+      - file: <test file>
+        new:
+          - name: <TestName>
+            covers: [<CUJ-NN or AC-NN>]
+            checks: <what it checks>
+            fails_first: <why it fails before the change>
+        kept: [<TestName>]
+    rules: [<rule id>]
+    reuse:
+      - what: <function, type or utility>
+        where: <its path>
+        why: <what for>
+    differential: []  # for a high-risk task, the steps of its differential check against the base version
+    status: pending  # the builder sets done, departed or blocked
+    evidence: none  # the builder sets the evidence of done, or why it departed or is blocked
+
+iterations:  # the plan writes []; the build adds one item per pass of the builder on what the checks left open
+  - id: ITR-01  # ITR-01, ITR-02... in the order they run
+    date: <today as YYYY-MM-DD>
+    status: open  # open while the builder works on it, built once it returns, checked once the checks ran
+    tasks: [<T2>]  # the tasks still to do, pending or departed, or []
+    findings:
+      - id: FND-01  # FND-01, FND-02... across the whole plan
+        source: <verification | review>
+        kind: <the area of a finding of the verification, or the severity and category of one of the review>
+        where: <file:line, or the id of the plan it is about>
+        problem: |
+          <What is wrong, as the report says it.>
+        fix: |
+          <What to change, as the report says it.>
+        repeats: none  # or the FND-NN of an earlier iteration the checks report again
+        status: open  # the builder sets fixed or skipped
+        evidence: none  # the builder sets the evidence of the fix, or why it skipped it

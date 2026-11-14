@@ -1369,10 +1369,14 @@ also prints that Codex support is not implemented in this release and the setup 
     open to the model, so a rule that asks for `polix:reviewer` still works.
     The read-only agents (`verifier`, `reviewer`,
     `rules-reviewer`, `auditor`) fill the report template inside their own file. The skills `audit` and `review`
-    save their report in the folder of reports from the `template.md` next to them, as `plan` saves its plan; a
-    `polix:reviewer` launched without a skill answers in the chat and saves no file. `build` adds the reports of each
-    iteration to the plan as it goes, under `### Iteration N` of `## Iterations`, and counts them in the
-    `iterations` of its frontmatter; a run that did not end resumes at the first part its last iteration lacks.
+    save their report in the folder of reports from the `template.md` next to them; a `polix:reviewer` launched
+    without a skill answers in the chat and saves no file. `plan` writes the plan as a YAML file from the
+    `template.yaml` next to it, where each fact lives in one place and the others name it by its id (`LIT-NN`,
+    `CUJ-NN`, `AC-NN`, `TN`); it keeps `template.md` to adjust a plan written before in Markdown. `build` has the
+    builder build the tasks, setting the `status` and `evidence` of each, then the verifier and the reviewer check
+    them; when they leave something to fix, it adds an iteration (`ITR-NN`) to `iterations` with the findings to fix
+    (`FND-NN`) and launches the builder on it; a run that did not end resumes where its last iteration stopped. A
+    plan in Markdown is still built in its own format, under `### Iteration N` of `## Iterations`.
   - Codex, only with `--agent codex` (not implemented): `codex plugin marketplace add ~/.polix/marketplace` and
     `[plugins."polix@polix"] enabled = true` in `~/.codex/config.toml`, the rest of the file kept. Codex documents
     no command to install a plugin without its interface, and this part was never checked against a running

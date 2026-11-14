@@ -44,6 +44,24 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- `/polix:plan` writes the plan as a YAML file, `<plans>/<name>.yaml`, from the `template.yaml` of the skill, so a
+  program can read it. Every collection is a list of objects with named fields, and the journeys, criteria, tasks,
+  constraints (`CON-NN`), decisions (`DEC-NN`) and literals open with their `id`. Each fact lives in one place and the
+  others name it by its id: each step of a journey is an object, and an exact string is the `literal` (`LIT-NN`) of the
+  step that first shows it; a criterion names its journeys in `cujs` instead of restating them; the decisions on the
+  outcome and on the approach are one list `decisions`; the overview names its example journey by id; a task lists only
+  the paths its behaviour lives in, and the builder finds the callers, fixtures and docs that follow. A task has no
+  checks of its own: the builder runs its tests, the `verify` of the criteria it covers and the `verification` of the
+  plan. Its `summary` never restates its tests, and the `design` stops at what other modules use, never a private
+  helper. The plan holds no derived data: no `tasks` nor `iterations` count, no `Progress` and no checklist of criteria,
+  since each task and criterion carries its `status` and `evidence`. The starting point is gone: its files to read were
+  the files of the tasks, and the builder takes the `verification` of the plan as its baseline. Prose goes in literal
+  blocks `|`, so it needs no quoting. `/polix:build` builds the tasks, then checks them with the verifier and the
+  reviewer; when they leave something to fix, it appends an iteration (`ITR-NN`) to `iterations` with the tasks still to
+  do and the findings to fix (`FND-NN`, numbered across the plan), and launches the builder on it, which sets the
+  `status` and `evidence` of each finding. The reports of the agents keep their format and no longer go into the plan.
+  The agents `builder`, `verifier` and `reviewer` read the keys of the plan. A plan in Markdown is still adjusted with
+  `template.md` and built in its own format.
 - The start context is injected on every `start` of a valid `polix.yaml`, to Claude Code and Codex, with no switch:
   the rules on commits, the root and the four folders below `path`. The skills of the plugin take their folders from
   it, and its agents from `path` of `polix.yaml`.
