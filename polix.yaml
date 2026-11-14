@@ -62,10 +62,14 @@ guardrails:
 # Entries run in file order after guardrails, and the first block ends the evaluation.
 on:
   # This project commits straight to main: the agent never opens a branch on its own.
+  # The skills of polix are the workflow of this repository: the generic ones that overlap them only confuse the agent.
   start:
     - action:
         inject: |
           - Always push to remote after commit.
+          - This repository has two flows and the user chooses which one: following a plan (polix:plan writes it, polix:build builds it) or editing the code directly, without a plan.
+          - This repository plans, builds, reviews and audits with the skills of polix: polix:plan, polix:build, polix:review and polix:audit.
+          - The generic skills that overlap them (engineering:code-review, engineering:architecture, engineering:system-design, engineering:testing-strategy, engineering:tech-debt, code-review, simplify) are not used here.
 
   # The builders, the verifier and the reviewer start with a clean context: give them the habits each build needs.
   subagent_start:
