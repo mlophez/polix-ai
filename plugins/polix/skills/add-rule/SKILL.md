@@ -34,9 +34,8 @@ Polix reads `id`, `description`, `scope`, `deterministic` and `check`; any other
 - **Contradictions**: the pairs of ids left to the user, or "none".
 - **Pending**: the deterministic rules left without `check`, or "none".
 
-## Rules
+## Limits
 
-- Word each rule with its trigger, exact names and the alternative of every prohibition; no vague words.
 - Never add a rule that repeats an existing one: report the existing id.
 - Show a rule that contradicts another of the same scope with both ids, and let the user decide.
 - Set `check` only to a command that already exists; leave a deterministic rule without one as pending.
@@ -75,6 +74,7 @@ rules:
     check: tests/rules/arch-3.sh     # optional: the file that checks it, exit 0 when the code follows it
 ```
 
+- Word each rule with its trigger, exact names and the alternative of every prohibition; no vague words.
 - One file per topic: `architecture.yaml` (ARCH), `code-style.yaml` (STYLE), `testing.yaml` (TEST).
   Also `security.yaml` (SEC), `design.yaml` (DESIGN), or the files the project already has.
 - `retired.yaml` keeps retired rules with their `id`, `description` and `reason`; polix ignores it.

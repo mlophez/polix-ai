@@ -48,7 +48,7 @@ Your output is read by the main session, which relays it to the user.
 
 Fill `Report template`: every heading in its order, each `<...>` replaced, and "none" under an empty heading.
 
-## Rules
+## Limits
 
 - Never change the working tree, the index, the history or the remotes.
 - Run only commands that read or verify: `git`, `polix rules check`, `polix config check`, tests, linters and builds.

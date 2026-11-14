@@ -34,9 +34,52 @@ polix measures and never judges: judging the code belongs to a reviewer subagent
 - **Try it**: how to see each new gate act in a branch, with `polix log`, before it reaches the team.
 - **Pending**: wishes left without an entry and why, or "none".
 
-## Rules
+## Limits
 
 - Extend the current `polix.yaml`; never rewrite unrelated entries.
+- Only write `polix.yaml`; rules of the code go to the folder of rules with the skill `add-rule` of polix.
+- Never remove an option `polix config check` calls unknown before `polix update` rules out an outdated polix.
+- Never lower `requires`.
+- Talk to the user in the language of the session.
+
+## How to operate
+
+Copy this checklist and track your progress:
+
+```text
+Workflow progress:
+- [ ] Step 1: Read `Format`, reference.yaml, polix.yaml, the folder of rules and the Justfile, Makefile or package.json.
+- [ ] Step 2: Ask until each wish maps to a shortcut of `guardrails`, or else to an event, its conditions and one verb.
+- [ ] Step 3: Show the items and the entries to add and confirm once before writing.
+- [ ] Step 4: Write them (see `Writing entries`) and run `polix config check` until it reports no problem.
+- [ ] Step 5: Run `polix graph` and show the diagram of the events changed.
+```
+
+## References
+
+### Format
+
+[reference.yaml](reference.yaml) is an annotated example of every option of `polix.yaml`.
+
+- The first layer is the shortcuts of `guardrails`, the basics every project wants, each a short list in its one form.
+- `protected_files` and `protected_branches` are lists of strings.
+- `forbidden_commands` (`pattern`, `reason`) and `format_on_edit` (`run`, `path`, `message`) are lists of maps.
+- `run_on_stop` (`run`, `changed`, `message`, `wait_agents`) is a list of maps.
+  An item of `run_on_stop` waits for the subagents still running unless `wait_agents: false`.
+- The second layer is the entries of `on`, for what no shortcut covers.
+  That is the orchestration of subagents (builders, reviewers), the ticket, the plan and any other condition or verb.
+- `protected_files` and `forbidden_commands` are protections of the engine: they deny before every entry of `on`.
+  They hold for every actor, without exceptions, also on files git ignores.
+- polix expands the other three shortcuts into entries of `on`; `polix graph` draws them with their shortcut name.
+- An entry says when it applies (`when`, `unless`) and what it does (`action`, with one verb).
+  The verb is `block`, `run` or `inject`.
+- The entries of `on` skip edits of files git ignores: they govern the change, what a commit may hold.
+- Conditions are facts of the repository, the event and what polix observed by itself.
+- A reviewer subagent, such as `polix:reviewer` or `polix:rules-reviewer`, judges the code.
+  The workflow requires its end with `finished`.
+
+### Writing entries
+
 - Write a wish a shortcut covers as an item of that shortcut, in its one form, never as an entry of `on`.
   A path no agent writes goes in `protected_files`, a command no agent runs in `forbidden_commands`.
   A branch nobody commits on goes in `protected_branches`.
@@ -79,44 +122,5 @@ polix measures and never judges: judging the code belongs to a reviewer subagent
 - When `polix config check` names an old name with its new spelling, rewrite it as told.
   Old names include `protected`, `base`, `max_stop_blocks`, `if`, `deny`, `record`, `done` and `turn_stop`.
 - When the change uses a key, event, condition or verb the file did not use yet, set `requires`.
-  Set it to the output of `polix version`, unless it is `dev` or `requires` is already newer; never lower `requires`.
-- Never remove an option `polix config check` calls unknown before `polix update` rules out an outdated polix.
-- Only write `polix.yaml`; rules of the code go to the folder of rules with the skill `add-rule` of polix.
+  Set it to the output of `polix version`, unless it is `dev` or `requires` is already newer.
 - When `rules.path`, `plans.path` or `reports.path` changes, tell the user to move the files of the old folder.
-- Talk to the user in the language of the session.
-
-## How to operate
-
-Copy this checklist and track your progress:
-
-```text
-Workflow progress:
-- [ ] Step 1: Read `Format`, reference.yaml, polix.yaml, the folder of rules and the Justfile, Makefile or package.json.
-- [ ] Step 2: Ask until each wish maps to a shortcut of `guardrails`, or else to an event, its conditions and one verb.
-- [ ] Step 3: Show the items and the entries to add and confirm once before writing.
-- [ ] Step 4: Write them and run `polix config check` until it reports no problem.
-- [ ] Step 5: Run `polix graph` and show the diagram of the events changed.
-```
-
-## References
-
-### Format
-
-[reference.yaml](reference.yaml) is an annotated example of every option of `polix.yaml`.
-
-- The first layer is the shortcuts of `guardrails`, the basics every project wants, each a short list in its one form.
-- `protected_files` and `protected_branches` are lists of strings.
-- `forbidden_commands` (`pattern`, `reason`) and `format_on_edit` (`run`, `path`, `message`) are lists of maps.
-- `run_on_stop` (`run`, `changed`, `message`, `wait_agents`) is a list of maps.
-  An item of `run_on_stop` waits for the subagents still running unless `wait_agents: false`.
-- The second layer is the entries of `on`, for what no shortcut covers.
-  That is the orchestration of subagents (builders, reviewers), the ticket, the plan and any other condition or verb.
-- `protected_files` and `forbidden_commands` are protections of the engine: they deny before every entry of `on`.
-  They hold for every actor, without exceptions, also on files git ignores.
-- polix expands the other three shortcuts into entries of `on`; `polix graph` draws them with their shortcut name.
-- An entry says when it applies (`when`, `unless`) and what it does (`action`, with one verb).
-  The verb is `block`, `run` or `inject`.
-- The entries of `on` skip edits of files git ignores: they govern the change, what a commit may hold.
-- Conditions are facts of the repository, the event and what polix observed by itself.
-- A reviewer subagent, such as `polix:reviewer` or `polix:rules-reviewer`, judges the code.
-  The workflow requires its end with `finished`.

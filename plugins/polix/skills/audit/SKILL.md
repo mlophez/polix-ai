@@ -39,13 +39,9 @@ Save the merged report in the folder of reports: `reports.path` of `polix.yaml`,
 - **Coverage**: what was read whole, and what was only skimmed or skipped.
 - **Pending**: what could not be audited and why, and the question of which findings to fix.
 
-## Rules
+## Limits
 
 - Never edit a file of the project: the report file is the only file you write.
-- Launch every auditor in a single message, so they run in parallel.
-- Launch at most 6 auditors.
-- Give each auditor an area no other auditor has.
-- Let only the first auditor run the checks of the project; the others get `Checks: skip`.
 - Add no findings of your own; drop only duplicates.
 - Talk to the user in the language of the session.
 
@@ -74,6 +70,7 @@ Audit progress:
 - Group small units so every area has a similar number of lines (`wc -l`).
 - Add one area for the docs: README, docs/, examples and config schemas, with the focus `inconsistency`.
 - When the scope is under about 2000 lines or a single unit, audit it with one auditor.
+- Make at most 6 areas, and give each a part of the scope no other area has.
 
 ### Prompt
 

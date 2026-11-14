@@ -39,33 +39,16 @@ The folders of plans and of rules are `plans.path` and `rules.path` of `polix.ya
 - **Next steps**: adjust the plan, or implement, review and check it with `/polix:build <plan>`.
 - **Pending**: open blockers and stale or missing docs, with `/polix:add-rule` when rules are missing; or "none".
 
-## Rules
+## Limits
 
-- Never call `EnterPlanMode`.
-  In plan mode, Steps 5 to 7 work on a draft that you pass whole to `ExitPlanMode`, since the file is blocked.
-  The approval of `ExitPlanMode` is the approval of Step 8: save the plan with `status: approved`.
-  When rejected, go back to Step 5 or 6 with the comments, for the sections they touch.
+- Never call `EnterPlanMode`; in plan mode, follow `Plan mode`.
 - Approval never starts the build: Step 9 still applies.
 - Explore read-only: you write only the plan file and the frontmatter of its task, and run only the project's tests.
-- Define tasks, never code: no code blocks, snippets, implementations or signatures.
-  The only blocks allowed hold literal data of the outcome, or a task's data.
-  They go in `Interface`, in the journeys, in the example of `Overview` and in the `yaml` block of each task.
-  Describe in prose what changes and why, naming the paths, symbols and contracts involved.
+- Define tasks, never code: no code blocks, snippets, implementations or signatures (see `Plan file`).
 - One plan is one change, delivered whole: never phases or follow-up plans.
-- When the scope is too big, propose splitting it into plans, each with its outcome and dependencies.
-  Split by function, never by layer (data, API, UI) or into preparatory steps.
-  Once the user confirms, plan only the part they pick and list the others in the `Out of scope` of `Scope`.
 - Reference the rules of the folder of rules by id in the `rules` of each task, never restate them.
 - Name no executor, agent, skill or tool of the agent in the plan file; the commands of the project are fine.
 - Interview in the language of the session.
-  Write the whole plan file in English, whatever the language of the session or of the docs.
-  Only the literals keep their language: the strings, messages, commands and data the code must reproduce as is.
-- Write the plan file one sentence per line, never wrapped.
-  Rewrite a sentence longer than 120 characters as two whole sentences, never cut it into fragments.
-  Use no tables.
-  A block of literal data keeps its lines as the code must reproduce them.
-- Write it for a human reviewer as much as for the executor (see `Readability`).
-  Say each fact once, in the section that owns it, and point to that section elsewhere.
 
 ## How to operate
 
@@ -120,7 +103,7 @@ A report is a lead, never a fact: read yourself what the plan names from it (see
 3. **Pre-mortem**: imagine the change shipped and failed a month later; write the likeliest reasons.
    Each goes to `Risks` with its mitigation, or naming the cross-cutting concern that covers it without restating it.
    What the design always does goes to `Cross-cutting concerns`, never to `Risks`.
-4. **Size**: estimate the tasks and changed lines, to know whether the change fits one review (see `Rules`).
+4. **Size**: estimate the tasks and changed lines, to know whether the change fits one review (see Step 4).
 5. Tag each case with the section it belongs to (see `Sections`).
    Settle a case only when the request, the docs, the code or a rule settle it.
    Every other case is asked in its section at Step 5 or 6.
@@ -129,7 +112,9 @@ A report is a lead, never a fact: read yourself what the plan names from it (see
 
 - Ask first what changes the whole plan, before any section (see `Questions`).
 - When the problem is unclear enough to change the outcome, ask it here (see `Sections`).
-- When the change is too big for one review, propose the split (see `Rules`).
+- When the change is too big for one review, propose splitting it into plans, each with its outcome and dependencies.
+  Split by function, never by layer (data, API, UI) or into preparatory steps.
+  Once the user confirms, plan only the part they pick and list the others in the `Out of scope` of `Scope`.
 - Never ask the approach here: it waits for Step 6, once the outcome settles what it must build.
 - When nothing is open at this level, skip the step and say so.
 
@@ -433,6 +418,15 @@ When another plan already has the name, choose a different one; this applies onl
 The path is fixed once the file is first written, even when its title or scope changes.
 Never rename, copy or move it, nor write it again under another name.
 
+Write the whole file in English, whatever the language of the session or of the docs.
+Only the literals keep their language: the strings, messages, commands and data the code must reproduce as is.
+Write it one sentence per line, never wrapped, and with no tables (see `Readability`).
+Rewrite a sentence longer than 120 characters as two whole sentences, never cut it into fragments.
+A block of literal data keeps its lines as the code must reproduce them.
+The only code blocks allowed hold literal data of the outcome, or a task's data.
+They go in `Interface`, in the journeys, in the example of `Overview` and in the `yaml` block of each task.
+Describe in prose what changes and why, naming the paths, symbols and contracts involved.
+
 Create the file at Step 5 from [template.md](template.md), with its sections in its order and at its levels.
 Write the frontmatter with `status: planned` and `created` first, and fill each section as Step 5 or 6 writes it.
 At Step 7, every `<...>` is replaced by its content.
@@ -466,6 +460,12 @@ Never write placeholders:
 - "Add appropriate error handling" or "handle edge cases" without saying which and how.
 - "Similar to Task N" or "as above": the executor reads each task with only the code and the plan.
 - Types, functions or files defined neither in a task nor in the code.
+
+### Plan mode
+
+In plan mode, Steps 5 to 7 work on a draft that you pass whole to `ExitPlanMode`, since the file is blocked.
+The approval of `ExitPlanMode` is the approval of Step 8: save the plan with `status: approved`.
+When rejected, go back to Step 5 or 6 with the comments, for the sections they touch.
 
 ### Adjusting a plan
 

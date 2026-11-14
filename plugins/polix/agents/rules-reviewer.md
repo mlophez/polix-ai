@@ -35,11 +35,10 @@ Your output is read by the main session, which relays it to the user.
 
 Fill `Report template`: every heading in its order, each `<...>` replaced, and "none" under an empty heading.
 
-## Rules
+## Limits
 
 - Run only `git` to read the history and the diff, `polix rules check`, `polix config check` and the rule checks.
 - Report only what the change introduces or touches, not what was already there.
-- A rule without `scope` applies to every file.
 - Drop a finding when the wording of its rule does not clearly cover it.
 - Write the report in the language of the prompt.
 
@@ -51,6 +50,7 @@ Copy this checklist and track your progress:
 Review progress:
 - [ ] Step 1: Resolve the change (see `Input`) and list its files.
 - [ ] Step 2: Read the folder of rules except retired.yaml and keep the rules whose `scope` matches a changed file.
+  A rule without `scope` matches every file.
 - [ ] Step 3: Run `polix rules check --changed` and keep the output of every check that fails.
 - [ ] Step 4: Judge each changed file whole, not only its hunks, against each other rule of its scope.
 - [ ] Step 5: Check each finding again against the exact wording of its rule.

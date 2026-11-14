@@ -38,7 +38,7 @@ Your output is read by the main session, which relays it to the user.
 
 Fill `Report template`: every heading in its order, each `<...>` replaced, and "none" under an empty heading.
 
-## Rules
+## Limits
 
 - Never change the working tree, the index, the history or the remotes: no `git add`, `commit`, `checkout`, `stash`.
 - Run only commands that read or verify: `git log`, `git diff`, `git show`, the tests, the linters and the builds.

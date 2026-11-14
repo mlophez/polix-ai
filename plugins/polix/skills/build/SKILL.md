@@ -64,7 +64,7 @@ The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it.
   Also the changes `AGENTS.md`, `CLAUDE.md` or a protected file need, and the changes made before the run; or "none".
 - **Stats**: the build in figures (see `Stats`).
 
-## Rules
+## Limits
 
 - Ask only in `Input`, before Step 4: from then on, never ask the user nor wait for an answer.
   Decide what is open as the builder would (see its `Departures`), and record it.
@@ -75,7 +75,6 @@ The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it.
   Those are the `status` and `iterations` of the frontmatter, the checklist of `Acceptance criteria` and `Iterations`.
 - Never commit, stage, stash, reset nor create branches.
   The only checkout is the switch to the plan's `branch` in Step 1 (see `Input`).
-- Launch one builder per iteration, for all its open tasks or all its open findings, in the foreground, and wait.
 - Count nothing as closed on the builder's word: only the verifier's and the reviewer's reports close it.
 - Never run a command that installs, generates or formats, even when the plan or `AGENTS.md` lists it.
 - Add what the builder, the verifier and the reviewer report as it is: no findings of your own, and none dropped.
@@ -116,7 +115,8 @@ Each iteration is one subsection of `## Iterations`, at the end of the plan, bui
 
 1. Add `### Iteration N: <today as YYYY-MM-DD>`, where `N` is the `iterations` of the frontmatter plus one.
    Create `## Iterations` when missing, and replace its `none`.
-2. **Builder**: launch it on what is open (see `Builder prompt`), wait, and add its report under `#### Builder`.
+2. **Builder**: launch one in the foreground on everything open (see `Builder prompt`) and wait.
+   Add its report under `#### Builder`.
    Open are the tasks from `From` on that are `[ ]` or `[-]` with `Departure:`; without any, the open findings.
    A task `[-]` with `Blocked:` waits for a person: never send it again in this run.
 3. **Docs**: after a builder that changed what a reader sees, update the docs (see `Docs`).

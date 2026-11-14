@@ -37,9 +37,9 @@ Your output is read by the main session, which relays it to the user.
 - **Diagram**: the output of `polix graph` for the events changed, when written.
 - **Pending**: the open questions with their options, or what was not done, or "none".
 
-## Rules
+## Limits
 
-- Apply the `Rules` of the skill `workflow`.
+- Apply the `Limits` of the skill `workflow`.
 - When the request leaves an event, a condition or a verb open, stop and return the question with its options.
   Do the same when it leaves open whether a block is a gate or a reminder.
 

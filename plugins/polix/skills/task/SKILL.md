@@ -35,16 +35,14 @@ The folder of tasks is `ai/tasks/`.
 - **Open questions**: those the task keeps, or "none".
 - **Next step**: plan it with `/polix:plan <path of the task file>`.
 
-## Rules
+## Limits
 
 - Write only the task file: never the code, a plan, the docs nor another task.
 - Never commit nor stage the task file.
 - Describe the outcome, never the implementation: no code blocks, snippets, signatures nor steps to build it.
 - One task is one change a single plan can deliver; when the request holds several, propose one task for each.
 - Never invent a requirement, a cost, a reference nor a figure the request or the user did not give.
-- Ask in the language of the session, and write the task file in English.
-  Only the literals keep their language: the strings, messages, commands and data the request quotes.
-- Write the task file one sentence per line, never wrapped, with no line over 120 characters and no tables.
+- Ask in the language of the session.
 
 ## How to operate
 
@@ -84,6 +82,8 @@ When another task already has the name, choose a different one; this applies onl
 Never rename nor move a task once written.
 
 Create it from [template.md](template.md), with its sections in its order, and replace every `<...>`.
+Write it in English; only the literals keep their language: the strings, messages, commands and data the request quotes.
+Write one sentence per line, never wrapped, with no line over 120 characters and no tables.
 Delete `Context` when it holds nothing, but keep every other section; write "none" in one that is empty.
 
 The frontmatter, beyond what its placeholders say:

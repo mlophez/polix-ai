@@ -32,21 +32,9 @@ Write `README.md` from [readme.md](readme.md) for human readers.
 - **Files**: `AGENTS.md` with its number of lines, `CLAUDE.md` and `README.md`.
 - **Pending**: the sections of each file left as `TBD`, or "none".
 
-## Rules
+## Limits
 
-- Follow [context.md](context.md) and [readme.md](readme.md): keep their headings and fixed text.
-- Replace every `<...>` with what it describes.
-- Replace every `<!-- ... -->` guidance comment with its content, following the conditions it states.
-- Keep the first comment of [context.md](context.md) as is in `AGENTS.md`: it says only this skill or a human edits it.
-- Keep the section `## polix` of the current `AGENTS.md` verbatim, as the last section.
-  It tells the agent how to install polix, and it is the only section outside [context.md](context.md).
-- Write facts in English that describe the project as it is; never rules on how to write its code.
-- Be concise and brief, never verbose: cut every word that adds no fact.
-- Write every list item of `AGENTS.md` and `README.md` as a short summary on one line of at most 120 characters.
-  Never wrap it; the detail belongs in `docs/`.
-- Fill `README.md` from the facts of `AGENTS.md`, with the valid content of the current `README.md` as the proposal.
-  Ask only for what they do not cover: requirements, setup steps and usage examples.
-- A section without content holds `TBD`; one that does not apply to the project holds `Not applicable.`
+- Write facts that describe the project as it is; never rules on how to write its code.
 - Never write an inferred value the user did not confirm.
 - Only write `AGENTS.md`, `CLAUDE.md` and `README.md`.
 - Interview in the language of the session.
@@ -59,7 +47,7 @@ Copy this checklist and track your progress:
 Init progress:
 - [ ] Step 1: Explore the project and propose the content of each section (see Step 1).
 - [ ] Step 2: Interview the user (see Step 2).
-- [ ] Step 3: Write `AGENTS.md`, `CLAUDE.md` and `README.md` (see `Rules`).
+- [ ] Step 3: Write `AGENTS.md`, `CLAUDE.md` and `README.md` (see Step 3).
 ```
 
 ### Step 1: Explore the project and propose the content of each section
@@ -74,3 +62,18 @@ State the origin of each proposal (e.g. "inferred from pyproject.toml") so the u
   Use `AskUserQuestion` for closed questions, at most 4 per call, and grouped free text for open ones.
 - Apply the corrections of the user.
 - Confirm once before writing, listing the existing files that will be overwritten.
+
+### Step 3: Write `AGENTS.md`, `CLAUDE.md` and `README.md`
+
+- Follow [context.md](context.md) and [readme.md](readme.md): keep their headings and fixed text.
+- Replace every `<...>` with what it describes.
+- Replace every `<!-- ... -->` guidance comment with its content, following the conditions it states.
+- Keep the first comment of [context.md](context.md) as is in `AGENTS.md`: it says only this skill or a human edits it.
+- Keep the section `## polix` of the current `AGENTS.md` verbatim, as the last section.
+  It tells the agent how to install polix, and it is the only section outside [context.md](context.md).
+- Write in English, concise and brief: cut every word that adds no fact.
+- Write every list item of `AGENTS.md` and `README.md` as a short summary on one line of at most 120 characters.
+  Never wrap it; the detail belongs in `docs/`.
+- Fill `README.md` from the facts of `AGENTS.md`, with the valid content of the current `README.md` as the proposal.
+  Ask only for what they do not cover: requirements, setup steps and usage examples.
+- A section without content holds `TBD`; one that does not apply to the project holds `Not applicable.`

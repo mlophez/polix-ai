@@ -216,7 +216,8 @@ none: use it with your own skills, agents and conventions.
 **The harness** is optional: the `polix` plugin ships a ready-to-use development flow, with `/polix:plan`,
 `/polix:build` (run by `polix:builder`, checked against the plan by `polix:verifier` and reviewed by
 `polix:reviewer`), `/polix:review` and `/polix:audit`, with `/polix:task` to add tasks to the backlog, plus the
-skills that set Polix up (`/polix:init`, `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:risk`). A
+skills that set Polix up (`/polix:init`, `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:risk`) and
+those that write skills and subagents in one format (`/polix:writing-skills`, `/polix:writing-agents`). A
 skill of the flow runs only when you type it, and Polix enforces a phase only when your workflow says so:
 
 ```yaml

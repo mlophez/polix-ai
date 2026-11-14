@@ -18,7 +18,7 @@ Find why polix does not apply as expected and fix it with the user.
 - **Fixed**: each problem fixed and how.
 - **Pending**: the problems left and what the user must do for each, or "none".
 
-## Rules
+## Limits
 
 - Apply only the fixes the user approves; propose the commands that install or update before running them.
 - Talk to the user in the language of the session.

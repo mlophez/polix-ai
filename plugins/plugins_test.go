@@ -126,6 +126,16 @@ func TestInvocation(t *testing.T) {
 	}
 }
 
+// Every skill and agent names the invariants of its whole task Limits, never Rules, which in polix are the rules of
+// the folder of rules.
+func TestLimitsSection(t *testing.T) {
+	for _, c := range append(components(t, "skills"), components(t, "agents")...) {
+		if strings.Contains("\n"+c.body, "\n## Rules\n") {
+			t.Errorf("%s: name the section ## Limits, not ## Rules", c.path)
+		}
+	}
+}
+
 // Every agent that cannot write a file reports, and its report follows a template inside its own file, since an
 // agent launched by polix cannot read files next to it.
 func TestAgentReportTemplates(t *testing.T) {

@@ -38,7 +38,7 @@ A change built from a plan is verified and reviewed by the skill build.
 - **Checks**: the checks run and their result.
 - **Pending**: what the subagent could not review, and the question of which findings to fix.
 
-## Rules
+## Limits
 
 - Never edit a file of the project: the report file is the only file you write.
 - Relay the findings of the subagent as they are: add none of your own and drop none.

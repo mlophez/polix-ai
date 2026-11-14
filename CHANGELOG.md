@@ -24,6 +24,12 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   `Open questions`. It says what and why, never how, and asks in one round only what the request leaves open.
   `/polix:plan <task>` plans from it, gives its path as the `reference` of the plan and sets the task `planned` with
   the path of its `plan`.
+- The skills `/polix:writing-skills` and `/polix:writing-agents`, which write or rewrite a skill or a subagent of
+  Claude Code in one format: frontmatter, `Requirements`, `Input`, `Output`, `Limits`, a checklist under
+  `How to operate` and `References`. `Limits` hold only what applies across the steps (scope, authority, trust and
+  evidence) and counters a failure the model shows without it; a constraint of one step goes in that step, and one a
+  mechanism already enforces (`tools`, a hook, a check) is not repeated. Both stay open to the model while it works
+  on `**/skills/**` or `**/agents/*.md`.
 - The field `branch` in the frontmatter of a plan: `/polix:plan` writes the branch it plans on, and `/polix:build`
   switches to it before the first iteration, stopping to ask when the working tree holds other changes or the branch
   does not exist; the builder stops when it runs on another branch. A plan without `branch` builds where it is.
@@ -32,6 +38,11 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- The skills and agents of the plugin name the section of their limits `## Limits` instead of `## Rules`, so it is
+  not mistaken for the rules of the folder of rules; a test of the package `plugins` keeps it. Each `Limits` keeps
+  only what holds across the steps: the procedure and the format of the file written moved to their step or to a
+  reference (`Calibration` of `risk`, `Writing entries` of `workflow`, `Plan mode` and `Plan file` of `plan`, Step 3
+  of `init`, Step 4 of `builder`, `Check runner` of `rules-author`), with no change of behaviour.
 - A variable of `vars` can no longer be named `commit` or `subject`, which are now built-in placeholders like `path`
   and `branch`: `polix config check` reports it, so rename the variable before updating.
 

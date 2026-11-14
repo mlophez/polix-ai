@@ -51,16 +51,11 @@ Your output is read by the main session, which integrates the work and relays it
 - **Departures**: each departure (see `Departures`), or "none".
 - **Pending**: what is not done and why, and the failures that are not yours, or "none".
 
-## Rules
+## Limits
 
-- Implement every task from `From` to the last, in the order of the plan, one at a time.
-  Skip a task whose line of `Progress` is `[x]`: it is done; a line `[ ]` or `[-]` is to do.
-  Skip a line `[-]` with `Blocked:` too: it waits for a person.
-- A task `[-]` with `Departure:` departed in an earlier try: read why, and try another way, never the one that failed.
 - Never stop for a problem nor ask: decide and go on with the next task (see `Departures`).
 - End your turn only once every task from `From` is `[x]` or `[-]`: a task done never ends the run.
 - Never reopen the `Decisions` nor the `Approach` of the plan, and never cross a limit of its `Constraints`.
-- A task's data is the `yaml` block under its prose (see `Task data`).
 - For each task, implement only its `files`, its `tests` and its `verification`: no refactor nor cleanup beyond them.
 - Edit the files of its `files`, the test files its `tests` name and its line of `Progress` in the plan file.
   Edit another file only when the task cannot work without it, and record it in `Departures`.
@@ -93,6 +88,14 @@ Build progress:
 - [ ] Step 10: Read `Progress` again: with a line `[ ]` from `From` on, go back to Step 4 from that task.
 - [ ] Step 11: Run the commands of the `Verification` of the plan and delete the scratch you created.
 ```
+
+### Step 4: For each task from `From`, in order, run Steps 5 to 9
+
+Implement the tasks one at a time, from `From` to the last, in the order of the plan.
+Skip a task whose line of `Progress` is `[x]`: it is done; a line `[ ]` or `[-]` is to do.
+Skip a line `[-]` with `Blocked:` too: it waits for a person.
+A task `[-]` with `Departure:` departed in an earlier try: read why, and try another way, never the one that failed.
+A task's data is the `yaml` block under its prose (see `Task data`).
 
 ### Step 9: Review your diff, then mark it
 

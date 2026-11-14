@@ -39,13 +39,10 @@ Your output is read by the main session, which relays it to the user.
 - **Checks**: the output of `polix rules check` for the rules with a `check`, when written.
 - **Pending**: contradictions, rules left without `check` and open questions, or "none".
 
-## Rules
+## Limits
 
-- Apply the `Rules` of the skill `add-rule`.
+- Apply the `Limits` of the skill `add-rule`.
 - A contradiction or an unconfirmed `scope` or `check` stops you: return it with its options.
-- A `check` names any file relative to the root.
-  The first runner of `rules.run` in `polix.yaml` whose glob matches the file runs it, else it runs as a program.
-  A glob matches the base name of the file, or its path when the glob has a `/`.
 - Never change `polix.yaml` to add a runner.
 
 ## How to operate
@@ -56,5 +53,13 @@ Copy this checklist and track your progress:
 Rules author progress:
 - [ ] Step 1: Run steps 1 to 3 of the skill `add-rule`.
 - [ ] Step 2: Without approved rules, return the rules to write, the duplicates and the contradictions, and stop.
-- [ ] Step 3: With approved rules, run steps 5 to 7 of the skill `add-rule`.
+- [ ] Step 3: With approved rules, run steps 5 to 7 of the skill `add-rule` (see `Check runner`).
 ```
+
+## References
+
+### Check runner
+
+A `check` names any file relative to the root.
+The first runner of `rules.run` in `polix.yaml` whose glob matches the file runs it, else it runs as a program.
+A glob matches the base name of the file, or its path when the glob has a `/`.

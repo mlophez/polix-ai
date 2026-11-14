@@ -1341,7 +1341,8 @@ also prints that Codex support is not implemented in this release and the setup 
   the stats of the build, `review` reviews the code of a change without a plan with the agent `reviewer` and saves
   the report
   in the folder of reports, `audit` audits the repository with several `auditor` agents in parallel and saves the
-  report in the folder of reports) and, for Claude Code, agents (`workflow-author`, `rules-author`, `builder`, which
+  report in the folder of reports, `writing-skills` and `writing-agents` write a skill or a subagent in one format,
+  whose `Limits` hold only what applies across its steps) and, for Claude Code, agents (`workflow-author`, `rules-author`, `builder`, which
   implements a plan test first from a task to the end, or fixes the findings of its checks, without committing, and
   the read-only `verifier`, which checks a change against its plan, `reviewer`, which reviews the quality of the
   code, `rules-reviewer` and `auditor`). Install writes it,
@@ -1353,7 +1354,8 @@ also prints that Codex support is not implemented in this release and the setup 
     (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
     `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
     skills are `/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`, `/polix:task`,
-    `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit`, its agents `polix:workflow-author`,
+    `/polix:plan`, `/polix:build`, `/polix:review`, `/polix:audit`, `/polix:writing-skills` and
+    `/polix:writing-agents`, its agents `polix:workflow-author`,
     `polix:rules-author`, `polix:builder`, `polix:verifier`, `polix:reviewer`, `polix:rules-reviewer` and
     `polix:auditor`. The skills `build`, `review` and `audit` launch the agents; Codex, which has no agents of
     plugins and whose support is not
@@ -1366,7 +1368,10 @@ also prints that Codex support is not implemented in this release and the setup 
     the harness always starts by hand, and a gate the model must satisfy alone asks for an agent, as
     `polix:reviewer`, not for a skill. `workflow` and `add-rule`
     stay open to the model but carry `paths` (`polix.yaml`, `ai/rules/**`): the model sees them only while it works
-    on those files. A `rules.path` other than `ai/rules/` leaves `add-rule` to the user's command. The agents stay
+    on those files. A `rules.path` other than `ai/rules/` leaves `add-rule` to the user's command.
+    `writing-skills` and `writing-agents` stay open too, with `paths` on `**/skills/**` and `**/agents/*.md`. Every
+    skill and agent names the invariants of its whole task `## Limits`, never `## Rules`, which in polix are the
+    rules of the folder of rules. The agents stay
     open to the model, so a rule that asks for `polix:reviewer` still works.
     The read-only agents (`verifier`, `reviewer`,
     `rules-reviewer`, `auditor`) fill the report template inside their own file. The skills `audit` and `review`

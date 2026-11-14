@@ -37,21 +37,11 @@ Each gate then holds on the share of commits the user accepts to review.
 - **Caught**: the share of the sample each gate catches before and after.
 - **Pending**: gates to add with the skill `workflow`, paths the user should confirm as critical, or "none".
 
-## Rules
+## Limits
 
 - Change only `risk.weights` and the numbers of `changed_lines`, `changed_files` and `risk_score` of existing entries.
   A new gate, condition or verb belongs to the skill `workflow` of polix.
-- When no entry uses a measure, calibrate `risk.weights` alone and give the thresholds in `Pending`, for `workflow`.
-- Measure each gate with its own scope: one `--changed` per glob of the `changed` that scopes its measures.
-- Leave out of the statistics the commits whose scope did not change (`changed_files 0`).
-- Recompute the score of a candidate weight from the rows of the measure, without writing `polix.yaml`.
-  The score is the sum over the files of weight times log2(1 + added + deleted), rounded half away from zero.
-- Give weight 0 to generated, vendored and lock files, and below 1 to tests and docs.
-  Give above 1 only to paths with evidence of risk: fix or revert commits that touch them, or the critical paths.
-- Keep weights between 0 and 5 and at most 10 globs; put a specific glob before the generic one it overrides.
-- Round a threshold to a clean number (5, 10, 25, 50, 100, 150, 200, 300...).
-- Treat a mechanical commit (a rename, a format of the whole tree, a release) as an outlier.
-  Lower the weight of its files instead of raising a threshold for it.
+- Never write `polix.yaml` before the confirmation of Step 7.
 - Never write a temporary file inside the working tree; use a temporary folder of the system.
 - Talk to the user in the language of the session.
 
@@ -64,7 +54,7 @@ Risk progress:
 - [ ] Step 1: Run `polix config check`, read `risk.weights` and each entry that uses a measure, with its scope.
 - [ ] Step 2: Resolve the input (see `Input`) and the base branch (`base_branch` of polix.yaml, else main).
 - [ ] Step 3: Measure the sample once per gate scope (see `Measuring the history`).
-- [ ] Step 4: Rank the paths by share of score and by fix and revert commits, and propose the weights.
+- [ ] Step 4: Rank the paths by share of score and fix and revert commits, and propose weights (see `Calibration`).
 - [ ] Step 5: Recompute the scores of the sample with the proposed weights.
 - [ ] Step 6: Per gate, compute p50, p75, p90 and p95 of each measure and pick thresholds that catch the target.
 - [ ] Step 7: Show the current and proposed values with the share each catches, and confirm once before writing.
@@ -74,6 +64,7 @@ Risk progress:
 
 ### Step 6: Per gate, compute p50, p75, p90 and p95 of each measure and pick thresholds that catch the target
 
+Follow `Calibration`.
 A gate whose measures sit under an `any` holds when one of them reaches its threshold, so the shares add up.
 Lead with `risk_score`, which follows the weights.
 Set `changed_lines` and `changed_files` near p95, as a net for large changes of low weight.
@@ -87,6 +78,20 @@ List up to 10 commits the proposal catches and the current one does not, and up 
 Give their subject and measures.
 
 ## References
+
+### Calibration
+
+- When no entry uses a measure, calibrate `risk.weights` alone and give the thresholds in `Pending`, for `workflow`.
+- Measure each gate with its own scope: one `--changed` per glob of the `changed` that scopes its measures.
+- Leave out of the statistics the commits whose scope did not change (`changed_files 0`).
+- Recompute the score of a candidate weight from the rows of the measure.
+  The score is the sum over the files of weight times log2(1 + added + deleted), rounded half away from zero.
+- Give weight 0 to generated, vendored and lock files, and below 1 to tests and docs.
+  Give above 1 only to paths with evidence of risk: fix or revert commits that touch them, or the critical paths.
+- Keep weights between 0 and 5 and at most 10 globs; put a specific glob before the generic one it overrides.
+- Round a threshold to a clean number (5, 10, 25, 50, 100, 150, 200, 300...).
+- Treat a mechanical commit (a rename, a format of the whole tree, a release) as an outlier.
+  Lower the weight of its files instead of raising a threshold for it.
 
 ### Measuring the history
 

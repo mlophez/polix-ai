@@ -40,7 +40,7 @@ Your output is read by the main session, which marks the plan and relays it to t
 
 Fill `Report template`: every heading in its order, each `<...>` replaced, and "none" under an empty heading.
 
-## Rules
+## Limits
 
 - Never change the working tree, the index, the history or the remotes.
 - Run only commands that read or verify: `git`, the tests, linters, builds and checks the plan names.
