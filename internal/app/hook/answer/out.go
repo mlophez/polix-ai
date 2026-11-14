@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	"github.com/mlophez/polix-ai/internal/platform/file"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 	"github.com/mlophez/polix-ai/internal/platform/glob"
 	"github.com/mlophez/polix-ai/internal/platform/proc"
@@ -137,11 +139,20 @@ func (a *Adapter) diff(stats []git.Stat) (diff.Diff, error) {
 	return d, nil
 }
 
-// Files returns the files of the working tree that git does not ignore; a failure of git reads as no files. Like
-// Changed, it runs detached from the cancellation of ctx.
-func (a *Adapter) Files(ctx context.Context) []string {
-	files, _ := a.Repo.Files(context.WithoutCancel(ctx))
-	return files
+// matching returns the files of the working tree that match one of the patterns, ignored ones and the files under
+// .git included: those under the folders of the patterns, the whole tree when one has no folder.
+func (a *Adapter) matching(patterns []string) []string {
+	folders := make([]string, len(patterns))
+	for i, p := range patterns {
+		folders[i] = glob.Folder(p)
+	}
+	files := file.Walk(a.Repo.Root, folders)
+	return slices.DeleteFunc(files, func(f string) bool { return !glob.AnyPath(patterns, f) })
+}
+
+// Exists reports whether a file of the working tree, ignored or under .git, matches one of the patterns.
+func (a *Adapter) Exists(_ context.Context, patterns []string) bool {
+	return len(a.matching(patterns)) > 0
 }
 
 // LoadRules loads the rules of the folder dir of the repository through the loader of the rules: every rule but
@@ -217,15 +228,15 @@ func (a *Adapter) Restore(ctx context.Context, source string, paths []string) er
 	return a.Repo.Restore(ctx, filepath.Join(a.Repo.GitDir, state.DirName), source, paths)
 }
 
-// Contains reports whether a file git does not ignore, matching one of the patterns, holds text; a file that
-// cannot be read does not.
-func (a *Adapter) Contains(ctx context.Context, patterns []string, text string) bool {
-	for _, f := range a.Files(ctx) {
-		if !glob.AnyPath(patterns, f) {
+// Contains reports whether a file matching one of the patterns, ignored or under .git, holds text; a file that
+// cannot be read does not, nor a symbolic link, which is never followed.
+func (a *Adapter) Contains(_ context.Context, patterns []string, text string) bool {
+	for _, f := range a.matching(patterns) {
+		p := filepath.Join(a.Repo.Root, filepath.FromSlash(f))
+		if info, err := os.Lstat(p); err != nil || info.Mode()&os.ModeSymlink != 0 {
 			continue
 		}
-		if data, err := os.ReadFile(filepath.Join(a.Repo.Root, filepath.FromSlash(f))); err == nil &&
-			bytes.Contains(data, []byte(text)) {
+		if data, err := os.ReadFile(p); err == nil && bytes.Contains(data, []byte(text)) {
 			return true
 		}
 	}

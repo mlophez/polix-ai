@@ -22,9 +22,10 @@ their shortcut. Each of their recipes shows its expansion too: write it in `on:`
 falls short. A polix older than the shortcuts rejects `guardrails:` as an unknown key, so set `requires` to the
 release you install.
 
-The entries of `on:` skip the edits of files git ignores: they govern the change, what a commit may hold, so a
-build output, a local `.env` or a scratch file never fires a ticket, plan, format or docs entry. Only the
-protection of the state of polix, `protected_files` and `forbidden_commands` reach an ignored file.
+The entries of `on:` skip the edits outside the repository, but not those of files git ignores: a plan, a build
+output or a local `.env` fires the entries that hold for it, so an entry that must leave them out says it with `not`
+and `path`. The protection of the state of polix, `protected_files` and `forbidden_commands` reach an ignored file
+too.
 
 Every recipe follows the same idea: polix **measures and never judges**. It knows which files changed, which
 command ran and with which exit code, which of its own checks passed on which content and which subagent ended on
@@ -161,9 +162,8 @@ guardrails:
 
 It works as in [Paths no agent writes](#paths-no-agent-writes), and has no exception, so `.env.example` is denied
 too. To let the agent write it, take the globs out of `protected_files` and write an entry of `on:` with an
-`unless`. polix skips the entries of `on:` for files git ignores, since they govern what a commit may hold: the
-entry never bothers an `.env` that is in `.gitignore`, and fires exactly when the file is **not** ignored, the case
-in which the secret would be committed.
+`unless`. The entries of `on:` also fire on files git ignores, so this one stops the agent from writing an `.env`
+that is in `.gitignore` too; to leave such a file out, add its path to the `unless`.
 
 ```yaml
 on:
@@ -171,7 +171,7 @@ on:
     - when: { path: [".env", ".env.*", "*.pem", "*.key", "*.p12"] }
       unless: { path: ".env.example" }
       action:
-        block: "{path} would end up in a commit: keep secrets in an ignored file or a secret store"
+        block: "{path} holds secrets or keys: the agent does not write it"
 ```
 
 Both keep the agent away; a commit of a person is gated by `githooks:`, as in
@@ -695,8 +695,8 @@ on:
 ```
 
 A pattern without `/` matches the base name anywhere, like `.gitignore`, so `go.sum` also covers `tools/go.sum`.
-These are regular entries, with a message of their own for each kind of file: the files git ignores are skipped.
-To deny them to every actor whatever git ignores, list them in
+These are regular entries, with a message of their own for each kind of file: they fire on the files git ignores too.
+To deny them to every actor, with no entry to reason about, list them in
 [`protected_files`](#paths-no-agent-writes) instead.
 
 ### The agent cannot switch off its own guardrails

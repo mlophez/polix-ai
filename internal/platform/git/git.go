@@ -142,22 +142,6 @@ func (r *Repo) Summary(ctx context.Context, rev string) (string, error) {
 	return r.git(ctx, "log", "-1", "--no-decorate", "--format=%h %s", rev+"^{commit}", "--")
 }
 
-// Files returns every file of the working tree that git does not ignore, tracked or not.
-func (r *Repo) Files(ctx context.Context) ([]string, error) {
-	out, err := r.paths(ctx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-	if err != nil {
-		return nil, err
-	}
-	set := map[string]bool{}
-	addPaths(set, out)
-	list := make([]string, 0, len(set))
-	for f := range set {
-		list = append(list, f)
-	}
-	sort.Strings(list)
-	return list, nil
-}
-
 // Foreign reports whether the folder dir is inside an existing git repository other than this one: its git common
 // directory, its objects and its refs are each another file than ours, compared by identity (os.SameFile), so a
 // linked worktree of this repository, another spelling of its path or a repository whose objects or refs link into

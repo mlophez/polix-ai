@@ -53,3 +53,23 @@ func TestCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestFolder(t *testing.T) {
+	cases := map[string]string{
+		"ai/plans/{key}-*.md": "ai/plans",
+		"/polix.yaml":         "",
+		".git/HEAD":           ".git",
+		"*.md":                "",
+		"**/x.md":             "",
+		"a/b/c.md":            "a/b",
+		"a/*/c.md":            "a",
+		"node_modules/**":     "node_modules",
+		"/docs/*.md":          "docs",
+		"polix.yaml":          "",
+	}
+	for pattern, want := range cases {
+		if got := Folder(pattern); got != want {
+			t.Errorf("Folder(%q) = %q, want %q", pattern, got, want)
+		}
+	}
+}

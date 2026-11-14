@@ -132,14 +132,17 @@ func (r *pass) diff() (diff.Diff, bool) {
 	return diff.Diff{}, false
 }
 
-// files returns the files of the working tree git does not ignore.
-func (r *pass) files() []string {
-	if r.ev.Facts.HasFiles {
-		return r.ev.Facts.Files
+// exists reports whether a file of the working tree matching the patterns exists, ignored ones included.
+func (r *pass) exists(patterns []string) bool {
+	if r.waiting() || len(patterns) == 0 {
+		return false
 	}
-	s := hook.Step{Files: true}
+	if exists, known := r.ev.Facts.Exists(patterns); known {
+		return exists
+	}
+	s := hook.Step{Files: slices.Clone(patterns)}
 	r.ask(s, s.Valid())
-	return nil
+	return false
 }
 
 // rules returns the rules of the repository, or why they cannot be loaded.

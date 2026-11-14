@@ -93,8 +93,8 @@ func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
 			ev = ev.KnowDiff(f.diff, f.diffErr)
 		case s.Commit:
 			ev = ev.KnowCommit(f.commit, f.commitErr)
-		case s.Files:
-			ev = ev.KnowFiles(nil)
+		case s.Files != nil:
+			ev = ev.KnowExists(s.Files, false)
 		case s.Rules:
 			ev = ev.KnowRules(f.rules, nil)
 		case s.State:
@@ -1233,7 +1233,7 @@ guardrails:
 }
 
 // AC16: protected_files denies the edit of a protected path before an earlier entry of on that would block, whether
-// git tracks or ignores it; the entries of on, which govern the change, skip the edit of an ignored file.
+// git tracks or ignores it; the entries of on apply to the edit of an ignored file as to any other.
 func TestIgnoredEdits(t *testing.T) {
 	regular := "on:\n  pre_edit:\n    - when: { path: \".env\" }\n      action: { block: \"regular\" }\n"
 	protected := eval(t, "version: 1\nguardrails:\n  protected_files: [.env]\n"+regular, workflow.PreEdit)
@@ -1247,7 +1247,7 @@ func TestIgnoredEdits(t *testing.T) {
 		{"protected and tracked", protected, false, ".env is protected in polix.yaml: only a person changes it."},
 		{"protected and ignored", protected, true, ".env is protected in polix.yaml: only a person changes it."},
 		{"tracked", plain, false, "regular"},
-		{"ignored", plain, true, ""},
+		{"ignored", plain, true, "regular"},
 	}
 	for _, c := range cases {
 		edit := edit(t, c.ev, workflow.PreEdit, ".env", agent.ActorSession)

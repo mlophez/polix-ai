@@ -11,7 +11,7 @@ import (
 // protections (see protectEdit), but for an edit a command made: post_command already put its protected files back
 // (see watch), and the state of polix lives in the git directory, which no tree holds. An unusable workflow fails
 // closed before an edit, but for what fixing it needs (see unusableEdit), and only warns after one. Without
-// polix.yaml nothing else happens, and neither for an edit outside the change (see outsideEdit). A failing run after
+// polix.yaml nothing else happens, and neither for an edit outside the repository. A failing run after
 // an edit reaches the AI as context (workflow.Informed), and so do a block and a failing run on an edit a command
 // made (see apply).
 func (r *pass) edit() agent.Answer {
@@ -30,14 +30,14 @@ func (r *pass) edit() agent.Answer {
 	if !r.ev.Present {
 		return agent.Answer{}
 	}
-	if outside := r.outsideEdit(); r.waiting() || outside {
+	if r.ev.Event.Outside {
 		return agent.Answer{}
 	}
 	return r.evaluate(agent.Answer{})
 }
 
 // protectEdit applies the protections of an edit, which come before the entries of the workflow and before the skip
-// of the edits outside the change, and reports whether one denied it, logged with where it comes from: nobody edits
+// of the edits outside the repository, and reports whether one denied it, logged with where it comes from: nobody edits
 // the state of polix, whatever the workflow says, also without one or with an invalid one, its folder and the path
 // compared by their real paths; and, with a valid workflow, no actor, the main session included, edits a path of
 // guardrails.protected_files, also when git ignores it.
@@ -59,22 +59,24 @@ func (r *pass) protectEdit() (agent.Answer, bool) {
 	return agent.Answer{}, false
 }
 
-// unusableEdit answers an edit about to happen with a workflow that cannot be used: an edit outside the change never
-// depended on the workflow, and the main session may edit the workflow to fix it, unless it requires a newer polix,
-// so the agent does not take options out of it to please an old binary. Any other edit is refused.
+// unusableEdit answers an edit about to happen with a workflow that cannot be used: an edit outside the repository or
+// of a file git ignores goes through (see skippedUnusable), and the main session may edit the workflow to fix it,
+// unless it requires a newer polix, so the agent does not take options out of it to please an old binary. Any other
+// edit is refused.
 func (r *pass) unusableEdit() agent.Answer {
 	ev := r.ev.Event
 	_, _, tooOld := r.unusable()
-	outside := r.outsideEdit()
-	if r.waiting() || outside || (!tooOld && ev.Actor == agent.ActorSession && ev.Path == workflow.File) {
+	skipped := r.skippedUnusable()
+	if r.waiting() || skipped || (!tooOld && ev.Actor == agent.ActorSession && ev.Path == workflow.File) {
 		return agent.Answer{}
 	}
 	return r.refuseUnusable()
 }
 
-// outsideEdit reports an edit outside the repository (scratchpad, memory, another repository) or of a file git
-// ignores: it is not part of the change, so the workflow does not apply to it.
-func (r *pass) outsideEdit() bool {
+// skippedUnusable reports an edit that an unusable workflow never refuses: one outside the repository (scratchpad,
+// memory, another repository) or of a file git ignores. Only that refusal skips ignored files; the entries of a
+// usable workflow apply to them.
+func (r *pass) skippedUnusable() bool {
 	ev := r.ev.Event
 	return ev.Outside || r.ignored(ev.Path)
 }

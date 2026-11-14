@@ -99,9 +99,9 @@ func (e Evaluation) KnowCommit(c Commit, err error) Evaluation {
 	return e
 }
 
-// KnowFiles returns the evaluation knowing the files of the working tree.
-func (e Evaluation) KnowFiles(files []string) Evaluation {
-	e.Facts = e.Facts.learnFiles(files)
+// KnowExists returns the evaluation knowing whether a file of the working tree matching the patterns exists.
+func (e Evaluation) KnowExists(patterns []string, exists bool) Evaluation {
+	e.Facts = e.Facts.learnExists(patterns, exists)
 	return e
 }
 

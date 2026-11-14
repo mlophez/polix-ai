@@ -41,6 +41,20 @@ func AnyPath(patterns []string, p string) bool {
 	return false
 }
 
+// Folder returns the folder a path pattern looks inside: the longest leading run of its segments without
+// wildcards, slash separated and relative to the root (`ai/plans` for `ai/plans/{key}-*.md`). A leading `/` is
+// trimmed first, and a pattern without wildcards returns the folder that holds its file (`.git` for `.git/HEAD`).
+// It returns "" when the pattern can match anywhere in the tree: its first segment has a wildcard, or it has no
+// folder.
+func Folder(pattern string) string {
+	segs := strings.Split(strings.TrimPrefix(pattern, "/"), "/")
+	n := 0
+	for n < len(segs)-1 && !strings.ContainsAny(segs[n], "*?") {
+		n++
+	}
+	return strings.Join(segs[:n], "/")
+}
+
 // Command reports whether a command line matches pattern, where `*` matches any text, spaces, slashes and line
 // breaks included, so a pattern reaches the lines of a quoted message or a here-document. Surrounding spaces of the
 // command are ignored.

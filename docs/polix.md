@@ -264,10 +264,10 @@ The use case `AnswerHook`, `internal/app/hook/answer` (layout in `docs/architect
    it was not shown. The events of one call (an edit of several paths, a command and its commit) give one answer, so
    a block of any of them hides the messages of all, and those are logged the same way.
 
-Edits outside the repository (scratchpad, memory, another repository) and of files git ignores are not part of
-the change: the entries do not apply to them. They govern the change, what a commit may hold, so a build output, a
-local `.env` or a scratch file never fires a ticket, plan, format or docs entry. The built-in protection applies to
-both, and `protected_files` to the edits of files git ignores.
+Edits outside the repository (scratchpad, memory, another repository) are not part of the change: the entries do
+not apply to them. Edits of files git ignores are: a plan, a build output or a local `.env` fires the entries that
+hold for it, `format_on_edit` among them, and an entry that must leave them out says it with `not` and `path`. The
+built-in protection applies to both, and `protected_files` to the edits of files git ignores.
 Likewise a commit in another repository, as `git -C ../other commit`, skips the entries of `pre_commit` and of
 `post_commit`, while
 `protected_files` and `forbidden_commands` still apply to it. polix takes a commit as one of another repository
@@ -305,7 +305,7 @@ the state is found in any case.
 
 polix protects nothing else on its own: `AGENTS.md`, `CLAUDE.md`, `ai/rules/` and `polix.yaml` may be edited by
 any agent unless the workflow protects them. With a valid `polix.yaml`, two protections of `guardrails` come right
-after the protection of the state, before the skip of the edits of files git ignores and before every entry of
+after the protection of the state, before the skip of the edits outside the repository and before every entry of
 `on`, for every actor, the main session included, without exceptions; the first one that denies ends the
 evaluation of the event:
 
@@ -669,12 +669,15 @@ Conditions:
 
 - `branch`: the current branch matches a regular expression.
 - `var`: a variable of `vars` has a value.
-- `path`: the edited path matches a glob (or a list); only on `pre_edit` and `post_edit`. On macOS and Windows,
+- `path`: the edited path matches a glob (or a list), also of a file git ignores; only on `pre_edit` and
+  `post_edit`. On macOS and Windows,
   whose file names ignore case, it ignores case too, as `writes` and the protection of the state do.
 - `changed`: a file not committed yet (changed since HEAD, or untracked and not ignored) matches a glob (or a
   list). The flow is reviewed commit by commit: once committed, a change no longer counts, whatever `base_branch` says,
   so gates that must hold before a commit belong on `pre_commit`.
-- `file`: a file of the repository matches a glob; with `contains`, it also holds that text. `contains` is only
+- `file`: a file of the working tree matches a glob, git-ignored files and those under `.git` included; with
+  `contains`, it also holds that text. A glob with a folder only looks inside it, and one without looks at the whole
+  tree, so give it a folder. `contains` is only
   valid next to `file`, and never inside `any`, where it would hold on its own and make the `any` always true.
 - `command` and `exit`: a command of the line matches a pattern (`*` matches anything, line breaks
   included) and its exit code.
@@ -1038,7 +1041,7 @@ them.
 
 For every event the [protections](#protections) come first, before any entry is read: the protection of the
 state, then, with a valid `polix.yaml`, `protected_files` and `forbidden_commands`, also on the edits of files git
-ignores; the first that denies ends the evaluation. Then, unless the edit or commit is outside the change, the
+ignores; the first that denies ends the evaluation. Then, unless the edit or commit is outside the repository, the
 entries of the event run one after the other, in the order of the file, never in parallel. The shortcuts
 `protected_branches`, `format_on_edit` and `run_on_stop` are already entries by then, before the entries
 written in `on` (see [Guardrails](#guardrails)). An entry whose `when` does not hold, or whose `unless` holds, is

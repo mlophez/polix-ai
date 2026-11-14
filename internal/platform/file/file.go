@@ -8,7 +8,9 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -150,6 +152,98 @@ func removeEmptyParents(dir, p string) {
 			break
 		}
 	}
+}
+
+// Walk returns every entry under the folders that is not a folder, relative to root with slashes, sorted and unique.
+// The folders are relative to root with slashes; an empty one means the whole root, and a folder inside another of
+// the list is walked once. A folder outside root once cleaned (../secret) adds nothing, a missing folder adds nothing
+// (also one whose case differs from the names on disk, on a file system that ignores case)
+// and one that cannot be read is skipped. A symbolic link, or a junction on Windows, is listed as an entry and never
+// followed, also when it is a folder above the last one of a folder of the list (link of link/sub).
+func Walk(root string, folders []string) []string {
+	var tops []string
+	for _, f := range folders {
+		top := path.Clean(strings.Trim(f, "/"))
+		if f == "" || top == "." {
+			tops = []string{""}
+			break
+		}
+		if !filepath.IsLocal(filepath.FromSlash(top)) {
+			continue
+		}
+		tops = append(tops, top)
+	}
+	sort.Strings(tops)
+	set := map[string]bool{}
+	var done []string
+	for _, top := range tops {
+		if slices.ContainsFunc(done, func(d string) bool { return d == "" || top == d || strings.HasPrefix(top, d+"/") }) {
+			continue
+		}
+		done = append(done, top)
+		walkFolder(root, top, set)
+	}
+	files := make([]string, 0, len(set))
+	for f := range set {
+		files = append(files, f)
+	}
+	sort.Strings(files)
+	return files
+}
+
+// walkFolder adds to set every entry under the folder top of root that is not a folder, relative to root with
+// slashes: nothing when top is missing with the names on disk, and only the link when a folder above its last
+// segment is a symbolic link.
+func walkFolder(root, top string, set map[string]bool) {
+	link, found := folderOnDisk(root, top)
+	if link != "" {
+		set[link] = true
+	}
+	if !found || link != "" {
+		return
+	}
+	_ = filepath.WalkDir(filepath.Join(root, filepath.FromSlash(top)), func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil //nolint:nilerr // a folder that cannot be read is skipped
+		}
+		if rel, err := filepath.Rel(root, p); err == nil {
+			set[filepath.ToSlash(rel)] = true
+		}
+		return nil
+	})
+}
+
+// folderOnDisk checks each segment of top against the names of its parent folder under root, so a segment matches
+// only the name the file system uses, also where it ignores case (Docs is missing when the folder is docs). It
+// reports whether top exists with those names, and the first segment above its last one (link of link/sub) that is
+// a link, with slashes, so Walk lists that link and does not walk through it. A link is a symbolic link or an
+// irregular entry, such as a junction on Windows, which Go marks ModeIrregular, not ModeSymlink; any other entry
+// that is not a folder, such as a regular file, means top is missing. The last segment is left to filepath.WalkDir,
+// which lists a link or a junction there without following it. The whole root (an empty top) always exists.
+func folderOnDisk(root, top string) (link string, found bool) {
+	if top == "" {
+		return "", true
+	}
+	segments := strings.Split(top, "/")
+	for i, segment := range segments {
+		parent := filepath.Join(root, filepath.FromSlash(strings.Join(segments[:i], "/")))
+		entries, err := os.ReadDir(parent)
+		if err != nil {
+			return "", false
+		}
+		j := slices.IndexFunc(entries, func(e fs.DirEntry) bool { return e.Name() == segment })
+		if j < 0 {
+			return "", false
+		}
+		if i == len(segments)-1 || entries[j].IsDir() {
+			continue
+		}
+		if entries[j].Type()&(fs.ModeSymlink|fs.ModeIrregular) == 0 {
+			return "", false
+		}
+		return strings.Join(segments[:i+1], "/"), true
+	}
+	return "", true
 }
 
 // Exists reports whether path exists.

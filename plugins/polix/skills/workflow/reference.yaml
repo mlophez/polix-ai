@@ -20,9 +20,9 @@
 # 3. With a valid file, the protections of `guardrails` run next: `protected_files` and `forbidden_commands`. No
 #    actor gets past them, the main session included, and they also cover files git ignores (.env); an edit outside
 #    the repository skips them.
-# 4. Edits outside the repository and edits of files git ignores skip the entries of `on`: they govern the change,
-#    what a commit may hold, so a build output, a local .env or a scratch file never fires a ticket, plan, format or
-#    docs entry. A commit in another repository (git -C ../other commit) skips the entries of pre_commit and post_commit too.
+# 4. Edits outside the repository skip the entries of `on`. An edit of a file git ignores (a plan, a build output, a
+#    local .env) fires them like any other, so write `not` with `path` in an entry that must leave such files out.
+#    A commit in another repository (git -C ../other commit) skips the entries of pre_commit and post_commit too.
 # 5. The entries of the event run in order, first those the other shortcuts of `guardrails` expand into, then those
 #    written in `on`; each one whose `when` holds and whose `unless` does not hold carries out its action. The first
 #    one that actually blocks ends the evaluation (see `on` below).
@@ -336,10 +336,10 @@ on:
   # the entries written here (see `guardrails`); `polix graph` draws each event with all of them, each named by its
   # shortcut. protected_files and forbidden_commands are no entries: they apply before all of them.
   #
-  # The entries of `on` skip the edits outside the repository and of files git ignores: they govern the change, what
-  # a commit may hold, so a build output, a local .env or a scratch file never fires them. Only the built-in
-  # protection, protected_files and forbidden_commands reach an ignored file. A commit in another repository
-  # (git -C ../other commit) skips the entries of pre_commit the same way.
+  # The entries of `on` skip the edits outside the repository, but not those of files git ignores: a plan, a build
+  # output or a local .env fires them like any other file, so an entry that must leave them out says it with
+  # `not` and `path`. A commit in another repository (git -C ../other commit) skips the entries of pre_commit and
+  # post_commit.
   #
   # The first entry that actually blocks (a block, or a failing run on an event where a run blocks, not let through
   # by the loop guard) ends the evaluation of the event: the entries after it do not run, and those before it already
@@ -480,14 +480,17 @@ on:
     # path: the edited path matches a glob, or one of a list. Never holds outside pre_edit and post_edit.
     # not: a map of nested conditions; it holds unless every one of them holds (with one nested condition, it is its
     # negation).
-    # file: a file of the repository, tracked or untracked but not ignored, matches a glob (or one of a list).
+    # file: a file of the working tree matches a glob (or one of a list), whether git tracks it, leaves it untracked
+    # or ignores it, and those under .git too. A glob with a folder (ai/plans/*.md) only looks inside it; one without
+    # (*.js) looks at the whole tree, node_modules and .git included, so give it a folder when you can.
     - when: { not: { path: "ai/plans/{key}-*.md" } }
       unless: { file: "ai/plans/{key}-*.md" }
       action:
         block: "No hay plan: escríbelo con /plan"
 
-    # file + contains: some matching file also holds this text (plain substring, placeholders allowed). contains is
-    # only valid next to file, and never directly inside any, where it would hold on its own.
+    # file + contains: some matching file, ignored ones included, also holds this text (plain substring,
+    # placeholders allowed). contains is only valid next to file, and never directly inside any, where it would hold
+    # on its own.
     - when: { not: { path: "ai/plans/{key}-*.md" } }
       unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
       action:

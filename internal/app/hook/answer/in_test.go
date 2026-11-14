@@ -16,6 +16,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	"github.com/mlophez/polix-ai/internal/platform/glob"
 	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
@@ -116,7 +117,9 @@ func (p *fakePort) Commit(context.Context) (hook.Commit, error) {
 		Subject: "feat: x"}, nil
 }
 
-func (p *fakePort) Files(context.Context) []string { return []string{"ai/plans/p.md"} }
+func (p *fakePort) Exists(_ context.Context, patterns []string) bool {
+	return glob.AnyPath(patterns, "ai/plans/p.md")
+}
 
 func (p *fakePort) LoadRules(context.Context, string) ([]rule.Rule, error) {
 	return p.rules, p.rulesErr

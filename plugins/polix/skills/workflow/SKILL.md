@@ -73,7 +73,7 @@ Workflow progress:
 - polix expands the other three shortcuts into entries of `on`; `polix graph` draws them with their shortcut name.
 - An entry says when it applies (`when`, `unless`) and what it does (`action`, with one verb).
   The verb is `block`, `run` or `inject`.
-- The entries of `on` skip edits of files git ignores: they govern the change, what a commit may hold.
+- The entries of `on` skip edits outside the repository; edits of files git ignores fire them like any other.
 - Conditions are facts of the repository, the event and what polix observed by itself.
 - A reviewer subagent, such as `polix:reviewer` or `polix:rules-reviewer`, judges the code.
   The workflow requires its end with `finished`.

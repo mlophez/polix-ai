@@ -70,13 +70,6 @@ func TestNonASCIIPaths(t *testing.T) {
 	if want := []string{"diseño/año.md", "diseño/año.md.new"}; !slices.Equal(changed, want) {
 		t.Errorf("Changed = %q, want %q", changed, want)
 	}
-	files, err := r.Files(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{"diseño/año.md", "diseño/año.md.new"}; !slices.Equal(files, want) {
-		t.Errorf("Files = %q, want %q", files, want)
-	}
 }
 
 // gitRepo creates an empty repository in a temporary folder and returns it with a git runner and a writer.

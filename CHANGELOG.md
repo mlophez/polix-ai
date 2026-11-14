@@ -44,6 +44,15 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- The conditions `file`, `contains` and `path` see the files git ignores, and `file` and `contains` the files under
+  `.git` too, so a plan kept out of git counts: `file` holds when any file of the working tree matches, tracked,
+  untracked or ignored, and `contains` searches the text in those files. A glob with a folder (`ai/plans/*.md`) only
+  looks inside it, and one without (`*.js`) walks the whole tree, `node_modules` and `.git` included: give it a
+  folder. The entries of `pre_edit` and `post_edit` now fire on the edit of an ignored file inside the repository, a
+  plan, a build output or a local `.env`, `format_on_edit` among them, where before they skipped it; an edit outside
+  the repository still skips them. To leave ignored files out of an entry, write a `not` with `path`. `changed`, the
+  measures, the content hash and the edits a command makes keep git's view and leave ignored files out, and an
+  invalid `polix.yaml` still lets ignored edits through. No condition nor key is added.
 - `/polix:plan` writes the plan as a YAML file, `<plans>/<name>.yaml`, from the `template.yaml` of the skill, so a
   program can read it. Every collection is a list of objects with named fields, and the journeys, criteria, tasks,
   constraints (`CON-NN`), decisions (`DEC-NN`) and literals open with their `id`. Each fact lives in one place and the

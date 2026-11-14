@@ -342,8 +342,8 @@ guardrails:
 ```
 
 `protected_files` and `forbidden_commands` are protections of the engine: with a valid file, the hook applies them
-right after the protection of the state of polix, before every entry of `on` and before the skip of the edits of
-files git ignores, to every actor, the main session included, without exceptions. A denial is logged as
+right after the protection of the state of polix, before every entry of `on` and before the skip of the edits
+outside the repository, to every actor, the main session included, without exceptions. A denial is logged as
 `guardrails.protected_files` or `guardrails.forbidden_commands`, and `polix graph` draws both lists in a subgraph
 `guardrails` before the events.
 
@@ -375,7 +375,7 @@ shortcut falls short, write the entries it expands into in `on` and tune them.
   wildcard that holds a protected path, `<folder> holds <glob>, protected in polix.yaml: only a person changes it.`
   (`ai holds ai/rules/**, ...` for `rm -rf ai`).
 - No exceptions: to let an actor or a branch through, take the glob out and write a `block` in `on` with `path`,
-  `writes` and an `unless`, which then skips the files git ignores.
+  `writes` and an `unless`; the entry also fires on the files git ignores, unless its `unless` leaves them out with `path`.
 
 ```yaml
 guardrails:
@@ -539,10 +539,10 @@ its event by an entry that may block it, a `block` or a `run` on an event where 
 whenever that entry blocks, since a blocked event shows the user no message: put the notice after the gate, or into
 its message. Both problems name the lines of the two entries.
 
-The entries skip the edits outside the repository and of the files git ignores: they govern the change, what a
-commit may hold, so a build output, a local `.env` or a scratch file never fires a ticket, plan, format or docs
-entry. Only the protection of the state of polix, [`protected_files`](#protected_files) and
-[`forbidden_commands`](#forbidden_commands) reach an ignored file.
+The entries skip the edits outside the repository, but not those of files git ignores: a plan, a build output or a
+local `.env` fires the entries that hold for it, `format_on_edit` among them. To leave such files out of an entry,
+write a `not` with [`path`](#path) in its `when`. The protection of the state of polix,
+[`protected_files`](#protected_files) and [`forbidden_commands`](#forbidden_commands) reach an ignored file too.
 
 ## Events
 
@@ -670,7 +670,7 @@ when: { var: [key, release] }
 ### path
 
 - Value: a path glob, or a list of them.
-- Holds when the edited path matches any of them. On macOS and Windows, whose file names ignore case, it ignores
+- Holds when the edited path matches any of them, whether git tracks the file or ignores it. On macOS and Windows, whose file names ignore case, it ignores
   case too, so `.ENV` matches `.env` there.
 - Events: `pre_edit`, `post_edit` only.
 
@@ -696,8 +696,14 @@ when: { changed: ["*.go", go.mod, go.sum] }
 ### file
 
 - Value: a path glob, or a list of them.
-- Holds when some file of the working tree, tracked or untracked but not ignored, matches any of them. With
+- Holds when some file of the working tree matches any of them, whether git tracks it, leaves it untracked or
+  ignores it. That includes the files under `.git`, and those of nested repositories. With
   [`contains`](#contains), some matching file must also hold the text.
+- A glob with a folder (`ai/plans/*.md`) only looks inside that folder, and a glob without one (`*.js`, `polix.yaml`)
+  looks at the whole tree, `node_modules` and `.git` included, which costs time on a large tree: give the glob a
+  folder when you can. A folder that does not exist holds for no file, with no error. Symbolic links count as the
+  files they are and are never followed, and a folder that cannot be read is skipped.
+- [`changed`](#changed) and the measures keep leaving out the files git ignores.
 - Events: all.
 
 ```yaml
@@ -707,7 +713,7 @@ unless: { file: "ai/plans/{key}-*.md" }
 ### contains
 
 - Value: a text (placeholders allowed).
-- Only next to `file`: some file that matches `file` holds this text, as a plain substring.
+- Only next to `file`: some file that matches `file`, ignored ones included, holds this text, as a plain substring.
 - Never directly inside `any`, where it would hold on its own; inside a `not` within an `any` it is valid.
 
 ```yaml
@@ -1088,8 +1094,7 @@ the [order of the expanded entries](#order-of-the-expanded-entries).
 2. With a valid file, [`protected_files`](#protected_files) and [`forbidden_commands`](#forbidden_commands) come
    next, also on the edits of files git ignores, never on an edit outside the repository. The first protection that
    denies ends the evaluation.
-3. Edits outside the repository, or of files git ignores, skip the entries: they govern the change, what a commit
-   may hold.
+3. Edits outside the repository skip the entries. Edits of files git ignores do not: the entries apply to them.
 4. The entries of the event run in order. An entry applies when its `when` holds and its `unless` does not, and
    then carries out its verb, unless the repeat rules of that verb skip it.
 5. The first entry that actually blocks (a `block`, or a failing `run` where a run blocks, not let through by the

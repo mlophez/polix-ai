@@ -70,8 +70,9 @@ type Port interface {
 	// Commit returns the commit HEAD points to as post_commit sees it: the size of its change against its first
 	// parent, or the empty tree for a root commit, its short hash and its subject, or why it could not be read.
 	Commit(ctx context.Context) (hook.Commit, error)
-	// Files returns the files of the working tree that git does not ignore.
-	Files(ctx context.Context) []string
+	// Exists reports whether a file of the working tree matching one of the patterns exists, ignored files and the
+	// files under .git included.
+	Exists(ctx context.Context, patterns []string) bool
 	// LoadRules returns the rules of the folder dir, relative to the root, retired ones excluded, ordered by id.
 	LoadRules(ctx context.Context, dir string) ([]rule.Rule, error)
 	// LoadState reads the log of polix of the session, the file of that session alone; a session without an id is
@@ -86,8 +87,8 @@ type Port interface {
 	Foreign(ctx context.Context, dir string) bool
 	// Missing returns the programs, of programs, that the PATH does not run, in the same order.
 	Missing(ctx context.Context, programs []string) []string
-	// Contains reports whether a file of the working tree git does not ignore, matching one of the patterns, holds
-	// text.
+	// Contains reports whether a file of the working tree, ignored ones and the files under .git included, matching
+	// one of the patterns, holds text.
 	Contains(ctx context.Context, patterns []string, text string) bool
 	// Read returns the content of a file, relative to the root with slashes.
 	Read(ctx context.Context, path string) (string, error)
@@ -242,8 +243,8 @@ func carry(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook
 		return ev.KnowDiff(port.Diff(ctx))
 	case s.Commit:
 		return ev.KnowCommit(port.Commit(ctx))
-	case s.Files:
-		return ev.KnowFiles(port.Files(ctx))
+	case s.Files != nil:
+		return ev.KnowExists(s.Files, port.Exists(ctx, s.Files))
 	case s.Rules:
 		return ev.KnowRules(port.LoadRules(ctx, ev.Workflow.RulesPath()))
 	case s.State:

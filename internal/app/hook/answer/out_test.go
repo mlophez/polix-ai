@@ -354,7 +354,7 @@ func TestProtections(t *testing.T) {
 	expect(t, "a command reads the state", code, 0, stderr)
 }
 
-// Edits outside the repository or of ignored files are not part of the change.
+// An edit outside the repository fires no entry; an edit of an ignored file fires them like any other.
 func TestOutsideAndIgnored(t *testing.T) {
 	r := newRepo(t, "main")
 	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - action: { block: \"bloqueado\" }\n")
@@ -363,7 +363,7 @@ func TestOutsideAndIgnored(t *testing.T) {
 	code, _, stderr := r.edit("src/a.go", "")
 	expect(t, "edit in the repository", code, 2, stderr)
 	code, _, stderr = r.edit("build/out.txt", "")
-	expect(t, "edit of an ignored file", code, 0, stderr)
+	expect(t, "edit of an ignored file", code, 2, stderr)
 	in := map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Write",
 		"tool_input": map[string]any{"file_path": filepath.Join(t.TempDir(), "notes.md")}}
 	code, _, stderr = r.hook("claude", in)
@@ -1355,8 +1355,8 @@ func TestAdapter(t *testing.T) {
 	if !a.Ignored(ctx, "build/x") || a.Ignored(ctx, "src/a.go") {
 		t.Fatal("Ignored")
 	}
-	if !slices.Contains(a.Changed(ctx), "src/a.go") || !slices.Contains(a.Files(ctx), "README.md") {
-		t.Fatalf("Changed %q Files %q", a.Changed(ctx), a.Files(ctx))
+	if !slices.Contains(a.Changed(ctx), "src/a.go") || !a.Exists(ctx, []string{"README.md"}) {
+		t.Fatalf("Changed %q Exists %v", a.Changed(ctx), a.Exists(ctx, []string{"README.md"}))
 	}
 	before, err := a.Hash(ctx)
 	if err != nil || before == "" {
@@ -2029,5 +2029,129 @@ func TestAdapterReadsRootCommit(t *testing.T) {
 	}
 	if _, err := b.Commit(context.Background()); err == nil {
 		t.Fatal("a repository without commits has no commit to read")
+	}
+}
+
+// commitWorkflow writes polix.yaml and .gitignore, and commits them.
+func (r *repo) commitWorkflow(workflow, ignore string) {
+	r.t.Helper()
+	r.write("polix.yaml", workflow)
+	r.write(".gitignore", ignore)
+	r.git("add", "--all")
+	r.git("commit", "--quiet", "-m", "workflow")
+}
+
+// blockOnFile is a workflow whose pre_edit blocks with reason when the file condition holds for glob.
+func blockOnFile(glob, extra, reason string) string {
+	return fmt.Sprintf("version: 1\non:\n  pre_edit:\n    - when: { file: %q%s }\n      action: { block: %q }\n", glob, extra, reason)
+}
+
+// The condition file holds for files git ignores and for the git folder, and for no file of a missing folder.
+func TestFileSeesIgnoredFiles(t *testing.T) {
+	t.Run("CUJ-01 an ignored plan", func(t *testing.T) {
+		r := newRepo(t, "main")
+		r.commitWorkflow(blockOnFile("ai/plans/*.md", "", "hay plan"), "/ai/plans/\n")
+		r.write("ai/plans/a-plan.md", "plan\n")
+		code, _, stderr := r.edit("src/a.go", "")
+		expect(t, "edit with an ignored plan", code, 2, stderr)
+		if !strings.Contains(stderr, "hay plan") {
+			t.Fatalf("stderr = %q", stderr)
+		}
+	})
+	for _, glob := range []string{"node_modules/**", "build/*", ".git/HEAD", "*.js"} {
+		t.Run("CUJ-03 "+glob, func(t *testing.T) {
+			r := newRepo(t, "main")
+			r.commitWorkflow(blockOnFile(glob, "", "visto"), "node_modules/\nbuild/\n")
+			r.write("node_modules/pkg/index.js", "x\n")
+			r.write("build/out.bin", "x\n")
+			code, _, stderr := r.edit("src/a.go", "")
+			expect(t, "edit with "+glob, code, 2, stderr)
+		})
+	}
+	t.Run("CUJ-10 a missing folder", func(t *testing.T) {
+		r := newRepo(t, "main")
+		r.commitWorkflow(blockOnFile("ai/plans/*.md", "", "hay plan"), "/ai/plans/\n")
+		code, _, stderr := r.edit("src/a.go", "")
+		expect(t, "edit without the folder", code, 0, stderr)
+		if stderr != "" {
+			t.Fatalf("stderr = %q", stderr)
+		}
+	})
+}
+
+// The condition contains reads the files git ignores.
+func TestContainsSeesIgnoredFiles(t *testing.T) {
+	r := newRepo(t, "main")
+	r.commitWorkflow(blockOnFile("ai/plans/*.md", `, contains: "PROJ-1"`, "plan del ticket"), "/ai/plans/\n")
+	r.write("ai/plans/a-plan.md", "PROJ-1\n")
+	code, _, stderr := r.edit("src/a.go", "")
+	expect(t, "edit with the text in an ignored plan", code, 2, stderr)
+	if !strings.Contains(stderr, "plan del ticket") {
+		t.Fatalf("stderr = %q", stderr)
+	}
+	r.write("ai/plans/a-plan.md", "none\n")
+	code, _, stderr = r.edit("src/a.go", "")
+	expect(t, "edit without the text", code, 0, stderr)
+}
+
+// The condition contains never reads through a symbolic link, so a link to a file outside the repository is not read.
+func TestContainsSkipsSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need privileges on windows")
+	}
+	r := newRepo(t, "main")
+	r.commitWorkflow(blockOnFile("ai/plans/*.md", `, contains: "PROJ-1"`, "plan del ticket"), "/ai/plans/\n")
+	outside := filepath.Join(t.TempDir(), "secret.md")
+	if err := os.WriteFile(outside, []byte("PROJ-1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(r.dir, "ai", "plans"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(r.dir, "ai", "plans", "x.md")); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := r.edit("src/a.go", "")
+	expect(t, "edit with the text only behind a link", code, 0, stderr)
+}
+
+// The edit entries apply to the edit of an ignored file: pre_edit by its path, and post_edit with context.
+func TestIgnoredEditFiresEntries(t *testing.T) {
+	t.Run("CUJ-04 pre_edit", func(t *testing.T) {
+		r := newRepo(t, "main")
+		r.commitWorkflow("version: 1\non:\n  pre_edit:\n    - when: { path: \"ai/plans/*.md\" }\n      action: { block: \"edita el plan\" }\n"+
+			"    - when: { not: { path: \"ai/plans/*.md\" } }\n      action: { block: \"no es un plan\" }\n", "/ai/plans/\n")
+		r.write("ai/plans/a-plan.md", "plan\n")
+		code, _, stderr := r.edit("ai/plans/a-plan.md", "")
+		expect(t, "edit of an ignored plan", code, 2, stderr)
+		if !strings.Contains(stderr, "edita el plan") || strings.Contains(stderr, "no es un plan") {
+			t.Fatalf("stderr = %q", stderr)
+		}
+	})
+	t.Run("CUJ-05 post_edit", func(t *testing.T) {
+		r := newRepo(t, "main")
+		r.commitWorkflow("version: 1\non:\n  post_edit:\n    - when: { path: \"build/*\" }\n      action: { inject: \"salida de build editada\" }\n",
+			"build/\n")
+		r.write("build/out.txt", "x\n")
+		code, stdout, stderr := r.hook("claude", map[string]any{"hook_event_name": "PostToolUse", "tool_name": "Edit",
+			"tool_input":    map[string]any{"file_path": filepath.Join(r.dir, "build", "out.txt")},
+			"tool_response": map[string]any{"success": true}})
+		expect(t, "finished edit of an ignored file", code, 0, stderr)
+		if !strings.Contains(stdout, "salida de build editada") {
+			t.Fatalf("stdout = %q", stdout)
+		}
+	})
+}
+
+// The condition changed keeps leaving the files git ignores out.
+func TestChangedLeavesOutIgnored(t *testing.T) {
+	r := newRepo(t, "main")
+	r.commitWorkflow("version: 1\non:\n  stop:\n    - when: { changed: \"build/*\" }\n      action: { block: \"build cambiado\" }\n",
+		"build/\n")
+	r.write("build/out.txt", "x\n")
+	code, _, stderr := r.stop()
+	expect(t, "stop with an ignored change", code, 0, stderr)
+	if strings.Contains(stderr, "build cambiado") {
+		t.Fatalf("stderr = %q", stderr)
 	}
 }

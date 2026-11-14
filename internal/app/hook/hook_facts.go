@@ -36,8 +36,6 @@ type Facts struct {
 	Commit     Commit
 	CommitErr  error
 	HasCommit  bool
-	Files      []string
-	HasFiles   bool
 	Rules      []rule.Rule
 	RulesErr   error
 	HasRules   bool
@@ -53,6 +51,7 @@ type Facts struct {
 	Contents   map[string]string // per epoch and path, see contentKey
 	Unreadable map[string]bool   // per epoch and path, see contentKey
 	Searches   map[string]bool   // per epoch, patterns and text: whether a matching file holds the text
+	Existing   map[string]bool   // per set of patterns: whether a matching file exists, at any epoch of the call
 	// TreeDiffs and TreeErrs are, per pair of trees (see treeKey), the paths that differ between them or why they
 	// could not be compared, and TreeRemoved those of the paths the second tree no longer holds; a tree identifies
 	// its content, so the answer holds at any epoch.
@@ -159,6 +158,12 @@ func (f Facts) Found(epoch int, patterns []string, text string) (found, known bo
 	return found, known
 }
 
+// Exists reports whether a file matching the patterns exists, and whether it is known.
+func (f Facts) Exists(patterns []string) (exists, known bool) {
+	exists, known = f.Existing[f.existKey(patterns)]
+	return exists, known
+}
+
 // Removed returns the paths that differ between the trees from and to that to no longer holds, none when they were
 // not compared.
 func (f Facts) Removed(from, to string) []string { return f.TreeRemoved[f.treeKey(from, to)] }
@@ -251,8 +256,11 @@ func (f Facts) learnCommit(c Commit, err error) Facts {
 	return f
 }
 
-func (f Facts) learnFiles(files []string) Facts {
-	f.Files, f.HasFiles = slices.Clone(files), true
+func (f Facts) learnExists(patterns []string, exists bool) Facts {
+	m := make(map[string]bool, len(f.Existing)+1)
+	maps.Copy(m, f.Existing)
+	m[f.existKey(patterns)] = exists
+	f.Existing = m
 	return f
 }
 
@@ -332,6 +340,9 @@ func (Facts) contentKey(epoch int, path string) string { return fmt.Sprintf("%d\
 
 // treeKey is the key of the comparison of two trees.
 func (Facts) treeKey(from, to string) string { return from + "\x00" + to }
+
+// existKey is the key of the existence of a file matching the patterns.
+func (Facts) existKey(patterns []string) string { return strings.Join(patterns, "\x01") }
 
 // foundKey is the key of a search at epoch.
 func (Facts) foundKey(epoch int, patterns []string, text string) string {

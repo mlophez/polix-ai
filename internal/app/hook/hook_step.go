@@ -21,7 +21,7 @@ type Step struct {
 	Changed  bool     // the files not committed yet
 	Diff     bool     // the size of the change of each file not committed yet
 	Commit   bool     // the commit HEAD points to: the size of its change, its short hash and its subject
-	Files    bool     // the files of the working tree git does not ignore
+	Files    []string // whether a file of the working tree matching these patterns exists, ignored ones and the git folder included
 	Rules    bool     // the rules of the folder of rules, rules/ below path (ai/rules/ by default)
 	State    bool     // the log of polix
 	Ignored  string   // whether git ignores this path, relative to the root
@@ -74,7 +74,7 @@ func (s Step) None() bool { return s.asks() == 0 }
 // asks counts the things the step asks for: one for a step, none when the answer is ready.
 func (s Step) asks() int {
 	n := 0
-	for _, asks := range []bool{s.Branch, s.Refs, s.Hash, s.Changed, s.Diff, s.Commit, s.Files, s.Rules, s.State, s.Ignored != "",
+	for _, asks := range []bool{s.Branch, s.Refs, s.Hash, s.Changed, s.Diff, s.Commit, s.Files != nil, s.Rules, s.State, s.Ignored != "",
 		s.Real != nil, s.Foreign != "", s.Programs != nil, s.Contains != nil, s.Read != "", s.Run != nil,
 		s.Check != nil, s.Append != nil, s.Compare != "", s.Restore != nil} {
 		if asks {

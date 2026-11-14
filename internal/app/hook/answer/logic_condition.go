@@ -204,12 +204,7 @@ func (r *pass) fileExists(patterns []string, contains any) bool {
 	if want != "" {
 		return r.contains(patterns, want)
 	}
-	for _, f := range r.files() {
-		if glob.AnyPath(patterns, f) {
-			return true
-		}
-	}
-	return false
+	return r.exists(patterns)
 }
 
 // writes returns the first path a command of the event writes that matches one of the patterns (see lineWrites).

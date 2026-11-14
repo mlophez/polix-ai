@@ -79,7 +79,7 @@ holds only what its events do and calls the engine as a library:
   `subagent_start` gets neither the session context nor the requirements, which are told to the main session.
 - `edit` (`logic_edit.go`), for `pre_edit` and `post_edit`: the protections of an edit (rule 1), but for an edit a
   command made (rule 16), the edits an unusable workflow lets through (rule 2) and the skip of the edits outside the
-  change (rule 3).
+  repository (rule 3).
 - `command` (`logic_command.go`), for `pre_command`, `post_command`, `pre_commit` and `post_commit`: the protections
   of a command (rule 1), the commands of polix an unusable workflow lets through (rule 2), the snapshot of the last
   event before a command line runs and the watch of a `post_command` (rule 16) and the commits outside the change of
@@ -128,7 +128,8 @@ the paths that differ between the tree of an observed line and the current one a
 longer holds (`Compare` and `Tree`, kept in the facts per pair of trees), the changed files,
 the diff (`Diff`: the
 added and deleted lines of each file not committed yet, the same files as the changed ones), the commit just made
-(`Commit`, for `post_commit`: its diff, its short hash and its subject), the files, the rules, the
+(`Commit`, for `post_commit`: its diff, its short hash and its subject), whether a file matching some globs exists
+(`Files`, the globs of a `file` condition, kept in the facts as `Existing` once per call), the rules, the
 log, whether git ignores a path, the real paths of some paths, which programs the PATH does not run (`Programs`, kept
 in the facts as `Missing` once per call), the content of a file (of an epoch), or acts: runs
 a command, runs the checks of one or several rules (`rule.Run`, with the argv of its runner of `rules.run`), puts paths
@@ -140,8 +141,8 @@ rewrite files, so the hash and the files read after it are those of a new epoch,
 
 The rules it follows, as before this use case:
 
-1. Protections, before the entries of the workflow and before the skip of the edits and commits outside the change
-   (rule 3); the first one that denies ends the evaluation. Whatever the workflow says and also without one or with
+1. Protections, before the entries of the workflow and before the skip of the edits outside the repository and
+   the commits outside the change (rule 3); the first one that denies ends the evaluation. Whatever the workflow says and also without one or with
    an invalid one, nobody edits the state of polix (`<git-dir>/polix`, by its real path, without case where file
    names ignore it) nor runs a command that may write and names it, logged as `builtin`: the line may write when
    `writesFiles` matches its text without its redirections into `/dev/null` (`withoutNullRedirects`; not `NUL`,
@@ -164,7 +165,8 @@ The rules it follows, as before this use case:
    `post_command` already put the protected files back, and the state of polix lives in the git directory, which no
    tree holds.
 2. A workflow that cannot be used (it cannot be read or parsed, has problems or requires a newer polix) blocks
-   edits and commands with its problems, logged as `invalid`, except an edit outside the change, an edit of
+   edits and commands with its problems, logged as `invalid`, except an edit outside the repository or of a file git
+   ignores (`skippedUnusable`), an edit of
    polix.yaml by the main session (not when it requires a newer polix) and the commands that only check the
    workflow or update polix (`onlyPolix`: on the line parsed as bash, every command, nested ones included, is one
    of `onlyPolixCommands` as written with no redirection but `2>&1` or `1>&2`, and a clause or a test, a command
@@ -172,11 +174,11 @@ The rules it follows, as before this use case:
    text check of before); any other event only warns, so a stop is never blocked. Problems that may come from a
    newer polix hint to run `polix update` (`hook.Evaluation.Running`, which the shell asks); a name of the old
    vocabulary, reported with its new spelling, does not.
-3. Without polix.yaml, for an edit outside the repository or of a file git ignores, and for a `pre_commit` whose
+3. Without polix.yaml, for an edit outside the repository, and for a `pre_commit` whose
    commits all happen in another repository (a `post_commit` of such commits skips its entries too) (`git -C ../other commit`), only the protections apply, and for that
-   `pre_commit` the `snapshot` of rule 16, since the rest of its line may still change this repository: the
-   entries govern the change, what a commit may hold, so a build output, a local `.env` or a commit in another
-   repository never fires them. The check is a strict allowlist: `commitDirs` places the line only when every
+   `pre_commit` the `snapshot` of rule 16, since the rest of its line may still change this repository: an edit of
+   another repository or a commit in it never fires the entries. An edit of a file git ignores, such as a plan, a
+   build output or a local `.env`, does fire them: an author leaves it out with `not` and `path`. The check is a strict allowlist: `commitDirs` places the line only when every
    command of it is `git [-C dir]... add|commit` and bash expands nothing in it: on the line parsed as bash, no
    command is nested, has a redirection or a word that is not literal (`plain`), while a comment is no word; on a
    line the parser rejects, the text holds none of the characters that expand (`placeable`); each commit folder is
@@ -442,10 +444,14 @@ needs one method per fact.
   `LoadWorkflow` (`internal/app/workflow/load`) that `cmd/polix` builds once and passes to `Command`: whether it
   exists, and its error as data; without it, no workflow.
 - `Locate`: turns the path of an edit into one relative to the root, symlinks resolved.
-- `Head`, `Hash`, `Changed`, `Files` and `Ignored`: the facts of git; `Head` gives the current branch, empty on a
+- `Head`, `Hash`, `Changed` and `Ignored`: the facts of git; `Head` gives the current branch, empty on a
   detached HEAD, and the commit HEAD points to, from one `git rev-parse` (`git.Repo.Head`), both empty when git
-  fails, as on a repository without commits; `Changed` and `Files` read a failure as no files and, like `Head` and
-  `Ignored`, run detached from the cancellation of the caller.
+  fails, as on a repository without commits; `Changed` reads a failure as no files and, like `Head` and
+  `Ignored`, runs detached from the cancellation of the caller.
+- `Exists`: whether a file matching the globs of a `file` condition exists, ignored files and the files under `.git`
+  included. The adapter lists with `file.Walk` the folders of the globs (`glob.Folder`), the whole tree when a glob has
+  none, and matches them with `glob.AnyPath`; a link is an entry, never followed, and a folder it cannot read is
+  skipped.
 - `Refs`: what git moves without moving HEAD, as one text (`git.Repo.Refs`): the commit `refs/stash` points to,
   through `git rev-parse`, and each operation stopped halfway, by its file in the git directory (`MERGE_HEAD`,
   `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `SQUASH_MSG`, `rebase-merge`, `rebase-apply`) and the commit it names, the
@@ -483,8 +489,8 @@ needs one method per fact.
   of the adapter, `exec.LookPath`, which `Command` sets: the PATH the hooks give polix, as a command of `run` is
   found; on Windows through the extensions of `PATHEXT`, so `go` finds `go.exe`. A failed lookup is a missing
   program, never an error, and a program found only in the current folder (`exec.ErrDot`) is missing.
-- `Contains`: whether a file git does not ignore, matching the patterns of a `file` condition, holds the text of
-  its `contains`; one step per search and epoch, the contents never leave the adapter.
+- `Contains`: whether a file matching the patterns of a `file` condition, ignored ones and those under `.git`
+  included, holds the text of its `contains`, searched in the same walk as `Exists`; one step per search and epoch, the contents never leave the adapter.
 - `Read`: the content of a file of the repository.
 - `Run`: runs a command from the root through `internal/platform/proc`, within the budget of the call.
 - `RunCheck`: runs one invocation from the root, which may decide several rules, with 5 minutes and within the
@@ -544,7 +550,7 @@ The failure policy of the hook, so a broken polix never traps the agent:
    result back to the evaluation (`Know*` for a fact, `Note` for an outcome), until the step is none; the unexported
    functions `carry` (the facts of git), `lookup` (the facts of a path, a folder or the programs) and `act` (the
    steps that act, the `Restore` of protected files a command changed among them) of `in.go` carry out each step.
-   Each pass routes the event to its family, which walks its protections, whether git ignores an edited path or
+   Each pass routes the event to its family, which walks its protections, whether git ignores an edited path (for an unusable workflow) or
    where the commits of a `pre_commit` land, and the entries, in that order (Logic, rules 1 to 5). The events of
    `Output.Follow`, the `pre_edit` and `post_edit` of each file a command changed, join the end of the queue, so
    they are located and evaluated in the same call, their answers merged with the others; they never block, so the
