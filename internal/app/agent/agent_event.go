@@ -23,8 +23,8 @@ type Event struct {
 	Path     string // pre_edit and post_edit: repository relative, slash separated, once located
 	AbsPath  string // pre_edit and post_edit: the path as the agent gave it, absolute from the cwd when relative
 	Outside  bool   // the edited path is outside the repository
-	Command  string // pre_command, post_command, pre_commit
-	ExitCode int    // post_command
+	Command  string // pre_command, post_command, pre_commit, post_commit
+	ExitCode int    // post_command, post_commit
 	Prompt   string // prompt
 	Cwd      string
 	ToolUse  string // the id the agent gives the call of a tool, the same before and after it; empty when it gives none

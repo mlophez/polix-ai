@@ -267,11 +267,11 @@ func (w Workflow) CountsAgents() bool {
 }
 
 // InjectsOnce reports whether the workflow has a once-only inject: an inject without always on an event other than
-// start and subagent_start, which always inject. Its injects are due again when a session or a subagent starts or a
-// subagent finishes, so polix then writes those events to its log.
+// start, subagent_start and post_commit, which always inject. Its injects are due again when a session or a subagent
+// starts or a subagent finishes, so polix then writes those events to its log.
 func (w Workflow) InjectsOnce() bool {
 	for ev, entries := range w.On {
-		if ev == Start || ev == SubagentStart {
+		if ev == Start || ev == SubagentStart || ev == PostCommit {
 			continue
 		}
 		for _, e := range entries {

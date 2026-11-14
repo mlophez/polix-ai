@@ -18,16 +18,16 @@ type passNotice struct {
 
 // notify carries out the verb notify of the entry e: it adds the expanded message to the messages for the user of
 // ans (agent.Answer.Warn), never to the agent, and logs a notify decision with it. A message that expands to nothing
-// shows nothing. With always it shows every time its entry applies; otherwise once per session and text, whatever the
-// actor: it is skipped, and the skip logged, while the log has a notified line of the session with the line of the
-// entry and that text (see notified). A placeholder that changes its text makes a new notice.
+// shows nothing. With always, or on an event whose notices all show every time (every), it shows every time its
+// entry applies; otherwise once per session and text, whatever the actor: it is skipped, and the skip logged, while
+// the log has a notified line of the session with the line of the entry and that text (see notified). A placeholder that changes its text makes a new notice.
 func (r *pass) notify(e workflow.Entry, ans agent.Answer) agent.Answer {
 	n := *e.Action.Notify
 	text := r.expand(n.Message)
 	if r.waiting() || strings.TrimSpace(text) == "" {
 		return ans
 	}
-	if !n.Always {
+	if !n.Always && !r.every {
 		already := r.notified(e.Line, text)
 		if r.waiting() {
 			return ans

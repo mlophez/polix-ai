@@ -42,6 +42,8 @@ type facts struct {
 	changed     []string
 	diff        diff.Diff
 	diffErr     error
+	commit      hook.Commit // the commit just made
+	commitErr   error
 	rules       []rule.Rule
 	found       bool              // whether a file holds the text of a search
 	trees       []string          // the paths that differ between two trees
@@ -89,6 +91,8 @@ func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
 			ev = ev.KnowChanged(f.changed)
 		case s.Diff:
 			ev = ev.KnowDiff(f.diff, f.diffErr)
+		case s.Commit:
+			ev = ev.KnowCommit(f.commit, f.commitErr)
 		case s.Files:
 			ev = ev.KnowFiles(nil)
 		case s.Rules:
@@ -2418,14 +2422,15 @@ func TestDetachedHead(t *testing.T) {
 }
 
 // Decide routes each event of the workflow to its family: session for start, prompt and subagent_start, edit for
-// pre_edit and post_edit, command for pre_command, post_command and pre_commit, and stop for stop and subagent_stop;
-// an event polix does not evaluate reaches none.
+// pre_edit and post_edit, command for pre_command, post_command, pre_commit and post_commit, and stop for stop and
+// subagent_stop; an event polix does not evaluate reaches none.
 func TestRoutesByFamily(t *testing.T) {
 	families := map[string]func(*pass) agent.Answer{
 		workflow.Start: (*pass).session, workflow.Prompt: (*pass).session, workflow.SubagentStart: (*pass).session,
 		workflow.PreEdit: (*pass).edit, workflow.PostEdit: (*pass).edit,
 		workflow.PreCommand: (*pass).command, workflow.PostCommand: (*pass).command, workflow.PreCommit: (*pass).command,
-		workflow.Stop: (*pass).stop, workflow.SubagentStop: (*pass).stop,
+		workflow.PostCommit: (*pass).command,
+		workflow.Stop:       (*pass).stop, workflow.SubagentStop: (*pass).stop,
 	}
 	if len(families) != len(workflow.Events) {
 		t.Fatalf("%d families for %d events", len(families), len(workflow.Events))
@@ -2444,5 +2449,228 @@ func TestRoutesByFamily(t *testing.T) {
 	}
 	if got := route("turn_stop"); got != nil {
 		t.Errorf("an unknown event reaches %s", name(got))
+	}
+}
+
+// CUJ-05: every inject and notify of post_commit acts on each commit, whatever the log holds, and writes neither an
+// injected nor a notified line; the same entries on pre_commit act once.
+func TestPostCommitInjectsEveryTime(t *testing.T) {
+	const entries = "    - action: { inject: \"Update the docs\" }\n    - action: { notify: \"Commit done\" }\n"
+	every := eval(t, "version: 1\non:\n  post_commit:\n"+entries, workflow.PostCommit)
+	every = with(t, every, func(e *agent.Event) { e.Command = "git commit -m x" })
+	var st state.State
+	for i := range 2 {
+		out, steps := walk(t, every, facts{branch: "main", state: st})
+		st = logged(t, st, steps)
+		if !slices.Equal(out.Answer.Contexts, []string{"Update the docs"}) ||
+			!slices.Equal(out.Answer.Warnings, []string{"Commit done"}) || out.Answer.Block {
+			t.Fatalf("commit %d: %+v", i, out.Answer)
+		}
+		for _, e := range observed(steps) {
+			if e.Outcome == state.OutcomeInjected || e.Outcome == state.OutcomeNotified {
+				t.Fatalf("commit %d wrote %+v", i, e)
+			}
+		}
+	}
+	once := eval(t, "version: 1\non:\n  pre_commit:\n"+entries, workflow.PreCommit)
+	once = with(t, once, func(e *agent.Event) { e.Command = "git commit -m x" })
+	st = state.State{}
+	for i, want := range []int{1, 0} {
+		out, steps := walk(t, once, facts{branch: "main", state: st})
+		st = logged(t, st, steps)
+		if len(out.Answer.Contexts) != want || len(out.Answer.Warnings) != want {
+			t.Fatalf("pre_commit %d: %+v", i, out.Answer)
+		}
+	}
+}
+
+// CUJ-10: the entries of post_commit are skipped when every commit of the line happens in another repository, and
+// kept for a commit of this one.
+func TestPostCommitOutsideRepository(t *testing.T) {
+	ev := eval(t, "version: 1\non:\n  post_commit:\n    - action: { inject: \"Update the docs\" }\n",
+		workflow.PostCommit)
+	foreign := map[string]bool{filepath.FromSlash("/repo/../other"): true}
+	for line, injected := range map[string]bool{
+		"git -C ../other commit -m x":               false,
+		"git commit -m x":                           true,
+		"git -C ../other commit && git commit -m x": true,
+	} {
+		e := with(t, ev, func(e *agent.Event) { e.Command = line })
+		out, _ := walk(t, e, facts{branch: "main", foreign: foreign})
+		if got := len(out.Answer.Contexts) == 1; got != injected {
+			t.Errorf("%s: injected %v, want %v: %+v", line, got, injected, out.Answer)
+		}
+	}
+}
+
+// CUJ-06: on post_commit, changed, the measures and their placeholders look at the commit just made, never at the
+// working tree: its files decide changed, and an uncommitted change of the tree counts in neither.
+func TestPostCommitMeasuresTheCommit(t *testing.T) {
+	ev := eval(t, `version: 1
+on:
+  post_commit:
+    - when: { changed: ["*.go"] }
+      action:
+        inject: "Go code changed in {changed_files} files ({changed_lines} lines): update docs/."
+    - when: { changed_lines: 100 }
+      action: { inject: "A big commit." }
+`, workflow.PostCommit)
+	tree := facts{branch: "main", changed: []string{"other.go"},
+		diff: diff.Diff{Changes: []diff.Change{{Path: "other.go", Added: 500}}}}
+	code := tree
+	code.commit = hook.Commit{Hash: "abc1234", Subject: "feat: x", Diff: diff.Diff{Changes: []diff.Change{
+		{Path: "main.go", Added: 3, Deleted: 1}, {Path: "util.go", Added: 2}, {Path: "README.md", Added: 1}}}}
+	out, steps := walk(t, ev, code)
+	if !slices.Equal(out.Answer.Contexts, []string{"Go code changed in 2 files (6 lines): update docs/."}) {
+		t.Fatalf("a commit of Go files: %+v", out.Answer)
+	}
+	if asked(steps, func(s hook.Step) bool { return s.Changed || s.Diff }) != nil {
+		t.Fatalf("post_commit read the working tree: %+v", steps)
+	}
+	docs := tree
+	docs.commit = hook.Commit{Diff: diff.Diff{Changes: []diff.Change{{Path: "README.md", Added: 1}}}}
+	if out, _ := walk(t, ev, docs); len(out.Answer.Contexts) != 0 {
+		t.Fatalf("a commit of docs: %+v", out.Answer)
+	}
+	big := tree
+	big.commit = hook.Commit{Diff: diff.Diff{Changes: []diff.Change{{Path: "main.go", Added: 120}}}}
+	if out, _ := walk(t, ev, big); !slices.Contains(out.Answer.Contexts, "A big commit.") {
+		t.Fatalf("a big commit: %+v", out.Answer)
+	}
+	// Every other event keeps reading the working tree, whose other.go matches even when the commit holds no Go file.
+	pre := eval(t, "version: 1\non:\n  pre_commit:\n    - when: { changed: [\"*.go\"] }\n      action: { inject: tree }\n",
+		workflow.PreCommit)
+	if out, _ := walk(t, pre, docs); !slices.Equal(out.Answer.Contexts, []string{"tree"}) {
+		t.Fatalf("pre_commit: %+v", out.Answer)
+	}
+}
+
+// CUJ-08: a commit that cannot be read makes changed and the measures hold, expands the measure placeholders to ?
+// and the placeholders of the commit to an empty text, and warns with the exact text, once.
+func TestPostCommitUnreadable(t *testing.T) {
+	ev := eval(t, `version: 1
+on:
+  post_commit:
+    - when: { changed: ["*.go"] }
+      action:
+        inject: "Go code changed in {changed_files} files: update docs/."
+    - when: { risk_score: 1000 }
+      action: { inject: "Commit [{commit}] [{subject}] is risky." }
+`, workflow.PostCommit)
+	out, _ := walk(t, ev, facts{branch: "main", commitErr: errors.New("bad object HEAD")})
+	want := []string{"Go code changed in ? files: update docs/.", "Commit [] [] is risky."}
+	if !slices.Equal(out.Answer.Contexts, want) {
+		t.Fatalf("contexts: %q, want %q", out.Answer.Contexts, want)
+	}
+	warning := "polix cannot read the commit (bad object HEAD): changed, changed_lines, changed_files and risk_score hold"
+	if !slices.Equal(out.Answer.Warnings, []string{warning}) {
+		t.Fatalf("warnings: %q", out.Answer.Warnings)
+	}
+}
+
+// On post_commit, run: { rules: changed } checks the rules of the files of the commit just made, never those of the
+// working tree; a commit that cannot be read fails the run, which reaches the AI, instead of passing with no checks.
+func TestPostCommitRunRules(t *testing.T) {
+	ev := eval(t, `version: 1
+on:
+  post_commit:
+    - action: { run: { rules: changed } }
+`, workflow.PostCommit)
+	rules := []rule.Rule{
+		{ID: "GO-1", Description: "g", Scope: []string{"src/**"}, Deterministic: true, Check: "checks/go.sh"},
+		{ID: "DOC-1", Description: "d", Scope: []string{"docs/**"}, Deterministic: true, Check: "checks/doc.sh"},
+	}
+	base := facts{branch: "main", changed: []string{"src/tree.go"}, rules: rules, runErr: errors.New("exit status 1"),
+		commit: hook.Commit{Hash: "abc1234", Diff: diff.Diff{Changes: []diff.Change{{Path: "docs/a.md", Added: 1}}}}}
+	out, steps := walk(t, ev, base)
+	var checks []string
+	for _, s := range steps {
+		if s.Check != nil {
+			for _, rl := range s.Check.Rules {
+				checks = append(checks, rl.ID)
+			}
+		}
+	}
+	if !slices.Equal(checks, []string{"DOC-1"}) {
+		t.Fatalf("checks: %v, want the rules of the commit's files", checks)
+	}
+	if out.Answer.Block || len(out.Answer.Contexts) != 1 ||
+		!strings.HasPrefix(out.Answer.Contexts[0], "Rules not met:\n- DOC-1 (checks/doc.sh): d") {
+		t.Fatalf("answer: %+v", out.Answer)
+	}
+	unreadable := base
+	unreadable.commit = hook.Commit{}
+	unreadable.commitErr = errors.New("bad object HEAD")
+	out, steps = walk(t, ev, unreadable)
+	if asked(steps, func(s hook.Step) bool { return s.Check != nil }) != nil {
+		t.Fatalf("an unreadable commit ran checks: %+v", steps)
+	}
+	if out.Answer.Block || !slices.Equal(out.Answer.Contexts, []string{"The commit cannot be read: bad object HEAD"}) {
+		t.Fatalf("an unreadable commit: %+v", out.Answer)
+	}
+	warning := "polix cannot read the commit (bad object HEAD): changed, changed_lines, changed_files and risk_score hold"
+	if !slices.Equal(out.Answer.Warnings, []string{warning}) {
+		t.Fatalf("warnings: %q", out.Answer.Warnings)
+	}
+}
+
+// On post_commit, run: { rules: changed } checks other files than the same run on the working tree, so its pass is
+// keyed by the commit: it never counts for the stop gate nor for a post_command of the same call, nor theirs for it;
+// only a repeat on the same commit and content skips.
+func TestPostCommitRunRulesKey(t *testing.T) {
+	yaml := `version: 1
+on:
+  post_command:
+    - action: { run: { rules: changed } }
+  post_commit:
+    - action: { run: { rules: changed } }
+  stop:
+    - action: { run: { rules: changed } }
+`
+	rules := []rule.Rule{
+		{ID: "GO-1", Description: "g", Scope: []string{"src/**"}, Deterministic: true, Check: "checks/go.sh"},
+		{ID: "DOC-1", Description: "d", Scope: []string{"docs/**"}, Deterministic: true, Check: "checks/doc.sh"},
+	}
+	ran := func(steps []hook.Step) []string {
+		var ids []string
+		for _, s := range asked(steps, func(s hook.Step) bool { return s.Check != nil }) {
+			for _, rl := range s.Check.Rules {
+				ids = append(ids, rl.ID)
+			}
+		}
+		return ids
+	}
+	f := facts{branch: "main", head: "c1", hashes: []string{"H", "H", "H"}, changed: []string{"docs/b.md"},
+		rules: rules, checkFails: map[string]bool{"DOC-1": true},
+		commit: hook.Commit{Hash: "abc1234", Diff: diff.Diff{Changes: []diff.Change{{Path: "src/a.go", Added: 1}}}}}
+	out, steps := walk(t, eval(t, yaml, workflow.PostCommit), f)
+	if len(out.Answer.Contexts) != 0 || !slices.Equal(ran(steps), []string{"GO-1"}) {
+		t.Fatalf("post_commit: %+v, checks %v", out.Answer, ran(steps))
+	}
+	if obs := observed(steps); len(obs) != 1 || obs[0].Key != "rules changed@abc1234" {
+		t.Fatalf("post_commit passed: %+v", obs)
+	}
+	f.state = logged(t, f.state, steps)
+	_, steps = walk(t, eval(t, yaml, workflow.PostCommit), f)
+	if checks := ran(steps); checks != nil {
+		t.Fatalf("a repeat on the same commit and content ran %v", checks)
+	}
+	out, steps = walk(t, eval(t, yaml, workflow.Stop), f)
+	if !out.Answer.Block || !slices.Equal(ran(steps), []string{"DOC-1"}) {
+		t.Fatalf("stop after post_commit: %+v, checks %v", out.Answer, ran(steps))
+	}
+
+	g := facts{branch: "main", head: "c1", hashes: []string{"H", "H", "H"}, rules: rules,
+		checkFails: map[string]bool{"DOC-1": true},
+		commit:     hook.Commit{Hash: "def5678", Diff: diff.Diff{Changes: []diff.Change{{Path: "docs/a.md", Added: 1}}}}}
+	_, steps = walk(t, command(t, yaml, workflow.PostCommand, "git commit -m x", "toolu_1"), g)
+	if obs := observed(steps); len(obs) != 1 || obs[0].Key != "rules changed" {
+		t.Fatalf("post_command passed: %+v", obs)
+	}
+	g.state = logged(t, g.state, steps)
+	out, steps = walk(t, command(t, yaml, workflow.PostCommit, "git commit -m x", "toolu_1"), g)
+	if !slices.Equal(ran(steps), []string{"DOC-1"}) || len(out.Answer.Contexts) != 1 ||
+		!strings.HasPrefix(out.Answer.Contexts[0], "Rules not met:\n- DOC-1") {
+		t.Fatalf("post_commit after post_command: %+v, checks %v", out.Answer, ran(steps))
 	}
 }

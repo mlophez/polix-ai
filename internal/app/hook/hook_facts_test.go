@@ -1,10 +1,12 @@
 package hook
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
+	"github.com/mlophez/polix-ai/internal/app/diff"
 	"github.com/mlophez/polix-ai/internal/app/state"
 )
 
@@ -63,5 +65,26 @@ func TestFactsLearnBranch(t *testing.T) {
 	}
 	if g := (Facts{}).learnBranch("", ""); g.Branch != "" || g.Head != "" || !g.HasBranch {
 		t.Fatalf("a detached HEAD without commit: %+v", g)
+	}
+}
+
+// The commit just made carries to the next event with its files, its hash and its subject; one that cannot be read
+// is empty and adds the warning once, with the text the user reads.
+func TestFactsLearnCommit(t *testing.T) {
+	c := Commit{Diff: diff.Diff{Changes: []diff.Change{{Path: "a.go", Added: 3}, {Path: "docs/b.md", Added: 1}}},
+		Hash: "abc1234", Subject: "feat: x"}
+	f := Facts{}.learnCommit(c, nil).Carry(0, state.State{})
+	if !f.HasCommit || f.CommitErr != nil || f.Commit.Hash != "abc1234" || f.Commit.Subject != "feat: x" ||
+		!slices.Equal(f.Commit.Paths(), []string{"a.go", "docs/b.md"}) || len(f.Warnings) != 0 {
+		t.Fatalf("%+v", f)
+	}
+	g := Facts{}.learnCommit(c, errors.New("bad object")).learnCommit(c, errors.New("bad object"))
+	want := "polix cannot read the commit (bad object): changed, changed_lines, changed_files and risk_score hold"
+	if !g.HasCommit || g.CommitErr == nil || g.Commit.Hash != "" || len(g.Commit.Paths()) != 0 ||
+		!slices.Equal(g.Warnings, []string{want}) {
+		t.Fatalf("%+v", g)
+	}
+	if e := (Evaluation{}).KnowCommit(c, nil); !e.Facts.HasCommit || e.Facts.Commit.Subject != "feat: x" {
+		t.Fatalf("%+v", e.Facts)
 	}
 }

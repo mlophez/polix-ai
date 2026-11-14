@@ -37,6 +37,7 @@ var nativeEvents = map[string]map[string][]string{
 		workflow.PreCommand:    {"PreToolUse"},
 		workflow.PostCommand:   {"PostToolUse", "PostToolUseFailure"},
 		workflow.PreCommit:     {"PreToolUse"},
+		workflow.PostCommit:    {"PostToolUse"},
 		workflow.SubagentStop:  {"SubagentStop"},
 		workflow.Stop:          {"Stop"},
 	},
@@ -49,6 +50,7 @@ var nativeEvents = map[string]map[string][]string{
 		workflow.PreCommand:    {"PreToolUse"},
 		workflow.PostCommand:   {"PostToolUse"},
 		workflow.PreCommit:     {"PreToolUse"},
+		workflow.PostCommit:    {"PostToolUse"},
 		workflow.SubagentStop:  {"SubagentStop"},
 		workflow.Stop:          {"Stop"},
 	},
@@ -212,7 +214,7 @@ func parsedEvent(t *testing.T, name, native, event string) string {
 	case workflow.PreCommand, workflow.PostCommand:
 		in["tool_name"] = "Bash"
 		in["tool_input"] = map[string]any{"command": "ls"}
-	case workflow.PreCommit:
+	case workflow.PreCommit, workflow.PostCommit:
 		in["tool_name"] = "Bash"
 		in["tool_input"] = map[string]any{"command": "git commit -m x"}
 	}

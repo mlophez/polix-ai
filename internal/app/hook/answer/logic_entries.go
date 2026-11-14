@@ -47,7 +47,9 @@ func (r *pass) entries(ans agent.Answer) agent.Answer {
 		var stop bool
 		before := len(ans.Warnings)
 		ans, stop = r.apply(e, ans)
-		r.notices = shown(r.notices, e, ans.Warnings[before:])
+		if !r.every {
+			r.notices = shown(r.notices, e, ans.Warnings[before:])
+		}
 		if r.waiting() || stop {
 			break
 		}

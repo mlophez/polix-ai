@@ -31,6 +31,7 @@ type fakePort struct {
 	appendErr error
 	readErr   error
 	diffErr   error
+	commitErr error // the error Commit gives
 	treeErr   error
 	restErr   error // the error Restore gives
 	state     state.State
@@ -104,6 +105,15 @@ func (p *fakePort) Diff(context.Context) (diff.Diff, error) {
 		return diff.Diff{}, p.diffErr
 	}
 	return diff.Diff{Changes: []diff.Change{{Path: "src/a.go", Added: 200, Deleted: 10}}}, nil
+}
+
+func (p *fakePort) Commit(context.Context) (hook.Commit, error) {
+	p.calls = append(p.calls, "Commit")
+	if p.commitErr != nil {
+		return hook.Commit{}, p.commitErr
+	}
+	return hook.Commit{Diff: diff.Diff{Changes: []diff.Change{{Path: "docs/guide.md", Added: 4}}}, Hash: "abc1234",
+		Subject: "feat: x"}, nil
 }
 
 func (p *fakePort) Files(context.Context) []string { return []string{"ai/plans/p.md"} }
@@ -656,16 +666,60 @@ func TestEditsRelativePath(t *testing.T) {
 	}
 }
 
-// A command about to run that commits is also a pre_commit; after it ran, it is not.
+// A command about to run that commits is also a pre_commit; after it ran with exit code 0 it is also a post_commit.
 func TestCommands(t *testing.T) {
 	command := "git commit -m x"
 	evs, err := hookInput{}.commands(agent.Claude, workflow.PreCommand, command, false)
 	if err != nil || len(evs) != 2 || evs[1].Name != workflow.PreCommit || evs[1].Command != command {
 		t.Fatalf("pre_command: %+v %v", evs, err)
 	}
-	if evs, err := (hookInput{}).commands(agent.Claude, workflow.PostCommand, command, false); err != nil ||
+	evs, err = hookInput{}.commands(agent.Claude, workflow.PostCommand, command, false)
+	if err != nil || len(evs) != 2 || evs[0].Name != workflow.PostCommand || evs[1].Name != workflow.PostCommit ||
+		evs[1].Command != command || evs[1].ExitCode != 0 {
+		t.Fatalf("post_command of a commit: %+v %v", evs, err)
+	}
+	if evs, err := (hookInput{}).commands(agent.Claude, workflow.PostCommand, "go test ./...", false); err != nil ||
 		len(evs) != 1 {
 		t.Fatalf("post_command: %+v %v", evs, err)
+	}
+}
+
+// post_commit follows the post_command of a successful commit line: the exit code of the line is 0 and a git commit
+// decides it. A failed line, a commit that does not propagate its code, and a text that only mentions git commit give
+// none; nested bash -c and a line the parser rejects are read as pre_commit reads them.
+func TestPostCommitDerived(t *testing.T) {
+	ok, failed := json.RawMessage(`{"stdout":"ok"}`), json.RawMessage(`{"exit_code":1}`)
+	for _, c := range []struct {
+		command  string
+		response json.RawMessage
+		failed   bool
+		want     bool
+	}{
+		{`git commit -m "feat: x"`, ok, false, true},
+		{`git commit -m "feat: x" && git push`, ok, false, true},
+		{`git add -A && git commit -m x`, ok, false, true},
+		{`bash -c "git commit -m x"`, ok, false, true},
+		{`git commit -m "unclosed`, ok, false, true},
+		{`git commit -m "feat: x"`, nil, true, false},
+		{`git commit -m "feat: x"`, failed, false, false},
+		{`git commit -m "feat: x"; echo done`, ok, false, false},
+		{`git commit -m x || true`, ok, false, false},
+		{`git commit -m x | tee out`, ok, false, false},
+		{`bash -c "git commit -m x; echo done"`, ok, false, false},
+		{`echo "git commit"`, ok, false, false},
+		{`git status`, ok, false, false},
+	} {
+		evs, err := hookInput{ToolResponse: c.response}.commands(agent.Claude, workflow.PostCommand, c.command,
+			c.failed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := len(evs) == 2 && evs[1].Name == workflow.PostCommit; got != c.want {
+			t.Errorf("commands(%q, %s) gives post_commit %v, want %v", c.command, c.response, got, c.want)
+		}
+		if evs[0].Name != workflow.PostCommand {
+			t.Errorf("commands(%q): the first event is %s", c.command, evs[0].Name)
+		}
 	}
 }
 

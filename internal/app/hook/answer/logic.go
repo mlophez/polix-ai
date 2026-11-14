@@ -40,6 +40,9 @@ type pass struct {
 	byCommand bool
 	// always tells that every inject of the event injects each time it applies, as on start (see session).
 	always bool
+	// every tells that every notify of the event shows its notice each time it applies, with no notified line, as
+	// with always (see command on post_commit).
+	every bool
 	// loop tells that every block of the event goes through the loop guard of max_stop_retries (see stop).
 	loop bool
 	// guarded tells that the loop guard let a block of the event through: the event did not end as asked.
@@ -102,8 +105,8 @@ func Decide(ev hook.Evaluation) Output {
 }
 
 // route returns the family of the event name, the method of pass that answers it: session for start, prompt and
-// subagent_start (logic_session.go), edit for pre_edit and post_edit (logic_edit.go), command for pre_command, post_command and
-// pre_commit (logic_command.go), and stop for stop and subagent_stop (logic_stop.go); nil for an event polix does
+// subagent_start (logic_session.go), edit for pre_edit and post_edit (logic_edit.go), command for pre_command,
+// post_command, pre_commit and post_commit (logic_command.go), and stop for stop and subagent_stop (logic_stop.go); nil for an event polix does
 // not evaluate. Each family stops early when a step is missing; its answer is then meaningless.
 func route(name string) func(*pass) agent.Answer {
 	switch name {
@@ -111,7 +114,7 @@ func route(name string) func(*pass) agent.Answer {
 		return (*pass).session
 	case workflow.PreEdit, workflow.PostEdit:
 		return (*pass).edit
-	case workflow.PreCommand, workflow.PostCommand, workflow.PreCommit:
+	case workflow.PreCommand, workflow.PostCommand, workflow.PreCommit, workflow.PostCommit:
 		return (*pass).command
 	case workflow.Stop, workflow.SubagentStop:
 		return (*pass).stop

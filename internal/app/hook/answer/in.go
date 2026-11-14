@@ -67,6 +67,9 @@ type Port interface {
 	// Diff returns the size of the change of each file not committed yet, the same files as Changed, or why it
 	// could not be measured.
 	Diff(ctx context.Context) (diff.Diff, error)
+	// Commit returns the commit HEAD points to as post_commit sees it: the size of its change against its first
+	// parent, or the empty tree for a root commit, its short hash and its subject, or why it could not be read.
+	Commit(ctx context.Context) (hook.Commit, error)
 	// Files returns the files of the working tree that git does not ignore.
 	Files(ctx context.Context) []string
 	// LoadRules returns the rules of the folder dir, relative to the root, retired ones excluded, ordered by id.
@@ -236,6 +239,8 @@ func carry(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook
 		return ev.KnowChanged(port.Changed(ctx))
 	case s.Diff:
 		return ev.KnowDiff(port.Diff(ctx))
+	case s.Commit:
+		return ev.KnowCommit(port.Commit(ctx))
 	case s.Files:
 		return ev.KnowFiles(port.Files(ctx))
 	case s.Rules:

@@ -49,6 +49,7 @@ run again on the same content; an `inject` reaches the AI once per session and a
   - Quality gates
     - [Review every change with a reviewer subagent](#review-every-change-with-a-reviewer-subagent)
     - [Document at the end of every task](#document-at-the-end-of-every-task)
+    - [Remind the docs and the ticket after each commit](#remind-the-docs-and-the-ticket-after-each-commit)
     - [Sensitive code gets a security review](#sensitive-code-gets-a-security-review)
   - Process
     - [No ticket, no code](#no-ticket-no-code)
@@ -483,6 +484,34 @@ on:
 Keep in mind that the documenter edits files, so it changes the content: a `run` that passed before it runs again,
 and a `finished` of a reviewer whose scope holds the files it edits stops holding. Document first, then test and
 review. See [Putting it together](#putting-it-together-build-document-test-review-commit).
+
+### Remind the docs and the ticket after each commit
+
+`post_commit` fires right after a commit of the agent succeeded, so the reminder never gets in the way of the commit:
+the commit already happened. It is only for the agent's commits, not the ones a person makes. Every `inject` and
+`notify` of `post_commit` acts on every commit, and `changed` and the measures look at the commit just made, not
+at the working tree, so a `when` can target the commits that touch the code:
+
+```yaml
+vars:
+  key:   # PLAT-123-add-retry -> PLAT-123
+    branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
+
+on:
+  post_commit:
+    - when: { changed: ["internal/**", "cmd/**"] }
+      unless: { changed: "docs/**" }
+      action:
+        inject: "Go code changed in {changed_files} files of commit {commit}: update docs/ if it is now stale"
+    - when: { var: key }
+      action:
+        inject: "Comment commit {commit} ({subject}) on the Jira ticket {key}"
+```
+
+`{commit}` and `{subject}` are the short hash and the subject of the commit just made, and empty on any other
+event. A commit that fails gives no reminder, nor does one that does not decide the exit code of the line
+(`git commit -m x; echo done`). A polix older than the event reports `post_commit` as unknown, so set `requires` to a
+release that has it. A reminder on every commit can flood a long session: narrow it with `changed`, as above.
 
 ### Sensitive code gets a security review
 
@@ -1011,6 +1040,9 @@ What polix does, without a script:
   [Paths no agent writes](#paths-no-agent-writes): `AGENTS.md` and `CLAUDE.md` in `protected_files`, and `polix.yaml`
   and `ai/rules/` kept from subagents with `path` and `writes`, so the skills can still change them. polix only
   protects its own state on its own.
+- **Remind the agent of something after each commit** (a `PostToolUse` hook on `Bash` that matches `git commit`):
+  see [Remind the docs and the ticket after each commit](#remind-the-docs-and-the-ticket-after-each-commit). polix
+  fires `post_commit` only when the commit succeeded.
 - **Log what the agent does** (a `PreToolUse` hook that appends to a file): see
   [Evidence of the process each change followed](#evidence-of-the-process-each-change-followed).
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/diff"
@@ -90,6 +91,37 @@ func (a *Adapter) Diff(ctx context.Context) (diff.Diff, error) {
 	if err != nil {
 		return diff.Diff{}, err
 	}
+	return a.diff(stats)
+}
+
+// Commit returns the commit HEAD points to: the size of its change against its first parent, or the empty tree for a
+// root commit (Repo.CommitStats), validated, with its short hash and its subject (Repo.Summary, split at its first
+// space). A failure of git, an invalid diff or a repository without commits is the error. Like Diff, it runs
+// detached from the cancellation of ctx.
+func (a *Adapter) Commit(ctx context.Context) (hook.Commit, error) {
+	ctx = context.WithoutCancel(ctx)
+	stats, err := a.Repo.CommitStats(ctx, "HEAD")
+	if err != nil {
+		return hook.Commit{}, err
+	}
+	d, err := a.diff(stats)
+	if err != nil {
+		return hook.Commit{}, err
+	}
+	summary, err := a.Repo.Summary(ctx, "HEAD")
+	if err != nil {
+		return hook.Commit{}, err
+	}
+	short, subject, _ := strings.Cut(summary, " ")
+	c := hook.Commit{Diff: d, Hash: short, Subject: subject}
+	if err := c.Valid(); err != nil {
+		return hook.Commit{}, err
+	}
+	return c, nil
+}
+
+// diff builds the diff of the stats of git and validates it.
+func (a *Adapter) diff(stats []git.Stat) (diff.Diff, error) {
 	changes := make([]diff.Change, 0, len(stats))
 	for _, s := range stats {
 		c := diff.Change{Path: s.Path, Added: s.Added, Deleted: s.Deleted, Binary: s.Binary}

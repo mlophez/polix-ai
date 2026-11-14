@@ -40,6 +40,8 @@ func TestDecideDrawsEventsInOrder(t *testing.T) {
 			{Action: workflow.Action{Run: &workflow.Run{Rules: "{path}"}}},
 			{When: workflow.Cond{"not": workflow.Cond{"branch": "main"}}, Action: workflow.Action{Inject: &workflow.Inject{Rules: "{path}", Always: true}}},
 		},
+		workflow.PostCommit: {{Action: workflow.Action{Notify: &workflow.Notify{Message: "done"}}}},
+		workflow.PreCommit:  {{Action: workflow.Action{Block: &workflow.Block{Message: "no"}}}},
 		workflow.Start: {
 			{Action: workflow.Action{Inject: &workflow.Inject{Text: "hola"}}},
 			{Action: workflow.Action{Inject: &workflow.Inject{File: "AGENTS.md"}}},
@@ -59,10 +61,16 @@ func TestDecideDrawsEventsInOrder(t *testing.T) {
 		"    n4[\"when not=map[branch:main]<br/>inject rules {path} (always)\"]\n" +
 		"    n3 --> n4\n" +
 		"  end\n" +
+		"  subgraph pre_commit\n" +
+		"    n5[\"block: no\"]\n" +
+		"  end\n" +
+		"  subgraph post_commit\n" +
+		"    n6[\"notify: done\"]\n" +
+		"  end\n" +
 		"  subgraph stop\n" +
-		"    n5[\"when branch=^f, changed=src/**<br/>unless finished=polix:reviewer<br/>block: review\"]\n" +
-		"    n6[\"run go test (always)\"]\n" +
-		"    n5 --> n6\n" +
+		"    n7[\"when branch=^f, changed=src/**<br/>unless finished=polix:reviewer<br/>block: review\"]\n" +
+		"    n8[\"run go test (always)\"]\n" +
+		"    n7 --> n8\n" +
 		"  end\n"
 	if out := Decide(wf, true); out.Missing || out.Mermaid != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", out.Mermaid, want)

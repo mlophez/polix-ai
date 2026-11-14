@@ -92,6 +92,13 @@ func (e Evaluation) KnowDiff(d diff.Diff, err error) Evaluation {
 	return e
 }
 
+// KnowCommit returns the evaluation knowing the commit just made, or why it could not be read: then changed and the
+// measures hold, the placeholders of the commit expand to an empty text, and the call warns once.
+func (e Evaluation) KnowCommit(c Commit, err error) Evaluation {
+	e.Facts = e.Facts.learnCommit(c, err)
+	return e
+}
+
 // KnowFiles returns the evaluation knowing the files of the working tree.
 func (e Evaluation) KnowFiles(files []string) Evaluation {
 	e.Facts = e.Facts.learnFiles(files)

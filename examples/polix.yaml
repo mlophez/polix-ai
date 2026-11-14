@@ -12,7 +12,8 @@
 #
 # How a hook call is answered:
 # 1. The adapter turns the hook input into neutral events (an edit of several files gives one event per path; a
-#    command line with a `git commit` gives pre_command and then pre_commit).
+#    command line with a `git commit` gives pre_command and then pre_commit; once it ran and succeeded, its
+#    post_command and then post_commit).
 # 2. The built-in protection runs first, even without this file: nobody edits the state (<git-dir>/polix/), and no
 #    command naming it may write files. polix protects nothing else on its own: AGENTS.md, CLAUDE.md, ai/rules/ and
 #    polix.yaml are only protected when this file says so.
@@ -21,7 +22,7 @@
 #    the repository skips them.
 # 4. Edits outside the repository and edits of files git ignores skip the entries of `on`: they govern the change,
 #    what a commit may hold, so a build output, a local .env or a scratch file never fires a ticket, plan, format or
-#    docs entry. A commit in another repository (git -C ../other commit) skips the entries of pre_commit too.
+#    docs entry. A commit in another repository (git -C ../other commit) skips the entries of pre_commit and post_commit too.
 # 5. The entries of the event run in order, first those the other shortcuts of `guardrails` expand into, then those
 #    written in `on`; each one whose `when` holds and whose `unless` does not hold carries out its action. The first
 #    one that actually blocks ends the evaluation (see `on` below).
@@ -36,16 +37,16 @@
 # - Shortcuts of guardrails, each in its one form: protected_files and protected_branches take a list of strings;
 #   forbidden_commands, format_on_edit and run_on_stop a list of maps.
 # - Events, in lifecycle order: start, prompt, subagent_start, pre_edit, post_edit, pre_command, post_command,
-#   pre_commit, subagent_stop, stop.
+#   pre_commit, post_commit, subagent_stop, stop.
 # - Verbs, exactly one per action, only where Claude Code and Codex both support them:
 #   - block: on prompt, pre_edit, pre_command, pre_commit, subagent_stop and stop (rejected on start,
-#     subagent_start, post_edit and post_command, which already happened);
+#     subagent_start, post_edit, post_command and post_commit, which already happened);
 #   - inject: on every event but subagent_stop and stop (an agent that stops cannot receive context);
 #   - run: on every event; it blocks where block is valid, and elsewhere a failure reaches the AI as context;
 #   - notify: on every event; a message for the user, never for the AI.
 # - Conditions that hold only on some events (`polix config check` rejects them elsewhere):
 #   - path: pre_edit, post_edit;
-#   - command, writes: pre_command, post_command, pre_commit;
+#   - command, writes: pre_command, post_command, pre_commit, post_commit;
 #   - exit: post_command.
 #   Every other condition (actor, finished, agents_are_running, branch, var, changed, file, contains, changed_lines,
 #   changed_files, risk_score, not, any) holds on any event.
@@ -88,8 +89,8 @@ max_stop_retries: 3
 # - `branch` is a regular expression (Go RE2 syntax): the value is its first group, or the whole match without
 #   groups.
 # - When it does not match, the variable has no value: the `var` condition fails and {name} is left as is.
-# - A variable cannot be called path, command, branch, changed_lines, changed_files or risk_score, the built-in
-#   placeholders, and its only key is `branch`.
+# - A variable cannot be called path, command, branch, changed_lines, changed_files, risk_score, commit or subject,
+#   the built-in placeholders, and its only key is `branch`.
 vars:
   key: # first group: PLAT-123-add-retry -> PLAT-123
     branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
@@ -301,10 +302,11 @@ guardrails:
 # Placeholders, replaced in the strings of conditions (except `branch`), verbs and `contains`; an unknown one
 # is rejected by `polix config check`:
 # - {path}: the edited path, relative to the root (pre_edit and post_edit; empty elsewhere);
-# - {command}: the whole command line (pre_command, post_command and pre_commit; empty elsewhere);
+# - {command}: the whole command line (pre_command, post_command, pre_commit and post_commit; empty elsewhere);
+# - {commit}, {subject}: the short hash and the subject of the commit just made (post_commit; empty elsewhere);
 # - {branch}: the current branch;
-# - {changed_lines}, {changed_files}, {risk_score}: the measures of the change not committed yet, over the files of
-#   the `changed` of the `when` of the entry, else the whole change; `?` when git cannot measure it. The change is
+# - {changed_lines}, {changed_files}, {risk_score}: the measures of the change not committed yet (on post_commit,
+#   of the commit just made), over the files of the `changed` of the `when` of the entry, else the whole change; `?` when git cannot measure it. The change is
 #   only read when a string or a condition needs it;
 # - {<var>}: each variable of `vars`.
 # The placeholders of rules.run ({file}, {dir}, {id}, {name}, {names}, {files}, {dirs}) only exist there.
@@ -605,7 +607,7 @@ on:
     # redirection into the repository, or a file named by a program that writes by itself (rm, mv, cp, tee,
     # sed -i...), which also matches on a folder holding it or a wildcard reaching it (`rm -rf ai` or `rm -rf ai/*`
     # for ai/rules/**). A heuristic: reads do not count, and `python -c` that opens a file is not seen. Only on
-    # pre_command, post_command and pre_commit. With `actor`, only the subagents are kept away
+    # pre_command, post_command, pre_commit and post_commit. With `actor`, only the subagents are kept away
     # (guardrails.protected_files keeps everybody).
     - when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
       action:
@@ -688,6 +690,22 @@ on:
         block:
           once: true
           message: "Revisa si README.md y docs/ deben cambiar con este diff; si no, repite el commit."
+
+  # post_commit: after a commit of the agent succeeded: its command line ended with exit 0 and a `git commit` of it
+  # decides that code (alone, last, or followed by &&); a failed commit, a line in another repository and a person's
+  # commit give none. It comes right after the post_command of the line. It cannot be blocked: block and the condition
+  # exit are rejected. Every inject and notify acts on every commit (always has no effect), and changed, the measures
+  # and their placeholders look at the commit just made, not at the working tree; {commit} and {subject} are its short
+  # hash and its subject. It is commented out because a polix older than the event reports `post_commit` as an
+  # unknown event: a file that uses it sets `requires` to a release that knows it.
+  #
+  # post_commit:
+  #   - when: { changed: "src/**" }
+  #     action:
+  #       inject: "Se commiteó código en {changed_files} ficheros ({commit}): actualiza docs/ si ha quedado obsoleta."
+  #   - when: { var: key }
+  #     action:
+  #       inject: "Comenta el commit {commit} ({subject}) en el ticket {key} de Jira."
 
   # subagent_stop: a subagent is about to stop; actor is its type. A block keeps it working. Its entries never run
   # when the main session ends its turn. inject is rejected here.

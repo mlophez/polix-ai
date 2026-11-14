@@ -137,9 +137,19 @@ func (r *pass) condPath(all workflow.Cond) bool {
 	return r.ev.Event.Path != "" && anyPathFold(r.list(all, "path"), r.ev.Event.Path, r.ev.Fold())
 }
 
-// condChanged holds when a file not committed yet matches one of the globs of the changed of all.
+// condChanged holds when a file not committed yet matches one of the globs of the changed of all; on post_commit, a
+// file of the commit just made. It fails closed there: a commit that cannot be read holds it.
 func (r *pass) condChanged(all workflow.Cond) bool {
 	patterns := r.list(all, "changed")
+	if r.onCommit() {
+		_, err := r.commit()
+		if r.waiting() {
+			return false
+		}
+		if err != nil {
+			return true
+		}
+	}
 	for _, f := range r.changed() {
 		if glob.AnyPath(patterns, f) {
 			return true

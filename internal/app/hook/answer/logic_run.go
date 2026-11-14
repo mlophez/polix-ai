@@ -71,10 +71,17 @@ func (r *pass) runEntry(e workflow.Entry, ans agent.Answer) (agent.Answer, bool)
 
 // runKey returns the arguments of the command of run, expanded, and the key of its repeat: those arguments joined
 // by single spaces, or for the checks of the rules the word rules and the expanded target. A {path} in the command
-// or the target makes the key differ per path.
+// or the target makes the key differ per path. On post_commit, rules changed checks the files of the commit, not
+// those of the working tree, so its key ends in @ and the commit's short hash: its pass never counts for the same
+// run on another event, nor theirs for it.
 func (r *pass) runKey(run workflow.Run) ([]string, string) {
 	if run.Rules != "" {
-		return nil, "rules " + r.expand(run.Rules)
+		key := "rules " + r.expand(run.Rules)
+		if run.Rules == "changed" && r.onCommit() {
+			c, _ := r.commit()
+			key += "@" + c.Hash
+		}
+		return nil, key
 	}
 	args := make([]string, len(run.Command))
 	for i, a := range run.Command {
@@ -129,9 +136,10 @@ func cut(output string) string {
 	return fmt.Sprintf(" (last %d of %d lines)", outputLines, n)
 }
 
-// runRules runs the checks of the rules that apply to the changed files (`changed`) or to a path, through the
-// runners of rules.run that match their files or as programs, grouped as the runners group them (Rules.Plan); a
-// failed shared run is rerun per rule (Run.Settle). It returns the rules that failed, or "".
+// runRules runs the checks of the rules that apply to the changed files (`changed`, on post_commit those of the
+// commit just made) or to a path, through the runners of rules.run that match their files or as programs, grouped
+// as the runners group them (Rules.Plan); a failed shared run is rerun per rule (Run.Settle). It returns the rules
+// that failed, or "", and fails closed when the commit just made cannot be read.
 func (r *pass) runRules(target string) string {
 	all, err := r.rules()
 	if r.waiting() {
@@ -142,6 +150,9 @@ func (r *pass) runRules(target string) string {
 	}
 	var paths []string
 	if target == "changed" {
+		if reason := r.unreadableCommit(); reason != "" || r.waiting() {
+			return reason
+		}
 		paths = r.changed()
 	} else {
 		paths = []string{r.expand(target)}

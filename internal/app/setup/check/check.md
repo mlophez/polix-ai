@@ -35,7 +35,7 @@ gathers the problems with the methods of `setup.Inspection` of `internal/app/set
    (`workflow.InvalidError`, the runners of `rules.run` included), with whether they may come from a newer polix
    (`version.Problems.NeedsNewer`, never when the workflow requires one: `workflow.TooOldError`). Among them, a verb
    the event does not allow by `workflow.EventVerbs`, the verbs both agents support on it (`run`, `inject` and
-   `notify` on `start`, `subagent_start`, `post_edit` and `post_command`; `run`, `inject`, `block` and `notify` on
+   `notify` on `start`, `subagent_start`, `post_edit`, `post_command` and `post_commit`; `run`, `inject`, `block` and `notify` on
    `prompt`, `pre_edit`, `pre_command` and `pre_commit`; `run`, `block` and `notify` on `stop` and
    `subagent_stop`), named with the event, the verb, why and the verbs the event allows. An entry that never runs,
    after a `block` without `when`, `unless` or `once` of the same event other than `stop` and `subagent_stop`:

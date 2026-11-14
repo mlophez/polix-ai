@@ -22,4 +22,14 @@ func TestEventVerbs(t *testing.T) {
 			}
 		}
 	}
+	// post_commit is an informed event that comes right after pre_commit, with the verbs of post_command.
+	if want := []string{VerbRun, VerbInject, VerbNotify}; !slices.Equal(EventVerbs[PostCommit], want) {
+		t.Errorf("post_commit: %q, want %q", EventVerbs[PostCommit], want)
+	}
+	if !slices.Contains(Informed, PostCommit) {
+		t.Error("post_commit is not informed")
+	}
+	if i := slices.Index(Events, PreCommit); i < 0 || Events[i+1] != PostCommit {
+		t.Errorf("post_commit does not follow pre_commit: %q", Events)
+	}
 }

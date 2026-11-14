@@ -7,18 +7,19 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 )
 
-// command answers pre_command, post_command and pre_commit, a command line about to run, one that ran and, with
-// pre_command, a line about to commit. Before a command come its protections (see protectCommand). An unusable
+// command answers pre_command, post_command, pre_commit and post_commit, a command line about to run, one that ran
+// and, with pre_command, a line about to commit and, with post_command, one whose commit succeeded. Before a command come its protections (see protectCommand). An unusable
 // workflow fails closed before a command, but for the commands of polix that fixing it needs (see unusableCommand),
 // and only warns after one. Without polix.yaml nothing else happens. The last event before a command line runs, the
 // pre_command or the pre_commit of a line that commits, records the content before it runs when nothing blocked the
 // line (see lastBefore), and a post_command first finds what the command changed and puts back the protected files
 // (see watch), before its entries. The entries do not apply to a pre_commit whose commits all happen in another
-// repository (see commitsOutside). A failing run after a command reaches the AI as context
-// (workflow.Informed).
+// repository (see commitsOutside), nor to a post_commit whose commits do. A post_commit comes after the command: it
+// has no protections, no snapshot and no watch of the files, and every inject and notify of it acts each time it
+// applies. A failing run after a command reaches the AI as context (workflow.Informed).
 func (r *pass) command() agent.Answer {
 	name := r.ev.Event.Name
-	pre := name != workflow.PostCommand
+	pre := !r.after()
 	if pre {
 		if ans, denied := r.protectCommand(); r.waiting() || denied {
 			return ans
@@ -40,10 +41,13 @@ func (r *pass) command() agent.Answer {
 	if r.waiting() {
 		return ans
 	}
-	if name == workflow.PreCommit {
+	if name == workflow.PreCommit || name == workflow.PostCommit {
 		if outside := r.commitsOutside(); r.waiting() || outside {
 			return r.lastBefore(agent.Answer{})
 		}
+	}
+	if name == workflow.PostCommit {
+		r.always, r.every = true, true
 	}
 	return r.lastBefore(r.evaluate(ans))
 }
@@ -53,7 +57,7 @@ func (r *pass) command() agent.Answer {
 // line that commits, and neither ans nor an earlier event of the call (hook.Facts.Blocked) blocks it: the snapshot
 // then holds what every entry of the line left, and a line some entry refused leaves none.
 func (r *pass) lastBefore(ans agent.Answer) agent.Answer {
-	if r.ev.Event.Name != workflow.PostCommand && r.ev.Last() && !ans.Block && !r.ev.Facts.Blocked && !r.waiting() {
+	if !r.after() && r.ev.Last() && !ans.Block && !r.ev.Facts.Blocked && !r.waiting() {
 		r.snapshot()
 	}
 	return ans
@@ -129,4 +133,10 @@ func (r *pass) commitsOutside() bool {
 		}
 	}
 	return true
+}
+
+// after reports whether the event comes after its command line ran: post_command and post_commit.
+func (r *pass) after() bool {
+	name := r.ev.Event.Name
+	return name == workflow.PostCommand || name == workflow.PostCommit
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/hook"
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/state"
+	"github.com/mlophez/polix-ai/internal/app/workflow"
 	"github.com/mlophez/polix-ai/internal/platform/glob"
 )
 
@@ -77,8 +78,37 @@ func (r *pass) hash() (string, bool) {
 	return "", false
 }
 
-// changed returns the files not committed yet.
+// onCommit reports whether the event looks at the commit just made, not at the working tree: post_commit.
+func (r *pass) onCommit() bool { return r.ev.Event.Name == workflow.PostCommit }
+
+// commit returns the commit just made, the one HEAD points to, or why it cannot be read (then it is empty).
+func (r *pass) commit() (hook.Commit, error) {
+	if r.ev.Facts.HasCommit {
+		return r.ev.Facts.Commit, r.ev.Facts.CommitErr
+	}
+	s := hook.Step{Commit: true}
+	r.ask(s, s.Valid())
+	return hook.Commit{}, nil
+}
+
+// unreadableCommit returns why the commit just made cannot be read, on post_commit, or "": a run over its files
+// then fails instead of passing with none.
+func (r *pass) unreadableCommit() string {
+	if !r.onCommit() {
+		return ""
+	}
+	if _, err := r.commit(); err != nil {
+		return fmt.Sprintf("The commit cannot be read: %v", err)
+	}
+	return ""
+}
+
+// changed returns the files not committed yet, on post_commit those of the commit just made.
 func (r *pass) changed() []string {
+	if r.onCommit() {
+		c, _ := r.commit()
+		return c.Paths()
+	}
 	if r.ev.Facts.HasChanged {
 		return r.ev.Facts.Changed
 	}
@@ -87,8 +117,13 @@ func (r *pass) changed() []string {
 	return nil
 }
 
-// diff returns the size of the change of each file not committed yet, and whether it could be measured.
+// diff returns the size of the change of each file not committed yet, on post_commit that of the commit just made,
+// and whether it could be measured.
 func (r *pass) diff() (diff.Diff, bool) {
+	if r.onCommit() {
+		c, err := r.commit()
+		return c.Diff, err == nil
+	}
 	if r.ev.Facts.HasDiff {
 		return r.ev.Facts.Diff, r.ev.Facts.DiffErr == nil
 	}

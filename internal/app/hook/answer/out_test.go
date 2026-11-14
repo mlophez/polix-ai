@@ -1771,3 +1771,181 @@ func TestAgentsNotCountedWithoutTheCondition(t *testing.T) {
 		t.Fatalf("lines written: %s", r.log())
 	}
 }
+
+// post sends the PostToolUse of Bash with command and the tool response, as Claude Code would.
+func (r *repo) post(command string, response map[string]any) (int, string, string) {
+	return r.hook("claude", map[string]any{"hook_event_name": "PostToolUse", "tool_name": "Bash",
+		"tool_input": map[string]any{"command": command}, "tool_response": response})
+}
+
+// sessionLog returns every line of the log of polix of the repository, whether it is kept in one file or in one per
+// session.
+func (r *repo) sessionLog() string {
+	var log strings.Builder
+	_ = filepath.WalkDir(filepath.Join(r.dir, ".git", "polix"), func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".jsonl") {
+			data, _ := os.ReadFile(p)
+			log.Write(data)
+		}
+		return nil
+	})
+	return log.String()
+}
+
+// CUJ-01, CUJ-02, CUJ-03, CUJ-05 and CUJ-10: after a successful commit line the agent gets the injects of post_commit
+// and the user the notices, on every commit and with no injected or notified line; a failed commit, a commit that
+// does not decide the exit code of the line and a commit in another repository give none.
+func TestPostCommit(t *testing.T) {
+	const reminder = "Update the docs and the Jira ticket if this commit changes them."
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\non:\n  post_command:\n    - when: { command: \"echo*\" }\n      action: { inject: Echoed. }\n"+
+		"  post_commit:\n    - action:\n        inject: "+reminder+"\n    - action:\n        notify: Commit done.\n")
+	ok := map[string]any{"stdout": "ok"}
+	for i := range 2 {
+		for _, line := range []string{`git commit -m "feat: x"`, `git commit -m "feat: x" && git push`} {
+			code, stdout, stderr := r.post(line, ok)
+			expect(t, "post_commit", code, 0, stderr)
+			if !strings.Contains(stdout, `"hookEventName":"PostToolUse"`) ||
+				!strings.Contains(stdout, `"additionalContext":"`+reminder+`"`) ||
+				!strings.Contains(stdout, `"systemMessage":"polix: Commit done."`) {
+				t.Fatalf("commit %d, %q: %q", i, line, stdout)
+			}
+		}
+	}
+	if log := r.sessionLog(); strings.Contains(log, `"outcome":"injected"`) || strings.Contains(log, `"outcome":"notified"`) {
+		t.Fatalf("injected or notified lines written: %s", log)
+	}
+	for name, in := range map[string]map[string]any{
+		"a failed tool": {"hook_event_name": "PostToolUseFailure", "tool_name": "Bash",
+			"tool_input": map[string]any{"command": `git commit -m "feat: x"`}, "error": "exit status 1"},
+		"exit code 1": {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+			"tool_input":    map[string]any{"command": `git commit -m "feat: x"`},
+			"tool_response": map[string]any{"exit_code": 1}},
+		"another repository": {"hook_event_name": "PostToolUse", "tool_name": "Bash",
+			"tool_input":    map[string]any{"command": "git -C ../other commit -m x"},
+			"tool_response": ok},
+	} {
+		if name == "another repository" {
+			other := filepath.Join(filepath.Dir(r.dir), "other")
+			if err := os.MkdirAll(other, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("git", "init", "--quiet")
+			cmd.Dir = other
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git init: %v\n%s", err, out)
+			}
+			t.Cleanup(func() { _ = os.RemoveAll(other) })
+		}
+		code, stdout, stderr := r.hook("claude", in)
+		expect(t, name, code, 0, stderr)
+		if strings.Contains(stdout, "additionalContext") || strings.Contains(stdout, "Commit done") {
+			t.Fatalf("%s: %q", name, stdout)
+		}
+	}
+	code, stdout, stderr := r.post(`git commit -m "feat: x"; echo done`, ok)
+	expect(t, "a commit that does not decide the line", code, 0, stderr)
+	if strings.Contains(stdout, reminder) || !strings.Contains(stdout, "Echoed.") {
+		t.Fatalf("post_command still applies and post_commit does not: %q", stdout)
+	}
+}
+
+// CUJ-11: a commit line keeps its pre_commit, which blocks before the commit, and its post_command, which injects
+// after it, whatever post_commit holds.
+func TestPostCommandOfACommitKept(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\non:\n  pre_commit:\n    - action: { block: Not yet. }\n"+
+		"  post_command:\n    - when: { command: \"git commit*\", exit: 0 }\n      action: { inject: Committed. }\n")
+	code, _, stderr := r.bash("git commit -m x", false)
+	expect(t, "pre_commit", code, 2, stderr)
+	if !strings.Contains(stderr, "Not yet.") {
+		t.Fatalf("stderr: %q", stderr)
+	}
+	code, stdout, stderr := r.bash("git commit -m x", true)
+	expect(t, "post_command", code, 0, stderr)
+	if !strings.Contains(stdout, `"additionalContext":"Committed."`) {
+		t.Fatalf("stdout: %q", stdout)
+	}
+}
+
+// out returns what git prints for args in the repository, trimmed.
+func (r *repo) out(args ...string) string {
+	r.t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = r.dir
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull)
+	out, err := cmd.Output()
+	if err != nil {
+		r.t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// CUJ-06 and CUJ-07: on a repository, post_commit measures the commit just made, not the working tree, and names it:
+// {commit} is what git log -1 --format=%h prints and {subject} what --format=%s prints, and {key} the ticket of the
+// branch.
+func TestPostCommitMeasures(t *testing.T) {
+	r := newRepo(t, "ABC-123-login")
+	r.write("polix.yaml", `version: 1
+vars:
+  key: { branch: "^([A-Z][A-Z0-9]+-[0-9]+)" }
+on:
+  post_commit:
+    - when: { changed: ["*.go"] }
+      action:
+        inject: "Go code changed in {changed_files} files: update docs/."
+    - action:
+        inject: "Comment commit {commit} ({subject}) on the Jira ticket {key}."
+`)
+	r.write("main.go", "package main\n")
+	r.write("util.go", "package main\n")
+	r.write("other.go", "package main\n") // never committed
+	r.git("add", "main.go", "util.go")
+	r.git("commit", "--quiet", "-m", "feat: login form")
+	ok := map[string]any{"stdout": "ok"}
+	code, stdout, stderr := r.post(`git commit -m "feat: login form"`, ok)
+	expect(t, "post_commit", code, 0, stderr)
+	want := `"additionalContext":"Go code changed in 2 files: update docs/.\n\nComment commit ` +
+		r.out("log", "-1", "--format=%h") + ` (feat: login form) on the Jira ticket ABC-123."`
+	if !strings.Contains(stdout, want) {
+		t.Fatalf("stdout %q does not contain %q", stdout, want)
+	}
+	r.write("README.md", "changed\n")
+	r.git("add", "README.md")
+	r.git("commit", "--quiet", "-m", "docs: readme")
+	_, stdout, stderr = r.post(`git commit -m "docs: readme"`, ok)
+	if strings.Contains(stdout, "Go code changed") || !strings.Contains(stdout, "(docs: readme) on the Jira ticket ABC-123.") {
+		t.Fatalf("a commit of docs: %q %q", stdout, stderr)
+	}
+}
+
+// AC-05: the adapter reads a root commit against the empty tree, with its short hash and its subject; a repository
+// without commits cannot be read.
+func TestAdapterReadsRootCommit(t *testing.T) {
+	r := newRepo(t, "main")
+	a := &Adapter{}
+	if _, _, err := a.Open(context.Background(), r.dir); err != nil {
+		t.Fatal(err)
+	}
+	c, err := a.Commit(context.Background())
+	if err != nil || !slices.Equal(c.Paths(), []string{"README.md"}) || c.Diff.Lines() != 1 ||
+		c.Hash != r.out("log", "-1", "--format=%h") || c.Subject != "init" {
+		t.Fatalf("root commit: %+v %v", c, err)
+	}
+	r.write("a b.go", "package a\n")
+	r.git("add", "--all")
+	r.git("commit", "--quiet", "-m", "feat: two words here")
+	if c, err = a.Commit(context.Background()); err != nil || !slices.Equal(c.Paths(), []string{"a b.go"}) ||
+		c.Subject != "feat: two words here" {
+		t.Fatalf("second commit: %+v %v", c, err)
+	}
+	empty := &repo{t: t, dir: t.TempDir()}
+	empty.git("init", "--quiet", "--initial-branch=main")
+	b := &Adapter{}
+	if _, _, err := b.Open(context.Background(), empty.dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Commit(context.Background()); err == nil {
+		t.Fatal("a repository without commits has no commit to read")
+	}
+}

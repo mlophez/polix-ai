@@ -66,6 +66,7 @@ func TestInjectsOnce(t *testing.T) {
 		{Prompt, Entry{Action: inject(Inject{Rules: "{path}", Keys: []string{"rules"}})}, true},
 		{PreEdit, Entry{Action: inject(Inject{Text: "x", Always: true, Keys: []string{"text", "always"}})}, false},
 		{Start, Entry{Action: inject(Inject{Text: "x"})}, false},
+		{PostCommit, Entry{Action: inject(Inject{Text: "x"})}, false},
 		{PreCommit, Entry{Action: Action{Block: &Block{Message: "x"}, Keys: []string{VerbBlock}}}, false},
 	}
 	for _, c := range cases {

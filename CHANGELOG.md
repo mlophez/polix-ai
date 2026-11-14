@@ -7,7 +7,24 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- The event `post_commit`, which fires after a commit of the agent succeeded, to remind it of the docs or of the Jira
+  ticket without getting in the way of the commit: it comes right after the `post_command` of a command line that
+  ended with exit code 0 and holds a `git commit` that decides that code, so a failed commit, one that does not decide
+  the exit code (`git commit -m x; echo done`) and one in another repository give none. It takes `run`, `inject` and
+  `notify`, never blocks (`block` and the condition `exit` are rejected), and every `inject` and `notify` acts on every
+  commit, with no `injected` or `notified` line. On it `changed`, the measures and their placeholders look at the
+  commit just made, not at the working tree, and when git cannot read it they hold and the call warns. Needs no new
+  hook, and a polix older than the event reports it as unknown, so set `requires` to a release that has it.
+  `docs/use-cases.md` has a recipe.
+- The placeholders `{commit}` and `{subject}`, the short hash and the subject of the commit just made, on
+  `post_commit`, and an empty text on any other event.
+
 ### Changed
+
+- A variable of `vars` can no longer be named `commit` or `subject`, which are now built-in placeholders like `path`
+  and `branch`: `polix config check` reports it, so rename the variable before updating.
 
 - `/polix:plan` plans by outcome: the plan has three level-2 sections, `Overview` (with `Problem`, `Affected`, `Context`
   and `Terms`, the terms a new reader would not know), `Specification` and `Approach`, then `Iterations`.

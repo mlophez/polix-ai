@@ -96,6 +96,8 @@ func TestEventVerbsValid(t *testing.T) {
 			"or a run whose failure reaches the AI (post_edit allows run, inject, notify)",
 		PostCommand + " " + VerbBlock: "polix.yaml:7: block cannot stop post_command, which already happened: use " +
 			"inject, or a run whose failure reaches the AI (post_command allows run, inject, notify)",
+		PostCommit + " " + VerbBlock: "polix.yaml:7: block cannot stop post_commit, which already happened: use " +
+			"inject, or a run whose failure reaches the AI (post_commit allows run, inject, notify)",
 		Stop + " " + VerbInject: "polix.yaml:7: inject does not reach the agent on stop, which cannot receive " +
 			"context (stop allows run, block, notify)",
 		SubagentStop + " " + VerbInject: "polix.yaml:7: inject does not reach the agent on subagent_stop, which " +

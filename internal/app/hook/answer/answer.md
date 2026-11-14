@@ -33,7 +33,9 @@ interface `format`, with `parse`, which turns the input into the native name of 
 `agent.Event`s (one `pre_edit` or `post_edit` per edited path, made absolute from the `cwd` of the call; a
 `pre_command` whose line runs a `git commit` also gives `pre_commit`, decided by `hookInput.commits` on the commands
 of `shell.Parse`, nested ones included, whose normalized words start with `git commit`, and by the regular
-expression `gitCommit` on a line the parser rejects; the `SubagentStart` of either agent gives one
+expression `gitCommit` on a line the parser rejects; a `post_command` whose exit code is 0 and whose line holds a
+`git commit` that propagates its exit code (`shell.Command.Propagates`, `hookInput.commitSucceeds`) also gives
+`post_commit`, right after it and before the edits the command made, and a `PostToolUseFailure` never does; the `SubagentStart` of either agent gives one
 `subagent_start` whose actor is its `agent_type`), and `render`, which turns an
 `agent.Answer` into stdout, stderr and the exit code for the native event. It has one implementation per agent:
 `claude` in `in_claude.go` and `codex` in `in_codex.go`, which share the fields of the input both agents write and
@@ -78,10 +80,11 @@ holds only what its events do and calls the engine as a library:
 - `edit` (`logic_edit.go`), for `pre_edit` and `post_edit`: the protections of an edit (rule 1), but for an edit a
   command made (rule 16), the edits an unusable workflow lets through (rule 2) and the skip of the edits outside the
   change (rule 3).
-- `command` (`logic_command.go`), for `pre_command`, `post_command` and `pre_commit`: the protections of a command
-  (rule 1), the commands of polix an unusable workflow lets through (rule 2), the snapshot of the last event
-  before a command line runs and the watch of a `post_command` (rule 16) and the commits outside the change of a
-  `pre_commit` (rule 3).
+- `command` (`logic_command.go`), for `pre_command`, `post_command`, `pre_commit` and `post_commit`: the protections
+  of a command (rule 1), the commands of polix an unusable workflow lets through (rule 2), the snapshot of the last
+  event before a command line runs and the watch of a `post_command` (rule 16) and the commits outside the change of
+  a `pre_commit` or a `post_commit` (rule 3). A `post_commit` comes after the command, as a `post_command` does, but
+  with no watch, and sets `always` and `every`, so its injects and notices act on every commit and write no line.
 - `stop` (`logic_stop.go`), for `stop` and `subagent_stop`: the reconciliation of the log with the subagents in
   flight before the entries (rule 17), the loop guard of `max_stop_retries` (rule 10) and the `finished` line of
   `subagent_stop` (rule 9).
@@ -94,7 +97,8 @@ commits land (`logic_cmdline.go`, `logic_writes.go`, `logic_commit.go`), the fil
 the log (`logic_log.go`). What differs per event reaches it as fields of the pass: `informed`, set by `Decide` for the
 events of `workflow.Informed` and for an edit a command made, turns a failing `run` into context; `byCommand`, set by
 `Decide` for an edit a command made (`agent.Event.ByCommand`), turns a `block` into context too; `always`, set by
-`session` on `start` and `subagent_start`, makes every inject act every time; and `loop`, set by `stop`, sends every
+`session` on `start` and `subagent_start` and by `command` on `post_commit`, makes every inject act every time;
+`every`, set by `command` on `post_commit`, makes every notify show every time; and `loop`, set by `stop`, sends every
 block through the loop guard.
 
 A command line is read by `shell.Parse` (`internal/platform/shell`), given whether the system is Windows: it parses
@@ -123,7 +127,8 @@ moving HEAD (`Refs`: the commit of `refs/stash` and an operation stopped halfway
 the paths that differ between the tree of an observed line and the current one and those of them the current one no
 longer holds (`Compare` and `Tree`, kept in the facts per pair of trees), the changed files,
 the diff (`Diff`: the
-added and deleted lines of each file not committed yet, the same files as the changed ones), the files, the rules, the
+added and deleted lines of each file not committed yet, the same files as the changed ones), the commit just made
+(`Commit`, for `post_commit`: its diff, its short hash and its subject), the files, the rules, the
 log, whether git ignores a path, the real paths of some paths, which programs the PATH does not run (`Programs`, kept
 in the facts as `Missing` once per call), the content of a file (of an epoch), or acts: runs
 a command, runs the checks of one or several rules (`rule.Run`, with the argv of its runner of `rules.run`), puts paths
@@ -168,7 +173,7 @@ The rules it follows, as before this use case:
    newer polix hint to run `polix update` (`hook.Evaluation.Running`, which the shell asks); a name of the old
    vocabulary, reported with its new spelling, does not.
 3. Without polix.yaml, for an edit outside the repository or of a file git ignores, and for a `pre_commit` whose
-   commits all happen in another repository (`git -C ../other commit`), only the protections apply, and for that
+   commits all happen in another repository (a `post_commit` of such commits skips its entries too) (`git -C ../other commit`), only the protections apply, and for that
    `pre_commit` the `snapshot` of rule 16, since the rest of its line may still change this repository: the
    entries govern the change, what a commit may hold, so a build output, a local `.env` or a commit in another
    repository never fires them. The check is a strict allowlist: `commitDirs` places the line only when every
@@ -190,8 +195,8 @@ The rules it follows, as before this use case:
    (`workflow.Action.Verb`). The condition `path` ignores case where file names ignore it (`anyPathFold`), as the
    protection of the state and `writes` do. `block`
    blocks with its message; `run` runs a command or the checks of the rules (`changed`, or a path), and a failure,
-   its `message`, a blank line and the output, blocks the event or, on `start`, `subagent_start`, `post_edit` and
-   `post_command` (`workflow.Informed`), reaches the AI as context and is logged as `inform`; `inject` injects a
+   its `message`, a blank line and the output, blocks the event or, on `start`, `subagent_start`, `post_edit`,
+   `post_command` and `post_commit` (`workflow.Informed`), reaches the AI as context and is logged as `inform`; `inject` injects a
    text, a file or the rules of a path; `notify` adds its expanded message to the messages for the user (rule 15),
    never to the AI, logged as a `notify` decision with the text, and a message that expands to nothing shows
    nothing. On an edit a command made (rule 16), which already happened, a `block` and a failing `run` reach the AI
@@ -216,12 +221,14 @@ The rules it follows, as before this use case:
      another actor, a new session and an edit inside the scope are reminded again, an edit outside it is not.
    - `run` acts once by default: it is skipped when its key passed on the current branch or the same HEAD commit,
      and on the content hash, whoever's entry ran it. The key is what it runs: the expanded arguments joined by
-     single spaces, or `rules` and the expanded target, so a `{path}` repeats it per path. Any run of polix that passes, with or without `always`,
+     single spaces, or `rules` and the expanded target, so a `{path}` repeats it per path; on `post_commit`,
+     `rules changed` checks the files of the commit and adds `@` and its short hash, so it never shares a pass with
+     the same run on the working tree. Any run of polix that passes, with or without `always`,
      writes `passed` with its key when the hash before and after it is the same; a run during which the content
      changed, or with an unknown hash, writes none, and the hash after it is computed only when the one before it is
      known. With `always: true` it runs on every event.
-   - `inject` acts once by default, except on `start` and `subagent_start`, which begin a new context and always
-     inject: keyed by the session, the
+   - `inject` acts once by default, except on `start` and `subagent_start`, which begin a new context, and on
+     `post_commit`, which repeats on every commit, where it always injects: keyed by the session, the
      actor, the line of its entry and the expanded text or file path (one key per rule id for an `inject` of `rules`),
      it is skipped while not due and writes `injected`, without hash, when it reaches the AI: the lines are written
      once the answer of the event is known, in the order of the injects, and not at all when the answer to a `prompt`
@@ -236,10 +243,10 @@ The rules it follows, as before this use case:
      subagent type on `subagent_start`, with its id), when the workflow has a once-only inject, `requirements` or an
      `agents_are_running` (`workflow.Workflow.ObservesStart`); the `started` of `start` has the `source` of the start
      as its key, empty when the agent gives none. The end of a subagent is written only for a once-only inject
-     (`workflow.Workflow.InjectsOnce`, which skips the injects of `start` and `subagent_start`) or an
+     (`workflow.Workflow.InjectsOnce`, which skips the injects of `start`, `subagent_start` and `post_commit`) or an
      `agents_are_running` (`workflow.Workflow.CountsAgents`, rule 17), since the context of the requirements never
      goes to a subagent.
-   - `notify` acts once by default: keyed by the session, the line of its entry and the expanded text, whatever the
+   - `notify` acts once by default, but on `post_commit` it shows every time and writes no line: keyed by the session, the line of its entry and the expanded text, whatever the
      actor, it is skipped, with a `skip` decision, when the log has a `notified` line of that key, or an earlier
      event of the call already showed it (`passNotice`, `notified`). Nothing makes it due again in the session: a
      `started`, a `finished` and another actor never do, since the user is one person. A placeholder that changes its
@@ -308,9 +315,16 @@ The rules it follows, as before this use case:
     once per call (`hook.Facts.Diff`, `hook.Facts.HasDiff`), only when a condition or a string needs it. When it
     cannot be measured (`hook.Facts.DiffErr`), the three measures hold, so a broken git never skips a review, and
     the call warns once: `polix cannot measure the diff (<cause>): changed_lines, changed_files and risk_score hold`.
+    On `post_commit`, `changed` and the measures look at the commit just made, not at the working tree
+    (`hook.Facts.Commit`, read once per call through `hook.Step.Commit`, its diff against its first parent or the empty
+    tree): when it cannot be read (`hook.Facts.CommitErr`), `changed` and the three measures hold, the measure
+    placeholders expand to `?` and the call warns once: `polix cannot read the commit (<cause>): changed, changed_lines,
+    changed_files and risk_score hold`.
 13. The placeholders `{changed_lines}`, `{changed_files}` and `{risk_score}` of every string of an entry expand to
     the measures over the `changed` of its `when`, else the whole diff, or to `?` when it cannot be measured
-    (`measureValues`).
+    (`measureValues`). On `post_commit`, `{commit}` and `{subject}` expand to the short hash and the subject of the
+    commit just made, to an empty text when it cannot be read, and on any other event to an empty text, without
+    asking for the commit; they are read only when a string holds one of them.
 14. On `prompt`, before the entries, when the workflow declares `requirements` (`workflow.Workflow.Requirements`),
     its programs followed by git (`workflow.Workflow.Programs`) are looked up once per call (`hook.Step.Programs`,
     answered by `Missing`) and, when some are not on the PATH, the AI gets one context: `These programs that polix.yaml requires are not on the PATH: <names>. Before
@@ -437,6 +451,11 @@ needs one method per fact.
 - `Diff`: the added and deleted lines of each file not committed yet (`git.Repo.Stats` against HEAD, untracked
   files read whole), as a validated `diff.Diff`; a failure of git or an invalid diff is its error, kept in the
   facts as a warning. Like `Changed`, it runs detached from the cancellation of the caller.
+- `Commit`: the commit HEAD points to, as `hook.Commit`: the added and deleted lines of each of its files against its
+  first parent, or the empty tree for a root commit (`git.Repo.CommitStats`), as a validated `diff.Diff`, with its
+  short hash and its subject (`git.Repo.Summary`, split at its first space); a failure of git, an invalid diff or a
+  repository without commits is its error, kept in the facts as a warning. Like `Diff`, it runs detached from the
+  cancellation of the caller.
 - `LoadRules`: the rules of the folder it is given (`Workflow.RulesPath`: `rules.path`, `ai/rules/` by default),
   `retired.yaml` left out, ordered by id, invalid ones included, or the error of a file that cannot be read or is
   not yaml (`rule.Loaded.Err`), through the field `Rules` of the adapter, the loader of `LoadRule`
@@ -481,7 +500,8 @@ The failure policy of the hook, so a broken polix never traps the agent:
 - Outside a git repository, or without events (a `Read`), everything goes through.
 - A workflow that cannot be used is data of the answer (Logic, rule 2), never an error.
 - The errors of the steps are data too: an unknown hash warns, a diff that cannot be measured warns and makes the
-  measures hold, two trees that cannot be compared make `finished` not hold and a `block` with `once` block again,
+  measures hold, a commit just made that cannot be read warns, makes `changed` and the measures hold and fails a
+  `run` with `rules: changed` (`The commit cannot be read`), two trees that cannot be compared make `finished` not hold and a `block` with `once` block again,
   rules that cannot be loaded fail the `run` that needs them (`The rules cannot be loaded`), a log that cannot be
   used lets a stop through and makes every verb act every time, a file
   that cannot be read gives no context, a failing command or check blocks with its output, or informs on the

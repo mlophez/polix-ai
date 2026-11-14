@@ -56,6 +56,8 @@ func TestValidRejects(t *testing.T) {
 		{"block on start", "version: 1\non:\n  start:\n    - action: { block: x }\n", "block cannot stop start, which already happened"},
 		{"block on post_edit", "version: 1\non:\n  post_edit:\n    - action: { block: x }\n", "block cannot stop post_edit"},
 		{"block on post_command", "version: 1\non:\n  post_command:\n    - action: { block: x }\n", "block cannot stop post_command"},
+		{"block on post_commit", "version: 1\non:\n  post_commit:\n    - action:\n        block: Update the docs.\n", "polix.yaml:4: block cannot stop post_commit, which already happened: use inject, or a run whose failure reaches the AI (post_commit allows run, inject, notify)"},
+		{"exit on post_commit", "version: 1\non:\n  post_commit:\n    - when: { exit: 0 }\n      action: { inject: x }\n", "exit never holds on post_commit (only on post_command)"},
 		{"inject on stop", "version: 1\non:\n  stop:\n    - action: { inject: x }\n", "inject does not reach the agent on stop"},
 		{"inject on subagent_stop", "version: 1\non:\n  subagent_stop:\n    - action: { inject: { file: x } }\n", "inject does not reach the agent on subagent_stop"},
 		// AC5: the long form of each verb.
@@ -91,6 +93,8 @@ func TestValidRejects(t *testing.T) {
 		{"placeholder in a condition", "version: 1\non:\n  pre_edit:\n    - unless: { file: \"plans/{kye}.md\" }" + block, "unknown placeholder {kye}"},
 		{"reserved var name", "version: 1\nvars:\n  path: { branch: x }\n", "var path: the name is a built-in placeholder"},
 		{"reserved measure var name", "version: 1\nvars:\n  risk_score: { branch: x }\n", "var risk_score: the name is a built-in placeholder"},
+		{"reserved commit var name", "version: 1\nvars:\n  commit: { branch: \"^(.*)$\" }\n", "var commit: the name is a built-in placeholder (path, command, branch, changed_lines, changed_files, risk_score, commit, subject)"},
+		{"reserved subject var name", "version: 1\nvars:\n  subject: { branch: \"^(.*)$\" }\n", "var subject: the name is a built-in placeholder (path, command, branch, changed_lines, changed_files, risk_score, commit, subject)"},
 		{"empty any", "version: 1\non:\n  pre_commit:\n    - when: { any: {} }" + block, "any needs at least one condition"},
 		{"any not a map", "version: 1\non:\n  pre_commit:\n    - when: { any: [a] }" + block, "any needs a map of conditions"},
 		{"empty weight glob", "version: 1\nrisk:\n  weights:\n    \"\": 1\n", "risk.weights: weight: empty glob"},
@@ -145,6 +149,11 @@ on:
   post_command:
     - when: { command: "just test*", exit: 1 }
       action: { inject: "Los tests fallan" }
+  post_commit:
+    - when: { command: "git commit*", writes: ["docs/**"] }
+      action: { inject: "Comment on the ticket" }
+    - action: { run: "echo done" }
+    - action: { notify: "Commit done" }
   pre_commit:
     - when:
         changed: "*.go"

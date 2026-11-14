@@ -14,6 +14,8 @@ on:
   stop:
     - action: { block: "stop" }
       when: { changed: "*.go" }
+  post_commit:
+    - action: { notify: "Commit done" }
   # Before a commit.
   pre_commit:
     - unless: { finished: polix:reviewer }
@@ -70,6 +72,8 @@ on:
           message: "review"
 
     - action: { run: { command: go test ./..., always: true } }
+  post_commit:
+    - action: { notify: "Commit done" }
   stop:
     - when: { changed: "*.go" }
       action: { block: "stop" }

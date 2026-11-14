@@ -10,6 +10,7 @@ const (
 	PreCommand    = "pre_command"
 	PostCommand   = "post_command"
 	PreCommit     = "pre_commit"
+	PostCommit    = "post_commit" // a commit of the agent succeeded
 	SubagentStop  = "subagent_stop"
 	Stop          = "stop" // the main session ends its turn; a subagent ends with subagent_stop
 )
@@ -24,7 +25,7 @@ const (
 
 // Events lists every neutral event in lifecycle order.
 var Events = []string{Start, Prompt, SubagentStart, PreEdit, PostEdit, PreCommand, PostCommand, PreCommit,
-	SubagentStop, Stop}
+	PostCommit, SubagentStop, Stop}
 
 // Actions are the verbs an action can hold, exactly one per entry.
 var Actions = []string{VerbRun, VerbInject, VerbBlock, VerbNotify}
@@ -36,20 +37,22 @@ var Conditions = []string{"actor", "finished", "agents_are_running", "branch", "
 // Measures are the conditions that measure the uncommitted diff, over the files of the nearest `changed`.
 var Measures = []string{"changed_lines", "changed_files", "risk_score"}
 
-// Builtins are the placeholders every string may use; a variable cannot take their names.
-var Builtins = []string{"path", "command", "branch", "changed_lines", "changed_files", "risk_score"}
+// Builtins are the placeholders every string may use; a variable cannot take their names. commit and subject, the
+// short hash and the subject of the commit just made, expand only on post_commit, and to an empty text elsewhere.
+var Builtins = []string{"path", "command", "branch", "changed_lines", "changed_files", "risk_score", "commit",
+	"subject"}
 
 // conditionEvents limits the conditions that only make sense on some events; the rest hold on any event.
 var conditionEvents = map[string][]string{
 	"path":    {PreEdit, PostEdit},
-	"command": {PreCommand, PostCommand, PreCommit},
-	"writes":  {PreCommand, PostCommand, PreCommit},
+	"command": {PreCommand, PostCommand, PreCommit, PostCommit},
+	"writes":  {PreCommand, PostCommand, PreCommit, PostCommit},
 	"exit":    {PostCommand},
 }
 
 // Informed are the events that already happened when polix hears of them: a block cannot stop them, and a failing
 // run only reaches the AI as context. Neither agent can stop the start of a subagent.
-var Informed = []string{Start, SubagentStart, PostEdit, PostCommand}
+var Informed = []string{Start, SubagentStart, PostEdit, PostCommand, PostCommit}
 
 // EventVerbs are the verbs each event of Events allows, in the order of Actions: what both agents support on it, so
 // polix.yaml means the same in each. A block cannot stop the events that already happened (Informed), an inject
@@ -64,6 +67,7 @@ var EventVerbs = map[string][]string{
 	PreCommand:    {VerbRun, VerbInject, VerbBlock, VerbNotify},
 	PostCommand:   {VerbRun, VerbInject, VerbNotify},
 	PreCommit:     {VerbRun, VerbInject, VerbBlock, VerbNotify},
+	PostCommit:    {VerbRun, VerbInject, VerbNotify},
 	SubagentStop:  {VerbRun, VerbBlock, VerbNotify},
 	Stop:          {VerbRun, VerbBlock, VerbNotify},
 }

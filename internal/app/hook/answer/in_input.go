@@ -162,8 +162,9 @@ func (in hookInput) edits(ag, name string, paths []string) ([]agent.Event, error
 }
 
 // commands returns the event name of the agent ag of the command line command: after it ran (post_command), with
-// the exit code of its response, 1 when the agent says it failed without one; about to run (pre_command), plus
-// pre_commit when it commits.
+// the exit code of its response, 1 when the agent says it failed without one, plus post_commit when it ended with
+// exit code 0 and a git commit decides that code (see commitSucceeds); about to run (pre_command), plus pre_commit
+// when it commits.
 func (in hookInput) commands(ag, name, command string, failed bool) ([]agent.Event, error) {
 	code := 0
 	if name == workflow.PostCommand {
@@ -175,6 +176,9 @@ func (in hookInput) commands(ag, name, command string, failed bool) ([]agent.Eve
 	names := []string{name}
 	if name == workflow.PreCommand && in.commits(command) {
 		names = append(names, workflow.PreCommit)
+	}
+	if name == workflow.PostCommand && code == 0 && in.commitSucceeds(command) {
+		names = append(names, workflow.PostCommit)
 	}
 	var events []agent.Event
 	for _, n := range names {
@@ -191,12 +195,25 @@ func (in hookInput) commands(ag, name, command string, failed bool) ([]agent.Eve
 // whose normalized words start with git and commit (`git -C x commit`, `sudo git commit`), so the text of a commit
 // inside quotes (`echo "git commit"`) does not count. A line the bash parser rejects is decided by gitCommit.
 func (in hookInput) commits(command string) bool {
+	return in.commitsWhere(command, func(shell.Command) bool { return true })
+}
+
+// commitSucceeds reports whether a command line that ended with exit code 0 holds a git commit whose exit code is
+// the one of the line: a commit that propagates (shell.Command.Propagates), as commits recognises it. A line the
+// bash parser rejects is decided by gitCommit, as it is for commits.
+func (in hookInput) commitSucceeds(command string) bool {
+	return in.commitsWhere(command, func(c shell.Command) bool { return c.Propagates })
+}
+
+// commitsWhere reports whether a command line holds a git commit, as commits recognises it, that satisfies ok; a
+// line the bash parser rejects is decided by gitCommit alone.
+func (in hookInput) commitsWhere(command string, ok func(shell.Command) bool) bool {
 	cmds, ast := shell.Parse(command, runtime.GOOS == "windows")
 	if !ast {
 		return gitCommit.MatchString(command)
 	}
 	for _, c := range cmds {
-		if ws := c.Normal(); len(ws) > 1 && shell.Program(ws[0]) == "git" && ws[1] == "commit" {
+		if ws := c.Normal(); len(ws) > 1 && shell.Program(ws[0]) == "git" && ws[1] == "commit" && ok(c) {
 			return true
 		}
 	}

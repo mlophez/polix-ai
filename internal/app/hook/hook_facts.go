@@ -31,6 +31,11 @@ type Facts struct {
 	Diff       diff.Diff // the size of the change of each file not committed yet
 	DiffErr    error     // the diff could not be measured: the measure conditions hold
 	HasDiff    bool
+	// Commit is the commit just made, the one HEAD points to, which post_commit looks at; CommitErr tells that it
+	// could not be read: changed and the measures then hold.
+	Commit     Commit
+	CommitErr  error
+	HasCommit  bool
 	Files      []string
 	HasFiles   bool
 	Rules      []rule.Rule
@@ -62,6 +67,32 @@ type Facts struct {
 	// does not block, by its last event (see Evaluation.Last): the notices of notify, which a blocked call never
 	// shows to the user. A block of the call drops them (see Answered).
 	Pending []state.Entry
+}
+
+// Commit is a commit as post_commit sees it: the size of its change against its first parent, or against the empty
+// tree for a root commit, its short hash and its subject.
+type Commit struct {
+	Diff    diff.Diff
+	Hash    string // the short hash, as git log -1 --format=%h prints it
+	Subject string // the subject, as git log -1 --format=%s prints it
+}
+
+// Valid tells why the commit is not valid: its diff is not.
+func (c Commit) Valid() error { return c.Diff.Valid() }
+
+// clone returns the commit with a copy of its diff.
+func (c Commit) clone() Commit {
+	c.Diff = c.Diff.Narrow(nil)
+	return c
+}
+
+// Paths returns the files the commit changed, in the order of its diff.
+func (c Commit) Paths() []string {
+	paths := make([]string, 0, len(c.Diff.Changes))
+	for _, ch := range c.Diff.Changes {
+		paths = append(paths, ch.Path)
+	}
+	return paths
 }
 
 // Valid tells why the facts are not facts: negative counts, or a pending line that could not be appended.
@@ -207,6 +238,16 @@ func (f Facts) learnDiff(d diff.Diff, err error) Facts {
 			"polix cannot measure the diff (%v): changed_lines, changed_files and risk_score hold", err))
 	}
 	f.Diff, f.DiffErr, f.HasDiff = d.Narrow(nil), err, true
+	return f
+}
+
+func (f Facts) learnCommit(c Commit, err error) Facts {
+	if err != nil {
+		c = Commit{}
+		f = f.warned(fmt.Sprintf(
+			"polix cannot read the commit (%v): changed, changed_lines, changed_files and risk_score hold", err))
+	}
+	f.Commit, f.CommitErr, f.HasCommit = c.clone(), err, true
 	return f
 }
 

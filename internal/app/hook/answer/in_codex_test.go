@@ -86,3 +86,16 @@ func TestCodexSubagentStart(t *testing.T) {
 		t.Fatalf("render: %d %q", code, stdout)
 	}
 }
+
+// A commit in the PostToolUse of a shell tool of Codex gives post_command and post_commit when its exit code is 0,
+// and only post_command when it is not.
+func TestCodexPostCommit(t *testing.T) {
+	for response, want := range map[string]int{`{"exitCode":0}`: 2, `{"stdout":"ok"}`: 2, `{"exitCode":1}`: 1} {
+		_, evs, err := codex{}.parse([]byte(`{"hook_event_name":"PostToolUse","tool_name":"shell","cwd":"/r",` +
+			`"tool_input":{"command":["git","commit","-m","x"]},"tool_response":` + response + `}`))
+		if err != nil || len(evs) != want || evs[0].Name != workflow.PostCommand ||
+			want == 2 && (evs[1].Name != workflow.PostCommit || evs[1].Agent != agent.Codex) {
+			t.Errorf("%s: %+v %v", response, evs, err)
+		}
+	}
+}

@@ -241,7 +241,10 @@ The use case `AnswerHook`, `internal/app/hook/answer` (layout in `docs/architect
    An edit becomes one `pre_edit` or `post_edit` per path; a command line also produces `pre_commit` when one of
    its commands, nested ones included, is a `git commit` once normalized (`git -C x commit`, `sudo git commit`,
    `bash -c "git commit -m x"`), but not for the text of a commit in quotes (`echo "git commit"`); a line the bash
-   parser rejects is decided by a regular expression instead, which also counts such a text. The `SubagentStart`
+   parser rejects is decided by a regular expression instead, which also counts such a text. After a command ran,
+   the line also produces `post_commit` right after its `post_command` when it ended with exit code 0 and a `git
+   commit` of it decides that code (alone, last, or followed by `&&`, as the condition `exit` reads it), so a failed
+   command (`PostToolUseFailure`) or `git commit -m x; echo done` gives none. The `SubagentStart`
    of either agent becomes `subagent_start`, with the type of the subagent as
    actor.
 2. The logic of AnswerHook (`internal/app/hook/answer`) applies the [protections](#protections): the built-in protection of the
@@ -263,7 +266,8 @@ Edits outside the repository (scratchpad, memory, another repository) and of fil
 the change: the entries do not apply to them. They govern the change, what a commit may hold, so a build output, a
 local `.env` or a scratch file never fires a ticket, plan, format or docs entry. The built-in protection applies to
 both, and `protected_files` to the edits of files git ignores.
-Likewise a commit in another repository, as `git -C ../other commit`, skips the entries of `pre_commit`, while
+Likewise a commit in another repository, as `git -C ../other commit`, skips the entries of `pre_commit` and of
+`post_commit`, while
 `protected_files` and `forbidden_commands` still apply to it. polix takes a commit as one of another repository
 only through a strict allowlist: every command of the line is `git [-C <folder>]... add|commit ...`, with no
 other option, alias, wrapper or variable. On the line parsed as bash, no command is nested (in a subshell, a
@@ -388,7 +392,8 @@ nothing more.
 2. On the `post_command`, after a command that succeeded or failed, since a failing command may have written files,
    polix reads the latest `snapshot` of the session, the actor and the key, writes an observed `watched` line with
    the same key, so that snapshot is compared only once, computes the hash again and lists the paths that differ
-   between both trees (`git diff-tree`). The entries of `post_command` run after this.
+   between both trees (`git diff-tree`). The entries of `post_command` run after this, then, on a successful commit,
+   those of `post_commit`, which has no watch.
 3. Each path of `guardrails.protected_files` the command changed is put back as the snapshot holds it, content and
    mode, or removed when the snapshot did not hold it, without touching the index of the person. The command is
    refused once per path with `<path> is protected in polix.yaml: a command changed it and polix put it back.`,
@@ -649,7 +654,14 @@ and in English. It asks the agent to cooperate and blocks nothing. `polix config
 and a value that is not a boolean, or a `guidance` that is not a map, stops the parse.
 
 Events: `start`, `prompt`, `subagent_start`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
-`subagent_stop` and `stop`.
+`post_commit`, `subagent_stop` and `stop`.
+`post_commit` is a commit of the agent that succeeded: it comes after the `post_command` of a command line that holds
+a `git commit`, so a team can remind the agent of the docs or of the Jira ticket right after each commit. It cannot
+be stopped, since the commit already happened, so `block` and the condition `exit` are rejected there. Every `inject`
+and `notify` of it acts every time, whatever the log holds. `changed`, the measures and their placeholders look at the
+commit just made, and `{commit}` and `{subject}` give its short hash and subject. A polix older than the event reports
+`post_commit` as unknown, so a file that uses it sets `requires` to a release that knows it. It does not cover the
+commits a person makes without the agent: those belong to [githooks](#the-gates-of-git-githooks).
 `stop` is the main session about to end its turn, and `subagent_stop` a subagent about to end: they are
 separate events, so the entries of `stop` never run when a subagent ends.
 `subagent_start` is a subagent that starts, with a new context, before its first tool use; `actor` is its type.
@@ -670,7 +682,7 @@ Conditions:
   valid next to `file`, and never inside `any`, where it would hold on its own and make the `any` always true.
 - `command` and `exit`: a command of the line matches a pattern (`*` matches anything, line breaks
   included) and its exit code.
-  `command` only on `pre_command`, `post_command` and `pre_commit`; `exit` only on `post_command`.
+  `command` only on `pre_command`, `post_command`, `pre_commit` and `post_commit`; `exit` only on `post_command`.
   The line is split into its commands (`cd x && just test 2>&1 | tail -3` runs `cd x`, `just test 2>&1` and
   `tail -3`, quotes respected), and each one is matched on its own. The commands nested in it count too: those of
   a subshell, a block, `if`, `while`, `for`, `case` and a function, of `$(...)`, backticks and `<(...)`, of the
@@ -728,8 +740,10 @@ on:
 Globs are relative to the root and use `/`: `*` stays inside a segment, `**` crosses segments, a pattern
 without `/` matches the base name anywhere (`*.md`), and a leading `/` anchors it to the root, as in `.gitignore`
 (`/polix.yaml` is the file of the root, not `examples/polix.yaml`).
-Strings may use `{path}`, `{command}`, `{branch}`, `{changed_lines}`, `{changed_files}`, `{risk_score}` and the
-variables, which cannot take those built-in names.
+Strings may use `{path}`, `{command}`, `{branch}`, `{changed_lines}`, `{changed_files}`, `{risk_score}`, `{commit}`,
+`{subject}` and the variables, which cannot take those built-in names. `{commit}` and `{subject}` are the short hash
+and the subject of the commit just made (`git log -1 --format=%h` and `--format=%s`) on `post_commit`, and an empty
+text on any other event.
 
 ### Measures of the change
 
@@ -745,6 +759,12 @@ Each measure takes a non-negative integer and holds from that number up:
   weight times log2(1 + added + deleted lines), rounded half away from zero. The weight of a file is the number of
   the first glob of `risk.weights` that matches it, in the order of the file, else 1; so a test of a critical
   folder can weigh less than the folder if its glob comes first.
+
+On `post_commit` the measures and `changed` look at the commit just made instead: the diff of the commit HEAD points
+to against its first parent, or against the empty tree for a root commit, so an uncommitted change of the working
+tree counts in none. When polix cannot read that commit, `changed` and the three measures hold, the measure
+placeholders show `?` and the call warns once: `polix cannot read the commit (<error>): changed, changed_lines,
+changed_files and risk_score hold`.
 
 A measure has no globs of its own: it measures the files of the nearest `changed`, the one in its own map, else
 the one of the enclosing map (`any` and `not` nest maps), else the whole uncommitted diff, docs and plans included.
@@ -780,8 +800,8 @@ form, a map:
 
 - `block: <message>` blocks the event with a message for the AI (placeholders allowed). The long form is
   a map of `message: <message>` and `once: true`, and `message` is required. Valid on `prompt`, `pre_edit`,
-  `pre_command`, `pre_commit`, `stop` and `subagent_stop`; `start`, `subagent_start`, `post_edit` and
-  `post_command` already happened, so `polix config check` rejects it there.
+  `pre_command`, `pre_commit`, `stop` and `subagent_stop`; `start`, `subagent_start`, `post_edit`, `post_command`
+  and `post_commit` already happened, so `polix config check` rejects it there.
 - `run: <command>` runs a command from the root, without a shell (no pipes, redirections or globs). The command is
   a string, split on spaces into arguments and never given to a shell, or a list of arguments when one holds a
   space; placeholders are allowed in each argument, and `{path}` stays one argument. The long form is a map with
@@ -789,6 +809,9 @@ form, a map:
   (placeholders allowed), and `always`.
 - `run` with `rules: changed` runs the checks of the deterministic rules whose scope matches the changed files
   (`rules: "{path}"` for one path); a failure names the rule ids, and a rules file that cannot be loaded fails it.
+  On `post_commit` the changed files are those of the commit just made, and a commit polix cannot read fails the
+  run (`The commit cannot be read: <error>`) instead of passing with no checks; its repeat is keyed by the commit
+  (`rules changed@<short hash>`), so it never shares a pass with the same run on the files not committed yet.
   Each check runs with the first runner of `rules.run` whose glob matches it, grouped and rerun on failure as
   `polix rules check` does, so the failure names only the rules that fail; a check no runner matches runs as a
   program. On Windows, where a shebang does nothing, a `.sh` check runs with the `bash` of Git for Windows, found
@@ -812,7 +835,7 @@ form, a map:
 The verbs each event allows are one table, the same for every agent: only what Claude Code and Codex both support
 on the event, so `polix.yaml` means the same in each (`workflow.EventVerbs`).
 
-- `start`, `subagent_start`, `post_edit`, `post_command`: `run`, `inject` and `notify`.
+- `start`, `subagent_start`, `post_edit`, `post_command`, `post_commit`: `run`, `inject` and `notify`.
 - `prompt`, `pre_edit`, `pre_command`, `pre_commit`: `run`, `inject`, `block` and `notify`.
 - `stop`, `subagent_stop`: `run`, `block` and `notify`.
 
@@ -827,7 +850,7 @@ the event:
 
 - On `prompt`, `pre_edit`, `pre_command`, `pre_commit`, `stop` and `subagent_stop` it blocks, as a `block`
   does, and ends the evaluation of the event (up to the [loop guard](#loop-guard) on the two stops).
-- On `start`, `subagent_start`, `post_edit` and `post_command`, which already happened, it never blocks: the
+- On `start`, `subagent_start`, `post_edit`, `post_command` and `post_commit`, which already happened, it never blocks: the
   message and the
   output reach the AI as context, as feedback it acts on at once, and the log records an `inform` decision. A lint
   or a formatter on `post_edit` is feedback, not a gate.
@@ -857,13 +880,13 @@ enforcing it: try a new gate in a branch, and read its decisions with `polix log
   type in the session, since its run starts with a new context; the start of a subagent leaves the main session and
   the other types as they were. `always: true` injects it on every event. A text with a placeholder that changes on
   every event (`{command}`, a measure such as `{changed_lines}`) expands to a new text each time, so it is injected
-  every time its value changes; `{path}` gives one inject per path. On `start` and `subagent_start` every `inject`
-  acts every time, so `always` has no effect there.
+  every time its value changes; `{path}` gives one inject per path. On `start`, `subagent_start` and `post_commit`
+  every `inject` acts every time, so `always` has no effect there, and `post_commit` writes no `injected` line.
 - A `notify` reaches the user once per session for each entry and each text it expands to, whatever the actor: the
   user is one person, so a subagent or another actor does not show it again, and neither does a `start`, a
   compaction or the end of a subagent. Each notice shown is logged as a `notify` decision with its text, and
   `polix log` lists it. A placeholder that changes its text makes a new notice. `always: true` shows it every
-  time its entry applies.
+  time its entry applies, and on `post_commit` every `notify` shows every time, with no `notified` line written.
 
 A verb that does not act because of these rules is logged as a `skip` decision of its entry and never blocks.
 When the log cannot be read, a `run`, an `inject`, a `notify` and a `block` with `once` act every time, and the call
@@ -978,7 +1001,7 @@ The problem is at the line of the later entry, as `never runs: the entry of line
 entry expanded from a shortcut is named by its shortcut. `stop` and `subagent_stop` are left out, since the
 [loop guard](#loop-guard) lets the later entries run after `max_stop_retries` blocks. It rejects too a notice that a
 later gate could swallow: a `notify` followed in its event by an entry that may block it, a `block` or a `run` on an
-event outside `workflow.Informed` (all but `start`, `subagent_start`, `post_edit` and `post_command`), on every event,
+event outside `workflow.Informed` (all but `start`, `subagent_start`, `post_edit`, `post_command` and `post_commit`), on every event,
 the two stops included. A blocked event shows the user no message, so the notice would be lost whenever the gate acts.
 The problem is at the line of the `notify`, naming the line of the first such entry and asking to move the notice
 after it or into its message. Of `ai/rules/` it reports every problem,
@@ -1005,7 +1028,8 @@ after the upgrade, the reminders, the injects and the loop guard start from zero
 ### How the entries of an event are evaluated
 
 One hook call may produce several events: an edit of several paths gives one `pre_edit` per path, and a command
-with a `git commit` gives `pre_command` and `pre_commit`, and a `post_command` may add a `pre_edit` and a
+with a `git commit` gives `pre_command` and `pre_commit`, a successful one gives `post_command` and `post_commit`,
+and a `post_command` may add a `pre_edit` and a
 `post_edit` per file the command changed (see [Files a command changed](#files-a-command-changed)). Each event is
 answered on its own and the answers are merged: the call blocks when any of them blocks, with the reasons of all of
 them.
@@ -1028,7 +1052,7 @@ those before it already acted, so the texts of an `inject` before the block reac
 given. On `prompt` the rejected prompt never reaches the AI, so an `inject` before the block is not counted as given
 and acts again on the next prompt.
 Everything else goes on to the next entry: an `inject`, a `notify`, a skipped verb, a passing `run`, a failing `run` on
-`start`, `subagent_start`, `post_edit` or `post_command`, and a block the loop guard let through.
+`start`, `subagent_start`, `post_edit`, `post_command` or `post_commit`, and a block the loop guard let through.
 
 The trade-off is one failure per answer: when the lint and the tests of a `stop` both fail, the agent gets the
 lint first and the tests on its next attempt. The order of the file is the priority, so put first the gate whose
@@ -1042,7 +1066,7 @@ What a block does depends on the event:
 - `prompt`: the prompt is rejected before the agent reads it.
 - `stop`, `subagent_stop`: the main session, or the subagent, may not end its turn and receives the reasons to
   act on them, up to the loop guard.
-- `start`, `subagent_start`, `post_edit`, `post_command`: they already happened, so nothing blocks there: `block`
+- `start`, `subagent_start`, `post_edit`, `post_command`, `post_commit`: they already happened, so nothing blocks there: `block`
   is rejected by `polix config check`, and a failing `run` reaches the agent, or the subagent that starts, as
   context, logged as an `inform` decision.
 
@@ -1429,6 +1453,11 @@ may outlive the budget, since polix does not kill the whole process tree.
   and meets its gates. The other repository is trusted as it is: its own hooks, or a setup prepared to write into
   this one by other means than linking its objects or refs, are not inspected, like the rest of the protections a
   guard against mistakes rather than against an agent set on getting around them.
+- `post_commit` fires after a command line that ended with exit code 0 and holds a `git commit` that decides that
+  code, so `git commit --dry-run` and a commit with nothing to commit that exits 0 fire it too. In Codex, whose
+  response may give no exit code, a failed commit reads as 0 and fires it (Codex support is not implemented). A line
+  with two commits measures only the last one, and `git commit --amend` measures the amended commit: the commit just
+  made is the one HEAD points to when the event is evaluated, compared with its first parent.
 - Every hook call reads the whole log, which grows without bound: one decision per answer, and one `passed` line
   per run of polix that passed.
 - A subagent type launched twice in a session gets an `inject` that acts once again only because the first one

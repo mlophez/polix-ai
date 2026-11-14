@@ -7,11 +7,14 @@ import (
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/diff"
+	"github.com/mlophez/polix-ai/internal/app/hook"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 )
 
-// expand replaces {var}, {path}, {command}, {branch} and the measures in s. The diff is read only when s holds a
-// measure placeholder, and measured over the globs of the `changed` of the `when` of the entry, else whole.
+// expand replaces {var}, {path}, {command}, {branch}, {commit}, {subject} and the measures in s. The diff is read
+// only when s holds a measure placeholder, and measured over the globs of the `changed` of the `when` of the entry,
+// else whole. {commit} and {subject} are the short hash and the subject of the commit just made on post_commit, read
+// only when s holds one of them, and an empty text on any other event or when the commit cannot be read.
 func (r *pass) expand(s string) string {
 	if !strings.Contains(s, "{") {
 		return s
@@ -27,7 +30,14 @@ func (r *pass) expand(s string) string {
 		}
 		measures = measureValues(d.Narrow(scope), r.ev.Workflow.Weights, measured)
 	}
-	return expandPlaceholders(s, r.ev.Event, branch, vars, measures)
+	var commit hook.Commit
+	if r.onCommit() && usesCommit(s) {
+		commit, _ = r.commit()
+		if r.waiting() {
+			return s
+		}
+	}
+	return expandPlaceholders(s, r.ev.Event, branch, vars, measures, commit)
 }
 
 // whenScope returns the globs of the `changed` of the `when` of the entry, expanded without the measures, so a glob
@@ -41,7 +51,7 @@ func (r *pass) whenScope() []string {
 	vars := branchVars(r.ev.Workflow, branch)
 	scope := make([]string, len(globs))
 	for i, g := range globs {
-		scope[i] = expandPlaceholders(g, r.ev.Event, branch, vars, nil)
+		scope[i] = expandPlaceholders(g, r.ev.Event, branch, vars, nil, hook.Commit{})
 	}
 	return scope
 }
@@ -64,13 +74,16 @@ func branchVars(wf workflow.Workflow, branch string) map[string]string {
 	return vars
 }
 
-// expandPlaceholders replaces {path}, {command}, {branch}, the variables and the measures in s. The measures are the
-// values of {changed_lines}, {changed_files} and {risk_score} (see measureValues); nil leaves them as they are.
-func expandPlaceholders(s string, ev agent.Event, branch string, vars, measures map[string]string) string {
+// expandPlaceholders replaces {path}, {command}, {branch}, {commit}, {subject}, the variables and the measures in s.
+// The measures are the values of {changed_lines}, {changed_files} and {risk_score} (see measureValues); nil leaves
+// them as they are. {commit} and {subject} take the hash and the subject of commit, empty outside post_commit.
+func expandPlaceholders(s string, ev agent.Event, branch string, vars, measures map[string]string,
+	commit hook.Commit) string {
 	if !strings.Contains(s, "{") {
 		return s
 	}
-	repl := []string{"{path}", ev.Path, "{command}", ev.Command, "{branch}", branch}
+	repl := []string{"{path}", ev.Path, "{command}", ev.Command, "{branch}", branch, "{commit}", commit.Hash,
+		"{subject}", commit.Subject}
 	for k, v := range measures {
 		repl = append(repl, "{"+k+"}", v)
 	}
@@ -91,6 +104,12 @@ func measureValues(d diff.Diff, weights []workflow.Weight, measured bool) map[st
 		"changed_files": strconv.Itoa(d.Count()),
 		"risk_score":    strconv.Itoa(d.Risk(weights)),
 	}
+}
+
+// usesCommit reports whether s holds {commit} or {subject}, so the commit just made is read only when a string needs
+// it.
+func usesCommit(s string) bool {
+	return strings.Contains(s, "{commit}") || strings.Contains(s, "{subject}")
 }
 
 // usesMeasures reports whether s holds a measure placeholder, so the diff is read only when a string needs it.

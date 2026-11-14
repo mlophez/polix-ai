@@ -83,6 +83,10 @@ on:                              # the entries of each event
       unless: { finished: polix:reviewer }
       action:
         block: "Lanza polix:reviewer sobre el diff actual"
+  post_commit:                   # after the agent's commit succeeded
+    - when: { changed: "src/**" }
+      action:
+        inject: "Actualiza docs/ y comenta el commit {commit} en el ticket {key}"
 githooks:                        # the gates git runs on every commit
   pre_commit:
     - when: { changed: "secrets/**" }
@@ -224,7 +228,7 @@ injects of the `start` entries, and only with a valid file. They ask for coopera
   first group, or the whole match without groups. When the regex does not match, the variable has no value: the
   condition [`var`](#var) fails and `{name}` is left as is.
 - A variable cannot take the name of a built-in placeholder (`path`, `command`, `branch`, `changed_lines`,
-  `changed_files`, `risk_score`), nor `message` once [`githooks`](#githooks) has an entry, and `branch` is its only
+  `changed_files`, `risk_score`, `commit`, `subject`), nor `message` once [`githooks`](#githooks) has an entry, and `branch` is its only
   key.
 
 ```yaml
@@ -575,6 +579,30 @@ verb at the line of its entry, naming the event, the verb, why and the verbs the
 - Verbs: `block`, `run`, `inject`, `notify`. A block denies the commit.
 - Conditions of its own: [`command`](#command), [`writes`](#writes).
 
+### post_commit
+
+- When: after a command line that holds a `git commit` ended with exit code 0 and a `git commit` of it decides that
+  code (alone, last, or followed by `&&`), right after its `post_command`. A failed line, a commit that does not
+  decide the exit code (`git commit -m x; echo done`) and a line whose commits all happen in another repository
+  (`git -C ../other commit`) give none. It is polix's event: no new hook is installed. It covers the commits of the
+  agent, not those a person makes.
+- Verbs: `run`, `inject`, `notify`. It cannot be blocked, since the commit already happened: `block` is rejected, and
+  a failing `run` reaches the AI as context.
+- Every `inject` and `notify` acts every time on `post_commit`, so the reminder follows each commit; `always` has no
+  effect and polix writes no `injected` or `notified` line for them.
+- Conditions of its own: [`command`](#command), [`writes`](#writes). [`exit`](#exit) is rejected: it would always
+  be `0`.
+- [`changed`](#changed), the measures and their placeholders look at the commit just made (the one HEAD points to,
+  against its first parent, or the empty tree for a root commit), not at the working tree. If polix cannot read it,
+  `changed` and the measures hold, the measure placeholders expand to `?` and the call warns.
+- [`run`](#run) with `rules: changed` checks the rules of the files of the commit just made; if polix cannot read
+  it, the run fails, so the AI learns it, instead of passing with no checks. Its repeat is keyed by the commit
+  (`rules changed@<short hash>`), so a pass on the commit never spares the same run on `stop` or `post_command`,
+  which check the files not committed yet, nor theirs it.
+- Placeholders of its own: [`{commit}` and `{subject}`](#placeholders).
+- Needs a polix that knows the event: an older one reports `post_commit` as unknown, so set
+  [`requires`](#requires) to a release that has it.
+
 ### subagent_stop
 
 - When: a subagent is about to end; `actor` is its type.
@@ -630,7 +658,8 @@ when: { not: { path: "ai/plans/{key}-*.md" } }
 
 - Value: a path glob, or a list of them.
 - Holds when some file not committed yet (it differs from HEAD, or it is untracked and not ignored) matches any of
-  them. Once committed a file no longer counts: the change is reviewed commit by commit.
+  them. Once committed a file no longer counts: the change is reviewed commit by commit. On `post_commit` it is the
+  other way round: the files of the commit just made count, and the working tree does not.
 - It also sets the scope of the entry: the files the measures, `finished` and a `once` block look at (see
   [Scope](#scope-of-an-entry)).
 - Events: all.
@@ -667,7 +696,7 @@ unless: { file: CHANGELOG.md, contains: "{key}" }
   (`cd x && just test 2>&1 | tail -3` gives `cd x`, `just test 2>&1` and `tail -3`), nested ones included
   (`bash -c '...'`, `$(...)`, subshells, `if`, `for`, `eval`), and each is matched whole, as written or normalized.
   See [command patterns](#command-patterns).
-- Events: `pre_command`, `post_command`, `pre_commit`.
+- Events: `pre_command`, `post_command`, `pre_commit`, `post_commit`.
 
 ```yaml
 when: { command: ["git push*origin main*", "git push --force*"] }
@@ -684,7 +713,7 @@ when: { command: ["git push*origin main*", "git push --force*"] }
 - A guard aimed at accidents: it sees the commands nested in literal `bash -c` scripts and substitutions, but not
   writes through another interpreter (`python -c`), a script that is not literal, a path reached through `cd`, or
   `find -delete`. On macOS and Windows it ignores case.
-- Events: `pre_command`, `post_command`, `pre_commit`.
+- Events: `pre_command`, `post_command`, `pre_commit`, `post_commit`.
 
 ```yaml
 when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
@@ -750,8 +779,8 @@ unless: { agents_are_running: true }
 ### changed_lines, changed_files, risk_score
 
 - Value: a non-negative integer. Each holds from that number up.
-- They measure the change not committed yet (untracked files whole), over the files of the nearest `changed` (in
-  their own map, else in the enclosing one), else the whole change:
+- They measure the change not committed yet (untracked files whole; on `post_commit`, the commit just made), over the
+  files of the nearest `changed` (in their own map, else in the enclosing one), else the whole change:
   - `changed_lines`: added plus deleted lines;
   - `changed_files`: changed files, deleted and binary included;
   - `risk_score`: the score of [`risk.weights`](#risk).
@@ -821,12 +850,15 @@ action:
 Runs a command from the root without a shell (no pipes, redirections or globs), or the checks of the rules.
 
 - Events: all. On `prompt`, `pre_edit`, `pre_command`, `pre_commit`, `subagent_stop` and `stop` a failure blocks,
-  as a `block` does; on `start`, `subagent_start`, `post_edit` and `post_command` it reaches the AI as context.
+  as a `block` does; on `start`, `subagent_start`, `post_edit`, `post_command` and `post_commit` it reaches the AI as
+  context.
 - Short form: the command, a string split on spaces or a list of arguments (placeholders allowed in each; `{path}`
   stays one argument).
 - Long form, exactly one of:
   - `command`: the same command;
-  - `rules`: `changed` (the checks of the rules whose scope matches the changed files) or a path such as `"{path}"`;
+  - `rules`: `changed` (the checks of the rules whose scope matches the changed files; on `post_commit`, the files
+    of the commit just made, and a commit polix cannot read fails the run with `The commit cannot be read:
+    <error>`) or a path such as `"{path}"`;
   plus:
   - `message`: the text before the output of a failure (placeholders allowed);
   - `always`: boolean, default `false`.
@@ -868,7 +900,8 @@ Injects a text for the AI, as context.
 - Repeat: each actor gets each expanded text once per session, and again after a compaction or, for a subagent, on
   its next run (its `subagent_start` or the end of the previous one); an `inject` of `rules` gives each rule once per
   actor and session. A placeholder that changes on every event (`{command}`, a measure) makes a new text each time.
-  `always: true` injects it on every event. On `start` and `subagent_start` every inject acts every time.
+  `always: true` injects it on every event. On `start`, `subagent_start` and `post_commit` every inject acts every
+  time.
 
 ```yaml
 action:
@@ -901,7 +934,8 @@ answer of the hook), and it spends none of the context of the AI.
 - A message that expands to nothing shows nothing.
 - Repeat: each entry shows each expanded text once per session, whatever the actor: a subagent, a compaction or the
   end of a subagent never show it again. A placeholder that changes the text makes a new notice. `always: true`
-  shows it every time its entry applies. Each notice shown is a `notify` decision in the log, listed by `polix log`;
+  shows it every time its entry applies, and on `post_commit` every notice shows every time, with no line written.
+  Each notice shown is a `notify` decision in the log, listed by `polix log`;
   one that does not show is a `skip` decision.
 
 ```yaml
@@ -978,10 +1012,14 @@ every commit with its problems. `git commit --no-verify` skips the hooks. The de
 Expanded in the strings of conditions (except `branch`), verbs and `contains`. An unknown one is a problem.
 
 - `{path}`: the edited path, relative to the root; on `pre_edit` and `post_edit`, empty elsewhere.
-- `{command}`: the whole command line; on `pre_command`, `post_command` and `pre_commit`, empty elsewhere.
+- `{command}`: the whole command line; on `pre_command`, `post_command`, `pre_commit` and `post_commit`, empty
+  elsewhere.
+- `{commit}`, `{subject}`: the short hash and the subject of the commit just made, as `git log -1 --format=%h` and
+  `--format=%s` print them; on `post_commit`, empty elsewhere and when polix cannot read the commit.
 - `{branch}`: the current branch.
-- `{changed_lines}`, `{changed_files}`, `{risk_score}`: the measures of the change not committed yet, over the
-  `changed` of the `when` of the entry, else the whole change; `?` when git cannot measure it.
+- `{changed_lines}`, `{changed_files}`, `{risk_score}`: the measures of the change not committed yet (on
+  `post_commit`, of the commit just made), over the `changed` of the `when` of the entry, else the whole change; `?`
+  when git cannot measure it.
 - `{<var>}`: each variable of `vars`; left as is when it has no value.
 - `{message}`: the first line of the message of the commit; only in the entries of `githooks.commit_msg`, which
   take `{branch}`, `{message}` and the variables, and no other (see [Githooks](#githooks-1)).
