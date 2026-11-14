@@ -784,12 +784,30 @@ unless: { actor: [acme:builder, acme:builder-ui] }
   through by the loop guard, and the files of the [scope](#scope-of-an-entry) of the entry did not change since.
   polix observes the end of those subagents by itself: no entry on `subagent_stop` is needed. It never holds without
   a known content hash, so a broken git asks again. A new session asks again, even on the same content;
-  `claude --resume` keeps the session, and what ended in it.
+  `claude --resume` keeps the session, and what ended in it. An empty list, or a type whose placeholders expand to
+  nothing, never holds.
 - Events: all.
 
 ```yaml
 unless: { finished: polix:reviewer }
 unless: { finished: [polix:reviewer, acme:security-reviewer] }
+```
+
+### finished_since_commit
+
+- Value: a subagent type, or a list of them.
+- Holds when the latest end in this session of every subagent of the list, with a hash and on any branch, was on the
+  commit HEAD points to now, its `subagent_stop` neither refused nor let through by the loop guard. It ignores the
+  [scope](#scope-of-an-entry) and never compares the content, so an edit after the subagent ended keeps it holding.
+  A commit, or any other move of HEAD to another commit, stops it holding until the type ends again; a move back to
+  the recorded commit makes it hold again, unless the type ended on another commit in between. It never holds without a known HEAD,
+  nor with an empty list or a type whose placeholders expand to nothing. polix observes the end of those
+  subagents by itself. Use `finished` for a gate that must see the content.
+- Events: all.
+
+```yaml
+unless: { finished_since_commit: polix:builder }
+unless: { finished_since_commit: [polix:builder, polix:verifier] }
 ```
 
 ### agents_are_running

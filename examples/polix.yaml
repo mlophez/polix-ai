@@ -48,7 +48,7 @@
 #   - path: pre_edit, post_edit;
 #   - command, writes: pre_command, post_command, pre_commit, post_commit;
 #   - exit: post_command.
-#   Every other condition (actor, finished, agents_are_running, branch, var, changed, file, contains, changed_lines,
+#   Every other condition (actor, finished, finished_since_commit, agents_are_running, branch, var, changed, file, contains, changed_lines,
 #   changed_files, risk_score, not, any) holds on any event.
 # - githooks, apart from `on`: the events pre_commit and commit_msg, the verbs block and run, and the conditions
 #   branch, changed and, in commit_msg, message.
@@ -310,7 +310,7 @@ guardrails:
 # "just test" only matches the bare command, and "just test*" also matches `just test -k x` or `just test 2>&1`.
 #
 # Conditions that take a list (path, changed, file, command, writes, actor) hold when any item matches; those of
-# finished and var hold when every item does. A single string is a list of one.
+# finished, finished_since_commit and var hold when every item does. A single string is a list of one.
 #
 # agents_are_running: true or false, whether subagents of the session, of any type, are still running, the one that
 # acts aside (on subagent_stop the subagent that stops does not count itself). It holds on any event, so a commit or
@@ -664,6 +664,16 @@ on:
       unless: { finished: polix:reviewer }
       action:
         block: "Cambio de {changed_lines} líneas en {changed_files} ficheros (riesgo {risk_score}): lanza el subagente polix:reviewer"
+
+    # finished_since_commit: every subagent type of the list last ended in this session on the commit HEAD points to now,
+    # on any branch, with its stop neither refused nor let through by the loop guard. It ignores the scope and never
+    # compares the content, so an edit after the subagent ended keeps it holding; a commit, or any move of HEAD to
+    # another commit, stops it until the type ends again. It never holds without a known HEAD. Use it for the work a
+    # subagent did on this commit, and finished where the gate must see the content.
+    - when: { changed: "src/**", changed_lines: 150 }
+      unless: { finished_since_commit: acme:builder }
+      action:
+        block: "Lanza el subagente acme:builder antes de commitear un cambio grande."
 
     # finished with a list: sensitive code waits for both reviews, each on the content as it is now.
     - when: { changed: ["src/auth/**", "src/crypto/**"] }

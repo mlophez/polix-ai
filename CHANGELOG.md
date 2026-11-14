@@ -15,6 +15,15 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   each subagent reports when it returns. The tokens leave out the coordinator's own, which no report gives, and are
   `unknown` when a subagent reports none, as in Codex. The stats of the build give them, with the tokens of the run by
   agent. `/polix:plan` writes them `none`, and a plan in Markdown gets the figures only in the stats.
+- The condition `finished_since_commit: <subagent>` (or a list, all of them), which holds while the latest end of the
+  subagent in the session was on the commit HEAD points to now, on any branch, whatever changed in the files since: it ignores the
+  scope of the entry and never compares the content. A commit, or any move of HEAD to another commit, stops it
+  holding until the type ends again, and it never holds without a known HEAD. polix observes the end of the types it
+  names as it does for `finished`, with the same line, and `polix config check` reports an empty type, an empty list
+  and a value that is not a string nor a list of strings. `finished` keeps its behaviour, but for an empty list or a
+  type whose placeholders expand to nothing, which no longer hold on the end of any subagent, and `polix config check`
+  reports its empty list too. A polix older than this reports it as an
+  unknown condition, so set `requires` to a release that has it.
 - The event `post_commit`, which fires after a commit of the agent succeeded, to remind it of the docs or of the Jira
   ticket without getting in the way of the commit: it comes right after the `post_command` of a command line that
   ended with exit code 0 and holds a `git commit` that decides that code, so a failed commit, one that does not decide

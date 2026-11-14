@@ -708,6 +708,10 @@ Conditions:
 - `finished`: a subagent type, or a list of them (all must hold), ended in this session, on this branch or on
   another one with the same HEAD commit, and the files of the scope of the entry did not change since. See
   [What polix observes](#what-polix-observes-and-finished).
+- `finished_since_commit`: a subagent type, or a list of them (all must hold), last ended in this session on the
+  commit HEAD points to now, on any branch, whatever changed in the files since. A commit, or any move of HEAD to another
+  commit, stops it holding until the type ends again. See
+  [What polix observes](#what-polix-observes-and-finished).
 - `agents_are_running: true|false`: subagents of the session, of any type, are still running, the one that acts
   aside: on `subagent_stop` the subagent that stops does not count itself, so the last one to stop sees `false`. It
   holds on every event, a `pre_commit` included, so a commit or the end of a turn can wait until every subagent has
@@ -914,7 +918,8 @@ the decisions included, also carries `agent_id`, the id the agent gives that sub
 (Codex, an older Claude Code) and on the lines of the main session, so two subagents of one type are told apart:
 
 - `finished`: a subagent ended and the answer to its `subagent_stop` did not refuse. It is written, with the
-  content hash and the subagent type as key, when a `finished` of the workflow names that type; polix observes it
+  content hash and the subagent type as key, when a `finished` or a `finished_since_commit` of the workflow names
+  that type; polix observes it
   by itself, so no entry on `subagent_stop` is needed. Without a content hash it is written for any subagent when
   the workflow has an `inject` that acts once, so the inject reaches its next run, or uses `agents_are_running`
   (`run_on_stop` included, whose items wait by default), so the subagent stops counting as running; a subagent the
@@ -959,6 +964,15 @@ type, nor without a known content hash, nor when the `subagent_stop` of the suba
 loop guard let through after its blocks did not finish, and the `finished` line without hash it may get is never
 read by the condition. A tree git no longer has (pruned by `git gc`) or a comparison that fails counts as changed,
 with a `warn` decision that names the error: the gate asks again.
+`finished_since_commit: <subagent>` (or a list, all of them) holds when the latest `finished` line with a hash of
+that type in the session, on any branch, has as its `head` the commit HEAD points to now. It ignores the scope of the
+entry and never compares the content, so an edit of any file after the subagent ended keeps it holding, and a commit,
+a reset or a checkout of another commit makes it stop until the type ends again; a move back to the recorded commit
+makes it hold again, and so does a branch made on it, unless the type ended on another commit in between. It never holds without a known HEAD (a repository without commits), for a
+line without hash, nor for a subagent whose `subagent_stop` was refused or let through by the loop guard. Use it to
+release a gate for the work a subagent did on this commit, such as a build, and `finished` where the gate must see the
+content. polix observes the end of the types it names as it does for `finished`, with the same line. Trust moves to the
+subagent: a change made by hand after it ended is let through until the next commit.
 Only the lines of the session count, since a hook reads only the file of its session (see [State](#state)): a
 review or a check that passed in another session does not, even on the same branch and content, so a new session
 asks for them again, and `claude --resume`, which keeps the session, keeps them. Within the session, a line counts

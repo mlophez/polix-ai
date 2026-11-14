@@ -78,11 +78,12 @@ func (c Cond) Strings(key string) ([]string, error) {
 	}
 }
 
-// appendFinished appends to out the subagent types the `finished` of c names, in c and the maps nested in it.
+// appendFinished appends to out the subagent types the `finished` and `finished_since_commit` of c name, in c and the
+// maps nested in it.
 func (c Cond) appendFinished(out []string) []string {
 	for k := range c {
 		switch k {
-		case "finished":
+		case "finished", "finished_since_commit":
 			names, _ := c.Strings(k)
 			out = append(out, names...)
 		case "not", "any":
@@ -216,17 +217,21 @@ func (v *validator) condContains(c Cond, line int, inAny bool) {
 }
 
 // condStrings reports the problems of the condition k of c whose value is a string or a list of strings: another
-// value, a placeholder that is not known, an empty finished or a var not defined in vars.
+// value, a placeholder that is not known, an empty finished or finished_since_commit (an empty list or a blank type)
+// or a var not defined in vars.
 func (v *validator) condStrings(c Cond, k string, line int) {
 	list, err := c.Strings(k)
 	if err != nil {
 		v.add(line, "%s: %v", k, err)
 		return
 	}
+	if (k == "finished" || k == "finished_since_commit") && len(list) == 0 {
+		v.add(line, "%s needs the type of a subagent", k)
+	}
 	for _, s := range list {
 		v.placeholders(line, s)
-		if k == "finished" && strings.TrimSpace(s) == "" {
-			v.add(line, "finished needs the type of a subagent")
+		if (k == "finished" || k == "finished_since_commit") && strings.TrimSpace(s) == "" {
+			v.add(line, "%s needs the type of a subagent", k)
 		}
 		if k == "var" && v.w != nil {
 			if _, ok := v.w.Vars[s]; !ok {

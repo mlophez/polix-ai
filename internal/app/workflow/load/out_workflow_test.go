@@ -119,6 +119,45 @@ func TestValidRejects(t *testing.T) {
 	}
 }
 
+// CUJ-06: finished_since_commit is validated as finished is, in any place a condition goes, and a valid value reports
+// no problem.
+func TestFinishedSinceCommitProblems(t *testing.T) {
+	block := "\n      action: { block: x }\n"
+	pre := "version: 1\non:\n  pre_commit:\n    - "
+	cases := []struct {
+		name, src, want string
+	}{
+		{"empty", pre + "unless: { finished_since_commit: \"\" }" + block,
+			"polix.yaml:4: finished_since_commit needs the type of a subagent"},
+		{"blank in a list", pre + "unless: { finished_since_commit: [polix:builder, \" \"] }" + block,
+			"finished_since_commit needs the type of a subagent"},
+		{"number", pre + "unless: { finished_since_commit: 3 }" + block,
+			"polix.yaml:4: finished_since_commit: expected a string or a list of strings, got 3"},
+		{"inside not", pre + "when: { not: { finished_since_commit: \"\" } }" + block,
+			"finished_since_commit needs the type of a subagent"},
+		{"inside any", pre + "when: { any: { finished_since_commit: 3 } }" + block,
+			"finished_since_commit: expected a string or a list of strings, got 3"},
+		{"empty list", pre + "unless: { finished_since_commit: [] }" + block,
+			"polix.yaml:4: finished_since_commit needs the type of a subagent"},
+		{"empty list inside not", pre + "when: { not: { finished_since_commit: [] } }" + block,
+			"finished_since_commit needs the type of a subagent"},
+		{"empty list of finished", pre + "unless: { finished: [] }" + block,
+			"polix.yaml:4: finished needs the type of a subagent"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := validate(t, c.src); !strings.Contains(got, c.want) {
+				t.Fatalf("want a problem with %q, got:\n%s", c.want, got)
+			}
+		})
+	}
+	for _, v := range []string{"polix:builder", "[polix:builder, polix:verifier]"} {
+		if got := validate(t, pre+"unless: { finished_since_commit: "+v+" }"+block); got != "" {
+			t.Fatalf("%s: unexpected problems:\n%s", v, got)
+		}
+	}
+}
+
 // AC1: every form of the vocabulary is accepted, and constructs that look like mistakes too.
 func TestValidAccepts(t *testing.T) {
 	src := `version: 1
@@ -167,6 +206,11 @@ on:
     - when: { changed: ["README.md", "docs/**"] }
       unless: { finished: [polix:reviewer, acme:docs] }
       action: { block: { message: "Revisa la documentación", once: true } }
+    - when: { changed: "*.go" }
+      unless: { finished_since_commit: polix:builder }
+      action: { block: "Falta la revisión" }
+    - when: { not: { finished_since_commit: [polix:builder, polix:verifier] } }
+      action: { block: "Falta la verificación" }
   subagent_stop:
     - when: { actor: acme:builder }
       action: { run: [just, test] }

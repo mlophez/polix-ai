@@ -32,6 +32,27 @@ func TestObservedSubagents(t *testing.T) {
 	}
 }
 
+// The types of finished_since_commit, in when, unless, not and any, are observed next to those of finished, sorted
+// once.
+func TestObservedSubagentsSinceCommit(t *testing.T) {
+	block := Action{Block: &Block{Message: "x"}, Keys: []string{VerbBlock}}
+	w := Workflow{Version: 1, On: map[string][]Entry{
+		PreCommit: {
+			{Unless: Cond{"finished_since_commit": "polix:builder"}, Action: block, Line: 4},
+			{When: Cond{"any": map[string]any{"not": map[string]any{"finished_since_commit": []any{"acme:docs", "polix:builder"}},
+				"branch": "x"}}, Action: block, Line: 6},
+			{When: Cond{"not": map[string]any{"finished_since_commit": "acme:ci"}}, Unless: Cond{"finished": "polix:reviewer"},
+				Action: block, Line: 8},
+		},
+	}}
+	if err := w.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.ObservedSubagents(); strings.Join(got, ",") != "acme:ci,acme:docs,polix:builder,polix:reviewer" {
+		t.Fatalf("observed: %q", got)
+	}
+}
+
 // A workflow whose only use of the log is an agents_are_running nested in an any of an unless observes the starts
 // and counts the subagents; one without it does neither.
 func TestCountsAgents(t *testing.T) {

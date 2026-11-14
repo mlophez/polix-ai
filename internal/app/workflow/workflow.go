@@ -194,7 +194,8 @@ func (v *validator) events(w Workflow) {
 	}
 }
 
-// ObservedSubagents returns the subagent types the `finished` conditions of the workflow name, as written, sorted
+// ObservedSubagents returns the subagent types the `finished` and `finished_since_commit` conditions of the workflow
+// name, as written, sorted
 // and without repeats: the subagents whose end polix writes to its log.
 func (w Workflow) ObservedSubagents() []string {
 	var out []string

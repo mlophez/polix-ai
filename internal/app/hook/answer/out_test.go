@@ -441,6 +441,83 @@ on:
 	}
 }
 
+// finished_since_commit holds after the builder ended whatever was edited since, with the files in scope included, on
+// another branch on the same commit, and stops holding once a commit moved HEAD, until the builder ends again.
+func TestFinishedSinceCommitAcrossEdits(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  pre_commit:
+    - when: { changed: "*.go" }
+      unless: { finished_since_commit: polix:builder }
+      action: { block: "Falta la revisión" }
+`)
+	r.write("src/a.go", "package a\n")
+	commit := func(what string, want int) string {
+		t.Helper()
+		code, _, stderr := r.bash("git commit -m x", false)
+		expect(t, what, code, want, stderr)
+		return stderr
+	}
+	if stderr := commit("commit before the builder", 2); !strings.Contains(stderr, "Falta la revisión") {
+		t.Fatalf("the block says why: %s", stderr)
+	}
+	code, _, stderr := r.subagentStop("polix:builder")
+	expect(t, "the builder stops", code, 0, stderr)
+	if !strings.Contains(r.log(), `"actor":"polix:builder","branch":"main","hash":`) ||
+		!strings.Contains(r.log(), `"key":"polix:builder","outcome":"finished"`) || !strings.Contains(r.log(), `"head":"`) {
+		t.Fatalf("the end of the builder is observed with its hash and head: %s", r.log())
+	}
+	commit("commit after the builder", 0)
+	r.write("src/a.go", "package a\n\nvar x = 1\n")
+	commit("commit after an edit of a Go file", 0)
+	r.git("checkout", "--quiet", "-b", "feat/x")
+	commit("commit on another branch on the same commit", 0)
+
+	r.git("add", "--all")
+	r.git("commit", "--quiet", "-m", "built")
+	r.write("src/a.go", "package a\n\nvar x = 2\n")
+	if stderr := commit("commit after a commit moved HEAD", 2); !strings.Contains(stderr, "Falta la revisión") {
+		t.Fatalf("the block says why: %s", stderr)
+	}
+	r.subagentStop("polix:builder")
+	commit("commit after the builder ended again", 0)
+}
+
+// CUJ-04: a builder whose stop the loop guard let through after its blocks did not finish, so finished_since_commit
+// does not hold and the next commit blocks; the finished line without hash the workflow gets for agents_are_running
+// is never read by the condition.
+func TestFinishedSinceCommitLoopGuard(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  subagent_stop:
+    - when: { actor: polix:builder }
+      action: { block: "Faltan los tests" }
+  stop:
+    - when: { agents_are_running: true }
+      action: { block: "Espera a los subagentes" }
+  pre_commit:
+    - when: { changed: "*.go" }
+      unless: { finished_since_commit: polix:builder }
+      action: { block: "Falta la revisión" }
+`)
+	r.write("src/a.go", "package a\n")
+	r.stops("polix:builder", 2, 2, 2, 0)
+	if r.lines("outcome=loop_guard") != 1 {
+		t.Fatalf("the loop guard lets the builder stop: %s", r.log())
+	}
+	if r.lines("outcome=finished", "key=polix:builder") != 1 ||
+		r.lines("outcome=finished", "key=polix:builder", "hash=<nil>") != 1 {
+		t.Fatalf("the guarded end is logged only as a finished line without hash: %s", r.log())
+	}
+	code, _, stderr := r.bash("git commit -m x", false)
+	expect(t, "commit after a guarded builder", code, 2, stderr)
+	if !strings.Contains(stderr, "Falta la revisión") {
+		t.Fatalf("the block says why: %s", stderr)
+	}
+}
+
 // A reminder with once blocks the first commit on a content and lets the next through; an edit outside its scope
 // keeps it given, one inside it reminds again, and so does a new session.
 func TestReminderOnTheScope(t *testing.T) {

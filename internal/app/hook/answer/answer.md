@@ -92,7 +92,7 @@ holds only what its events do and calls the engine as a library:
 The engine is the rest, in the `logic_<topic>.go` files, and has no `if` on the name of an event: the step machinery
 and the readers of the facts (`logic_facts.go`), the protections (`logic_protect.go`), the walk of the entries and
 their verbs (`logic_entries.go`, `logic_run.go`, `logic_inject.go`, `logic_notify.go`), the conditions and the placeholders
-(`logic_condition.go`, `logic_placeholder.go`), the commands of a command line, what they write and where their
+(`logic_condition.go`, `logic_finished.go`, `logic_placeholder.go`), the commands of a command line, what they write and where their
 commits land (`logic_cmdline.go`, `logic_writes.go`, `logic_commit.go`), the files a command changed (`logic_watch.go`), and
 the log (`logic_log.go`). What differs per event reaches it as fields of the pass: `informed`, set by `Decide` for the
 events of `workflow.Informed` and for an edit a command made, turns a failing `run` into context; `byCommand`, set by
@@ -284,9 +284,17 @@ The rules it follows, as before this use case:
    cannot be read (with the warning of rule 6) and an unknown hash never hold; a tree git no longer has or a
    comparison that fails does not hold either, with a `warn` decision that names the error. A `block` with `once` compares the tree of its latest `blocked` line the same way,
    on the scope of the `changed` of its `when`, and blocks again when the comparison fails.
+   Neither condition holds with an empty list or a type that is blank once its placeholders expand, which would
+   select the lines of any type (`subagentTypes`).
+   `finished_since_commit: <subagent>` (or a list, all of them) holds when, for every type, the latest observed
+   `finished` line with a hash of the type in the log of the session, on any branch, has the current HEAD as its
+   `head` (`finishedOnHead`: a query with `state.Query.ByHead` selects it), so a later end on another commit stops it
+   holding even after HEAD went back. It ignores the scope, never computes the content hash nor compares trees, and
+   never holds with an unknown HEAD, without such a line or with a log that cannot be read (with the warning of rule
+   6). It is ranked with `finished` among the conditions.
 9. On `subagent_stop`, after the entries, when the answer does not refuse and no block was let through by the loop
    guard, polix writes an observed line `finished`, the key the type of the subagent: with the content hash when a
-   `finished` of the workflow names the type (`workflow.Workflow.ObservedSubagents`), so the condition can hold;
+   `finished` or a `finished_since_commit` of the workflow names the type (`workflow.Workflow.ObservedSubagents`), so the condition can hold;
    without it, and without computing it, for any subagent when the workflow has a once-only inject, so its injects
    are due again, or an `agents_are_running`, so it no longer counts as running (rule 17). A type both observed and
    reset gets one line, with the hash. Without a known hash the `finished` condition gets nothing, with a `warn`

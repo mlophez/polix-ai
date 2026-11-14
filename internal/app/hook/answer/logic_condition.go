@@ -1,14 +1,12 @@
 package answer
 
 import (
-	"fmt"
 	"regexp"
 	"slices"
 	"sort"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/diff"
-	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 	"github.com/mlophez/polix-ai/internal/platform/glob"
 )
@@ -69,6 +67,8 @@ func (r *pass) condAgents(k string, all workflow.Cond, scope []string) bool {
 		return slices.Contains(r.list(all, k), r.ev.Event.Actor)
 	case "finished":
 		return r.condFinished(all, scope)
+	case "finished_since_commit":
+		return r.condFinishedSinceCommit(all)
 	case "agents_are_running":
 		want, _ := all[k].(bool)
 		running := r.agentsRunning()
@@ -170,20 +170,6 @@ func (r *pass) condExit(all workflow.Cond) bool {
 	return ev.ExitCode == n
 }
 
-// condFinished holds when every subagent type of the finished of all finished on the content of the scope of the
-// entry: the nearest changed, else the one of its when (see finished).
-func (r *pass) condFinished(all workflow.Cond, scope []string) bool {
-	if scope == nil {
-		scope = r.whenScope()
-	}
-	for _, name := range r.list(all, "finished") {
-		if !r.finished(name, scope) || r.waiting() {
-			return false
-		}
-	}
-	return true
-}
-
 // list reads the value of the condition k of c as a list of strings, expanded.
 func (r *pass) list(c workflow.Cond, k string) []string {
 	s, _ := c.Strings(k)
@@ -219,47 +205,6 @@ func (r *pass) writes(patterns []string) (p, held string, ok bool) {
 		return "", "", false
 	}
 	return lineWrites(patterns, ev.Command, ev.Cwd, r.ev.Root, reals, r.ev.Fold(), r.ev.Windows())
-}
-
-// finished reports whether the subagent type name finished in the session, whose log alone the state holds, on the
-// current branch or on the same HEAD commit, on a content whose files in scope did not change since: the tree of its latest observed finished with a hash is
-// compared with the current one (see sameScope). The log is read first, so without such a line the content hash is
-// never computed. A log that cannot be read, with a warning, an unknown hash, a tree git no longer has or a
-// comparison that fails never holds, the last two with the error in the log.
-func (r *pass) finished(name string, scope []string) bool {
-	branch, head := r.branch(), r.head()
-	st, err := r.currentState()
-	if r.waiting() {
-		return false
-	}
-	if err != nil {
-		r.warnLog(err)
-		return false
-	}
-	q := state.Query{Outcome: state.OutcomeFinished, Branch: branch, Head: head, ByBranch: true, Key: name}
-	if q.Valid() != nil {
-		return false
-	}
-	var last state.Entry
-	for _, e := range st.Observed(q) {
-		if e.Hash != "" {
-			last = e
-		}
-	}
-	if last.Hash == "" {
-		return false
-	}
-	hash, known := r.hash()
-	if r.waiting() || !known {
-		return false
-	}
-	same, err := r.sameScope(last.Hash, hash, scope)
-	if err != nil {
-		r.log("finished", r.entry.Line, "warn", fmt.Sprintf(
-			"the content %s finished on cannot be compared with the current one (%v): finished does not hold", name, err))
-		return false
-	}
-	return same
 }
 
 // agentsRunning reports whether subagents of the session other than the one that acts are still running: by the
@@ -331,7 +276,7 @@ func cost(k string) int {
 		return 3
 	case "changed_lines", "changed_files", "risk_score":
 		return 4
-	case "finished", "agents_are_running":
+	case "finished", "finished_since_commit", "agents_are_running":
 		return 5
 	}
 	return 6 // not and any, which may read anything

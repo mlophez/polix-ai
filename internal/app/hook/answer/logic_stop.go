@@ -77,10 +77,11 @@ func (r *pass) loopGuard(e workflow.Entry, st state.State, err error, hash, befo
 }
 
 // observeFinished writes that the subagent of a subagent_stop the answer does not refuse finished, its type as the
-// key: with the content hash when a `finished` of the workflow names the type, so the condition can hold; without
-// it, and without computing it, when the workflow only injects once, so the injects of that subagent are due again,
-// or counts the subagents still running (workflow.Workflow.CountsAgents), so it no longer counts as running.
-// Without a known hash, whose cause the facts already keep as a warning, the condition gets nothing, with a warn
+// key: with the content hash when a `finished` or a `finished_since_commit` of the workflow names the type, so those
+// conditions can hold; without it, and without computing it, when the workflow only injects once, so the injects of
+// that subagent are due again, or counts the subagents still running (workflow.Workflow.CountsAgents), so it no
+// longer counts as running. Without a known hash, whose cause the facts already keep as a warning, the conditions get
+// nothing, with a warn
 // decision, and the line is written without hash only when the workflow injects once or counts the subagents. A stop
 // the loop guard let through did not end as asked: it is written without hash, only when the workflow injects once or
 // counts the subagents, so the subagent never counts as finished but its next run, with a new context, gets the
@@ -109,7 +110,7 @@ func (r *pass) observeFinished() {
 		}
 		if !known {
 			r.log("finished", 0, "warn", "unknown hash of the content: that "+ev.Actor+
-				" finished is not recorded for finished")
+				" finished is not recorded for finished nor finished_since_commit")
 		}
 		hash = h
 	}

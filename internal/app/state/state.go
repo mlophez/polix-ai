@@ -34,19 +34,21 @@ type State struct {
 // only the entries of Branch, an empty one included (on a detached HEAD the branch is ""), or, when both the query
 // and the entry carry a Head, those of the same Head: another branch on the same commit, a detached HEAD included,
 // selects them, while an entry without Head (written by an older polix) or a query without one (no commit yet, git
-// failing) matches only by branch. Without ByBranch, Head is ignored.
+// failing) matches only by branch. Without ByBranch, Head is ignored. With ByHead, only the entries whose Head is
+// exactly the non empty Head of the query, on any branch (Branch is ignored); with an empty Head it selects none.
 type Query struct {
 	Outcome  string
 	Session  string
 	Actor    string
 	Event    string
 	Branch   string
-	Head     string // the commit HEAD points to, "" when unknown; read only with ByBranch
+	Head     string // the commit HEAD points to, "" when unknown; read only with ByBranch or ByHead
 	Key      string
 	Line     int // the line of the workflow entry; 0 for any
 	Hash     string
 	ByHash   bool
 	ByBranch bool
+	ByHead   bool
 }
 
 // Session is the id of a session of the agent, which names the file of its log (see File).
@@ -198,8 +200,11 @@ func (q Query) selectsAnyHash(e Entry) bool {
 }
 
 // selectsBranch reports whether e is of the branch of the query: of any branch without Branch nor ByBranch; with
-// ByBranch, of exactly Branch or of the same non empty Head.
+// ByBranch, of exactly Branch or of the same non empty Head; with ByHead, of the same non empty Head alone.
 func (q Query) selectsBranch(e Entry) bool {
+	if q.ByHead {
+		return q.Head != "" && e.Head == q.Head
+	}
 	if !q.ByBranch {
 		return q.Branch == "" || e.Branch == q.Branch
 	}

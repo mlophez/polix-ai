@@ -27,7 +27,8 @@ type Entry struct {
 	Before string
 	// Head is the commit HEAD pointed to when the line was written, empty when unknown: written only on the observed
 	// lines about a content that are read by branch (finished with a hash, passed and blocked), so another branch on
-	// the same commit selects them too (see Query), and on the snapshot lines, so a post_command sees HEAD moved.
+	// the same commit selects them too (see Query), and a query by HEAD alone (Query.ByHead) selects the finished
+	// ones on any branch; and on the snapshot lines, so a post_command sees HEAD moved.
 	Head string
 	// Refs is what git moved without moving HEAD when a snapshot line was written, the commit of refs/stash and the
 	// operation stopped halfway, empty when there was neither: written only on the snapshot lines, so a post_command

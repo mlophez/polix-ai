@@ -55,6 +55,129 @@ on:
 	}
 }
 
+// CUJ-04 and CUJ-05: finished_since_commit holds only while the latest hashed finished line of every type of its list,
+// on any branch, is on the current HEAD, whatever changed since, and never reads the content.
+func TestFinishedSinceCommit(t *testing.T) {
+	gated := func(types string) string {
+		return `version: 1
+vars:
+  key: { branch: "^([A-Z]+-[0-9]+)?" }
+on:
+  pre_commit:
+    - when: { changed: "*.go" }
+      unless: { finished_since_commit: ` + types + ` }
+      action: { block: "Falta la revisión" }
+`
+	}
+	line := func(key, branch, head, hash string) state.Entry {
+		return state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeFinished, Session: "s1",
+			Event: workflow.SubagentStop, Actor: key, Key: key, Branch: branch, Hash: hash, Head: head}
+	}
+	cases := []struct {
+		name, types, branch, head string
+		lines                     []state.Entry
+		block                     bool
+	}{
+		{"same head and branch", "polix:builder", "main", "c1",
+			[]state.Entry{line("polix:builder", "main", "c1", "h")}, false},
+		{"another branch on the same head", "polix:builder", "feat/x", "c1",
+			[]state.Entry{line("polix:builder", "main", "c1", "h")}, false},
+		{"a detached head", "polix:builder", "", "c1",
+			[]state.Entry{line("polix:builder", "main", "c1", "h")}, false},
+		{"unknown current head", "polix:builder", "main", "",
+			[]state.Entry{line("polix:builder", "main", "c1", "h")}, true},
+		{"another head, same branch", "polix:builder", "main", "c2",
+			[]state.Entry{line("polix:builder", "main", "c1", "h")}, true},
+		{"a line without hash", "polix:builder", "main", "c1",
+			[]state.Entry{line("polix:builder", "main", "", "")}, true},
+		{"a hashed line without head", "polix:builder", "main", "c1",
+			[]state.Entry{line("polix:builder", "main", "", "h")}, true},
+		{"a later line on another head", "polix:builder", "main", "c1",
+			[]state.Entry{line("polix:builder", "main", "c1", "h"), line("polix:builder", "main", "c2", "h2")}, true},
+		{"a later line on another head and branch", "polix:builder", "main", "c1",
+			[]state.Entry{line("polix:builder", "main", "c1", "h"), line("polix:builder", "feat/x", "c2", "h2")}, true},
+		{"a later line on the same head", "polix:builder", "main", "c2",
+			[]state.Entry{line("polix:builder", "main", "c1", "h"), line("polix:builder", "main", "c2", "h2")}, false},
+		{"a later line without hash", "polix:builder", "main", "c1",
+			[]state.Entry{line("polix:builder", "main", "c1", "h"), line("polix:builder", "main", "", "")}, false},
+		{"no line", "polix:builder", "main", "c1", nil, true},
+		{"a line of another type", "polix:builder", "main", "c1",
+			[]state.Entry{line("polix:reviewer", "main", "c1", "h")}, true},
+		{"only one type of the list", "[polix:builder, polix:verifier]", "main", "c1",
+			[]state.Entry{line("polix:builder", "main", "c1", "h")}, true},
+		{"every type of the list", "[polix:builder, polix:verifier]", "main", "c1",
+			[]state.Entry{line("polix:builder", "main", "c1", "h"), line("polix:verifier", "main", "c1", "h2")}, false},
+		{"a type of the list on another head", "[polix:builder, polix:verifier]", "main", "c2",
+			[]state.Entry{line("polix:builder", "main", "c2", "h"), line("polix:verifier", "main", "c1", "h2")}, true},
+		// FND-03: an empty list, or a type that expands to an empty text, never holds, even on a line of another type.
+		{"an empty list", "[]", "main", "c1",
+			[]state.Entry{line("polix:reviewer", "main", "c1", "h")}, true},
+		{"a placeholder empty on the event", `"{path}"`, "main", "c1",
+			[]state.Entry{line("polix:reviewer", "main", "c1", "h")}, true},
+		{"a var empty on the branch", `"{key}"`, "main", "c1",
+			[]state.Entry{line("polix:reviewer", "main", "c1", "h")}, true},
+		{"an empty type in a list", `[polix:builder, "{path}"]`, "main", "c1",
+			[]state.Entry{line("polix:builder", "main", "c1", "h")}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// Go files changed since the lines, and no content hash is known: the condition never reads it.
+			f := facts{branch: c.branch, head: c.head, state: state.State{Entries: c.lines},
+				changed: []string{"internal/a.go"}}
+			out, steps := walk(t, emptyListed(t, gated, c.types, "finished_since_commit"), f)
+			if out.Answer.Block != c.block {
+				t.Fatalf("block %v, want %v: %+v", out.Answer.Block, c.block, appended(steps))
+			}
+			for _, s := range steps {
+				if s.Hash || s.Compare != "" {
+					t.Fatalf("the condition read the content: %+v", s)
+				}
+			}
+		})
+	}
+}
+
+// emptyListed returns the evaluation on pre_commit of the workflow gated gives for types; for "[]", which polix config
+// check rejects, the workflow of a valid type with the list of the unless of its entry emptied after the load.
+func emptyListed(t *testing.T, gated func(string) string, types, key string) hook.Evaluation {
+	t.Helper()
+	if types != "[]" {
+		return eval(t, gated(types), workflow.PreCommit)
+	}
+	ev := eval(t, gated("polix:builder"), workflow.PreCommit)
+	ev.Workflow.On[workflow.PreCommit][0].Unless[key] = []any{}
+	return ev
+}
+
+// FND-03: finished never holds with an empty list or a type that expands to an empty text, even when a line of
+// another type finished on the current content.
+func TestFinishedEmptyType(t *testing.T) {
+	gated := func(types string) string {
+		return `version: 1
+vars:
+  key: { branch: "^([A-Z]+-[0-9]+)?" }
+on:
+  pre_commit:
+    - when: { changed: "*.go" }
+      unless: { finished: ` + types + ` }
+      action: { block: "Falta la revisión" }
+`
+	}
+	reviewed := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeFinished,
+		Session: "s1", Event: workflow.SubagentStop, Actor: "polix:reviewer", Key: "polix:reviewer",
+		Branch: "main", Hash: "h", Head: "c1"}}}
+	for _, types := range []string{"polix:reviewer", "[]", `"{path}"`, `"{key}"`, `[polix:reviewer, "{path}"]`} {
+		t.Run(types, func(t *testing.T) {
+			f := facts{branch: "main", head: "c1", hashes: []string{"h"}, state: reviewed,
+				changed: []string{"internal/a.go"}}
+			out, steps := walk(t, emptyListed(t, gated, types, "finished"), f)
+			if want := types != "polix:reviewer"; out.Answer.Block != want {
+				t.Fatalf("block %v, want %v: %+v", out.Answer.Block, want, appended(steps))
+			}
+		})
+	}
+}
+
 // commandEval returns the evaluation of the event name for the command line with the exit code, with the workflow
 // of yaml.
 func commandEval(t *testing.T, yaml, name, line string, exit int) hook.Evaluation {

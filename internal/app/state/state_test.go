@@ -151,6 +151,36 @@ func TestObservedByBranchOrHead(t *testing.T) {
 	}
 }
 
+// ByHead selects the entries of exactly the head of the query on any branch, none of another head or without head,
+// and none when the head of the query is empty.
+func TestObservedByHead(t *testing.T) {
+	onMain := Entry{Kind: KindObserved, Outcome: OutcomeFinished, Branch: "main", Head: "c1", Key: "a", Hash: "h"}
+	onDev := Entry{Kind: KindObserved, Outcome: OutcomeFinished, Branch: "dev", Head: "c1", Key: "b", Hash: "h"}
+	detached := Entry{Kind: KindObserved, Outcome: OutcomeFinished, Head: "c1", Key: "c", Hash: "h"}
+	other := Entry{Kind: KindObserved, Outcome: OutcomeFinished, Branch: "main", Head: "c2", Key: "d", Hash: "h"}
+	noHead := Entry{Kind: KindObserved, Outcome: OutcomeFinished, Branch: "main", Key: "e", Hash: "h"}
+	s := State{Entries: []Entry{onMain, onDev, detached, other, noHead}}
+	keys := func(q Query) string {
+		var out []string
+		for _, e := range s.Observed(q) {
+			out = append(out, e.Key)
+		}
+		return strings.Join(out, "")
+	}
+	if got := keys(Query{Outcome: OutcomeFinished, Branch: "feat", Head: "c1", ByHead: true}); got != "abc" {
+		t.Fatalf("by head on any branch: %q", got)
+	}
+	if got := keys(Query{Outcome: OutcomeFinished, Head: "c2", ByHead: true}); got != "d" {
+		t.Fatalf("another head: %q", got)
+	}
+	if got := keys(Query{Outcome: OutcomeFinished, Branch: "main", ByHead: true}); got != "" {
+		t.Fatalf("an empty head selects none: %q", got)
+	}
+	if i := s.Index(Query{Outcome: OutcomeFinished, Head: "c1", ByHead: true}); i != 2 {
+		t.Fatalf("index %d", i)
+	}
+}
+
 // Index is the position of the last entry the query selects, so two observations can be ordered; -1 for none, for
 // an empty hash and for a query that is not valid.
 func TestIndex(t *testing.T) {
