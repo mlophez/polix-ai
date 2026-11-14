@@ -8,7 +8,7 @@ effort: high
 model: inherit
 user-invocable: true
 disable-model-invocation: true
-argument-hint: "[what to plan, e.g. add retries to the webhook sender; empty to take it from the conversation]"
+argument-hint: "[what to plan, e.g. add retries to the webhook sender, and where to save it; empty: the conversation]"
 ---
 
 # Planning
@@ -26,11 +26,16 @@ The folders of plans and of rules are `plans.path` and `rules.path` of `polix.ya
 
 - **Request**: what to plan, from the arguments or the conversation.
   Without either, ask the user.
-- **Task**: a file of the folder of tasks, `ai/tasks/` as `/polix:task` writes it, when the request names one.
-  It is the request: plan from its sections, and give its path as the `reference` of the plan.
+  It may be a file of the folder of tasks, `ai/tasks/` as `/polix:task` writes it.
+  Then plan from its sections, and give its path as the `reference` of the plan.
   Once the plan file exists, set the task's `status: planned` and `plan: <path of the plan>`, and nothing else of it.
-- **Plan**: the file of the folder of plans to adjust, when the request names or refers to one.
-  A plan written earlier in this session is the plan to adjust, also when the request changes its scope or title.
+- **Plan**: the plan file, from the arguments or the conversation.
+  A file that already exists is the plan to adjust.
+  So is the plan the task's `plan` names, or one written earlier in this session, even with a new scope or title.
+  A path that does not exist is where the new plan goes, used as is, outside the folder of plans too.
+  A path ending in `/` is a folder: name the file inside it as `Plan file` says.
+  Without a path, write the new plan where `Plan file` says.
+  When two of these name different files, ask the user which one is the plan.
 
 ## Output
 
@@ -410,7 +415,8 @@ A reviewer reads `Overview` and `Specification` to approve the plan; the executo
 
 ### Plan file
 
-Path: `<plans>/<name>.md`, where `<plans>` is the folder of plans.
+Path: the `Plan` of `Input` when the request gives one.
+Otherwise `<plans>/<name>.md`, where `<plans>` is the folder of plans.
 Name it as the project names its plans: the convention of `AGENTS.md`, of `polix.yaml` or of the plans already there.
 When the plans already there mix conventions, follow the one last added in the git history.
 Without one, `<name>` is short kebab-case English from the request.
