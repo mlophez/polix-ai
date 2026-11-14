@@ -22,7 +22,7 @@ with their approval:
 
 Both install the binary and run `polix install --skills`, which installs the plugin `polix` for the user:
 in Claude Code, the skills `/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`,
-`/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit` and the agents `polix:workflow-author`,
+`/polix:task`, `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit` and the agents `polix:workflow-author`,
 `polix:rules-author`, `polix:builder`, `polix:reviewer`, `polix:rules-reviewer` and `polix:auditor`.
 Run those skills and agents only when the user or the workflow of polix asks for them, never on your own initiative.
 The hooks already come with the repository.

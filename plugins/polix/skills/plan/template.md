@@ -5,6 +5,7 @@ risk: <low | medium | high>
 risk_reason: <the reason in one line>
 reference: <the ticket, issue or link the change comes from, or none>
 artifacts: <[] or a list of links or paths>
+branch: <the git branch the plan builds on>
 created: <today as YYYY-MM-DD>
 tasks: <N>
 iterations: 0

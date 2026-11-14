@@ -28,6 +28,9 @@ The folder of rules is `rules.path` of `polix.yaml`, `ai/rules/` without it.
 The prompt names:
 
 - **Plan**: the path of the plan file.
+- **Branch**: the branch to build on, the `branch` of the plan's frontmatter, or "current".
+  When `git branch --show-current` is not that branch, stop before any change and report it in `Pending`.
+  Never switch branches yourself: the session that launched you does it.
 - **From**: the first task to implement.
   Without it or with "none", the first task whose line of `Progress` is not `[x]`, or Task 1 without `Progress`.
 - **Findings**: an iteration of the plan whose verification and review hold the findings to fix, and which ones;

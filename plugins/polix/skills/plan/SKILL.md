@@ -26,6 +26,9 @@ The folders of plans and of rules are `plans.path` and `rules.path` of `polix.ya
 
 - **Request**: what to plan, from the arguments or the conversation.
   Without either, ask the user.
+- **Task**: a file of the folder of tasks, `ai/tasks/` as `/polix:task` writes it, when the request names one.
+  It is the request: plan from its sections, and give its path as the `reference` of the plan.
+  Once the plan file exists, set the task's `status: planned` and `plan: <path of the plan>`, and nothing else of it.
 - **Plan**: the file of the folder of plans to adjust, when the request names or refers to one.
   A plan written earlier in this session is the plan to adjust, also when the request changes its scope or title.
 
@@ -43,7 +46,7 @@ The folders of plans and of rules are `plans.path` and `rules.path` of `polix.ya
   The approval of `ExitPlanMode` is the approval of Step 8: save the plan with `status: approved`.
   When rejected, go back to Step 5 or 6 with the comments, for the sections they touch.
 - Approval never starts the build: Step 9 still applies.
-- Explore read-only: the plan file is the only file you write, and the tests of the project the only thing you run.
+- Explore read-only: you write only the plan file and the frontmatter of its task, and run only the project's tests.
 - Define tasks, never code: no code blocks, snippets, implementations or signatures.
   The only blocks allowed hold literal data of the outcome, or a task's data.
   They go in `Interface`, in the journeys, in the example of `Overview` and in the `yaml` block of each task.
@@ -441,6 +444,8 @@ The frontmatter, beyond what its placeholders say:
 - `risk`: `high` when a task touches an item of `High risk`.
   `medium` when one changes an internal contract or code that several callers share; `low` otherwise.
 - `reference`: the ticket, issue or link of the request or the conversation, or `none`; never invent one.
+- `branch`: the branch the plan is written on, from `git branch --show-current`; the build switches to it first.
+  On a detached `HEAD`, ask the user the branch to build on, and never create it.
 - `artifacts`: the external resources of the change the user gives or the conversation names, or `[]`.
   Each is the link or path of an artifact of Claude Design, a prototype, a diagram, a mock-up or a document.
   Never invent one.
@@ -477,5 +482,5 @@ Insert a new task where its order needs, never before the last line `[x]`.
 Renumber the tasks after an inserted one, with their lines of `Progress` and every `Task N` the plan mentions.
 `Iterations` keeps the task numbers of its runs.
 With a line not `[x]`, set `status` back to `planned` until the user approves the adjustment (see Step 8).
-Recompute `risk`, `risk_reason` and `tasks`, never `created` nor `iterations`; add the new `artifacts`.
+Recompute `risk`, `risk_reason` and `tasks`, never `created`, `branch` nor `iterations`; add the new `artifacts`.
 Keep `Starting point` unless the adjustment changes what it says, and `Iterations` always as it is.

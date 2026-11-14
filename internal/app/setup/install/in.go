@@ -103,7 +103,7 @@ func Command() *cobra.Command {
 			"Claude Code is the supported agent and the default. Codex is opt-in, set up only with --agent codex: its\n" +
 			"support is not implemented in this release and the setup is untested.\n\n" +
 			"--skills: for the user, the plugin polix, with skills (/polix:workflow, /polix:add-rule, /polix:risk,\n" +
-			"/polix:doctor, /polix:init, /polix:plan, /polix:build, /polix:review, /polix:audit) and agents\n" +
+			"/polix:doctor, /polix:init, /polix:task, /polix:plan, /polix:build, /polix:review, /polix:audit) and agents\n" +
 			"(polix:workflow-author, polix:rules-author, polix:builder, polix:verifier, polix:reviewer,\n" +
 			"polix:rules-reviewer, polix:auditor) that help in any repository. It is written to the local marketplace\n" +
 			"~/.polix/marketplace/ and registered with each agent:\n" +

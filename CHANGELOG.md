@@ -18,6 +18,15 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   commit just made, not at the working tree, and when git cannot read it they hold and the call warns. Needs no new
   hook, and a polix older than the event reports it as unknown, so set `requires` to a release that has it.
   `docs/use-cases.md` has a recipe.
+- The skill `/polix:task` adds a task to the backlog `ai/tasks/` from a template: a frontmatter with `title`, `type`
+  (`feature`, `bug`, `refactor`, `chore`, `docs` or `idea`), `status` (`open`, `planned`, `done` or `dropped`),
+  `priority`, `reference`, `plan` and `created`, then `Problem`, `Outcome`, `Done when`, `Scope`, `Context` and
+  `Open questions`. It says what and why, never how, and asks in one round only what the request leaves open.
+  `/polix:plan <task>` plans from it, gives its path as the `reference` of the plan and sets the task `planned` with
+  the path of its `plan`.
+- The field `branch` in the frontmatter of a plan: `/polix:plan` writes the branch it plans on, and `/polix:build`
+  switches to it before the first iteration, stopping to ask when the working tree holds other changes or the branch
+  does not exist; the builder stops when it runs on another branch. A plan without `branch` builds where it is.
 - The placeholders `{commit}` and `{subject}`, the short hash and the subject of the commit just made, on
   `post_commit`, and an empty text on any other event.
 

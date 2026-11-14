@@ -36,6 +36,12 @@ The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it.
 - **From**: the task number from the arguments, to start there.
   Without it, the first task whose line of `Progress` is not `[x]`, so a task `[-]` is tried again.
   Without `Progress`, Task 1.
+- **Branch**: the `branch` of the frontmatter of the plan, the branch it was planned on and is built on.
+  When the current branch (`git branch --show-current`) is another one, switch to it with `git switch <branch>`.
+  Before switching, run `git status --porcelain`: with changes other than the plan file, stop and ask the user.
+  They commit or stash them, or tell you to build where you are; never stash, commit nor discard them yourself.
+  When the branch exists neither locally nor on a remote, stop and tell the user; never create it.
+  A plan without `branch` builds on the current branch.
 - **Approval**: a plan with `status: planned` in its frontmatter is not approved.
   Stop and ask the user to approve it with `/polix:plan <plan>`; never approve it yourself.
   A plan of the earlier format, with a `- Status:` header instead of the frontmatter, needs no approval.
@@ -48,7 +54,7 @@ The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it.
 
 ## Output
 
-- **Plan**: the path of the plan file and its `status`.
+- **Plan**: the path of the plan file, its `status` and the branch it was built on.
 - **Tasks**: each task with its line of `Progress`: `done` with its evidence, `departed` or `blocked` and why.
 - **Changes**: the files changed, by task and by fix.
 - **Docs**: each Markdown file updated and what changed in it, or why none needed it.
@@ -67,7 +73,8 @@ The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it.
 - Never edit the code yourself: only the builder changes it, except in the fallback of `Requirements`.
   You edit only the Markdown docs of the project (see `Docs`) and four parts of the plan.
   Those are the `status` and `iterations` of the frontmatter, the checklist of `Acceptance criteria` and `Iterations`.
-- Never commit, stage, stash, reset, checkout nor create branches.
+- Never commit, stage, stash, reset nor create branches.
+  The only checkout is the switch to the plan's `branch` in Step 1 (see `Input`).
 - Launch one builder per iteration, for all its open tasks or all its open findings, in the foreground, and wait.
 - Count nothing as closed on the builder's word: only the verifier's and the reviewer's reports close it.
 - Never run a command that installs, generates or formats, even when the plan or `AGENTS.md` lists it.
@@ -80,7 +87,8 @@ Copy this checklist and track your progress:
 
 ```text
 Build progress:
-- [ ] Step 1: Resolve the plan, its approval, the first task and whether to resume (see `Input`); read it whole.
+- [ ] Step 1: Resolve the plan, switch to its branch, its approval, the first task and resume (see `Input`).
+  Read the plan whole.
 - [ ] Step 2: Note the changes made before the run (see Step 2).
 - [ ] Step 3: Show the user the tasks to build, in order, and go on without waiting.
 - [ ] Step 4: Set the plan `in-progress` (see `Status`).
@@ -149,6 +157,7 @@ Send the builder this block, in the language of the session:
 
 ```text
 Plan: <path of the plan file>
+Branch: <the branch of Step 1, or "current" for a plan without `branch`>
 From: <number and title of the first open task, or "none" to fix findings>
 Findings: <"none", or the iteration of the plan whose checks hold the findings to fix, and which ones>
 ```

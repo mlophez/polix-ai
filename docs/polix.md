@@ -1301,10 +1301,11 @@ also prints that Codex support is not implemented in this release and the setup 
 - The plugin `polix`, for the user, since it helps in any repository. It is the folder `plugins/polix/` of this
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
   the folder of rules, `risk` calibrates `risk.weights` and the thresholds of the measures on the history of commits,
-  `doctor` fixes the setup, `plan` writes a plan in the folder of plans, driven by its outcome (`Overview`, then
+  `doctor` fixes the setup, `task` adds a task to the backlog `ai/tasks/` from a template with a frontmatter, ready
+  for `plan`, `plan` writes a plan in the folder of plans, driven by its outcome (`Overview`, then
   `Specification` with the outcome, its design and examples, the scope and the acceptance criteria, then `Approach`
-  with the tasks, and the user approves its outcome before it is built), `build` implements an approved
-  plan unattended, in iterations: each one launches a `builder` agent on the open tasks, else on the open findings,
+  with the tasks, and the user approves its outcome before it is built; its frontmatter records in `branch` the branch
+  it was written on), `build` switches to the `branch` of an approved plan and implements it unattended, in iterations: each one launches a `builder` agent on the open tasks, else on the open findings,
   updates the Markdown docs of the project, has the agents `verifier` (against the plan) and `reviewer` (the code's
   quality) check the change in parallel, adds their reports to the `Iterations` of the plan and counts it in its
   `iterations`, until nothing is open or two iterations close nothing, then marks the acceptance criteria and reports
@@ -1322,7 +1323,7 @@ also prints that Codex support is not implemented in this release and the setup 
     `claude plugin install polix@polix --scope user`. Claude Code copies the plugin to its cache
     (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
     `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
-    skills are `/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`,
+    skills are `/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`, `/polix:task`,
     `/polix:plan`, `/polix:build`, `/polix:review` and `/polix:audit`, its agents `polix:workflow-author`,
     `polix:rules-author`, `polix:builder`, `polix:verifier`, `polix:reviewer`, `polix:rules-reviewer` and
     `polix:auditor`. The skills `build`, `review` and `audit` launch the agents; Codex, which has no agents of
@@ -1330,7 +1331,7 @@ also prints that Codex support is not implemented in this release and the setup 
     implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
     or the workflow of polix asks for it, as its description says, and the frontmatter enforces it.
-    `init`, `doctor`, `risk`, `plan`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
+    `init`, `doctor`, `risk`, `task`, `plan`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
     user runs them, typing the command; when a message of polix asks for one, as the session start does for
     `/polix:doctor` or a gate without a plan for `/polix:plan`, the model tells the user to run it. So the flow of
     the harness always starts by hand, and a gate the model must satisfy alone asks for an agent, as
