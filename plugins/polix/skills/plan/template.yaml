@@ -14,6 +14,10 @@ reference: <the ticket, issue, task file or link the change comes from, or none>
 artifacts: []  # or a list of links or paths
 branch: <the git branch the plan builds on>
 created: <today as YYYY-MM-DD>
+start: none  # the build sets when it first set the plan in-progress, as YYYY-MM-DDTHH:MM:SS+HH:MM
+end: none  # the build sets when the plan ended done or blocked, in the same format
+duration: none  # the build sets end minus start, as 1h 05m 12s
+tokens: none  # the build sets the sum of the totalTokens its subagents reported, across every run
 
 overview:
   summary: |
@@ -159,7 +163,7 @@ tasks:
     evidence: none  # the build sets the evidence of done, or why it departed or is blocked, from the builder's report
 
 iterations:  # the plan writes []; the build adds one item per pass of the builder on what the checks left open
-  - id: ITR-01  # ITR-01, ITR-02... in the order they run
+  - id: ITER-01  # ITER-01, ITER-02... in the order they run
     date: <today as YYYY-MM-DD>
     status: open  # open while the builder works on it, built once it returns, checked once the checks ran
     tasks: [<T2>]  # the tasks still to do, pending or departed, or []

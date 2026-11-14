@@ -9,6 +9,12 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Added
 
+- `/polix:build` records the build in four new keys of the root of a YAML plan: `start`, when it first set the plan
+  `in-progress`, and `end`, when it last ended it `done` or `blocked`, both taken from the shell with the local
+  offset; `duration`, end minus start, interruptions included; and `tokens`, the sum across every run of the usage
+  each subagent reports when it returns. The tokens leave out the coordinator's own, which no report gives, and are
+  `unknown` when a subagent reports none, as in Codex. The stats of the build give them, with the tokens of the run by
+  agent. `/polix:plan` writes them `none`, and a plan in Markdown gets the figures only in the stats.
 - The event `post_commit`, which fires after a commit of the agent succeeded, to remind it of the docs or of the Jira
   ticket without getting in the way of the commit: it comes right after the `post_command` of a command line that
   ended with exit code 0 and holds a `git commit` that decides that code, so a failed commit, one that does not decide
@@ -75,9 +81,9 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   since each task and criterion carries its `status` and `evidence`. The starting point is gone: its files to read were
   the files of the tasks, and the builder takes the `verification` of the plan as its baseline. Prose goes in literal
   blocks `|`, so it needs no quoting. `/polix:build` builds the tasks, then checks them with the verifier and the
-  reviewer; when they leave something to fix, it appends an iteration (`ITR-NN`) to `iterations` with the tasks still to
-  do and the findings to fix (`FND-NN`, numbered across the plan), and launches the builder on it. The builder never
-  edits the plan: it reports the `status` and `evidence` of each task and finding, and `/polix:build`, which
+  reviewer; when they leave something to fix, it appends an iteration (`ITER-NN`) to `iterations` with the tasks
+  still to do and the findings to fix (`FND-NN`, numbered across the plan), and launches the builder on it. The builder
+  never edits the plan: it reports the `status` and `evidence` of each task and finding, and `/polix:build`, which
   coordinates the run, writes them in the plan. The reports of the agents keep their format and no longer go into the
   plan. The agents `builder`, `verifier` and `reviewer` read the keys of the plan. A plan in Markdown is still adjusted with
   `template.md` and built in its own format.

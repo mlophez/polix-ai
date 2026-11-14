@@ -31,7 +31,7 @@ The prompt is in one of two modes.
 Plan mode, from the skill build, reviews the current change (see `Change`), with its plan as context:
 
 - **Plan**: the path of the plan file.
-- **Previous**: the `ITR-NN` of the plan the builder just worked on, or "none".
+- **Previous**: the `ITER-NN` of the plan the builder just worked on, or "none".
 - **Skipped**: the `FND-NN` of that iteration the builder skipped, with why, or "none".
 - **Repeats**: the `FND-NN` of the plan whose root cause came back in a later iteration, or "none".
   The second pass sweeps the class of each one (see Step 11).

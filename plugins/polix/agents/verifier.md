@@ -28,7 +28,7 @@ You report; you never fix.
 The prompt names:
 
 - **Plan**: the path of the plan file.
-- **Previous**: the `ITR-NN` of the plan the builder just worked on, or "none".
+- **Previous**: the `ITER-NN` of the plan the builder just worked on, or "none".
 - **Pre-existing**: the paths changed before the run, or "none".
   Their changes are not part of the change: never report them, and list them in `Pending`.
 

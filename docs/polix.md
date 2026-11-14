@@ -1377,8 +1377,9 @@ also prints that Codex support is not implemented in this release and the setup 
     `template.yaml` next to it, where each fact lives in one place and the others name it by its id (`LIT-NN`,
     `CUJ-NN`, `AC-NN`, `TN`); it keeps `template.md` to adjust a plan written before in Markdown. `build` coordinates
     the run and is the only one that edits the plan: the builder builds the tasks and reports the `status` and
-    `evidence` of each, `build` writes them in the plan, then the verifier and the reviewer check them; when they leave something to fix, it adds an iteration (`ITR-NN`) to `iterations` with the findings to fix
-    (`FND-NN`) and launches the builder on it; a run that did not end resumes where its last iteration stopped. A
+    `evidence` of each, `build` writes them in the plan, then the verifier and the reviewer check them; when they leave something to fix, it adds an iteration (`ITER-NN`) to `iterations` with the findings to fix
+    (`FND-NN`) and launches the builder on it; it sets at the root of the plan its `start`, `end`, `duration`
+    and the `tokens` the subagents report; a run that did not end resumes where its last iteration stopped. A
     plan in Markdown is still built in its own format, under `### Iteration N` of `## Iterations`.
   - Codex, only with `--agent codex` (not implemented): `codex plugin marketplace add ~/.polix/marketplace` and
     `[plugins."polix@polix"] enabled = true` in `~/.codex/config.toml`, the rest of the file kept. Codex documents

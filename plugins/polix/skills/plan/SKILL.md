@@ -483,6 +483,7 @@ The top-level keys, beyond what their placeholders say:
   Never invent one.
   The plan stays self-contained: what an artifact settles goes to `outcome`, `constraints` or a decision in words.
 - `iterations`: `[]`; the item of the template shows the format the build appends, one per iteration.
+- `start`, `end`, `duration` and `tokens`: `none`; the build sets them.
 
 The plan holds no derived data: no count of tasks or iterations, no list of progress, no checklist of criteria.
 The `status` of each task and criterion is their progress.
@@ -514,7 +515,8 @@ Never rewrite a task with `status: done`: it is built, so what changes it goes i
 Rewrite in place a task `pending`, `departed` or `blocked`, and set it `pending` with `evidence: none`.
 Add a new task after the last one; never renumber the tasks, since `iterations` names them.
 With a task not `done`, set `status` back to `planned` until the user approves the adjustment (see Step 8).
-Recompute `risk` and `risk_reason`, never `created`, `branch` nor `iterations`; add the new `artifacts`.
+Recompute `risk` and `risk_reason`, never `created`, `branch`, `iterations`, `start`, `end`, `duration` nor `tokens`.
+Add the new `artifacts`.
 Keep `iterations` always as it is.
 
 ### Markdown plans

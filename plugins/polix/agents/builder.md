@@ -33,7 +33,7 @@ The prompt names:
   Never switch branches yourself: the session that launched you does it.
 - **From**: the first task to implement.
   Without it or with "none", the first task whose `status` is not `done`.
-- **Iteration**: the `ITR-NN` of the plan to work on, or "none".
+- **Iteration**: the `ITER-NN` of the plan to work on, or "none".
   With one, build its `tasks` from the first, then fix its `findings` (see `Fixing findings`).
   A plan in Markdown names its findings in the prompt instead, with the iteration of its reports.
 

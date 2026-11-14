@@ -70,8 +70,9 @@ The folder of plans is the one the start context of polix names, below the root.
 - Never end your turn before Step 9: a subagent that returns, a failed check or a long run is never the end.
   The run ends only when the plan is done or the loop stops (see `Loop`).
 - Never edit the code yourself: only the builder changes it, except in the fallback of `Requirements`.
-  You edit only the Markdown docs of the project (see `Docs`) and four parts of the plan.
-  Those are its `status`, the `status` and `evidence` of each task and of each criterion, and the iterations you add.
+  You edit only the Markdown docs of the project (see `Docs`) and five parts of the plan.
+  Those are its `status`, the `status` and `evidence` of each task and of each criterion.
+  Also the iterations you add, and `start`, `end`, `duration` and `tokens` (see `Time and tokens`).
   Of the iterations, you set their `status` and the `status` and `evidence` of their findings.
 - Edit the plan with targeted edits that keep it valid YAML, never writing it again whole.
 - Never commit, stage, stash, reset nor create branches.
@@ -92,12 +93,13 @@ Build progress:
   Read the plan whole.
 - [ ] Step 2: Note the changes made before the run (see Step 2).
 - [ ] Step 3: Show the user the tasks to build, in order, and go on without waiting.
-- [ ] Step 4: Set the plan `in-progress` (see `Status`).
+- [ ] Step 4: Set the plan `in-progress` (see `Status`) and set its `start` (see `Time and tokens`).
 - [ ] Step 5: Build the tasks with the builder (see `Builder prompt`).
   Write its report in the plan (see `Builder report`).
   Then update the docs (see `Docs`).
 - [ ] Step 6: Check and fix until nothing is open or the loop stops (see `Loop` and `Iteration`).
 - [ ] Step 7: Set the plan `done` or `blocked` (see `Status`).
+  Set its `end`, `duration` and `tokens` (see `Time and tokens`).
 - [ ] Step 8: Gather the stats of the build (see `Stats`).
 - [ ] Step 9: Report (see `Output`), stop and return control to the user.
 ```
@@ -140,7 +142,7 @@ After the builder, check, and repeat until nothing is open:
 
 An iteration is one pass of the builder on what the checks left open, appended to `iterations` of the plan:
 
-- `id`: `ITR-01`, `ITR-02`..., the number of items plus one; the prompts and later findings name it.
+- `id`: `ITER-01`, `ITER-02`..., the number of items plus one; the prompts and later findings name it.
 - `date`: today as YYYY-MM-DD.
 - `status`: `open` while the builder works on it, `built` once it returns, `checked` once the checks ran.
 - `tasks`: the ids of the tasks still to do, `pending` or `departed`, or `[]`.
@@ -160,7 +162,7 @@ Two checks of a plan, the first leaving a finding and a task open, and the itera
 
 ```yaml
 iterations:
-  - id: ITR-01
+  - id: ITER-01
     date: 2026-11-14
     status: checked
     tasks: [T3]
@@ -191,6 +193,27 @@ iterations:
           `TestExportDates` covers `2026-02-30`; it panicked before the fix and passes.
 ```
 
+### Time and tokens
+
+Four keys of the root of the plan record the build as a whole, across every run, a resumed one included:
+
+- `start`: at Step 4, the current time from the shell, as `YYYY-MM-DDTHH:MM:SS+HH:MM` with the local offset.
+  Take it from a command, such as `date -Iseconds` or `Get-Date -Format "yyyy-MM-ddTHH:mm:sszzz"`; never guess it.
+  Set it only when it is `none`: a resumed plan keeps the `start` of its first run.
+- `end`: at Step 7, the current time the same way; a later run of the plan writes it again.
+- `duration`: `end` minus `start`, as `1h 05m 12s`; it includes the time the plan stood interrupted.
+- `tokens`: the `totalTokens` of the usage each subagent reports when it returns, added to the `tokens` of the plan.
+  Start from `0` when it is `none`, and add each subagent as it returns, never estimated.
+  They leave out your own tokens, which no report gives: say so in `Stats`.
+  When a subagent reports no usage, as in the fallback of `Requirements`, set it `unknown` and add no more.
+
+```yaml
+start: 2026-11-14T21:05:40+01:00
+end: 2026-11-14T21:48:02+01:00
+duration: 42m 22s
+tokens: 491603
+```
+
 ### Builder prompt
 
 Send the builder this block, in the language of the session:
@@ -199,7 +222,7 @@ Send the builder this block, in the language of the session:
 Plan: <path of the plan file>
 Branch: <the branch of Step 1, or "current" for a plan without `branch`>
 From: <id and title of the first task to build, or "none" when it works on an iteration>
-Iteration: <the `ITR-NN` of the plan to work on, its tasks and findings, or "none">
+Iteration: <the `ITER-NN` of the plan to work on, its tasks and findings, or "none">
 ```
 
 ### Builder report
@@ -218,7 +241,7 @@ Send the verifier this block, in the language of the session:
 
 ```text
 Plan: <path of the plan file>
-Previous: <the `ITR-NN` of the plan the builder just worked on, or "none">
+Previous: <the `ITER-NN` of the plan the builder just worked on, or "none">
 Pre-existing: <the paths changed before the run, from Step 2, or "none">
 ```
 
@@ -228,7 +251,7 @@ Send the reviewer this block, in the language of the session:
 
 ```text
 Plan: <path of the plan file>
-Previous: <the `ITR-NN` of the plan the builder just worked on, or "none">
+Previous: <the `ITER-NN` of the plan the builder just worked on, or "none">
 Skipped: <the `FND-NN` of that iteration the builder skipped, with why, or "none">
 Repeats: <the `FND-NN` that a later finding of the plan `repeats`, with the guarantee they break, or "none">
 Pre-existing: <the paths changed before the run, from Step 2, or "none">
@@ -280,6 +303,9 @@ Gather the figures of this run from the plan and from git, and give them as a sh
 - **Criteria**: met, not met and not verified, of the total.
 - **Findings**: of the iterations, found, fixed and skipped, by `source`, and the reviewer's `minor` ones apart.
 - **Agents**: how many times the builder, the verifier and the reviewer ran.
+- **Time**: the `start`, `end` and `duration` of the plan.
+- **Tokens**: the tokens of this run by agent, and the `tokens` of the plan.
+  Say that they count the subagents only, not this skill's own.
 - **Code**: the files changed and the lines added and removed, from `git diff --shortstat` and the untracked files.
 
 ### Markdown plans
@@ -291,6 +317,7 @@ Without `Progress`, start at Task 1, and a task is done when the builder reports
 With `Progress`, mark the line of each task with the one the builder reports (see `Builder report`).
 A task's files are the `files` of its `yaml` block, or its `Files:` in a plan of the earlier format.
 
+- **Time and tokens**: it gets no such keys: the time and tokens of the run go only to `Stats`.
 - **Status**: the `status` of its frontmatter.
   A plan with a `- Status:` header instead needs no approval and keeps its values.
   There, `building` stands for `in-progress` and `planned` for `approved`.
