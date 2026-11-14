@@ -150,6 +150,7 @@ An iteration is one pass of the builder on what the checks left open, appended t
   - `where`: the `file:line` or the id of the plan it is about.
   - `problem` and `fix`: what is wrong and what to change, from the report, as literal blocks.
   - `repeats`: the `FND-NN` of an earlier iteration the checks report again, or `none`.
+    So is one whose report breaks the same guarantee by another path, such as a second way to read outside the root.
   - `status: open` and `evidence: none`: you set `fixed` or `skipped`, with why, from the builder's report.
 
 Copy each finding from its report as it is: never merge, reword nor judge it.
@@ -229,6 +230,7 @@ Send the reviewer this block, in the language of the session:
 Plan: <path of the plan file>
 Previous: <the `ITR-NN` of the plan the builder just worked on, or "none">
 Skipped: <the `FND-NN` of that iteration the builder skipped, with why, or "none">
+Repeats: <the `FND-NN` that a later finding of the plan `repeats`, with the guarantee they break, or "none">
 Pre-existing: <the paths changed before the run, from Step 2, or "none">
 ```
 

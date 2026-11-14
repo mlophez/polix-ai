@@ -204,7 +204,12 @@ A plan in Markdown gives the same data in its own format:
 - A finding of the review says what is wrong in the code: fix it without changing what the plan asks.
 - A finding is the task: its `fix` is what to change, and the files its `where` names and their tests are its files.
   The check that exposes it is its verification.
-- Add a test that fails without the fix when the finding is a bug.
+- Fix the root cause, never only the instance the finding names.
+  Name the guarantee it breaks, such as "nothing is read outside the root", and find every path in the change that breaks it.
+  The `Instances` of the finding are a start, never the whole list.
+  Close them with one fix at the point every path crosses, within the plan, rather than one condition per instance.
+- Add a test that fails without the fix when the finding is a bug, with one case per instance.
+  Name the instances the tests cover in the evidence of the finding.
 - Skip a finding that is wrong or asks for what the plan does not, and record why in `Departures`.
 - Report each finding `fixed`, with the test that failed and then passed as its evidence, once its check ran.
   Report it `skipped` otherwise, with why as its evidence; the skill build writes both in the plan.

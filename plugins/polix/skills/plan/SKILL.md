@@ -55,7 +55,7 @@ The folders of plans, of rules and of tasks are those the start context of polix
 - One plan is one change, delivered whole: never phases or follow-up plans.
 - Reference the rules of the folder of rules by id in the `rules` of each task, never restate them.
 - Name no executor, agent, skill or tool of the agent in the plan file; the commands of the project are fine.
-- Interview in the language of the session.
+- Interview in the language the user writes in, even though the plan file is in English (see `Questions`).
 
 ## How to operate
 
@@ -151,6 +151,7 @@ Fix each gap with a targeted edit of the plan file at its path, never by writing
 1. **Coverage**: `outcome` solves the `problem`, and every requirement of the request is in `outcome` and a criterion.
    Every system of `affected` whose contract changes is in `interface` and in a task's `risk`.
    Every non-functional requirement of the request has a criterion with its threshold.
+   Every guarantee that `cross_cutting`, `constraints` or `design` promises has a criterion with its journeys.
    Every behaviour of `outcome` has a journey, and every journey is in the `cujs` of a criterion.
    Every criterion has one EARS `requirement`, a `verify` and a task whose `covers` names it.
    Every answer of the interview and every case of Step 3 has its place.
@@ -297,6 +298,10 @@ Walk the keys in the order of template.yaml; each one says where it comes from a
   Its sentence names a measurable threshold and the conditions it holds under.
   For example: "The export shall finish in under 5 s for 10,000 invoices".
   Its `cujs` is `[]`, and its `verify` measures it.
+- A guarantee the change gives is a criterion of its own, never only a sentence of `cross_cutting` or a comment.
+  That covers security or platforms, such as "never reads outside the root" or "a link is never followed".
+  It has one journey per way it could break, taken from the cases of Step 3: each input, platform and path that reaches it.
+  For example, a walk of folders has a journey for `..`, a link in any segment, a Windows junction and the case of names.
 - `requirement` reads alone: it never points to another key, such as "as `outcome` says".
 - `verify` lists commands with their expected result, or `manual` steps that show the criterion on the finished change.
   It names the tests or cases that prove this criterion, so two criteria never share a vague `verify`.
@@ -390,6 +395,10 @@ Return, with paths and symbols, never whole files nor what Known already says:
 
 ### Questions
 
+- Write every question in the language the user writes in.
+  That is the question, its header, the label, description and preview of each option, and the text before the call.
+  Only the names of the code, commands and literals keep their spelling.
+  The plan file is in English: never let it carry the interview into English.
 - With more open points than one call takes, ask in rounds, the ones that change the most first.
 - Each question stands on its own: it names the feature, file or case it is about, never "this" or "the above".
   It says in a clause what you found that leaves it open, since the dialog may hide the text written before it.

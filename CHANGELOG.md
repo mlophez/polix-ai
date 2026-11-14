@@ -44,6 +44,15 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- The agent `polix:reviewer` looks for every way a change breaks what it promises in its first review, so a build
+  needs fewer iterations to find variants of one bug. It lists the guarantees of the change (its comments, docs and,
+  in a plan, `constraints` and `cross_cutting`) and tries each against hostile cases of its kind of code: paths and
+  links, shells, parsing, state, external processes and formats. A second pass hunts the other paths to the root
+  cause of each finding, reported as its `Instances`, with a `Fix` that closes the cause rather than the instance,
+  and reviews the changed functions the first pass left. `/polix:build` marks as `repeats` a finding that breaks the
+  same guarantee by another path and passes those to the reviewer as `Repeats`, whose class it sweeps again.
+  `polix:builder` fixes the root cause of a finding with one test case per instance. `/polix:plan` turns each
+  guarantee on security or platforms into a criterion with a journey per way it could break.
 - The conditions `file`, `contains` and `path` see the files git ignores, and `file` and `contains` the files under
   `.git` too, so a plan kept out of git counts: `file` holds when any file of the working tree matches, tracked,
   untracked or ignored, and `contains` searches the text in those files. A glob with a folder (`ai/plans/*.md`) only

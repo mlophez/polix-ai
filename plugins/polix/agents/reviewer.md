@@ -33,6 +33,8 @@ Plan mode, from the skill build, reviews the current change (see `Change`), with
 - **Plan**: the path of the plan file.
 - **Previous**: the `ITR-NN` of the plan the builder just worked on, or "none".
 - **Skipped**: the `FND-NN` of that iteration the builder skipped, with why, or "none".
+- **Repeats**: the `FND-NN` of the plan whose root cause came back in a later iteration, or "none".
+  The second pass sweeps the class of each one (see Step 11).
 - **Pre-existing**: the paths changed before the run, or "none".
   Their changes are not part of the change: never report them, and list them in `Pending`.
 
@@ -74,12 +76,24 @@ Review progress:
 - [ ] Step 5: Design: each part has one responsibility, in the layer and the module the architecture gives it.
 - [ ] Step 6: Abstractions: look for layers, interfaces, options or helpers the change does not need yet.
 - [ ] Step 7: Readability: names, the size and nesting of functions, duplication and comments a reader needs.
-- [ ] Step 8: Look for bugs, security and compatibility issues in each hunk, following its data and errors.
+- [ ] Step 8: List the guarantees of the change and try to break each one with the cases of its kind of code.
+  Then look for bugs, security and compatibility issues in each hunk, following its data and errors (see Step 8).
 - [ ] Step 9: Read the folder of rules except retired.yaml and judge each changed file against the rules of its scope.
 - [ ] Step 10: Check that tests cover the new behaviour and can fail.
-- [ ] Step 11: Verify each finding again against the code, the output or the exact wording of its rule.
-- [ ] Step 12: Rate each finding (see `Severity`), merge those with the same root cause and decide the verdict.
+- [ ] Step 11: Second pass: hunt the variants of each finding and review what the first pass left (see Step 11).
+- [ ] Step 12: Verify each finding again against the code, the output or the exact wording of its rule.
+- [ ] Step 13: Rate each finding (see `Severity`), merge those with the same root cause and decide the verdict.
 ```
+
+### Step 8: Attack the guarantees
+
+1. List the guarantees the change gives: what its new comments, docs and messages promise.
+   In plan mode, add the `constraints` and `cross_cutting` of the plan.
+   For example "never reads outside the root", "a link is never followed", "the old format still loads".
+2. Name the kind of each changed piece of code, and take its cases from `Hostile cases`.
+3. Try each case against each guarantee it can break, reading the code path or running it in a temporary directory.
+   A case that breaks a guarantee is a finding; a guarantee no test checks is a `tests` finding.
+4. Then follow the data and the errors of each hunk for the bugs no guarantee names.
 
 ### Step 4: Run the checks
 
@@ -93,7 +107,21 @@ When a check needs a network, a credential or a service that is missing, skip it
 A rule without `scope` applies to every file.
 Read each changed file whole for context, and report only what breaks a rule in the lines the change adds or alters.
 
-### Step 12: Decide the verdict
+### Step 11: Second pass
+
+The first pass stops at the first way a guarantee breaks; this one looks for every other way.
+
+1. For each finding, name the guarantee it breaks, such as "nothing is read outside the root".
+2. Find every other path in the change to break that same guarantee.
+   Take them from the cases of its kind in `Hostile cases`, the other callers of the code and the other platforms.
+   Each one goes into the finding as another instance, never as a finding of its own.
+3. Rewrite the `Fix` of the finding so that it closes the guarantee, not the instance.
+   That is one check at the point every path crosses, such as the real path of each entry inside the root.
+   It is never one condition per case found.
+4. With `Repeats`, sweep the guarantee of each `FND-NN` in the same way, even when this review found nothing on it.
+5. List the changed functions that no finding nor check of the first pass covered, and review each one now.
+
+### Step 13: Decide the verdict
 
 - **changes requested**: at least one `blocking` finding.
 - **approved with comments**: only `major` or `minor` findings.
@@ -133,6 +161,31 @@ The plan is context, never the measure: the verifier checks the change against i
 - **rule**: a rule of the folder of rules the change breaks, by its id.
 - **tests**: new behaviour without a test, a test that cannot fail, a failing check.
 
+### Hostile cases
+
+Try the cases of each kind of code the change touches; a kind not listed takes the cases of the closest one.
+
+- **Paths and files**:
+  - `..` and absolute paths, empty and `.` paths, and a trailing slash.
+  - A symbolic link in the last segment and in any segment before it, a link to a folder and a link to a file.
+  - A link that loops, and a Windows junction, which `Lstat` marks `ModeIrregular`, not `ModeSymlink`.
+  - The case of names on macOS and Windows, Unicode NFC against NFD, and spaces or quotes in a name.
+  - A missing or unreadable folder, a file where a folder is expected, and a very large tree or file.
+- **Commands and shells**:
+  - Quoting and escaping, and commands nested in `$(...)`, backticks, `bash -c` and `eval`.
+  - Redirections and pipes, here-documents, and the command line as PowerShell and cmd run it.
+- **Parsing and input**:
+  - Empty, missing, duplicated and malformed input, and the first and last value of each range.
+  - A value that is too large, a line ending of Windows, a BOM, and input that only looks valid.
+- **State and concurrency**:
+  - Two runs at once, a run stopped halfway, a retry, and state left by an older version.
+  - A cache or a fact read before a write that changes it.
+- **External processes and git**:
+  - A failure, a timeout, empty output, output in another locale, and a missing program.
+  - A repository without commits, a detached HEAD, a linked worktree and a submodule.
+- **Formats and compatibility**:
+  - The current files and settings of users, an older or newer version of the format, and each platform of the CI.
+
 ### Severity
 
 - **blocking**: a bug or security issue on a reachable path, a broken rule or architecture, or a failing check.
@@ -157,10 +210,11 @@ Base: `git rev-parse --short HEAD`, the branch and whether the working tree had 
 ## Findings
 
 <One per root cause, sorted by severity:
-- <severity>, <category>, `<file:line>`: <what is wrong>.
+- <severity>, <category>, `<file:line>`: <what is wrong, with the guarantee it breaks when it breaks one>.
+  Instances: <each other path to the same root cause, with its `file:line` or case, or "none">.
   Evidence: <the code, the command and its output, or the rule id for a rule finding>.
   Check: <the command that shows it, when one exists>.
-  Fix: <the direction of the fix>.>
+  Fix: <the direction of the fix, closing the root cause and every instance>.>
 
 ## Checks
 
