@@ -10,12 +10,17 @@ var renamedEvents = map[string]string{"session_start": Start, "turn_stop": Stop}
 
 // renamed holds, per place of the file, the names of the old vocabulary and the hint of their new spelling, which
 // the validator, or UnknownKeyError for a top-level key (place "top"), appends to the problem of the unknown name.
+// A removed key is one too: its hint tells how to migrate it.
 var renamed = map[string]map[string]string{
 	"top": {
 		"protected":       "use guardrails.protected_files",
 		"base":            "use base_branch",
 		"max_stop_blocks": "use max_stop_retries",
+		"plans":           "remove it: the plans go to plans/ below path (ai/plans by default)",
+		"reports":         "remove it: the reports go to reports/ below path (ai/reports by default)",
+		"guidance":        "remove it: polix always injects the rules on commits and the folders below path on start",
 	},
+	"rules": {"path": "move it to the top-level key path, the folder that holds rules/ (ai by default)"},
 	"key": {
 		"if":      "use when",
 		"why":     "remove it, or keep the text as a YAML comment",
@@ -36,9 +41,10 @@ var renamed = map[string]map[string]string{
 var oldActions = []string{"deny", "require", "allow", "run", "context", "record"}
 
 // renamedProblem finds, in a problem of the validator or in a UnknownKeyError, the unknown name it reports with its new
-// spelling: the place (key, event or condition), the name and, for a key of the action, " in action". A top-level
-// key is reported as a key.
-var renamedProblem = regexp.MustCompile(`unknown (key|event|condition) "([^"]*)"( in action)?: `)
+// spelling: the place (key, event or condition), the name and the section of a key below the top level, "action"
+// for a key of the action and "rules" for a key of rules, whose problem lists the keys of rules before the hint. A
+// top-level key is reported as a key.
+var renamedProblem = regexp.MustCompile(`unknown (key|event|condition) "([^"]*)"(?: in (action|rules)(?: \([^)]*\))?)?: `)
 
 // Renamed reports whether the problem is about a name of the old vocabulary, reported with its new spelling: it is
 // a name this polix knows it replaced, never an option of a newer polix.
@@ -47,13 +53,13 @@ func (p Problem) Renamed() bool {
 	if m == nil {
 		return false
 	}
-	place, name, inAction := m[1], m[2], m[3] != ""
+	place, name, section := m[1], m[2], m[3]
 	switch {
 	case place == "event":
 		_, ok := renamedEvents[name]
 		return ok
-	case place == "key" && inAction:
-		_, ok := renamed["action"][name]
+	case place == "key" && section != "":
+		_, ok := renamed[section][name]
 		return ok
 	case place == "key":
 		_, entry := renamed["key"][name]

@@ -1,6 +1,6 @@
 # FormatRule
 
-Formats every rules file of the folder of rules (`rules.path` of polix.yaml, `ai/rules/` by default) in place, as
+Formats every rules file of the folder of rules (`rules/` below `path` of polix.yaml, `ai/rules/` by default) in place, as
 `polix config fmt` does with polix.yaml, so every rules file reads the same: `rules` first, the keys of each rule in
 the order of its schema, and one blank line between two rules.
 
@@ -102,8 +102,8 @@ The use case fails, printing the error and exiting with 1, without reading nor w
 
 - `--dir` is not inside a git repository, or an argument is given.
 - polix.yaml cannot be read, is not valid yaml, has an unknown top level key or requires a newer polix.
-- `rules.path` is absolute, the root itself, outside the root or a glob (`Rules.ValidPath`): the error is
-  `polix.yaml: rules.path "<path>" <problem>`, in the words of `polix config check`.
+- `path` is absolute, the root itself, outside the root or a glob (`Workflow.ValidPath`): the error is
+  `polix.yaml: path "<path>" <problem>`, in the words of `polix config check`.
 
 It fails too when the folder or a file of it cannot be read, before writing anything, or when a file cannot be
 written. A file that cannot be formatted, an id repeated, or a file where the loader of the rules stops, is not an
@@ -114,7 +114,7 @@ error of the use case but a problem of the response.
 1. `Command` turns the flags into a `Request`, opens the repository of `--dir` and injects
    `Adapter{Root: root, Rules: loadRules, Workflow: loadWorkflow}`, with the loaders of the rules and of polix.yaml
    it was given, as the `Port`.
-2. The shell loads polix.yaml through the port and checks its `rules.path` with `Rules.ValidPath`.
+2. The shell loads polix.yaml through the port and checks its `path` with `Workflow.ValidPath`.
 3. The shell reads the rules files of `Workflow.RulesPath`, and then the ids repeated among their rules, through the
    port.
 4. `Decide` decides: `Output`.

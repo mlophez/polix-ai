@@ -1,7 +1,7 @@
 ---
 name: task
 description: >
-  Adds a task to the backlog of the project in ai/tasks/, from a template with a frontmatter, ready for /polix:plan.
+  Adds a task to the backlog of the project in the folder of tasks, from a template with a frontmatter, for /polix:plan.
   It asks only what the request leaves open, never plans the task nor writes code.
   It runs only when the user or the workflow of polix asks for it.
 effort: medium
@@ -15,7 +15,7 @@ argument-hint: "[the task to add, e.g. the export times out with 10,000 rows; em
 
 Turn a request into a task file of the backlog: what is wrong or missing, the outcome wanted and when it is done.
 A task says what and why, never how: the plan that `/polix:plan` writes from it decides the approach and the steps.
-The folder of tasks is `ai/tasks/`.
+The folders of tasks and of plans are those the start context of polix names, below the root.
 
 ## Requirements
 
@@ -60,7 +60,7 @@ Task progress:
 ### Step 2: Look for the context in the code, the docs and the backlog
 
 1. Read `AGENTS.md` when it is not in context, for the layout and the names of the project.
-2. List the folder of tasks and the folder of plans (`plans.path` of `polix.yaml`, else `ai/plans/`).
+2. List the folder of tasks and the folder of plans, as the start context names them.
    When a task or plan already covers the request, show it and ask whether to adjust it instead.
 3. Find with `rg` the commands, files or symbols the request names, to name them right in `Context`.
    Read only what names them: the plan explores the code later, so never study it in depth.
@@ -77,7 +77,8 @@ Task progress:
 
 ### Task file
 
-Path: `ai/tasks/<name>.md`, where `<name>` is short kebab-case English from the request.
+Path: `<tasks>/<name>.md`, where `<tasks>` is the folder of tasks the start context names; report the path.
+`<name>` is short kebab-case English from the request.
 When another task already has the name, choose a different one; this applies only to a new task.
 Never rename nor move a task once written.
 

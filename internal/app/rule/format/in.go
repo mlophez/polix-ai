@@ -59,7 +59,7 @@ func Command(loadRules rule.Load, loadWorkflow workflow.Load) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "fmt",
 		Short: "Format the rules files",
-		Long: "Format every yaml file of the folder of rules (rules.path of " + workflow.File + ", " +
+		Long: "Format every yaml file of the folder of rules (rules below path of " + workflow.File + ", " +
 			workflow.DefaultRulesPath + " by default) in place, retired.yaml included: two spaces of indentation, flow " +
 			"collections on one line, the comments and blank lines kept, rules first and the keys of each rule in the " +
 			"order id, description, scope, deterministic, check, reason, and one blank line between two rules. When a " +
@@ -84,7 +84,7 @@ func Command(loadRules rule.Load, loadWorkflow workflow.Load) *cobra.Command {
 	return c
 }
 
-// run is the shell: it loads the workflow and checks its rules.path, reads the rules files of that folder and then
+// run is the shell: it loads the workflow and checks its path, reads the rules files of that folder and then
 // the ids repeated among their rules through the port, decides with the logic, writes each formatted file the logic
 // gives in the order of their names, and builds the response.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
@@ -92,7 +92,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	if err != nil {
 		return Response{}, err
 	}
-	if err := wf.Rules.ValidPath(); err != nil {
+	if err := wf.ValidPath(); err != nil {
 		return Response{}, err
 	}
 	files, err := port.ReadRuleFiles(ctx, wf.RulesPath())

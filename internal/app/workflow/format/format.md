@@ -45,8 +45,9 @@ vocabulary of the domain:
 - Every comment and the blank lines between items are kept. A comment above a key moves with it; a comment below the
   last line of an item, indented deeper than the next item, stays below it. The comments right above the first key
   stay at the top of the file when that key moves, unless a blank line sets them apart from the top.
-- The top level keys follow `version`, `requires`, `base_branch`, `max_stop_retries`, `vars`, `rules`, `plans`,
-  `reports`, `guidance`, `risk`, `requirements`, `guardrails`, `on` and `githooks`: `requirements` goes right before
+- The top level keys follow `version`, `path`, `requires`, `base_branch`, `max_stop_retries`, `vars`, `rules`,
+  `risk`, `requirements`, `guardrails`, `on` and `githooks`: `path` goes right after `version`,
+  `rules` holds only `run`, and `requirements` goes right before
   `guardrails`, and its programs keep their order. Inside each section the keys follow the order of their schema:
   the shortcuts of `guardrails` and the keys of their items, the events of `on` in lifecycle order (`workflow.Events`),
   the keys of an entry (`when`, `unless`, `action`), the conditions (`workflow.Conditions`, also inside `any` and

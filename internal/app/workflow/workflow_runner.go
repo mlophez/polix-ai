@@ -11,9 +11,9 @@ import (
 	"github.com/mlophez/polix-ai/internal/platform/glob"
 )
 
-// Rules is the key `rules` of polix.yaml: the folder of the rules (Workflow.RulesPath) and how their checks run.
+// Rules is the key `rules` of polix.yaml: how the checks of the rules run. Their folder is rules below path
+// (Workflow.RulesPath).
 type Rules struct {
-	Path string // the folder of the rules relative to the root, empty for DefaultRulesPath
 	// Run holds the runners in file order; the first whose glob matches a check runs it.
 	Run  []Runner
 	Keys []string // the keys the file used, so Valid rejects unknown ones
@@ -50,6 +50,9 @@ type ruleCheck struct {
 // ruleChecks are the checks given to Workflow.CheckCommands, in their order.
 type ruleChecks []ruleCheck
 
+// RulesKeys are the keys of the section rules.
+var RulesKeys = []string{"run"}
+
 // RunnerPlaceholders are the placeholders the argv of a runner may use: the singular ones, then the plural ones.
 var RunnerPlaceholders = []string{"file", "dir", "id", "name", "files", "dirs", "names"}
 
@@ -60,17 +63,6 @@ var runnerWhole = []string{"files", "dirs"}
 func (r Rules) Valid() error {
 	v := &validator{}
 	v.rules(r)
-	if len(v.problems) > 0 {
-		return InvalidError(v.problems)
-	}
-	return nil
-}
-
-// ValidPath tells why rules.path cannot be the folder of the rules (absolute, the root itself, outside the root or a
-// glob), in the words of Workflow.Problems; the runners and the keys of rules are left to Valid.
-func (r Rules) ValidPath() error {
-	v := &validator{}
-	v.rulesPath(r)
 	if len(v.problems) > 0 {
 		return InvalidError(v.problems)
 	}
@@ -219,18 +211,21 @@ func (c ruleCheck) name() string {
 	}, c.id)
 }
 
+// rules reports the problems of the section rules: an unknown key, with the hint of a key it no longer takes, and
+// the problems of each runner.
 func (v *validator) rules(r Rules) {
-	v.unknownKeys(0, "rules", r.Keys, []string{"path", "run"})
-	v.rulesPath(r)
+	for _, k := range r.Keys {
+		if slices.Contains(RulesKeys, k) {
+			continue
+		}
+		if h, ok := renamed["rules"][k]; ok {
+			v.add(0, "unknown key %q in rules (%s): %s", k, strings.Join(RulesKeys, ", "), h)
+			continue
+		}
+		v.add(0, "unknown key %q in rules (%s)", k, strings.Join(RulesKeys, ", "))
+	}
 	for _, run := range r.Run {
 		v.runner(run)
-	}
-}
-
-// rulesPath reports the problem of rules.path, the one text of it.
-func (v *validator) rulesPath(r Rules) {
-	if p := folderPath(r.Path).problem(); p != "" {
-		v.add(0, "rules.path %q %s", r.Path, p)
 	}
 }
 

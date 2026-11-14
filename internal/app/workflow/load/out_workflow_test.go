@@ -108,7 +108,7 @@ func TestValidRejects(t *testing.T) {
 		{"writes on pre_edit", "version: 1\non:\n  pre_edit:\n    - when: { writes: x }" + block, "writes never holds on pre_edit"},
 		{"empty base name", "version: 1\nbase_branch: [main, \"\"]\n", "base_branch: a branch name cannot be empty"},
 		{"empty runner", "version: 1\nrules:\n  run:\n    \"*_test.go\": []\n", `polix.yaml:4: rules.run "*_test.go": the command is empty`},
-		{"unknown key in rules", "version: 1\nrules:\n  runs: {}\n", `unknown key "runs" in rules (path, run)`},
+		{"unknown key in rules", "version: 1\nrules:\n  runs: {}\n", `unknown key "runs" in rules (run)`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

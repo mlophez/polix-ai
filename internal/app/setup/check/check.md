@@ -1,6 +1,6 @@
 # CheckSetup
 
-Validates the workflow (polix.yaml, or the workflow file its argument names) and the rules (the folder `rules.path`, `ai/rules/` by default) of a repository and prints every problem, so a
+Validates the workflow (polix.yaml, or the workflow file its argument names) and the rules (the folder `rules/` below `path`, `ai/rules/` by default) of a repository and prints every problem, so a
 person or CI learns what polix would reject before a hook does.
 
 ## Trigger
@@ -68,7 +68,7 @@ problem to stderr and the hint as a warning, and exits with 1; else it prints th
   argument) through the field `Workflow` of the adapter, the loader of `LoadWorkflow`
   (`internal/app/workflow/load`) that `cmd/polix` builds once and passes to `Command`; without it, the default
   workflow and false; a workflow that parses with problems comes back with its `workflow.InvalidError`.
-- `LoadRules`: loads the rules of the folder it is given (`rules.path` of the workflow, `ai/rules/` by default)
+- `LoadRules`: loads the rules of the folder it is given (`Workflow.RulesPath`, `rules/` below `path` of the workflow, `ai/rules/` by default)
   through the field `Rules` of the adapter, the loader of `LoadRule` (`internal/app/rule/load`) that `cmd/polix`
   builds once and passes to `Command`: every rule but those of `retired.yaml`, ordered by id, with the problems of
   the invalid ones and of the ids repeated; without the folder, none; a file that cannot be read or parsed is an
@@ -89,7 +89,7 @@ problem to stderr and the hint as a warning, and exits with 1; else it prints th
 1. `Command` opens the repository of `--dir` and injects `Adapter{Repo: repo, Path: path, Rules: rules, Workflow:
    loadWorkflow}`, with the file of the argument or polix.yaml of the root, and the loaders of the rules and of
    polix.yaml it was given.
-2. The shell reads the workflow, then the rules of its `rules.path`, whether each check exists and whether a base
+2. The shell reads the workflow, then the rules of its folder of rules, below its `path`, whether each check exists and whether a base
    branch exists, and builds the `setup.Inspection` of it, validated.
 3. `Decide` decides the problems, the hint and the warning.
 4. The shell builds the response, and the command prints it and sets the exit code.

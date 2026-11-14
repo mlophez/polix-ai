@@ -4,9 +4,9 @@ package templates
 
 import _ "embed"
 
-// SessionStart is the context injected when a session starts: the guidance on commits and edits and the layout of
-// the folders of the AI, each part behind its switch of guidance in polix.yaml. It is rendered by
-// workflow.Workflow.SessionContext, whose data the template documents.
+// SessionStart is the context injected on every start of a session: the rules on commits, the root of the project
+// and the folders of the AI below path of polix.yaml. It is rendered by workflow.Workflow.SessionContext, whose data
+// the template documents.
 //
 //go:embed session_start.md.tmpl
 var SessionStart string

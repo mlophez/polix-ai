@@ -75,13 +75,13 @@ func TestAdapterRepeatedIDs(t *testing.T) {
 	}
 }
 
-// polix.yaml is read through the loader that cmd/polix builds: rules.path reaches RulesPath, the problems of a
-// workflow that parses are left to polix config check, and a polix.yaml that is not yaml stops. The loader reads
-// polix.yaml once, so each case takes a new one.
+// polix.yaml is read through the loader that cmd/polix builds: path reaches RulesPath, the problems of a workflow
+// that parses are left to polix config check, and a polix.yaml that is not yaml stops. The loader reads polix.yaml
+// once, so each case takes a new one.
 func TestAdapterLoadWorkflow(t *testing.T) {
 	root := t.TempDir()
 	p := filepath.Join(root, "polix.yaml")
-	testenv.Write(t, p, "version: 1\nrules:\n  path: docs/rules\n  run:\n    \"*_test.go\": [go, test, \"{nope}\"]\n")
+	testenv.Write(t, p, "version: 1\npath: docs\nrules:\n  run:\n    \"*_test.go\": [go, test, \"{nope}\"]\n")
 	wf, err := Adapter{Root: root, Workflow: workflowload.Command()}.LoadWorkflow(context.Background(), "dev")
 	if err != nil || wf.RulesPath() != "docs/rules" {
 		t.Fatalf("an invalid runner: %q %v", wf.RulesPath(), err)

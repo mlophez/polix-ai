@@ -30,8 +30,8 @@ workflow(ctx, path, running) workflow.Loaded
 with the domain:
 
 1. Without the file (and without `err`), the default workflow: version 1, `max_stop_retries` 3
-   (`workflow.DefaultMaxStopRetries`) and the default guidance (commit on, edit and layout off), with the error of
-   its `Valid`.
+   (`workflow.DefaultMaxStopRetries`) and the default folder of the AI (`workflow.DefaultPolixPath`), with the
+   error of its `Valid`.
 2. When the values of the shortcuts of guardrails have problems (`Guardrails.Problems`), those problems and the
    rest of the problems of the workflow, in the order of the file, are the error, as one `workflow.InvalidError`;
    otherwise `err` stays: nil, the `workflow.InvalidError` of `Workflow.Valid`, or an error that stops the reading.
@@ -54,7 +54,8 @@ with the domain:
      polix reports instead of the options it does not know; a development build is never too old.
   2. Broken YAML is the error, with the file (`polix.yaml: ...`).
   3. An unknown top level key (not one of `workflow.TopKeys`) is a `workflow.UnknownKeyError`, with the new spelling of
-     a key of the old vocabulary.
+     a key of the old vocabulary. The removed keys `plans`, `reports` and `guidance` are among them, with the
+     hint of their migration: the folders go below `path`, and the start context is always injected.
   4. The decoding types of `out_workflow.go` (`workflowYAML` and the type of each section, entry and verb), with the
      `UnmarshalYAML` of `out_unmarshal.go`, decode the rest: the short and long forms of each verb (`notify` takes
      its message, or a map with `message` and `always`, into `workflow.Notify`), the keys each
@@ -64,8 +65,11 @@ with the domain:
      line of each event in `Workflow.GithookLines`; its entries are never expanded nor mixed with those of `on`, and
      `Workflow.Valid` checks them with the vocabulary of githooks (step 7 only adds one entry of its own to `on`). A value of the wrong kind is an error with its line, and the errors of
      yaml name the types of the domain (`workflow.Workflow`, `workflow.Entry`...), never those of the decoding.
-     `max_stop_retries` left out is `workflow.DefaultMaxStopRetries`; commit left out of guidance is on, edit and
-     layout left out are off.
+     `max_stop_retries` left out is `workflow.DefaultMaxStopRetries`.
+     `path`, the folder of the AI, is a string into `Workflow.Path` (a value of another kind is the error of yaml),
+     which `Workflow.Valid` checks and `Workflow.PolixPath` cleans, `ai` when left out. `rules` takes only `run`: a
+     `path` in it reaches `Workflow.Valid` as an unknown key of rules, reported with the hint to move it to the
+     top-level `path`, next to the other problems.
      `requirementsYAML` of `out_requirements.go` reads the key `requirements` into `Workflow.Requirements`, the
      programs the repository requires on the PATH, in file order: only a list of names, else an error at the line of
      the node with the form it takes (`line 3: requirements takes a list of program names, as [go, golangci-lint]`);

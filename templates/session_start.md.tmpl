@@ -1,27 +1,19 @@
 {{- /*
-Context polix injects at session start, agent neutral, as the agent reads it. The header line goes first when any
-switch of guidance in polix.yaml is on, followed by the "- " items of each switch turned on, with no blank lines;
-the whole text is trimmed, and it is empty when every switch is off. Each line is concise and at most 120
-characters with the default folders (a test checks it): split a rule into several items rather than wrap it.
-Data: .Commit, .Edit and .Layout (the switches), .Rules, .Plans and .Reports (the folders, relative to the root,
-without a trailing slash).
+Context polix injects on every session start of a valid polix.yaml, agent neutral, as the agent reads it: the header
+lines, then the "- " items on commits, the root and the folders of the AI, with no blank lines; the whole text is
+trimmed. Each line is concise and at most 120 characters with the default folders and a short root (a test checks
+it): split a rule into several items rather than wrap it.
+Data: .Root (the root of the working tree, with forward slashes) and .Path (the folder of the AI, path of
+polix.yaml cleaned, relative to the root, without a trailing slash; ai by default).
 */ -}}
-{{- if or .Commit .Edit .Layout}}
 This project is managed by polix.
 Follow these rules:
-{{- end}}
-{{- if .Commit}}
 - Run each git commit as a command of its own: never chain it with &&, ; or |, nor wrap it in sh -c or bash -c.
 - Pass the commit message with -m, -F or a heredoc inside -m.
 - Otherwise polix does not recognise the commit and skips its pre_commit gates.
-{{- end}}
-{{- if .Edit}}
-- Create and change files only with the edit tool of the agent: polix checks only the edits made through it.
-- Never write files from the shell: no sed -i, perl -i, > or >>, tee, heredocs or scripts that write files.
-{{- end}}
-{{- if .Layout}}
-- Use these folders, set in polix.yaml, and no other paths:
-  - {{.Rules}}/: the rules on how to write the code, one yaml file per topic.
-  - {{.Plans}}/: the implementation plans, one per file.
-  - {{.Reports}}/: the reports of audits and reviews, one per file.
-{{- end}}
+- The root of the project is {{.Root}}.
+- Use these folders, below the root, and no other paths:
+  - {{.Path}}/rules/: the rules on how to write the code, one yaml file per topic.
+  - {{.Path}}/plans/: the implementation plans, one per file.
+  - {{.Path}}/reports/: the reports of audits and reviews, one per file.
+  - {{.Path}}/tasks/: the backlog of tasks, one per file.

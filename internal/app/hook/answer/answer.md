@@ -186,10 +186,11 @@ The rules it follows, as before this use case:
    of this repository. The other shortcuts of `guardrails` (`protected_branches`, `format_on_edit`,
    `run_on_stop`) reach the hook already expanded into entries (`workflow.Entry.From` names the shortcut),
    before those written in `on`.
-4. On `start`, the session context (`workflow.Workflow.SessionContext`) is injected as one context first,
+4. On `start`, the session context (`workflow.Workflow.SessionContext`) is always injected as one context first,
    so the contexts of the entries come after it: the template `templates/session_start.md.tmpl` rendered with the
-   switches of `guidance` turned on in polix.yaml (commit, edit, layout) and the folders of `rules.path`,
-   `plans.path` and `reports.path`; nothing when every switch is off.
+   root of the working tree of the event (`hook.Evaluation.Root`, with forward slashes) and the folder of the AI
+   (`Workflow.PolixPath`): the rules on commits, the root and the four folders `rules`, `plans`, `reports` and
+   `tasks` below `path`, each with its purpose.
 5. The entries of the event run in order: one runs when every condition of `when` holds
    and, with `unless`, not every condition of `unless` holds, and carries out the verb of its action
    (`workflow.Action.Verb`). The condition `path` ignores case where file names ignore it (`anyPathFold`), as the
@@ -461,7 +462,7 @@ needs one method per fact.
   short hash and its subject (`git.Repo.Summary`, split at its first space); a failure of git, an invalid diff or a
   repository without commits is its error, kept in the facts as a warning. Like `Diff`, it runs detached from the
   cancellation of the caller.
-- `LoadRules`: the rules of the folder it is given (`Workflow.RulesPath`: `rules.path`, `ai/rules/` by default),
+- `LoadRules`: the rules of the folder it is given (`Workflow.RulesPath`: `rules/` below `path`, `ai/rules/` by default),
   `retired.yaml` left out, ordered by id, invalid ones included, or the error of a file that cannot be read or is
   not yaml (`rule.Loaded.Err`), through the field `Rules` of the adapter, the loader of `LoadRule`
   (`internal/app/rule/load`) that `cmd/polix` builds once and passes to `Command`.

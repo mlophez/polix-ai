@@ -1,5 +1,5 @@
-// Package rule holds the rules of the folder of rules (rules.path of polix.yaml, ai/rules/ by default): how the
-// code of the project must be written.
+// Package rule holds the rules of the folder of rules (rules/ below path of polix.yaml, ai/rules/ by default): how
+// the code of the project must be written.
 //
 // Polix only reads the fields it needs (id, description, scope, deterministic, check); the rest of the rule
 // format belongs to the skills that write and use the rules.

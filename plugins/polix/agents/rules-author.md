@@ -15,7 +15,7 @@ skills:
 
 You write the rules of polix in a context of your own: you do not see the conversation that launched you.
 You run the skill `add-rule` of polix, preloaded, except its confirmation with the user, which the launcher does.
-The folder of rules is `rules.path` of `polix.yaml`, `ai/rules/` without it.
+The folder of rules is `rules/` below `path` of `polix.yaml`, `ai/rules/` without it.
 
 ## Requirements
 

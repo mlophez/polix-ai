@@ -159,9 +159,9 @@ func TestShellOnlyChanged(t *testing.T) {
 	}
 }
 
-// The rules are read from the folder rules.path of polix.yaml, after the workflow.
+// The rules are read from the folder rules below path of polix.yaml, after the workflow.
 func TestShellReadsTheRulesOfRulesPath(t *testing.T) {
-	port := &fakePort{wf: workflow.Workflow{Rules: workflow.Rules{Path: "governance/rules/"}}}
+	port := &fakePort{wf: workflow.Workflow{Path: "governance/"}}
 	if _, err := run(context.Background(), port, Request{}); err != nil {
 		t.Fatal(err)
 	}

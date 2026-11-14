@@ -1,7 +1,7 @@
 ---
 name: add-rule
 description: >
-  Adds rules on how to write the code to the folder of rules (ai/rules/ by default), which polix injects and checks.
+  Adds rules on how to write the code to the folder of rules the start context names, which polix injects and checks.
   It runs only when the user or the workflow of polix asks for it.
   It never changes the code nor polix.yaml.
 effort: medium
@@ -15,7 +15,7 @@ argument-hint: "[the rule or the document to migrate, e.g. docs/conventions.md; 
 # Adding rules
 
 Turn each requested or migrated rule into an item of `rules:` of a file of the folder of rules.
-The folder of rules is `rules.path` of `polix.yaml`, `ai/rules/` without it.
+The folder of rules is the one the start context of polix names, below the root.
 Polix reads `id`, `description`, `scope`, `deterministic` and `check`; any other key is kept for people and skills.
 
 ## Requirements

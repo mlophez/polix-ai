@@ -6,7 +6,6 @@ max_stop_retries: 1
 
 # The Go checks of ai/rules/ run as one `go test` of their package, only the test of the rule.
 rules:
-  path: ai/rules
   run: { "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"] }
 
 # Weight of each path in the risk score: the first matching glob wins, any other file weighs 1.

@@ -21,7 +21,7 @@ type Adapter struct {
 // LoadWorkflow loads polix.yaml of the repository through the loader of polix.yaml. Without polix.yaml it is the
 // default workflow; a polix.yaml that cannot be read, cannot be parsed or requires a newer polix is an error, never
 // a silent default. The problems of a workflow that parses (Invalid) are not errors here: the shell checks only its
-// rules.path, and polix config check reports the rest.
+// path, and polix config check reports the rest.
 func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, error) {
 	loaded := a.Workflow(ctx, filepath.Join(a.Root, workflow.File), running)
 	if _, invalid := errors.AsType[workflow.InvalidError](loaded.Err); loaded.Err != nil && !invalid {

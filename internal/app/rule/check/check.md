@@ -1,6 +1,6 @@
 # CheckRule
 
-Runs the checks of the deterministic rules of the folder `rules.path` of polix.yaml (`ai/rules/` by default), so CI and the agent learn whether the code breaks a
+Runs the checks of the deterministic rules of the folder `rules/` below `path` of polix.yaml (`ai/rules/` by default), so CI and the agent learn whether the code breaks a
 rule that a script or a test can decide.
 
 ## Trigger
@@ -29,7 +29,7 @@ choice of the request and what the runs carried out so far gave:
 
 - `rules`: the rules of the `*.yaml` of the folder of rules, retired ones (`retired.yaml`) excluded, ordered by id.
 - `wf`: the workflow of polix.yaml, the default one without the file; only its runners (`rules.run`) matter here
-  (the shell uses its `rules.path` to read the rules).
+  (the shell uses its `Workflow.RulesPath`, `rules/` below `path`, to read the rules).
 - `sel`: the `rule.Selection` the shell builds and validates: `OnlyChanged`, whether `--changed` was given, and
   `Changed`, the files changed by the branch against its base, relative to the root, only with `--changed`.
   `Selection.Narrow` keeps the rules it asks for.
@@ -129,7 +129,7 @@ with 1.
    `Adapter{Repo: repo, Log: stderr, Rules: rules, Workflow: loadWorkflow}`, with the loaders of the rules and of
    polix.yaml it was given, as the `Port`.
 2. The shell reads, in `load`, the workflow, stopping on an invalid key `rules`, and then the rules of its
-   `rules.path`, stopping on one that is not `Valid`, through the port and, with `--changed`, the changed files
+   folder of rules, below its `path`, stopping on one that is not `Valid`, through the port and, with `--changed`, the changed files
    against `--base` or else the base branches of the workflow.
 3. The shell calls `Decide` in a loop, from one call site, with the outcomes so far: while
    `Output.Next` is set, it runs it through `RunCheck`, builds a `rule.Outcome` from the run, followed by

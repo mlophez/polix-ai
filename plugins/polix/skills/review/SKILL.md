@@ -14,7 +14,7 @@ argument-hint: "[range or files, e.g. HEAD~3..HEAD or internal/app/setup; empty 
 # Reviewing
 
 Review the change with one `polix:reviewer` subagent, relay its report and save it in the folder of reports.
-The folder of reports is `reports.path` of `polix.yaml`, `ai/reports/` without it.
+The folder of reports is the one the start context of polix names, below the root.
 Without a plan there is nothing to verify the change against: the subagent judges only the code's quality.
 A change built from a plan is verified and reviewed by the skill build.
 

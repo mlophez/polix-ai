@@ -1,5 +1,5 @@
 # Example polix.yaml: a complete team workflow (ticket, plan, builder, tests, reviewer, commit) plus the
-# rules of rules.path (ai/rules/) injected and checked, annotated as a reference of every option of the schema and
+# rules of <path>/rules (ai/rules/) injected and checked, annotated as a reference of every option of the schema and
 # of every form each option takes. Validate it with `polix config check`; draw it with `polix graph`, which names the
 # shortcut of each entry. Design and limits: docs/polix.md; every key, condition and verb one by one:
 # docs/reference.md; recipes, one per use case: docs/use-cases.md.
@@ -55,6 +55,17 @@
 
 # Required. The only version is 1.
 version: 1
+
+# Optional; ai by default (also when empty). The folder of the AI, relative to the root, that holds rules/, plans/,
+# reports/ and tasks/: polix reads only the rules of <path>/rules and moves or creates no folder. Cleaned: \ becomes
+# /, and the spaces around it, a leading ./ and a trailing / are dropped. `polix config check` rejects a path that is
+# absolute, the root itself, outside the root or a glob. It replaces the keys path of rules, plans and reports,
+# which polix config check reports with their migration, as it does with guidance, also removed.
+# Start context: on every start (startup, resume, clear, compaction) of a valid file polix injects, in English and
+# before the injects of the start entries, the rules on commits (each git commit a command of its own, so pre_commit
+# sees it), the root of the working tree and the four folders below path, each with its purpose; no switch turns it
+# off, subagent_start gets none of it, and its text is the template templates/session_start.md.tmpl of the binary.
+path: ai
 
 # Optional. The oldest polix that knows every option this file uses; set it when an option needs a newer polix
 # than the one the team may have. It is read before the rest of the file, so an older polix that does not know the
@@ -116,35 +127,11 @@ vars:
 # .py with py -3, python3 or python). Used by `polix rules check` and by a `run` with `rules`; `polix config check`
 # reports an empty argv, an empty glob, an unknown placeholder or {files} or {dirs} inside a longer argument.
 rules:
-  path: ai/rules
   run:
     "tests/architecture/*_test.go": [go, test, "{dir}", -run, "^Test({names})$"] # one go test per folder
     "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]                       # one go test per rule
     "*.py": [uv, run, python, "{file}"]                                          # one run per check
     "*.sh": [bash, "{files}"]                                                    # hypothetical: one bash for all
-
-# Optional. The folders of the plans (written by the skill plan) and of the reports (audits, reviews), relative to
-# the root, with the same limits as rules.path. polix does not read them: with guidance.layout: true it tells the
-# agent where they are, and the skills write there.
-plans:
-  path: ai/plans
-reports:
-  path: ai/reports
-
-# Optional; commit is true by default, edit and layout false. Built-in instructions polix injects into the agent on
-# every start (startup, resume, clear, compaction), in English, as one context before those of the start entries.
-# Its text is the template templates/session_start.md.tmpl of the binary. They ask for cooperation and block
-# nothing. Injected only with a valid polix.yaml; a switch left out takes its default, a value sets it, and an
-# unknown key is rejected.
-# - commit: run each commit as a git commit command of its own, not chained with &&, ; or | nor wrapped in sh -c,
-#   so pre_commit sees it.
-# - edit: create and change files with the edit tool of the agent, not from the shell (sed -i, redirections, tee,
-#   heredocs), so pre_edit, post_edit and the rules they inject see the change.
-# - layout: the folders of rules.path, plans.path and reports.path, so the agent and the skills use them.
-guidance:
-  commit: true
-  edit: true
-  layout: true
 
 # Optional. The options of the risk score of the condition risk_score.
 # - `weights`: an ordered map of path glob to a non-negative number, the weight of the matching files. The first
@@ -405,13 +392,13 @@ on:
 
   # start: a session starts, resumes, is cleared or is compacted. It cannot be blocked: block is rejected, and a
   # failing run reaches the AI as context, its message first. On start every inject acts every time, so the context
-  # survives a compaction, and `always` has no effect there.
+  # survives a compaction, and `always` has no effect there. The start context of polix (see path) comes first.
   start:
     # inject: text for the AI. The short form is the text (placeholders allowed); the long form a map with exactly
     # one of:
     # - file: a file of the repository (placeholders allowed); a missing file injects nothing;
     # - text: a literal text (placeholders allowed);
-    # - rules: the rules of rules.path whose scope matches a path (rules without scope match any path), each one
+    # - rules: the rules of <path>/rules whose scope matches a path (rules without scope match any path), each one
     #   injected once per actor and session, as "- <id>: <description>";
     # plus `always`.
     # Short form:
@@ -469,7 +456,7 @@ on:
 
   # subagent_start: a subagent starts, with a new context; actor is its type. It cannot be blocked: block is rejected,
   # and a failing run reaches the subagent as context. As on start, every inject acts every time. It gets neither the
-  # built-in guidance nor the requirements, told to the main session. path, command, writes and exit never hold here.
+  # start context nor the requirements, told to the main session. path, command, writes and exit never hold here.
   # A subagent that only reads, such as a reviewer, never edits nor runs a command, so pre_edit never gives it the
   # rules: give them at its start.
   subagent_start:

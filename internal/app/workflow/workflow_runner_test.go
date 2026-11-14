@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -116,30 +115,6 @@ func TestInvocationValid(t *testing.T) {
 	for _, inv := range []Invocation{{Checks: []int{0}}, {Argv: []string{"x"}, Checks: []int{2, 0}}} {
 		if err := inv.Valid(); err != nil {
 			t.Error(err)
-		}
-	}
-}
-
-// ValidPath tells only the problem of rules.path, in the words of Workflow.Problems; the runners do not count.
-func TestRulesValidPath(t *testing.T) {
-	broken := []Runner{{Glob: "*"}}
-	for _, p := range []string{"", "ai/rules", "docs/rules/"} {
-		if err := (Rules{Path: p, Run: broken}).ValidPath(); err != nil {
-			t.Errorf("%q: %v", p, err)
-		}
-	}
-	for p, want := range map[string]string{
-		"../x": `rules.path "../x" must be below the root`,
-		"/etc": `rules.path "/etc" must be relative to the root, not absolute`,
-		".":    `rules.path "." cannot be the root itself`,
-		"ai/*": `rules.path "ai/*" must be a folder, not a glob`,
-	} {
-		err := (Rules{Path: p}).ValidPath()
-		if _, invalid := errors.AsType[InvalidError](err); !invalid || !strings.Contains(err.Error(), want) {
-			t.Errorf("%q: got %v, want %s", p, err, want)
-		}
-		if w := (Workflow{Version: 1, Rules: Rules{Path: p}}); !strings.Contains(strings.Join(w.Problems(), "\n"), want) {
-			t.Errorf("%q: the workflow says it otherwise: %v", p, w.Problems())
 		}
 	}
 }

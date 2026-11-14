@@ -1,6 +1,6 @@
 # LoadRule
 
-Loads the rules of a folder of rules (`rules.path` of polix.yaml, `ai/rules/` by default), so every use case that
+Loads the rules of a folder of rules (`rules/` below `path` of polix.yaml, `ai/rules/` by default), so every use case that
 reads the rules shares one reading of their format and one result per folder, and decides on its own what an absent
 folder, an invalid rule or a file that cannot be read means to it.
 

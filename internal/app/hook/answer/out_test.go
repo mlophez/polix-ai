@@ -1478,17 +1478,17 @@ func TestCommandEditsWatched(t *testing.T) {
 	}
 }
 
-// With rules.path the rules come from that folder, not from ai/rules/, and the context names it.
+// With path the rules come from rules below that folder, not from ai/rules/, and the context names it.
 func TestRulesOfRulesPath(t *testing.T) {
 	r := newRepo(t, "main")
-	r.write("polix.yaml", "version: 1\nrules: { path: governance/rules }\non:\n  pre_edit:\n    - action: { inject: { rules: \"{path}\" } }\n")
+	r.write("polix.yaml", "version: 1\npath: governance\non:\n  pre_edit:\n    - action: { inject: { rules: \"{path}\" } }\n")
 	r.write("ai/rules/old.yaml", "rules:\n  - id: OLD-1\n    description: Old rule.\n")
 	r.write("governance/rules/style.yaml", "rules:\n  - id: NEW-1\n    description: New rule.\n")
 	r.write("src/a.txt", "x\n")
 	_, stdout, _ := r.edit("src/a.txt", "")
 	if !strings.Contains(stdout, "NEW-1: New rule.") || !strings.Contains(stdout, "(governance/rules/)") ||
 		strings.Contains(stdout, "OLD-1") {
-		t.Fatalf("the rules of rules.path: %q", stdout)
+		t.Fatalf("the rules below path: %q", stdout)
 	}
 }
 

@@ -72,21 +72,6 @@ func (y *ifYAML) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
-// UnmarshalYAML keeps the keys of plans or reports, so Valid can reject unknown ones.
-func (y *folderYAML) UnmarshalYAML(n *yaml.Node) error {
-	if n.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: plans and reports must be a map with path", n.Line)
-	}
-	type plain folderYAML
-	var p plain
-	if err := n.Decode(&p); err != nil {
-		return err
-	}
-	*y = folderYAML(p)
-	y.keys = nodeYAML{n}.keys()
-	return nil
-}
-
 // UnmarshalYAML keeps the keys of the variable, so Valid can reject unknown ones.
 func (y *varYAML) UnmarshalYAML(n *yaml.Node) error {
 	if n.Kind != yaml.MappingNode {
@@ -219,7 +204,7 @@ func (y *notifyYAML) UnmarshalYAML(n *yaml.Node) error {
 // UnmarshalYAML keeps the keys of rules, so Valid can reject unknown ones.
 func (y *rulesYAML) UnmarshalYAML(n *yaml.Node) error {
 	if n.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: rules must be a map with path and run", n.Line)
+		return fmt.Errorf("line %d: rules must be a map with run", n.Line)
 	}
 	type plain rulesYAML
 	var p plain
@@ -227,21 +212,6 @@ func (y *rulesYAML) UnmarshalYAML(n *yaml.Node) error {
 		return err
 	}
 	*y = rulesYAML(p)
-	y.keys = nodeYAML{n}.keys()
-	return nil
-}
-
-// UnmarshalYAML keeps the keys of guidance, so Valid can reject unknown ones.
-func (y *guidanceYAML) UnmarshalYAML(n *yaml.Node) error {
-	if n.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: guidance must map commit and edit to true or false", n.Line)
-	}
-	type plain guidanceYAML
-	var p plain
-	if err := n.Decode(&p); err != nil {
-		return err
-	}
-	*y = guidanceYAML(p)
 	y.keys = nodeYAML{n}.keys()
 	return nil
 }

@@ -146,7 +146,7 @@ The flow of `polix rules check`:
    `Adapter{Repo: repo, Log: stderr, Rules: rules, Workflow: loadWorkflow}` as the `Port`, with the loaders of the
    rules and of polix.yaml it was given.
 2. `run` (shell) reads through the port: polix.yaml whenever it exists (`LoadWorkflow`, for the runners of
-   `rules.run`, which the adapter asks the loader of polix.yaml for), the rules of its `rules.path` (`LoadRules`,
+   `rules.run`, which the adapter asks the loader of polix.yaml for), the rules of its folder of rules, below `path` (`LoadRules`,
    which the adapter asks the loader for) and, with `--changed`, the changed files against its base branches
    (`Changed`), which `--base` only replaces when given.
 3. `Decide` (logic) takes the outcomes carried out so far and decides the next run, which may decide several rules

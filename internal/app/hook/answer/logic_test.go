@@ -636,17 +636,21 @@ func TestRunMessage(t *testing.T) {
 func TestRunInformsAfterTheFact(t *testing.T) {
 	for _, event := range []string{workflow.Start, workflow.SubagentStart, workflow.PostEdit, workflow.PostCommand} {
 		t.Run(event, func(t *testing.T) {
-			ev := eval(t, "version: 1\nguidance: { commit: false, edit: false, layout: false }\non:\n  "+
+			ev := eval(t, "version: 1\non:\n  "+
 				event+":\n    - action: { run: { command: [ruff, check], message: \"Corrige el estilo\" } }\n"+
 				"    - action: { inject: { text: \"después\", always: true } }\n", event)
 			out, steps := walk(t, ev, facts{branch: "main", runErr: errors.New("exit status 1")})
-			if out.Answer.Block || len(out.Answer.Contexts) != 2 ||
-				!strings.HasPrefix(out.Answer.Contexts[0], "Corrige el estilo\n\nruff check failed: exit status 1\n  salida") ||
-				out.Answer.Contexts[1] != "después" {
+			contexts := out.Answer.Contexts
+			if event == workflow.Start && len(contexts) > 0 && contexts[0] == ev.Workflow.SessionContext(ev.Root) {
+				contexts = contexts[1:] // the start context always comes first on start
+			}
+			if out.Answer.Block || len(contexts) != 2 ||
+				!strings.HasPrefix(contexts[0], "Corrige el estilo\n\nruff check failed: exit status 1\n  salida") ||
+				contexts[1] != "después" {
 				t.Fatalf("answer: %+v", out.Answer)
 			}
 			if logged := appended(steps); len(logged) != 1 || logged[0].Outcome != "inform" ||
-				logged[0].Action != workflow.VerbRun || logged[0].Line != 5 {
+				logged[0].Action != workflow.VerbRun || logged[0].Line != 4 {
 				t.Fatalf("logged: %+v", logged)
 			}
 		})
@@ -916,24 +920,29 @@ func TestProtectsState(t *testing.T) {
 	}
 }
 
-// The session context of the guidance turned on is injected on start only, as one context before those of
-// the entries of the event.
+// CUJ-02, AC-07: the start context, with the root of the event and the folders below path, is always injected on
+// start, as one context before those of the entries of the event, and never on subagent_start, prompt nor stop.
 func TestGuidance(t *testing.T) {
 	session := func(yaml string) []string {
 		wf, _ := parseWorkflow(yaml, "dev")
-		return []string{wf.SessionContext()}
+		return []string{wf.SessionContext(filepath.FromSlash("/repo"))}
 	}
 	defaults := session("version: 1\n")
+	if !strings.Contains(defaults[0], "\n- The root of the project is /repo.\n") ||
+		!strings.HasSuffix(defaults[0], "\n  - ai/tasks/: the backlog of tasks, one per file.") ||
+		strings.Contains(defaults[0], "- Create and change files") {
+		t.Fatalf("the start context of the defaults: %q", defaults[0])
+	}
 	cases := []struct {
 		name, yaml, event string
 		want              []string
 	}{
 		{"defaults", "version: 1\n", workflow.Start, defaults},
-		{"only edit", "version: 1\nguidance: { commit: false, edit: true }\n", workflow.Start,
-			session("version: 1\nguidance: { commit: false, edit: true }\n")},
-		{"all off", "version: 1\nguidance: { commit: false, edit: false, layout: false }\n", workflow.Start, nil},
+		{"path", "version: 1\npath: docs/ai\n", workflow.Start, session("version: 1\npath: docs/ai\n")},
 		{"before the entries", "version: 1\non:\n  start:\n    - action: { inject: repo }\n",
 			workflow.Start, append(slices.Clone(defaults), "repo")},
+		{"not on subagent_start", "version: 1\non:\n  subagent_start:\n    - action: { inject: sub }\n",
+			workflow.SubagentStart, []string{"sub"}},
 		{"not on prompt", "version: 1\n", workflow.Prompt, nil},
 		{"not on stop", "version: 1\n", workflow.Stop, nil},
 	}
@@ -944,11 +953,6 @@ func TestGuidance(t *testing.T) {
 				t.Fatalf("contexts %q, want %q", out.Answer.Contexts, c.want)
 			}
 		})
-	}
-	edit := session("version: 1\nguidance: { commit: false, edit: true }\n")[0]
-	if !strings.HasPrefix(edit, "This project is managed by polix.\nFollow these rules:\n- Create and change files") ||
-		strings.Contains(edit, "git commit") {
-		t.Fatalf("only the guidance on edits: %q", edit)
 	}
 	ev := eval(t, "version: 1\n", workflow.PreEdit)
 	ev = hook.Evaluation{Workflow: ev.Workflow, Present: true, Root: ev.Root, GitDir: ev.GitDir, System: "linux",
@@ -1908,7 +1912,6 @@ on:
 // subagent type finished, which is written without a hash. A new session is reminded on its own.
 func TestInjectOnce(t *testing.T) {
 	base := eval(t, `version: 1
-guidance: { commit: false, edit: false, layout: false }
 on:
   pre_edit:
     - action: { inject: "Lee el plan antes de editar" }
@@ -1933,13 +1936,13 @@ on:
 	out, steps := walkInject(session)
 	injected := observed(steps)
 	if !slices.Equal(out.Answer.Contexts, []string{text}) || len(injected) != 1 ||
-		injected[0].Outcome != state.OutcomeInjected || injected[0].Key != text || injected[0].Line != 5 ||
+		injected[0].Outcome != state.OutcomeInjected || injected[0].Key != text || injected[0].Line != 4 ||
 		injected[0].Hash != "" || injected[0].Session != "s1" || injected[0].Actor != agent.ActorSession {
 		t.Fatalf("first edit: %+v %+v", out.Answer, injected)
 	}
 	out, steps = walkInject(session)
 	if skips := decided(steps, "skip"); len(out.Answer.Contexts) != 0 || len(skips) != 1 ||
-		skips[0].Action != workflow.VerbInject || skips[0].Line != 5 {
+		skips[0].Action != workflow.VerbInject || skips[0].Line != 4 {
 		t.Fatalf("second edit: %+v %+v", out.Answer, appended(steps))
 	}
 	// A subagent is reminded on its own, once, and again after a subagent of its type finished.
@@ -2274,7 +2277,6 @@ func lookups(steps []hook.Step) [][]string {
 func TestRequirementsPrompt(t *testing.T) {
 	yaml := `version: 1
 requirements: [go, does-not-exist]
-guidance: { commit: false, edit: false, layout: false }
 on:
   prompt:
     - when: { branch: "^refuse$" }
@@ -2309,9 +2311,10 @@ on:
 		!strings.Contains(out.Answer.Contexts[0], "not on the PATH: go, does-not-exist.") {
 		t.Fatalf("another set: %+v", out.Answer)
 	}
-	// A start never looks the programs up nor tells them, and makes the context due again.
+	// A start never looks the programs up nor tells them, only its start context, and makes the context due again.
 	out, steps = step(with(t, prompt, func(e *agent.Event) { e.Name = workflow.Start }), "main", absent)
-	if len(out.Answer.Contexts) != 0 || len(lookups(steps)) != 0 {
+	if !slices.Equal(out.Answer.Contexts, []string{prompt.Workflow.SessionContext(prompt.Root)}) ||
+		len(lookups(steps)) != 0 {
 		t.Fatalf("start: %+v %+v", out.Answer, lookups(steps))
 	}
 	if out, _ = step(prompt, "main", absent); !slices.Equal(out.Answer.Contexts, []string{text}) {

@@ -6,48 +6,35 @@ import (
 	"strings"
 )
 
-// Folder is a key of polix.yaml that only places a folder of the AI, `plans` or `reports`: its path relative to
-// the root, empty for the default.
-type Folder struct {
-	Path string
-	Keys []string // the keys the file used, so Valid rejects unknown ones
-}
-
-// folderPath is the path of a folder of the AI as polix.yaml writes it: rules.path, plans.path or reports.path.
+// folderPath is the path of the folder of the AI as polix.yaml writes it: the top-level key path.
 type folderPath string
 
-// The default folders of the AI, relative to the root.
+// The default folder of the AI, relative to the root, and the folder of the rules below it.
 const (
-	DefaultRulesPath   = "ai/rules"
-	DefaultPlansPath   = "ai/plans"
-	DefaultReportsPath = "ai/reports"
+	DefaultPolixPath = "ai"
+	DefaultRulesPath = DefaultPolixPath + "/rules"
 )
-
-// FolderKeys are the keys of plans and reports.
-var FolderKeys = []string{"path"}
 
 // layoutDrive matches a path that starts with a drive of Windows (C: or C:\).
 var layoutDrive = regexp.MustCompile(`^[A-Za-z]:`)
 
-// Valid tells why the folder is not valid: an unknown key or a path that is not a folder below the root.
-func (f Folder) Valid() error {
+// PolixPath is the folder of the AI, relative to the root, with slashes and no trailing slash: path of polix.yaml
+// cleaned, or DefaultPolixPath. It holds the folders rules, plans, reports and tasks.
+func (w Workflow) PolixPath() string { return folderPath(w.Path).clean(DefaultPolixPath) }
+
+// RulesPath is the folder of the rules, as PolixPath: rules below PolixPath, DefaultRulesPath without path.
+func (w Workflow) RulesPath() string { return w.PolixPath() + "/rules" }
+
+// ValidPath tells why path cannot be the folder of the AI (absolute, the root itself, outside the root or a glob),
+// in the words of Workflow.Problems; the rest of the workflow is left to Valid.
+func (w Workflow) ValidPath() error {
 	v := &validator{}
-	v.folder("folder", f)
+	v.polixPath(w.Path)
 	if len(v.problems) > 0 {
 		return InvalidError(v.problems)
 	}
 	return nil
 }
-
-// RulesPath is the folder of the rules, relative to the root, with slashes and no trailing slash: rules.path or
-// DefaultRulesPath.
-func (w Workflow) RulesPath() string { return folderPath(w.Rules.Path).clean(DefaultRulesPath) }
-
-// PlansPath is the folder of the plans, as RulesPath: plans.path or DefaultPlansPath.
-func (w Workflow) PlansPath() string { return folderPath(w.Plans.Path).clean(DefaultPlansPath) }
-
-// ReportsPath is the folder of the reports, as RulesPath: reports.path or DefaultReportsPath.
-func (w Workflow) ReportsPath() string { return folderPath(w.Reports.Path).clean(DefaultReportsPath) }
 
 // clean is the path cleaned, with slashes and without ./ nor a trailing slash; def when it is empty.
 func (f folderPath) clean(def string) string {
@@ -58,7 +45,7 @@ func (f folderPath) clean(def string) string {
 	return strings.TrimPrefix(path.Clean(strings.ReplaceAll(p, `\`, "/")), "./")
 }
 
-// problem tells why the path cannot be a folder of the AI: absolute, the root itself, outside the root or with
+// problem tells why the path cannot be the folder of the AI: absolute, the root itself, outside the root or with
 // wildcards; empty when it can or when it is empty (the default).
 func (f folderPath) problem() string {
 	p := strings.TrimSpace(string(f))
@@ -79,10 +66,9 @@ func (f folderPath) problem() string {
 	return ""
 }
 
-// folder reports the problems of the folder of the key what.
-func (v *validator) folder(what string, f Folder) {
-	v.unknownKeys(0, what, f.Keys, FolderKeys)
-	if p := folderPath(f.Path).problem(); p != "" {
-		v.add(0, "%s.path %q %s", what, f.Path, p)
+// polixPath reports the problem of path, the one text of it.
+func (v *validator) polixPath(p string) {
+	if problem := folderPath(p).problem(); problem != "" {
+		v.add(0, "path %q %s", p, problem)
 	}
 }

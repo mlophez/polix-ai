@@ -5,54 +5,48 @@ import (
 	"testing"
 )
 
-// The session context holds the header line and then the items of each switch turned on, in the order commit,
-// edit, layout, with no blank lines; it is empty, header included, when every switch is off.
+// cuj01 is the start context of CUJ-01: the root /work/repo and the folders below docs/ai.
+const cuj01 = `This project is managed by polix.
+Follow these rules:
+- Run each git commit as a command of its own: never chain it with &&, ; or |, nor wrap it in sh -c or bash -c.
+- Pass the commit message with -m, -F or a heredoc inside -m.
+- Otherwise polix does not recognise the commit and skips its pre_commit gates.
+- The root of the project is /work/repo.
+- Use these folders, below the root, and no other paths:
+  - docs/ai/rules/: the rules on how to write the code, one yaml file per topic.
+  - docs/ai/plans/: the implementation plans, one per file.
+  - docs/ai/reports/: the reports of audits and reviews, one per file.
+  - docs/ai/tasks/: the backlog of tasks, one per file.`
+
+// CUJ-01, CUJ-02, AC-07, AC-08: the start context is always the commit lines, the root and the four folders below
+// path, cleaned, or below ai by default; a root with backslashes is shown with slashes, and no line asks to change
+// files only with the edit tool.
 func TestWorkflowSessionContext(t *testing.T) {
-	const header = "This project is managed by polix.\nFollow these rules:\n- "
-	const commit, edit, layout = "- Run each git commit", "- Create and change files", "- Use these folders"
-	all := []string{commit, edit, layout}
-	cases := []struct {
-		name string
-		g    Guidance
-		want []string
-	}{
-		{"all", Guidance{Commit: true, Edit: true, Layout: true}, all},
-		{"only commit", Guidance{Commit: true}, []string{commit}},
-		{"only edit", Guidance{Edit: true}, []string{edit}},
-		{"only layout", Guidance{Layout: true}, []string{layout}},
-		{"none", Guidance{}, nil},
+	if got := (Workflow{Version: 1, Path: "docs/ai"}).SessionContext("/work/repo"); got != cuj01 {
+		t.Fatalf("CUJ-01:\n%s\nwant:\n%s", got, cuj01)
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			got := Workflow{Guidance: c.g}.SessionContext()
-			if c.want == nil {
-				if got != "" {
-					t.Fatalf("got %q, want nothing", got)
-				}
-				return
-			}
-			if !strings.HasPrefix(got, header) || strings.Contains(got, "\n\n") || strings.TrimSpace(got) != got {
-				t.Fatalf("want the header, then items with no blank lines: %q", got)
-			}
-			at := -1
-			for _, item := range all {
-				i := strings.Index(got, "\n"+item)
-				if want := strings.Contains(strings.Join(c.want, "\x00"), item); (i >= 0) != want {
-					t.Fatalf("item %q present %v, want %v: %q", item, i >= 0, want, got)
-				}
-				if i >= 0 && i < at {
-					t.Fatalf("item %q out of order: %q", item, got)
-				}
-				at = max(at, i)
-			}
-		})
+	defaults := strings.ReplaceAll(cuj01, "  - docs/ai/", "  - ai/")
+	if got := (Workflow{Version: 1}).SessionContext("/work/repo"); got != defaults {
+		t.Fatalf("CUJ-02:\n%s\nwant:\n%s", got, defaults)
+	}
+	if got := (Workflow{Version: 1, Path: `.\docs\ai\`}).SessionContext("/work/repo"); got != cuj01 {
+		t.Fatalf("a cleaned path:\n%s", got)
+	}
+	got := (Workflow{Version: 1, Path: "docs/ai"}).SessionContext(`C:\work\repo`)
+	if want := strings.Replace(cuj01, "/work/repo", "C:/work/repo", 1); got != want {
+		t.Fatalf("a root of Windows:\n%s", got)
+	}
+	for line := range strings.SplitSeq(defaults, "\n") {
+		if strings.HasPrefix(line, "- Create and change files") || strings.Contains(line, "edit tool") {
+			t.Fatalf("an edit line: %q", line)
+		}
 	}
 }
 
-// Every line of the session context is of at most 120 characters with the default folders, and after the header
-// lines every line is an item.
+// AC-07: every line of the start context is of at most 120 characters with the default folders and a short root,
+// and after the header lines every line is an item.
 func TestWorkflowSessionContextLines(t *testing.T) {
-	got := Workflow{Guidance: Guidance{Commit: true, Edit: true, Layout: true}}.SessionContext()
+	got := Workflow{Version: 1}.SessionContext("/work/repo")
 	items := false
 	for i, line := range strings.Split(got, "\n") {
 		if n := len([]rune(line)); n > 120 {
@@ -66,39 +60,5 @@ func TestWorkflowSessionContextLines(t *testing.T) {
 	}
 	if !items {
 		t.Fatalf("no items: %q", got)
-	}
-}
-
-// The layout names the folders of polix.yaml, cleaned, or the defaults.
-func TestWorkflowSessionContextLayout(t *testing.T) {
-	g := Guidance{Layout: true}
-	got := Workflow{Guidance: g}.SessionContext()
-	for _, want := range []string{"\n  - ai/rules/: ", "\n  - ai/plans/: ", "\n  - ai/reports/: "} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("defaults: %q lacks %q", got, want)
-		}
-	}
-	w := Workflow{Guidance: g, Rules: Rules{Path: "./governance/rules/"}, Plans: Folder{Path: `docs\plans`},
-		Reports: Folder{Path: "out/reports"}}
-	got = w.SessionContext()
-	for _, want := range []string{"\n  - governance/rules/: ", "\n  - docs/plans/: ", "\n  - out/reports/: "} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("configured: %q lacks %q", got, want)
-		}
-	}
-}
-
-// An unknown key of guidance is a problem that names the keys allowed, also inside a workflow.
-func TestGuidanceValid(t *testing.T) {
-	g := Guidance{Commit: true, Keys: []string{"commit", "delegation"}}
-	want := `unknown key "delegation" in guidance (commit, edit, layout)`
-	if err := g.Valid(); err == nil || !strings.Contains(err.Error(), want) {
-		t.Fatalf("guidance: %v", err)
-	}
-	if err := (Workflow{Version: 1, Guidance: g}).Valid(); err == nil || !strings.Contains(err.Error(), want) {
-		t.Fatalf("in a workflow: %v", err)
-	}
-	if err := (Guidance{Keys: []string{"commit", "edit", "layout"}}).Valid(); err != nil {
-		t.Fatal(err)
 	}
 }

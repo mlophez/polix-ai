@@ -24,8 +24,8 @@ Write `README.md` from [readme.md](readme.md) for human readers.
 - **Project**: the current `AGENTS.md` when present, `README.md`, the folder tree and `Justfile`/`Makefile`.
   Also the manifests (`package.json`, `pyproject.toml`, `go.mod`, `pom.xml`...) and test configurations.
   Also the CI pipelines (`.github/workflows/`, `.gitlab-ci.yml`, `bitbucket-pipelines.yml`...).
-  Also `polix.yaml` and the folders of `rules.path`, `plans.path` and `reports.path` when present.
-  Without those keys, the folders are `ai/rules/`, `ai/plans/` and `ai/reports/`.
+  Also `polix.yaml` and the folders of the AI when present: `rules/`, `plans/`, `reports/` and `tasks/`.
+  They sit below `path` of `polix.yaml`, `ai` without it, as the start context of polix names them.
 
 ## Output
 

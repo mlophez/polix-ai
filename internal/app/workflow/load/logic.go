@@ -26,12 +26,8 @@ func Decide(wf workflow.Workflow, guardrails workflow.Guardrails, exists bool, e
 }
 
 // absent is the workflow of a repository without polix.yaml: version 1, the default loop guard and the default
-// guidance (commit on, edit and layout off), with the error of its Valid.
+// folder of the AI, with the error of its Valid.
 func absent() (workflow.Workflow, error) {
-	guidance := workflow.Guidance{Commit: true}
-	if err := guidance.Valid(); err != nil {
-		return workflow.Workflow{}, err
-	}
-	w := workflow.Workflow{Version: 1, MaxStopRetries: workflow.DefaultMaxStopRetries, Guidance: guidance}
+	w := workflow.Workflow{Version: 1, MaxStopRetries: workflow.DefaultMaxStopRetries}
 	return w, w.Valid()
 }

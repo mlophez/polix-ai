@@ -14,7 +14,7 @@ argument-hint: "[paths and an optional focus, e.g. internal/app/setup security; 
 # Auditing
 
 Split the scope into areas, audit each with its own `polix:auditor` subagent in parallel and merge their reports.
-Save the merged report in the folder of reports: `reports.path` of `polix.yaml`, `ai/reports/` without it.
+Save the merged report in the folder of reports, the one the start context of polix names, below the root.
 
 ## Requirements
 

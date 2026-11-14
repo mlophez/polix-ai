@@ -35,8 +35,18 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   does not exist; the builder stops when it runs on another branch. A plan without `branch` builds where it is.
 - The placeholders `{commit}` and `{subject}`, the short hash and the subject of the commit just made, on
   `post_commit`, and an empty text on any other event.
+- The top-level key `path` of `polix.yaml`, right after `version`: the folder of the AI, relative to the root, `ai` by
+  default, which holds `rules/`, `plans/`, `reports/` and `tasks/`. polix reads the rules of `<path>/rules`, and
+  `polix config check` rejects a path that is absolute, the root itself, outside the root or a glob. An older polix
+  reports `path` as unknown, so set `requires` to a release that knows it.
+- The start context names the root of the working tree and the folder of tasks, `tasks/` below `path`, next to those
+  of the rules, the plans and the reports.
 
 ### Changed
+
+- The start context is injected on every `start` of a valid `polix.yaml`, to Claude Code and Codex, with no switch:
+  the rules on commits, the root and the four folders below `path`. The skills of the plugin take their folders from
+  it, and its agents from `path` of `polix.yaml`.
 
 - The skills and agents of the plugin name the section of their limits `## Limits` instead of `## Rules`, so it is
   not mistaken for the rules of the folder of rules; a test of the package `plugins` keeps it. Each `Limits` keeps
@@ -123,6 +133,15 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 - `polix log` prints the log grouped by session, each whole under `== session <id> ==`, the most recently active
   last. `-n` (`--tail`) now counts sessions, 5 by default and all of them with `0`, and `--json` prints only the
   lines of those sessions, without headers.
+
+### Removed
+
+- The keys `rules.path`, `plans`, `reports` and `guidance` of `polix.yaml`: a file that keeps one is invalid until it
+  is migrated, and `polix config check` reports each one with its hint, never as an option of a newer polix.
+  `rules: { path: docs/ai/rules }` becomes `path: docs/ai`, the folder that holds `rules/`; `plans` and `reports` go,
+  their folders being `plans/` and `reports/` below `path`; `guidance` goes, the start context being always injected.
+- The lines of the start context that asked to change files only with the edit tool of the agent: a repository that
+  wants them writes an `inject` on `start`.
 
 ## [0.8.1] - 2026-11-12
 

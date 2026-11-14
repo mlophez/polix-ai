@@ -12,7 +12,7 @@ import (
 // Request is what a caller of the loader asks of the use case LoadRule: the arguments of rule.Load.
 type Request struct {
 	Root string // the root of the repository, with the separators of the system
-	Dir  string // the folder of rules, relative to the root, with slashes (rules.path of polix.yaml)
+	Dir  string // the folder of rules, relative to the root, with slashes (rules/ below path of polix.yaml)
 }
 
 // Response is what the use case LoadRule gives back to the caller of the loader.

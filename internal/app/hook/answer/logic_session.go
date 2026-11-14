@@ -19,12 +19,12 @@ const (
 // prompt of the user and the start of a subagent. They come with no protection, and an unusable workflow only warns.
 // Without polix.yaml nothing happens.
 //
-// On start the built-in guidance of the workflow comes before the entries, so the contexts of the repository have the
-// last word. On start and subagent_start, which begin a new context, every inject injects each time it applies; with
+// On start the start context of the workflow, always injected, comes before the entries, so the contexts of the
+// repository have the last word. On start and subagent_start, which begin a new context, every inject injects each time it applies; with
 // the answer known, they write that the session, keyed by the source of the start, or the subagent of the type of
 // the actor, with its id, started when the workflow observes it (workflow.Workflow.ObservesStart), so its once-only
 // injects are due again (see due) and the subagents still running are known (see agentsRunning). subagent_start
-// gets neither the guidance nor the requirements, which are told to the main session. On prompt a refusal rejects the
+// gets neither the start context nor the requirements, which are told to the main session. On prompt a refusal rejects the
 // prompt, so its contexts never reach the AI: its once-only injects are written as injected only when the answer
 // does not refuse. On prompt, before the entries, the programs of requirements the PATH does not run are told to the
 // AI once (see requirements).
@@ -96,9 +96,11 @@ func (r *pass) requirements(ans agent.Answer) agent.Answer {
 		"install nothing without the user's approval.")
 }
 
-// guidance adds to ans the built-in guidance of the workflow for the session, when it has any.
+// guidance adds to ans the start context of the workflow (workflow.Workflow.SessionContext), rendered with the root
+// of the working tree of the event: the rules on commits, the root and the folders of the AI below path. It is
+// always injected on start; only a template that failed to render would leave it empty.
 func (r *pass) guidance(ans agent.Answer) agent.Answer {
-	if text := r.ev.Workflow.SessionContext(); text != "" {
+	if text := r.ev.Workflow.SessionContext(r.ev.Root); text != "" {
 		return ans.Inform(text)
 	}
 	return ans

@@ -65,9 +65,10 @@ func printed(res Response) (int, string, string) {
 	return code, out.String(), errb.String()
 }
 
-// The shell reads the folder of rules.path and writes each changed file, in the order of the names, and nothing else.
+// The shell reads the folder of rules below path and writes each changed file, in the order of the names, and
+// nothing else.
 func TestShellWrites(t *testing.T) {
-	port := &fakePort{wf: workflow.Workflow{Rules: workflow.Rules{Path: "docs/rules"}}, files: map[string][]byte{
+	port := &fakePort{wf: workflow.Workflow{Path: "docs"}, files: map[string][]byte{
 		"b.yaml": []byte(unformatted), "a.yaml": []byte(unformatted), "c.yaml": []byte(formatted)}}
 	res, err := run(context.Background(), port, Request{})
 	if err != nil || !slices.Equal(port.read, []string{"docs/rules"}) {
@@ -149,7 +150,7 @@ func TestShellEmpty(t *testing.T) {
 	}
 }
 
-// A polix.yaml that cannot be loaded, or a rules.path that cannot be the folder of the rules, stops the shell before
+// A polix.yaml that cannot be loaded, or a path that cannot be the folder of the AI, stops the shell before
 // any file is read; a workflow with another problem, as an invalid runner, is formatted. A folder that cannot be
 // read stops it too.
 func TestShellErrors(t *testing.T) {
@@ -159,12 +160,12 @@ func TestShellErrors(t *testing.T) {
 		port.written != nil {
 		t.Fatalf("workflow: %v, read %v", err, port.read)
 	}
-	port = &fakePort{wf: workflow.Workflow{Rules: workflow.Rules{Path: "../x"}},
+	port = &fakePort{wf: workflow.Workflow{Path: "../x"},
 		files: map[string][]byte{"a.yaml": []byte(unformatted)}}
 	if _, err := run(context.Background(), port, Request{}); err == nil ||
-		!strings.Contains(err.Error(), `rules.path "../x" must be below the root`) || port.read != nil ||
+		!strings.Contains(err.Error(), `path "../x" must be below the root`) || port.read != nil ||
 		port.written != nil {
-		t.Fatalf("rules.path: %v, read %v", err, port.read)
+		t.Fatalf("path: %v, read %v", err, port.read)
 	}
 	port = &fakePort{wf: workflow.Workflow{Rules: workflow.Rules{Run: []workflow.Runner{{Glob: "*"}}}},
 		files: map[string][]byte{"a.yaml": []byte(unformatted)}}

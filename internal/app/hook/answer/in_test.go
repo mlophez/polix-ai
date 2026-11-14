@@ -281,10 +281,12 @@ func TestLocatesEdits(t *testing.T) {
 	}
 }
 
-// The guidance reaches the session of Claude Code and of Codex as the additionalContext of SessionStart.
+// CUJ-01, AC-07: the start context, with the root of the event and the folders below path, reaches the session of
+// Claude Code and of Codex as the additionalContext of SessionStart.
 func TestGuidanceRendered(t *testing.T) {
+	const yaml = "version: 1\npath: docs/ai\n"
 	for _, agentName := range []string{"claude", "codex"} {
-		port := &fakePort{yaml: "version: 1\n"}
+		port := &fakePort{yaml: yaml}
 		res, err := run(context.Background(), port, Request{Agent: agentName, Version: "dev",
 			System: "linux", Input: []byte(`{"hook_event_name":"SessionStart","cwd":"/repo"}`)})
 		if err != nil || res.Code != 0 {
@@ -298,9 +300,12 @@ func TestGuidanceRendered(t *testing.T) {
 		if err := json.Unmarshal([]byte(res.Stdout), &out); err != nil {
 			t.Fatalf("%s: stdout %q: %v", agentName, res.Stdout, err)
 		}
-		wf, _ := parseWorkflow("version: 1\n", "dev")
-		if want := wf.SessionContext(); want == "" || out.HookSpecificOutput.AdditionalContext != want {
-			t.Fatalf("%s: additionalContext %q", agentName, out.HookSpecificOutput.AdditionalContext)
+		wf, _ := parseWorkflow(yaml, "dev")
+		got := out.HookSpecificOutput.AdditionalContext
+		if want := wf.SessionContext(filepath.FromSlash("/repo")); got != want ||
+			!strings.Contains(got, "\n- The root of the project is /repo.\n") ||
+			!strings.HasSuffix(got, "\n  - docs/ai/tasks/: the backlog of tasks, one per file.") {
+			t.Fatalf("%s: additionalContext %q", agentName, got)
 		}
 	}
 }

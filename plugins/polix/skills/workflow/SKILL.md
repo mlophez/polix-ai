@@ -3,7 +3,7 @@ name: workflow
 description: >
   Writes or changes polix.yaml, the workflow polix applies to the sessions of the agents on every event.
   It runs only when the user or the workflow of polix asks for it.
-  It never writes the rules (rules.path, ai/rules/ by default): that is the skill add-rule.
+  It never writes the rules (the folder rules/ below path): that is the skill add-rule.
 effort: medium
 model: inherit
 user-invocable: true
@@ -86,7 +86,7 @@ Workflow progress:
   A formatter or linter of each edited file goes in `format_on_edit`.
   A check that must pass before the end of the turn goes in `run_on_stop`.
 - Keep in `format_on_edit` the two items that keep the files of polix in its canonical format.
-  Add them when missing, also to a new `polix.yaml`, with `rules.path` (`ai/rules` by default) in the second glob:
+  Add them when missing, also to a new `polix.yaml`, with `rules` below `path` (`ai` by default) in the second glob:
 
   ```yaml
   - run: polix config fmt
@@ -123,4 +123,4 @@ Workflow progress:
   Old names include `protected`, `base`, `max_stop_blocks`, `if`, `deny`, `record`, `done` and `turn_stop`.
 - When the change uses a key, event, condition or verb the file did not use yet, set `requires`.
   Set it to the output of `polix version`, unless it is `dev` or `requires` is already newer.
-- When `rules.path`, `plans.path` or `reports.path` changes, tell the user to move the files of the old folder.
+- When `path` changes, tell the user to move the folders `rules/`, `plans/`, `reports/` and `tasks/` of the old one.

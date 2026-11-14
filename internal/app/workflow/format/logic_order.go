@@ -5,17 +5,15 @@ import (
 	"github.com/mlophez/polix-ai/internal/platform/yamlfmt"
 )
 
-// topKeys is the order of the top level keys of a formatted polix.yaml: the settings first, in the order of
-// workflow.TopKeys, then requirements right before guardrails, since it is not a shortcut that expands into entries,
-// the two sections that hold the workflow of the AI, guardrails and on, and githooks, the gates git runs, last.
-var topKeys = []string{"version", "requires", "base_branch", "max_stop_retries", "vars", "rules", "plans",
-	"reports", "guidance", "risk", "requirements", "guardrails", "on", "githooks"}
+// topKeys is the order of the top level keys of a formatted polix.yaml: version and path, the folder of the AI,
+// first, then the other settings, then requirements right before guardrails, since it is not a shortcut that
+// expands into entries, the two sections that hold the workflow of the AI, guardrails and on, and githooks, the
+// gates git runs, last.
+var topKeys = []string{"version", "path", "requires", "base_branch", "max_stop_retries", "vars", "rules",
+	"risk", "requirements", "guardrails", "on", "githooks"}
 
-// varKeys and rulesKeys are the keys of a variable of vars and of the section rules.
-var (
-	varKeys   = []string{"branch"}
-	rulesKeys = []string{"path", "run"}
-)
+// varKeys are the keys of a variable of vars.
+var varKeys = []string{"branch"}
 
 // formatData formats the data of polix.yaml: two spaces of indentation, the comments and the blank lines kept, the
 // keys of each section in the order of the reference, with guardrails and on at the end, and one blank line between
@@ -73,11 +71,7 @@ func orderSection(key string) []string {
 	case "githooks":
 		return workflow.GithookEvents
 	case "rules":
-		return rulesKeys
-	case "plans", "reports":
-		return workflow.FolderKeys
-	case "guidance":
-		return workflow.GuidanceKeys
+		return workflow.RulesKeys
 	case "risk":
 		return workflow.RiskKeys
 	}

@@ -13,7 +13,7 @@ color: orange
 # Auditor
 
 You audit a repository in a context of your own: you do not see the conversation that launched you.
-The folder of rules is `rules.path` of `polix.yaml`, `ai/rules/` without it.
+The folder of rules is `rules/` below `path` of `polix.yaml`, `ai/rules/` without it.
 You report; you never fix.
 
 ## Requirements

@@ -34,6 +34,9 @@ import (
 // Workflow is polix.yaml.
 type Workflow struct {
 	Version int
+	// Path is the folder of the AI relative to the root (path), which holds the folders rules, plans, reports and
+	// tasks; empty for DefaultPolixPath. PolixPath gives it cleaned.
+	Path string
 	// Requires is the oldest polix that knows every option the file uses (`requires: 0.2.0`). An older polix
 	// reads it before anything else and asks to be updated instead of reporting the options it does not know.
 	Requires string
@@ -54,11 +57,8 @@ type Workflow struct {
 	Vars              map[string]Var
 	// On holds the entries of each event: those written in `on` and those the shortcuts of guardrails
 	// protected_branches, format_on_edit and run_on_stop expand into.
-	On       map[string][]Entry
-	Rules    Rules    // the folder of the rules and how their checks run
-	Plans    Folder   // the folder of the plans
-	Reports  Folder   // the folder of the reports
-	Guidance Guidance // the built-in instructions injected at session start
+	On    map[string][]Entry
+	Rules Rules // how the checks of the rules run
 	// Weights are the factors of the risk score per path glob (risk.weights), in file order: the first glob that
 	// matches a file gives its weight, and a file no glob matches weighs 1.
 	Weights []Weight
@@ -124,7 +124,7 @@ func (w Workflow) Problems() []string {
 }
 
 // workflow reports the problems of the workflow w: its settings and guardrails, its variables, its events, its
-// githooks, its layout and its weights.
+// githooks, its rules and its weights.
 func (v *validator) workflow(w Workflow) {
 	v.settings(w)
 	for _, name := range slices.Sorted(maps.Keys(w.Vars)) {
@@ -133,9 +133,6 @@ func (v *validator) workflow(w Workflow) {
 	v.events(w)
 	v.githooks(w)
 	v.rules(w.Rules)
-	v.folder("plans", w.Plans)
-	v.folder("reports", w.Reports)
-	v.guidance(w.Guidance)
 	for _, wt := range w.Weights {
 		if err := wt.Valid(); err != nil {
 			v.add(0, "risk.weights: %v", err)
@@ -143,12 +140,14 @@ func (v *validator) workflow(w Workflow) {
 	}
 }
 
-// settings reports the problems of the settings of the workflow w and of its protections: the version, the polix it
-// requires, the loop guard, the base branches, the required programs, the protected files and the forbidden commands.
+// settings reports the problems of the settings of the workflow w and of its protections: the version, the folder of
+// the AI, the polix it requires, the loop guard, the base branches, the required programs, the protected files and
+// the forbidden commands.
 func (v *validator) settings(w Workflow) {
 	if w.Version != 1 {
 		v.add(0, "version must be 1, got %d", w.Version)
 	}
+	v.polixPath(w.Path)
 	if w.Requires != "" && !semver.Valid(w.Requires) {
 		v.add(0, "requires must be a version of polix like 0.2.0, got %q", w.Requires)
 	}

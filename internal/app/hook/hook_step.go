@@ -22,7 +22,7 @@ type Step struct {
 	Diff     bool     // the size of the change of each file not committed yet
 	Commit   bool     // the commit HEAD points to: the size of its change, its short hash and its subject
 	Files    bool     // the files of the working tree git does not ignore
-	Rules    bool     // the rules of ai/rules/
+	Rules    bool     // the rules of the folder of rules, rules/ below path (ai/rules/ by default)
 	State    bool     // the log of polix
 	Ignored  string   // whether git ignores this path, relative to the root
 	Real     []string // the real paths of these absolute paths, symlinks resolved

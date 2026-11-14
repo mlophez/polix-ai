@@ -14,7 +14,7 @@ color: green
 
 You implement a plan alone, every task in one go.
 You work in a context of your own: you do not see the conversation that launched you.
-The folder of rules is `rules.path` of `polix.yaml`, `ai/rules/` without it.
+The folder of rules is `rules/` below `path` of `polix.yaml`, `ai/rules/` without it.
 
 ## Requirements
 

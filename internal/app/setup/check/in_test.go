@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -36,7 +37,7 @@ func TestMain(m *testing.M) {
 }
 
 func (f *fakePort) LoadWorkflow(_ context.Context, _ string) (workflow.Workflow, bool, error) {
-	return workflow.Workflow{Base: []string{"trunk"}, Rules: workflow.Rules{Path: "docs/rules"}}, f.found, f.wfErr
+	return workflow.Workflow{Base: []string{"trunk"}, Path: "docs"}, f.found, f.wfErr
 }
 
 func (f *fakePort) LoadRules(_ context.Context, dir string) ([]rule.Rule, []string, error) {
@@ -61,7 +62,7 @@ func TestShell(t *testing.T) {
 		t.Fatalf("%+v %v", res, err)
 	}
 	if port.dir != "docs/rules" || res.RulesPath != "docs/rules" {
-		t.Fatalf("rules read from %q and reported as %q, want rules.path", port.dir, res.RulesPath)
+		t.Fatalf("rules read from %q and reported as %q, want rules below path", port.dir, res.RulesPath)
 	}
 }
 
@@ -114,17 +115,46 @@ func TestCommand(t *testing.T) {
 	if code, _, stderr := runCommand(r); code != 0 || !strings.Contains(stderr, "rules check --changed would fail") {
 		t.Fatalf("a missing base is a warning: %d %q", code, stderr)
 	}
-	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase_branch: trunk\nrules: { path: docs/rules/ }\n")
+	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase_branch: trunk\npath: docs/\n")
 	testenv.Write(t, filepath.Join(r, "docs", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n")
 	if code, stdout, _ := runCommand(r); code != 0 || !strings.HasSuffix(stdout, "1 rules of docs/rules/\n") {
-		t.Fatalf("the rules of rules.path, not of ai/rules/: %d %q", code, stdout)
-	}
-	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nrules: { path: ../rules }\n")
-	if code, _, stderr := runCommand(r); code != 1 || !strings.Contains(stderr, `rules.path "../rules" must be below the root`) {
-		t.Fatalf("a folder outside the root: %d %q", code, stderr)
+		t.Fatalf("the rules below path, not of ai/rules/: %d %q", code, stdout)
 	}
 	if code, _, stderr := runCommand(t.TempDir()); code != 1 || !strings.Contains(stderr, "not inside a git repository") {
 		t.Fatalf("outside a repository: %d %q", code, stderr)
+	}
+}
+
+// CUJ-03, CUJ-04, AC-01, AC-02: polix config check reads the rules below path, and those of ai/rules/ without it; a
+// path outside the root (CUJ-05) and a removed folder key (CUJ-06, CUJ-08) fail with their message, and never with
+// the hint of a newer polix.
+func TestCommandPath(t *testing.T) {
+	r := testenv.GitRepo(t)
+	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\npath: docs/ai\n")
+	testenv.Write(t, filepath.Join(r, "docs", "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n")
+	if code, stdout, stderr := runCommand(r); code != 0 || stdout != "ok: polix.yaml and 1 rules of docs/ai/rules/\n" {
+		t.Fatalf("CUJ-03: %d %q %q", code, stdout, stderr)
+	}
+	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\n")
+	testenv.Write(t, filepath.Join(r, "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n")
+	if code, stdout, stderr := runCommand(r); code != 0 || stdout != "ok: polix.yaml and 1 rules of ai/rules/\n" {
+		t.Fatalf("CUJ-04: %d %q %q", code, stdout, stderr)
+	}
+	for src, want := range map[string]string{
+		"version: 1\npath: ../x\n":                `✗ polix.yaml: path "../x" must be below the root`,
+		"version: 1\nplans: { path: ai/plans }\n": `✗ polix.yaml:2: unknown key "plans": remove it: the plans go to plans/ below path (ai/plans by default)`,
+		"version: 1\nrules: { path: docs/rules }\n": `✗ polix.yaml: unknown key "path" in rules (run): move it to the top-level key path, ` +
+			`the folder that holds rules/ (ai by default)`,
+	} {
+		testenv.Write(t, filepath.Join(r, "polix.yaml"), src)
+		code, _, stderr := runCommand(r)
+		if code != 1 || !slices.Contains(strings.Split(stderr, "\n"), want) || strings.Contains(stderr, "! these problems may be") {
+			t.Errorf("%q: %d %q, want %s", src, code, stderr, want)
+		}
+	}
+	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nplans: { path: ai/plans }\n")
+	if _, _, stderr := runCommand(r); stderr != "✗ polix.yaml:2: unknown key \"plans\": remove it: the plans go to plans/ below path (ai/plans by default)\n" {
+		t.Errorf("CUJ-06: stderr is exactly the problem: %q", stderr)
 	}
 }
 

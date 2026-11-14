@@ -8,7 +8,7 @@ effort: low
 model: sonnet
 user-invocable: true
 disable-model-invocation: true
-argument-hint: "[plan and optional first task, e.g. ai/plans/add-retries.md 3; empty to take it from the conversation]"
+argument-hint: "[plan and optional first task, e.g. add-retries.md 3; empty to take it from the conversation]"
 ---
 
 # Building
@@ -16,7 +16,7 @@ argument-hint: "[plan and optional first task, e.g. ai/plans/add-retries.md 3; e
 Run a plan to its end, unattended: once it starts, it ends `done`, or `blocked` for what only a person can solve.
 You coordinate and never build: each iteration launches the builder, then the verifier and the reviewer in parallel.
 You add their reports to the plan, count the iteration, and launch the builder again on what is still open.
-The folder of plans is `plans.path` of `polix.yaml`, `ai/plans/` without it.
+The folder of plans is the one the start context of polix names, below the root.
 
 ## Requirements
 

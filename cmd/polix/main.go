@@ -34,7 +34,7 @@ func main() {
 	root := cli.Root("polix",
 		"A deterministic harness for AI agents: one polix.yaml decides what the agent may not touch, what must "+
 			"pass and what runs at every step.",
-		"polix applies the workflow (polix.yaml) and the rules (ai/rules/, or rules.path) of a repository to Claude Code "+
+		"polix applies the workflow (polix.yaml) and the rules (rules/ below path, ai/rules/ by default) of a repository to Claude Code "+
 			"through its hooks: it runs, injects and blocks what the workflow says. Claude Code is the supported agent; "+
 			"Codex support is not implemented.",
 		"  # Set up this machine: the polix plugin with its skills and hooks\n"+
@@ -73,7 +73,7 @@ func main() {
 	answer.GroupID = "agent"
 	root.AddCommand(answer, githookanswer.Command(loadWorkflow))
 
-	rules := &cobra.Command{Use: "rules", Short: "Work with the rules of rules.path (ai/rules/)", Args: cobra.NoArgs, GroupID: "repo"}
+	rules := &cobra.Command{Use: "rules", Short: "Work with the rules of rules/ below path (ai/rules/)", Args: cobra.NoArgs, GroupID: "repo"}
 	rules.AddCommand(rulecheck.Command(loadRules, loadWorkflow), ruleformat.Command(loadRules, loadWorkflow))
 	root.AddCommand(rules)
 

@@ -1,7 +1,7 @@
 ---
 name: plan
 description: >
-  Writes an outcome-driven plan for a feature, refactor or bugfix in the folder of plans, ai/plans/ by default.
+  Writes an outcome-driven plan for a feature, refactor or bugfix in the folder of plans the start context names.
   It interviews the user on what the request leaves open, replaces plan mode and never writes code nor commits.
   It runs only when the user or the workflow of polix asks for it.
 effort: high
@@ -15,7 +15,7 @@ argument-hint: "[what to plan, e.g. add retries to the webhook sender, and where
 
 Turn a request into a plan file that one executor runs alone, task by task in order, knowing only the plan and the code.
 The plan goes from the outcome expected to the criteria that prove it and the tasks that build it, and holds no code.
-The folders of plans and of rules are `plans.path` and `rules.path` of `polix.yaml`, else `ai/plans/` and `ai/rules/`.
+The folders of plans, of rules and of tasks are those the start context of polix names, below the root.
 
 ## Requirements
 
@@ -26,7 +26,7 @@ The folders of plans and of rules are `plans.path` and `rules.path` of `polix.ya
 
 - **Request**: what to plan, from the arguments or the conversation.
   Without either, ask the user.
-  It may be a file of the folder of tasks, `ai/tasks/` as `/polix:task` writes it.
+  It may be a file of the folder of tasks, as `/polix:task` writes it.
   Then plan from its sections, and give its path as the `reference` of the plan.
   Once the plan file exists, set the task's `status: planned` and `plan: <path of the plan>`, and nothing else of it.
 - **Plan**: the plan file, from the arguments or the conversation.
@@ -416,7 +416,7 @@ A reviewer reads `Overview` and `Specification` to approve the plan; the executo
 ### Plan file
 
 Path: the `Plan` of `Input` when the request gives one.
-Otherwise `<plans>/<name>.md`, where `<plans>` is the folder of plans.
+Otherwise `<plans>/<name>.md`, where `<plans>` is the folder of plans the start context names; report the path.
 Name it as the project names its plans: the convention of `AGENTS.md`, of `polix.yaml` or of the plans already there.
 When the plans already there mix conventions, follow the one last added in the git history.
 Without one, `<name>` is short kebab-case English from the request.

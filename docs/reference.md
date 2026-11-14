@@ -37,6 +37,7 @@ git itself runs on every commit, whoever makes it, with a small vocabulary of it
 
 ```yaml
 version: 1                       # required
+path: ai                         # folder of the AI: rules/, plans/, reports/ and tasks/
 requires: 0.3.0                  # oldest polix that knows this file (run_on_stop needs it)
 base_branch: [main, dev]         # branch the change merges into (polix rules check --changed)
 max_stop_retries: 3              # loop guard of stop and subagent_stop
@@ -54,21 +55,12 @@ guardrails:                      # the basics every project wants
     - run: "go test ./..."
       changed: "*.go"
 rules:
-  path: ai/rules                 # folder of the rules
   run:                           # runner of each check, by glob
     "*_test.go": [go, test, "{dir}", -run, "^Test({names})$"]
-plans:
-  path: ai/plans
-reports:
-  path: ai/reports
 risk:
   weights:                       # weight of each path in risk_score
     "*_test.go": 0.5
     "src/core/**": 3
-guidance:                        # instructions injected on start
-  commit: true
-  edit: true
-  layout: true
 vars:                            # variables from the branch name
   key:
     branch: "^([A-Z]+-[0-9]+)"
@@ -108,10 +100,38 @@ Earlier builds named three of them otherwise: `protected` is now [`guardrails.pr
 `base` is now [`base_branch`](#base_branch), and the loop guard is now [`max_stop_retries`](#max_stop_retries).
 Only the new names are accepted: `polix config check` reports an old one with its line and its new spelling.
 
+The keys `rules.path`, `plans`, `reports` and `guidance` are removed: the folders of the AI go below
+[`path`](#path), and polix always injects the [start context](#start-context). `polix config check` reports each one
+with its migration, and never as an option of a newer polix:
+
+```text
+polix.yaml:<line>: unknown key "plans": remove it: the plans go to plans/ below path (ai/plans by default)
+polix.yaml:<line>: unknown key "reports": remove it: the reports go to reports/ below path (ai/reports by default)
+polix.yaml:<line>: unknown key "guidance": remove it: polix always injects the rules on commits and the folders below path on start
+unknown key "path" in rules (run): move it to the top-level key path, the folder that holds rules/ (ai by default)
+```
+
 ### version
 
 - Type: integer. Required.
 - The version of the schema. The only one is `1`; any other value is a problem.
+
+### path
+
+- Type: a string. Default: `ai` (also when empty or only spaces).
+- The folder of the AI, relative to the root: it holds `rules/`, `plans/`, `reports/` and `tasks/`. polix reads
+  only `<path>/rules`, its `*.yaml` but `retired.yaml`, and names the four folders to the agent in the
+  [start context](#start-context); it moves or creates no folder.
+- Cleaned: backslashes become `/`, the spaces around it, a leading `./` and a trailing `/` are dropped.
+- `polix config check` rejects an absolute path or a drive of Windows, the root itself (`.`), a path out of the root
+  (`..`) and a glob (`*`, `?`, `[`, `{`), as `path "../x" must be below the root`. A value that is not a string
+  stops the parse.
+- An older polix reports `path` as an unknown key: set [`requires`](#requires) to a release that knows it.
+
+```yaml
+version: 1
+path: docs/ai      # the rules in docs/ai/rules/, the plans in docs/ai/plans/...
+```
 
 ### requires
 
@@ -149,10 +169,10 @@ base_branch: [main, dev]
 
 ### rules
 
-The rules on how to write the code, which polix injects and checks.
+The rules on how to write the code, which polix injects and checks. Their folder is `rules/` below
+[`path`](#path), `ai/rules` by default: polix reads its `*.yaml` but `retired.yaml`, not its subfolders. The only key
+of `rules` is `run`.
 
-- `path`: the folder of the rules, relative to the root. Default: `ai/rules`. No absolute path, no `..`, no glob,
-  not the root itself. polix reads its `*.yaml` but `retired.yaml`, not its subfolders.
 - `run`: a map of glob to argv: how the `check` of a rule runs, from the root and without a shell. The glob is
   matched against the path of the check (without `/`, against its base name); the first one that matches wins, in
   the order of the file. A check no glob matches runs as a program (its shebang; on Windows a `.sh` with the bash
@@ -172,7 +192,6 @@ each rule runs again alone to tell which ones fail.
 
 ```yaml
 rules:
-  path: ai/rules
   run:
     "tests/architecture/*_test.go": [go, test, "{dir}", -run, "^Test({names})$"]   # one run per folder
     "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]                          # one run per rule
@@ -181,13 +200,6 @@ rules:
 
 `polix config check` reports an empty argv, an empty glob, an unknown placeholder and `{files}` or `{dirs}` inside
 a longer argument.
-
-### plans and reports
-
-- `plans.path`, default `ai/plans`: the folder of the plans the skill `plan` writes.
-- `reports.path`, default `ai/reports`: the folder of the reports of audits and reviews.
-- Same limits as `rules.path`. polix does not read them: with `guidance.layout: true` it tells the agent where they
-  are.
 
 ### risk
 
@@ -209,17 +221,29 @@ risk:
     "*.lock": 0
 ```
 
-### guidance
+### Start context
 
-Built-in instructions polix injects on every `start` (startup, resume, clear, compaction), in English, before the
-injects of the `start` entries, and only with a valid file. They ask for cooperation and block nothing. Left out,
-`commit` is `true` and `edit` and `layout` are `false`; a value sets each one.
+Not a key: the built-in text polix injects on every `start` (startup, resume, clear, compaction) of a valid file,
+to Claude Code and Codex, in English, before the injects of the `start` entries. It asks for cooperation and blocks
+nothing, and `subagent_start` gets none of it. Its text is the template `templates/session_start.md.tmpl` of the
+binary: the rules on commits, the root of the working tree (with `/` on every system) and the four folders below
+[`path`](#path), each with its purpose. With `path: docs/ai`:
 
-- `commit`: run each commit as a `git commit` of its own, not chained with `&&`, `;` or `|` nor wrapped in `sh -c`,
-  so `pre_commit` sees it.
-- `edit`: create and change files with the edit tool of the agent, not from the shell, so `pre_edit`, `post_edit`
-  and the rules see the change.
-- `layout`: the folders of `rules.path`, `plans.path` and `reports.path`.
+```text
+This project is managed by polix.
+Follow these rules:
+- Run each git commit as a command of its own: never chain it with &&, ; or |, nor wrap it in sh -c or bash -c.
+- Pass the commit message with -m, -F or a heredoc inside -m.
+- Otherwise polix does not recognise the commit and skips its pre_commit gates.
+- The root of the project is /work/repo.
+- Use these folders, below the root, and no other paths:
+  - docs/ai/rules/: the rules on how to write the code, one yaml file per topic.
+  - docs/ai/plans/: the implementation plans, one per file.
+  - docs/ai/reports/: the reports of audits and reviews, one per file.
+  - docs/ai/tasks/: the backlog of tasks, one per file.
+```
+
+It no longer asks to change files only with the edit tool: a repository that wants it writes an `inject` on `start`.
 
 ### vars
 
@@ -532,6 +556,7 @@ verb at the line of its entry, naming the event, the verb, why and the verbs the
 - Verbs: `inject`, `run`, `notify`. It cannot be blocked: a failing `run` reaches the AI as context.
 - Every `inject` acts every time on `start`, so the context survives a compaction; `always` has no effect. A
   `notify` already shown in the session is not shown again after a compaction.
+- The [start context](#start-context) always comes first, before the contexts of the entries.
 
 ### prompt
 
@@ -544,7 +569,7 @@ verb at the line of its entry, naming the event, the verb, why and the verbs the
 - When: a subagent starts, with a new context, before its first tool use; `actor` is its type.
 - Verbs: `inject`, `run`, `notify`. It cannot be blocked: a failing `run` reaches the subagent as context.
 - Every `inject` acts every time on `subagent_start`, as on `start`; `always` has no effect. It gets neither the
-  guidance nor the context of `requirements`, which go to the main session.
+  start context nor the context of `requirements`, which go to the main session.
 - When the workflow has an `inject` that acts once, it makes those injects due again for that subagent type only:
   the main session and the other types keep theirs.
 

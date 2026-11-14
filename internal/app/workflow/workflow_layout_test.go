@@ -1,68 +1,81 @@
 package workflow
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
 
-// The folders default to ai/ and come cleaned, with slashes and without ./ nor a trailing slash.
-func TestWorkflowLayoutPaths(t *testing.T) {
+// AC-01, AC-02: the folder of the AI defaults to ai, and its folder of rules to ai/rules; a configured path comes
+// cleaned, with slashes and without spaces, ./ nor a trailing slash, and holds the folder of rules.
+func TestWorkflowPolixPath(t *testing.T) {
 	var w Workflow
-	if w.RulesPath() != DefaultRulesPath || w.PlansPath() != DefaultPlansPath || w.ReportsPath() != DefaultReportsPath {
-		t.Fatalf("defaults: %q %q %q", w.RulesPath(), w.PlansPath(), w.ReportsPath())
+	if w.PolixPath() != DefaultPolixPath || DefaultPolixPath != "ai" || w.RulesPath() != "ai/rules" ||
+		w.RulesPath() != DefaultRulesPath {
+		t.Fatalf("defaults: %q %q", w.PolixPath(), w.RulesPath())
 	}
-	w = Workflow{Rules: Rules{Path: "./docs/rules/"}, Plans: Folder{Path: `work\plans`}, Reports: Folder{Path: " out "}}
-	if w.RulesPath() != "docs/rules" || w.PlansPath() != "work/plans" || w.ReportsPath() != "out" {
-		t.Fatalf("configured: %q %q %q", w.RulesPath(), w.PlansPath(), w.ReportsPath())
+	for p, want := range map[string]string{
+		"":              "ai",
+		"   ":           "ai",
+		"docs/ai":       "docs/ai",
+		"./docs/ai/":    "docs/ai",
+		` docs\ai `:     "docs/ai",
+		"docs//ai/x/..": "docs/ai",
+	} {
+		w := Workflow{Path: p}
+		if w.PolixPath() != want || w.RulesPath() != want+"/rules" {
+			t.Errorf("%q: %q %q, want %q", p, w.PolixPath(), w.RulesPath(), want)
+		}
 	}
 }
 
-// A folder is relative, below the root and not a glob; an unknown key is a problem.
-func TestFolderValid(t *testing.T) {
-	for _, p := range []string{"", "ai/plans", "docs/plans/", "./plans", `docs\plans`} {
-		if err := (Folder{Path: p}).Valid(); err != nil {
+// AC-03: a path that is absolute, the root itself, outside the root or a glob is a problem of the workflow, which
+// ValidPath tells alone, in the same words; a good one, or none, is no problem.
+func TestWorkflowPathProblems(t *testing.T) {
+	broken := Workflow{Version: 1, Rules: Rules{Run: []Runner{{Glob: "*"}}}}
+	for _, p := range []string{"", "ai", "docs/ai", "docs/ai/", "./ai", `docs\ai`} {
+		w := broken
+		w.Path = p
+		if err := w.ValidPath(); err != nil {
+			t.Errorf("%q: %v", p, err)
+		}
+		if err := (Workflow{Version: 1, Path: p}).Valid(); err != nil {
 			t.Errorf("%q: %v", p, err)
 		}
 	}
-	bad := map[string]string{
-		"/abs":       "must be relative",
-		`C:\plans`:   "must be relative",
-		".":          "cannot be the root",
-		"./":         "cannot be the root",
-		"..":         "must be below the root",
-		"../plans":   "must be below the root",
-		"a/../../b":  "must be below the root",
-		"plans/*":    "not a glob",
-		"plans/{a}":  "not a glob",
-		"plans/[ab]": "not a glob",
-	}
-	for p, want := range bad {
-		if err := (Folder{Path: p}).Valid(); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%q: got %v, want %q", p, err, want)
+	for p, want := range map[string]string{
+		"/etc":      `polix.yaml: path "/etc" must be relative to the root, not absolute`,
+		`C:\x`:      `polix.yaml: path "C:\\x" must be relative to the root, not absolute`,
+		".":         `polix.yaml: path "." cannot be the root itself`,
+		"./":        `polix.yaml: path "./" cannot be the root itself`,
+		"..":        `polix.yaml: path ".." must be below the root`,
+		"../x":      `polix.yaml: path "../x" must be below the root`,
+		"a/../../b": `polix.yaml: path "a/../../b" must be below the root`,
+		"ai/*":      `polix.yaml: path "ai/*" must be a folder, not a glob`,
+		"ai/{a}":    `polix.yaml: path "ai/{a}" must be a folder, not a glob`,
+		"ai/[ab]":   `polix.yaml: path "ai/[ab]" must be a folder, not a glob`,
+	} {
+		w := Workflow{Version: 1, Path: p}
+		err := w.ValidPath()
+		if _, invalid := errors.AsType[InvalidError](err); !invalid || err.Error() != want {
+			t.Errorf("%q: got %v, want %s", p, err, want)
 		}
-	}
-	if err := (Folder{Keys: []string{"path", "dir"}}).Valid(); err == nil || !strings.Contains(err.Error(), `unknown key "dir"`) {
-		t.Fatalf("unknown key: %v", err)
+		if got := strings.Join(w.Problems(), "\n"); got != want {
+			t.Errorf("%q: the workflow says it otherwise: %s", p, got)
+		}
+		if Problem(want).Renamed() {
+			t.Errorf("%q: a bad path is no name of the old vocabulary", p)
+		}
 	}
 }
 
-// The problems of the folders of a workflow name their key: rules.path, plans.path and reports.path.
+// The keys of rules are only run: any other is a problem that lists it.
 func TestWorkflowLayoutProblems(t *testing.T) {
-	cases := map[string]Workflow{
-		`rules.path "/etc" must be relative`:        {Version: 1, Rules: Rules{Path: "/etc"}},
-		`plans.path "../x" must be below the root`:  {Version: 1, Plans: Folder{Path: "../x"}},
-		`reports.path "*" must be a folder`:         {Version: 1, Reports: Folder{Path: "*"}},
-		`unknown key "dir" in plans (path)`:         {Version: 1, Plans: Folder{Keys: []string{"dir"}}},
-		`unknown key "folder" in rules (path, run)`: {Version: 1, Rules: Rules{Keys: []string{"folder"}}},
+	w := Workflow{Version: 1, Rules: Rules{Keys: []string{"folder"}}}
+	if err := w.Valid(); err == nil || !strings.Contains(err.Error(), `unknown key "folder" in rules (run)`) {
+		t.Fatalf("got %v", err)
 	}
-	for want, w := range cases {
-		if err := w.Valid(); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%s: got %v", want, err)
-		}
-	}
-	w := Workflow{Version: 1, Rules: Rules{Path: "docs/rules"}, Plans: Folder{Path: "docs/plans"},
-		Reports: Folder{Path: "docs/reports"}}
-	if err := w.Valid(); err != nil {
+	if err := (Workflow{Version: 1, Path: "docs/ai", Rules: Rules{Keys: []string{"run"}}}).Valid(); err != nil {
 		t.Fatal(err)
 	}
 }

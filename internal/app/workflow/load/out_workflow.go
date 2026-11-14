@@ -9,6 +9,7 @@ import (
 // workflowYAML is the shape of polix.yaml.
 type workflowYAML struct {
 	Version        int                    `yaml:"version"`
+	Path           string                 `yaml:"path"`
 	Requires       string                 `yaml:"requires"`
 	BaseBranch     stringsYAML            `yaml:"base_branch"`
 	MaxStopRetries int                    `yaml:"max_stop_retries"`
@@ -18,9 +19,6 @@ type workflowYAML struct {
 	On             map[string][]entryYAML `yaml:"on"`
 	Githooks       map[string][]entryYAML `yaml:"githooks"`
 	Rules          rulesYAML              `yaml:"rules"`
-	Plans          folderYAML             `yaml:"plans"`
-	Reports        folderYAML             `yaml:"reports"`
-	Guidance       guidanceYAML           `yaml:"guidance"`
 	Risk           riskYAML               `yaml:"risk"`
 }
 
@@ -100,25 +98,10 @@ type notifyYAML struct {
 	keys    []string
 }
 
-// rulesYAML is the key rules.
+// rulesYAML is the key rules. A path in it reaches the validator as an unknown key, which tells how to migrate it.
 type rulesYAML struct {
-	Path string      `yaml:"path"`
 	Run  runnersYAML `yaml:"run"`
 	keys []string
-}
-
-// folderYAML is the key plans or reports.
-type folderYAML struct {
-	Path string `yaml:"path"`
-	keys []string
-}
-
-// guidanceYAML is the key guidance: commit left out is on, edit and layout left out are off.
-type guidanceYAML struct {
-	Commit *bool `yaml:"commit"`
-	Edit   *bool `yaml:"edit"`
-	Layout *bool `yaml:"layout"`
-	keys   []string
 }
 
 // runnerYAML is one runner of rules.run: a glob and its command.
@@ -150,8 +133,6 @@ func (workflowYAML) names() *strings.Replacer {
 		"load.blockYAML", "workflow.Block",
 		"load.notifyYAML", "workflow.Notify",
 		"load.rulesYAML", "workflow.Rules",
-		"load.folderYAML", "workflow.Folder",
-		"load.guidanceYAML", "workflow.Guidance",
 		"load.stringsYAML", "[]string",
 		"load.argsYAML", "[]string",
 		// The local type each UnmarshalYAML decodes a map into; they check the kind of their node first, so this
@@ -171,12 +152,10 @@ func (y workflowYAML) workflow(eventLines, githookLines map[string]int) (workflo
 	error) {
 	guardrails, _ := y.Guardrails.guardrails()
 	rules, _ := y.Rules.rules()
-	plans, _ := y.Plans.folder()
-	reports, _ := y.Reports.folder()
-	guidance, _ := y.Guidance.guidance()
 	w := workflow.Workflow{
 		Weights:           y.Risk.Weights.weights(),
 		Version:           y.Version,
+		Path:              y.Path,
 		Requires:          y.Requires,
 		Base:              []string(y.BaseBranch),
 		MaxStopRetries:    y.MaxStopRetries,
@@ -186,9 +165,6 @@ func (y workflowYAML) workflow(eventLines, githookLines map[string]int) (workflo
 		Vars:              y.vars(),
 		On:                guardrails.Expand(y.entries(y.On)),
 		Rules:             rules,
-		Plans:             plans,
-		Reports:           reports,
-		Guidance:          guidance,
 		EventLines:        eventLines,
 		Githooks:          y.entries(y.Githooks),
 		GithookLines:      githookLines,
@@ -293,20 +269,8 @@ func (y rulesYAML) rules() (workflow.Rules, error) {
 		r, _ := ry.runner()
 		runners = append(runners, r)
 	}
-	r := workflow.Rules{Path: y.Path, Run: runners, Keys: y.keys}
+	r := workflow.Rules{Run: runners, Keys: y.keys}
 	return r, r.Valid()
-}
-
-func (y folderYAML) folder() (workflow.Folder, error) {
-	f := workflow.Folder{Path: y.Path, Keys: y.keys}
-	return f, f.Valid()
-}
-
-// guidance builds the guidance of the file: commit left out is on, edit and layout left out are off.
-func (y guidanceYAML) guidance() (workflow.Guidance, error) {
-	g := workflow.Guidance{Commit: y.Commit == nil || *y.Commit, Edit: y.Edit != nil && *y.Edit,
-		Layout: y.Layout != nil && *y.Layout, Keys: y.keys}
-	return g, g.Valid()
 }
 
 // weights builds the weights of risk.weights in file order. The problems of each weight are reported by

@@ -14,7 +14,7 @@ repository pin the oldest polix that knows every option it uses.
 ## Layers
 
 - `AGENTS.md`: what the project is (facts).
-- `ai/rules/*.yaml` (the folder `rules.path` of polix.yaml): how the code must be. Polix only reads `id`,
+- `ai/rules/*.yaml` (the folder `rules/` below `path` of polix.yaml): how the code must be. Polix only reads `id`,
   `description`, `scope`, `deterministic` and `check` of each rule; the rest of the format belongs to the skills
   that write and use the rules. `retired.yaml` holds retired rules, which never apply.
 - `polix.yaml`: what happens on each event of a session, and on every commit: what is blocked, what runs and what
@@ -38,7 +38,7 @@ polix hook claude          # entry point of the Claude Code hooks (event on stdi
 polix hook codex           # entry point of the Codex hooks (not implemented)
 polix githook pre-commit   # entry point of the hooks of git (pre-commit, commit-msg <file>): the githooks of
                            # polix.yaml, on every commit, whoever makes it; git runs it, people do not
-polix config check         # validate polix.yaml and the rules (ai/rules/ or rules.path)
+polix config check         # validate polix.yaml and the rules (rules/ below path, ai/rules/ by default)
                            # (a file, as examples/polix.yaml, is validated in place of polix.yaml)
 polix config fmt           # format polix.yaml in place: keys in the order of the reference, comments kept,
                            # one blank line between two entries of an event or items of a shortcut
@@ -48,7 +48,7 @@ polix rules check          # run the checks of every deterministic rule (for CI)
 polix rules check --changed  # only the rules whose scope matches the files changed by the branch
                              # (--base BRANCH, default the closest of base_branch in polix.yaml, else main;
                              # it fails when no base exists, locally or on origin)
-polix rules fmt            # format every rules file of rules.path in place, retired.yaml included
+polix rules fmt            # format every rules file of rules/ below path in place, retired.yaml included
                            # (--check only tells whether they are formatted, exiting with 1 when not)
 polix graph                # print the workflow as a Mermaid diagram
 polix log --tail 5         # print the last sessions of the state log, each whole under `== session <id> ==`,
@@ -75,7 +75,7 @@ empty, and an empty `--base` falls back to `base_branch`. On a push to a branch 
 `main`, the branch is its own base and `--changed` checks nothing: run `polix rules check` without it there. The
 hooks never use `base_branch`.
 
-`polix rules check` reads `polix.yaml` and then the rules of its `rules.path` before running anything, and stops
+`polix rules check` reads `polix.yaml` and then the rules of `rules/` below its `path` before running anything, and stops
 without running a check when a file of the folder of rules cannot be read or parsed, when a rule is not valid (no id, no description, a `check` on
 a rule that is not `deterministic`, or a `check` given as an absolute path), when two rules share an id or a rule
 has the id of a rule of `retired.yaml` (`<file> <id>: id repeated, also in <other file>`), when `polix.yaml` cannot be read or
@@ -87,7 +87,7 @@ the first runner of `rules.run` whose glob matches its file, or else as a progra
 prints each failure with the last 15 lines of its output, then `<n> checks, <m> failed`, and exits with 1 when a
 check failed.
 
-`polix rules fmt` formats every `*.yaml` of the folder of `rules.path` (`ai/rules` without `polix.yaml`) in place,
+`polix rules fmt` formats every `*.yaml` of the folder `rules/` below `path` (`ai/rules` by default) in place,
 `retired.yaml` included, with the layout of `polix config fmt`: two spaces of indentation, flow collections on one
 line, the comments and the blank lines kept, and the anchors and aliases of the values where they are written (an
 anchored block collection has its anchor alone at the end of the line of its key or of its dash). `rules` goes
@@ -106,7 +106,7 @@ without `--check`, when two rules share an id or a rule has the id of a rule of 
 that is not a list), printing the error of the loader of the rules, since it cannot rule out a repeated id then.
 A missing folder, or one without `*.yaml`, prints
 `ok: no rules to format in <dir>`. It stops before reading any rules file when `polix.yaml` cannot be read or
-parsed or requires a newer polix, and when `rules.path` is absolute, the root, outside the root or a glob; the other
+parsed or requires a newer polix, and when `path` is absolute, the root, outside the root or a glob; the other
 problems of `polix.yaml` are left to `polix config check`.
 
 `polix risk` prints what the conditions `changed_lines`, `changed_files` and `risk_score` would compare (see
@@ -463,6 +463,7 @@ a test validates it. [reference.md](reference.md) describes every key, event, co
 
 ```yaml
 version: 1
+path: ai              # the folder of the AI: rules/, plans/, reports/ and tasks/ (optional, default ai)
 requires: 0.3.0       # oldest polix that knows every option of the file (optional, since 0.1.0)
 base_branch: [main, dev]  # branch, or candidates, a change merges into, for rules check --changed (default main)
 max_stop_retries: 3   # loop guard of every block on stop and subagent_stop, per entry (default 3)
@@ -479,18 +480,9 @@ guardrails:           # the basics every project wants (optional)
   run_on_stop:                                    # must pass before the agent ends its turn
     - run: "go test ./..."   # waits for running subagents unless wait_agents: false
       changed: "*.go"
-guidance:             # instructions injected at session start (optional; by default commit on, edit and layout off)
-  commit: true        # run each commit as a git commit of its own
-  edit: true          # change files with the edit tool of the agent, not the shell
-  layout: true        # the folders of rules, plans and reports
 rules:
-  path: ai/rules      # the folder of the rules (optional, default ai/rules)
   run:                # how a check of a rule runs, by the glob of its file (optional)
     "*_test.go": [go, test, "{dir}", -run, "^Test({names})$"]
-plans:
-  path: ai/plans      # the folder of the plans (optional, default ai/plans)
-reports:
-  path: ai/reports    # the folder of the reports (optional, default ai/reports)
 risk:
   weights:            # factor of each path glob in risk_score, first match wins (optional, default 1)
     "*_test.go": 0.5
@@ -608,12 +600,16 @@ unknown key inside `guardrails` or inside an item, an empty glob, pattern or bra
 shortcuts rejects `guardrails` as an unknown key, so a file that uses them sets `requires`.
 [reference.md](reference.md#guardrails) describes each one with its expansion.
 
-`rules.path`, `plans.path` and `reports.path` place the folders of the AI, relative to the root: the rules polix
-reads, injects and checks, the plans the skill `plan` writes and the reports of audits and reviews. Each defaults
-to its folder below `ai/`, and is cleaned (slashes, no `./` nor trailing slash). `polix config check` reports an
-absolute path, the root itself, a path out of the root (`..`), a glob or an unknown key. polix reads only the folder
-of the rules, its `*.yaml` but `retired.yaml` and not its subfolders; with `guidance.layout: true` the three reach
-the agent on `start`, and the skills otherwise read them from `polix.yaml`, so they write where the repository says.
+`path` places the folder of the AI, relative to the root, `ai` by default; it holds four folders: `rules/`, the rules
+polix reads, injects and checks, `plans/`, the plans the skill `plan` writes, `reports/`, the reports of audits and
+reviews, and `tasks/`, the backlog the skill `task` writes. It is cleaned (slashes, no spaces around it, no `./` nor
+trailing slash). `polix config check` reports an absolute path, the root itself, a path out of the root (`..`) or a
+glob, as `path "../x" must be below the root`. polix reads only `<path>/rules`, its `*.yaml` but `retired.yaml` and
+not its subfolders, and moves or creates no folder; the four reach the agent in the start context on every `start`,
+so the skills write where the repository says, and the agents of the plugin read `path` of `polix.yaml`.
+The keys `rules.path`, `plans`, `reports` and `guidance` are removed: `polix config check` reports each one with a
+hint that tells how to migrate it (`rules.path` becomes the top-level `path`, the folder that holds `rules/`; `plans`,
+`reports` and `guidance` are removed), and never suggests a newer polix for them.
 
 `rules.run` maps a glob, matched against the `check` of a rule as the globs of `scope` are (without `/` against its
 base name, with `/` against its path relative to the root, `**` crossing folders), to the argv that runs it from the
@@ -642,18 +638,16 @@ rules of `tests/architecture/` run together as `go test ./tests/architecture -ru
 when it fails, `GOARCH-4` (`check: tests/architecture/goarch04_test.go`) runs alone as
 `go test ./tests/architecture -run ^Test(GOARCH4)$`.
 
-`guidance` turns on or off the instructions polix injects into the agent by itself on `start`, so the agent
-works in the forms its heuristics recognise. `commit` asks to run each commit as a `git commit` command of its own,
-not chained with `&&`, `;` or `|` nor wrapped in `sh -c`, so `pre_commit` sees it. `edit` asks to create and change
-the files of the repository with the edit tool of the agent instead of the shell (`sed -i`, redirections, `tee`,
-heredocs), since `pre_edit`, `post_edit` and the rules they inject only see what goes through that tool. `layout`
-tells the agent the folders of `rules.path`, `plans.path` and `reports.path`, so it and the skills use them instead
-of assuming `ai/`. When the key, or a switch, is left out, `commit` is on and `edit` and `layout` are off; `true` or
-`false` sets each one. The text is the template `templates/session_start.md.tmpl`, embedded in the binary
-(`text/template`, one block per switch), rendered as one context. It is injected only with a valid `polix.yaml`,
-on every source of the event (startup, resume, clear and compaction), before the contexts of the `start` entries,
-and in English. It asks the agent to cooperate and blocks nothing. `polix config check` reports an unknown key,
-and a value that is not a boolean, or a `guidance` that is not a map, stops the parse.
+The start context is the text polix injects into the agent by itself on every `start`, with no switch to turn it
+off. It asks to run each commit as a `git commit` command of its own, not chained with `&&`, `;` or `|` nor wrapped
+in `sh -c`, so `pre_commit` sees it; then it names the root of the working tree, with forward slashes on every
+system, and the four folders below `path` (`rules/`, `plans/`, `reports/` and `tasks/`), each with its purpose, so
+the agent and the skills use them instead of assuming `ai/`. The text is the template
+`templates/session_start.md.tmpl`, embedded in the binary (`text/template`, with the root and `path`), rendered as
+one context. It is injected only with a valid `polix.yaml`, to Claude Code and Codex, on every source of the event
+(startup, resume, clear and compaction), before the contexts of the `start` entries, and in English; `subagent_start`
+gets none of it. It asks the agent to cooperate and blocks nothing. It no longer asks to change files only with the
+edit tool: a repository that wants it writes an `inject` on `start`.
 
 Events: `start`, `prompt`, `subagent_start`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
 `post_commit`, `subagent_stop` and `stop`.
@@ -669,7 +663,7 @@ separate events, so the entries of `stop` never run when a subagent ends.
 `subagent_start` is a subagent that starts, with a new context, before its first tool use; `actor` is its type.
 Its injects and the failures of its runs reach the subagent as context, so a subagent that only reads, such as a
 reviewer, gets the rules even if it never edits nor runs a command. It cannot be stopped, and it gets neither the
-guidance of `start` nor the context of `requirements`, which are told to the main session.
+start context nor the context of `requirements`, which are told to the main session.
 
 Conditions:
 
@@ -1330,7 +1324,7 @@ also prints that Codex support is not implemented in this release and the setup 
 - The plugin `polix`, for the user, since it helps in any repository. It is the folder `plugins/polix/` of this
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
   the folder of rules, `risk` calibrates `risk.weights` and the thresholds of the measures on the history of commits,
-  `doctor` fixes the setup, `task` adds a task to the backlog `ai/tasks/` from a template with a frontmatter, ready
+  `doctor` fixes the setup, `task` adds a task to the backlog `tasks/` below `path` from a template with a frontmatter, ready
   for `plan`, `plan` writes a plan in the folder of plans, driven by its outcome (`Overview`, then
   `Specification` with the outcome, its design and examples, the scope and the acceptance criteria, then `Approach`
   with the tasks, and the user approves its outcome before it is built; its frontmatter records in `branch` the branch
@@ -1368,7 +1362,7 @@ also prints that Codex support is not implemented in this release and the setup 
     the harness always starts by hand, and a gate the model must satisfy alone asks for an agent, as
     `polix:reviewer`, not for a skill. `workflow` and `add-rule`
     stay open to the model but carry `paths` (`polix.yaml`, `ai/rules/**`): the model sees them only while it works
-    on those files. A `rules.path` other than `ai/rules/` leaves `add-rule` to the user's command.
+    on those files. A `path` other than `ai` leaves `add-rule` to the user's command.
     `writing-skills` and `writing-agents` stay open too, with `paths` on `**/skills/**` and `**/agents/*.md`. Every
     skill and agent names the invariants of its whole task `## Limits`, never `## Rules`, which in polix are the
     rules of the folder of rules. The agents stay
@@ -1480,7 +1474,7 @@ may outlive the budget, since polix does not kill the whole process tree.
   commit run through a variable, an alias or a script that is not literal (`$GIT commit`, `bash -c "$CMD"`) is not
   seen, nor one behind a wrapper polix does not know or a wrapper option that takes a value (`timeout 60 git
   commit`, `nice -n 10 git commit`, `sudo -u x git commit`), which the former regular expression caught; a line the parser rejects falls back to a regular expression, for which the text of a commit inside
-  quotes counts too. The `commit` switch of `guidance`
+  quotes counts too. The start context
   asks the agent to run each commit on its own, so it stays recognisable.
   A commit in another repository skips the entries of `pre_commit` only in the plain forms of the allowlist (see
   [How a hook call is answered](#how-a-hook-call-is-answered)); `cd <folder> && git commit`, `git -C ~/x commit`,

@@ -14,7 +14,7 @@ color: purple
 
 You review a change against the folder of rules in a context of your own.
 You do not see the conversation that launched you.
-The folder of rules is `rules.path` of `polix.yaml`, `ai/rules/` without it.
+The folder of rules is `rules/` below `path` of `polix.yaml`, `ai/rules/` without it.
 You report; you never fix.
 
 ## Requirements

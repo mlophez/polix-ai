@@ -3,6 +3,7 @@ package format
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -40,7 +41,7 @@ risk:
 vars:
   z: { branch: "^z" }
   a: { branch: "^a" }
-rules: { run: { "*_test.go": [go, test] }, path: ai/rules }
+rules: { run: { "*_test.go": [go, test] } }
 version: 1
 `
 	want := `# Workflow of the repository.
@@ -48,7 +49,7 @@ version: 1
 vars:
   z: { branch: "^z" }
   a: { branch: "^a" }
-rules: { path: ai/rules, run: { "*_test.go": [go, test] } }
+rules: { run: { "*_test.go": [go, test] } }
 risk:
   weights:
     "z/**": 1
@@ -125,6 +126,35 @@ on:
 	}
 	if again, err := formatData(got); err != nil || string(again) != want {
 		t.Fatalf("not idempotent: %v\n%s", err, again)
+	}
+}
+
+// CUJ-09, AC-06: path goes right after version, before requires and rules, with its comment.
+func TestFormatOrderPath(t *testing.T) {
+	src := `rules:
+  run: { "*_test.go": [go, test] }
+requires: 0.3.0
+# The folder of the AI.
+path: docs/ai
+version: 1
+`
+	want := `version: 1
+# The folder of the AI.
+path: docs/ai
+requires: 0.3.0
+rules:
+  run: { "*_test.go": [go, test] }
+`
+	got, err := formatData([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	got, err = formatData([]byte("rules:\n  run: { x: [y] }\npath: docs/ai\nversion: 1\n"))
+	if err != nil || !strings.HasPrefix(string(got), "version: 1\npath: docs/ai\nrules:\n") {
+		t.Fatalf("CUJ-09: %v\n%s", err, got)
 	}
 }
 

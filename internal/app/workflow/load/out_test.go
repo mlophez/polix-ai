@@ -402,10 +402,9 @@ func TestDecodeErrorsNameDomainTypes(t *testing.T) {
 	// A value that is not the map its type decodes says what it needs, never the local type of the decoding: a
 	// rules file passed as polix.yaml, an entry, a variable or a folder that is not a map.
 	cases = map[string]string{
-		"rules:\n  - id: GO-1\n":            "polix.yaml: line 2: rules must be a map with path and run",
+		"rules:\n  - id: GO-1\n":            "polix.yaml: line 2: rules must be a map with run",
 		"version: 1\non: { stop: [foo] }\n": "polix.yaml: line 2: an entry must be a map with when, unless, action",
 		"version: 1\nvars: { key: x }\n":    "polix.yaml: line 2: a variable of vars must be a map with branch",
-		"version: 1\nplans: x\n":            "polix.yaml: line 2: plans and reports must be a map with path",
 	}
 	for src, want := range cases {
 		if _, err := parse(t, src, "dev"); err == nil || err.Error() != want {
@@ -414,51 +413,28 @@ func TestDecodeErrorsNameDomainTypes(t *testing.T) {
 	}
 }
 
-// commit left out is on and edit and layout left out are off, with or without polix.yaml; a value sets each one.
-func TestDecodeGuidance(t *testing.T) {
-	cases := []struct {
-		name, src            string
-		commit, edit, layout bool
-	}{
-		{"omitted", "version: 1\n", true, false, false},
-		{"empty", "version: 1\nguidance: {}\n", true, false, false},
-		{"null", "version: 1\nguidance:\n", true, false, false},
-		{"commit off", "version: 1\nguidance: { commit: false }\n", false, false, false},
-		{"edit on", "version: 1\nguidance: { edit: true }\n", true, true, false},
-		{"layout on", "version: 1\nguidance: { layout: true }\n", true, false, true},
-		{"all set", "version: 1\nguidance: { commit: false, edit: true, layout: true }\n", false, true, true},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			w, err := parse(t, c.src, "dev")
-			g := w.Guidance
-			if err != nil || g.Commit != c.commit || g.Edit != c.edit || g.Layout != c.layout {
-				t.Fatalf("got %v %+v", err, w.Guidance)
-			}
-		})
-	}
-	if w, err := absentWorkflow(t); err != nil || !w.Guidance.Commit || w.Guidance.Edit || w.Guidance.Layout {
-		t.Fatalf("without polix.yaml: %v %+v", err, w.Guidance)
-	}
-}
-
-// An unknown key of guidance is a problem; a value that is not a boolean, or a guidance that is not a map, stops
-// the parse with the file in the message.
-func TestDecodeGuidanceErrors(t *testing.T) {
-	_, err := parse(t, "version: 1\nguidance: { commit: true, delegation: false }\n", "dev")
-	var invalid workflow.InvalidError
-	if !errors.As(err, &invalid) || !strings.Contains(err.Error(), `unknown key "delegation" in guidance (commit, edit, layout)`) {
-		t.Fatalf("unknown key: %v", err)
-	}
-	cases := map[string]string{
-		"version: 1\nguidance: { commit: maybe }\n": "polix.yaml: yaml: unmarshal errors:\n  line 2: cannot unmarshal !!str `maybe` into bool",
-		"version: 1\nguidance: true\n":              "polix.yaml: line 2: guidance must map commit and edit to true or false",
-		"version: 1\nguidance: [commit]\n":          "polix.yaml: line 2: guidance must map commit and edit to true or false",
-	}
-	for src, want := range cases {
-		if _, err := parse(t, src, "dev"); err == nil || errors.As(err, &invalid) || err.Error() != want {
-			t.Errorf("%q: got %v", src, err)
+// CUJ-07, AC-04: guidance, in any form, stops the reading at its line with the hint of its migration, a name this
+// polix replaced, never an option of a newer polix; without polix.yaml there is nothing to migrate.
+func TestDecodeRemovedGuidance(t *testing.T) {
+	const want = `polix.yaml:2: unknown key "guidance": remove it: polix always injects the rules on commits and the folders below path on start`
+	for _, src := range []string{
+		"version: 1\nguidance: { commit: true }\n",
+		"version: 1\nguidance: { layout: false, edit: maybe }\n",
+		"version: 1\nguidance: true\n",
+		"version: 1\nguidance:\n",
+	} {
+		_, err := parse(t, src, "dev")
+		var invalid workflow.InvalidError
+		if err == nil || errors.As(err, &invalid) || err.Error() != want {
+			t.Errorf("%q: got %v, want %s", src, err, want)
+			continue
 		}
+		if !workflow.Problem(err.Error()).Renamed() {
+			t.Errorf("not renamed: %v", err)
+		}
+	}
+	if _, err := absentWorkflow(t); err != nil {
+		t.Fatalf("without polix.yaml: %v", err)
 	}
 }
 
@@ -517,34 +493,80 @@ func TestDecodeEntryNoGuard(t *testing.T) {
 	}
 }
 
-// polix.yaml places the folders with rules.path, plans.path and reports.path, and reports a bad one by its key.
-func TestDecodeLayout(t *testing.T) {
-	data := "version: 1\nrules:\n  path: docs/rules\nplans: { path: docs/plans }\nreports: { path: docs/reports }\n"
-	w, err := parse(t, data, "dev")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if w.RulesPath() != "docs/rules" || w.PlansPath() != "docs/plans" || w.ReportsPath() != "docs/reports" {
-		t.Fatalf("%q %q %q", w.RulesPath(), w.PlansPath(), w.ReportsPath())
-	}
-	if w.Guidance.Layout {
-		t.Fatal("the layout is injected only when guidance.layout is true")
-	}
-	cases := map[string]string{
-		"version: 1\nrules: { path: /etc }\n":       `rules.path "/etc" must be relative`,
-		"version: 1\nplans: { path: ../x }\n":       `plans.path "../x" must be below the root`,
-		"version: 1\nreports: { path: \"*\" }\n":    `reports.path "*" must be a folder`,
-		"version: 1\nplans: { dir: x }\n":           `unknown key "dir" in plans (path)`,
-		"version: 1\nrules: { folder: x }\n":        `unknown key "folder" in rules (path, run)`,
-		"version: 1\nguidance: { layout: false }\n": "",
-	}
-	for data, want := range cases {
+// CUJ-03, CUJ-05, AC-01, AC-03: the top-level key path places the folder of the AI, cleaned, with the folder of
+// rules below it; a bad one is a problem of the file by its key, never an option of a newer polix, and a value that
+// is not a string stops the parse with the error of yaml.
+func TestDecodePath(t *testing.T) {
+	for data, want := range map[string]string{
+		"version: 1\n":                   "ai",
+		"version: 1\npath: docs/ai\n":    "docs/ai",
+		"version: 1\npath: ./docs/ai/\n": "docs/ai",
+		"version: 1\npath: \"  \"\n":     "ai",
+		"version: 1\npath:\n":            "ai",
+		"version: 1\npath: 'docs\\ai'\n": "docs/ai",
+	} {
 		w, err := parse(t, data, "dev")
-		switch {
-		case want == "" && (err != nil || w.Guidance.Layout):
-			t.Errorf("%q: %v, layout %v", data, err, w.Guidance.Layout)
-		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
-			t.Errorf("%q: got %v, want %q", data, err, want)
+		if err != nil || w.PolixPath() != want || w.RulesPath() != want+"/rules" {
+			t.Errorf("%q: %v, %q %q, want %q", data, err, w.PolixPath(), w.RulesPath(), want)
+		}
+	}
+	for data, want := range map[string]string{
+		"version: 1\npath: ../x\n":     `polix.yaml: path "../x" must be below the root`,
+		"version: 1\npath: /etc\n":     `polix.yaml: path "/etc" must be relative to the root, not absolute`,
+		"version: 1\npath: .\n":        `polix.yaml: path "." cannot be the root itself`,
+		"version: 1\npath: \"ai/*\"\n": `polix.yaml: path "ai/*" must be a folder, not a glob`,
+	} {
+		_, err := parse(t, data, "dev")
+		var invalid workflow.InvalidError
+		if !errors.As(err, &invalid) || err.Error() != want {
+			t.Errorf("%q: got %v, want %s", data, err, want)
+			continue
+		}
+		if workflow.Problem(err.Error()).Renamed() {
+			t.Errorf("%q: a bad path is no name of the old vocabulary", data)
+		}
+	}
+	for _, data := range []string{"version: 1\npath: [docs]\n", "version: 1\npath: { x: y }\n"} {
+		_, err := parse(t, data, "dev")
+		var invalid workflow.InvalidError
+		if err == nil || errors.As(err, &invalid) || !strings.Contains(err.Error(), "cannot unmarshal") {
+			t.Errorf("%q: got %v, want the error of yaml", data, err)
+		}
+	}
+}
+
+// CUJ-06, CUJ-08, AC-04, AC-05: plans and reports stop the reading at their line with the hint of their migration,
+// and path in rules is a problem of the file with its hint, next to the other problems; each is a name this polix
+// replaced, never an option of a newer polix.
+func TestDecodeRemovedKeys(t *testing.T) {
+	for data, want := range map[string]string{
+		"version: 1\nplans: { path: ai/plans }\n": `polix.yaml:2: unknown key "plans": remove it: the plans go to plans/ below path (ai/plans by default)`,
+		"version: 1\n\nreports: { path: out }\n":  `polix.yaml:3: unknown key "reports": remove it: the reports go to reports/ below path (ai/reports by default)`,
+		"version: 1\nreports: x\nplans: [a]\n":    `polix.yaml:2: unknown key "reports": remove it: the reports go to reports/ below path (ai/reports by default)`,
+	} {
+		_, err := parse(t, data, "dev")
+		var invalid workflow.InvalidError
+		if err == nil || errors.As(err, &invalid) || err.Error() != want {
+			t.Errorf("%q: got %v, want %s", data, err, want)
+			continue
+		}
+		if !workflow.Problem(err.Error()).Renamed() {
+			t.Errorf("not renamed: %v", err)
+		}
+	}
+	_, err := parse(t, "version: 1\nrules: { path: docs/rules }\n", "dev")
+	want := `polix.yaml: unknown key "path" in rules (run): move it to the top-level key path, the folder that holds rules/ (ai by default)`
+	var invalid workflow.InvalidError
+	if !errors.As(err, &invalid) || err.Error() != want {
+		t.Fatalf("rules.path: got %v, want %s", err, want)
+	}
+	if !workflow.Problem(err.Error()).Renamed() {
+		t.Errorf("not renamed: %v", err)
+	}
+	_, err = parse(t, "version: 2\nrules: { path: docs/rules, folder: x }\n", "dev")
+	for _, want := range []string{"version must be 1", want, `unknown key "folder" in rules (run)`} {
+		if !errors.As(err, &invalid) || !strings.Contains(err.Error(), want) {
+			t.Errorf("the other problems: %v lacks %s", err, want)
 		}
 	}
 }
