@@ -902,8 +902,8 @@ on:
 func TestProtectsState(t *testing.T) {
 	ev := eval(t, "version: 1\n", workflow.PreEdit)
 	ev = hook.Evaluation{Workflow: ev.Workflow, Present: true, Root: ev.Root, GitDir: ev.GitDir, System: "linux",
-		Event: agent.Event{Name: workflow.PreEdit, Agent: agent.Claude, Actor: "builder",
-			AbsPath: filepath.Join(ev.GitDir, "polix", "log.jsonl")}}
+		Event: agent.Event{Name: workflow.PreEdit, Agent: agent.Claude, Session: "s1", Actor: "builder",
+			AbsPath: filepath.Join(ev.GitDir, "polix", "sessions", "s1.jsonl")}}
 	if err := ev.Valid(); err != nil {
 		t.Fatal(err)
 	}
@@ -1004,6 +1004,7 @@ func TestProtectedReasons(t *testing.T) {
 			t.Run(name+" "+actor, func(t *testing.T) {
 				e := c.event
 				e.Actor = actor
+				e.Session = "s1"
 				ev := hook.Evaluation{Workflow: base.Workflow, Present: true, Root: base.Root, GitDir: base.GitDir,
 					System: "linux", Event: e}
 				if err := ev.Valid(); err != nil {

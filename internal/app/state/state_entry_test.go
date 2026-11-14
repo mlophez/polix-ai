@@ -1,23 +1,37 @@
 package state
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestEntryValid(t *testing.T) {
 	if err := (Entry{}).Valid(); err == nil {
 		t.Fatal("an entry needs a kind")
 	}
-	if err := (Entry{Kind: KindDecision, Line: -1}).Valid(); err == nil {
+	if err := (Entry{Kind: KindDecision, Session: "s", Line: -1}).Valid(); err == nil {
 		t.Fatal("a negative line")
 	}
-	if err := (Entry{Kind: "newer_kind"}).Valid(); err != nil {
+	if err := (Entry{Kind: "newer_kind", Session: "s"}).Valid(); err != nil {
 		t.Fatalf("a kind of a newer polix is kept: %v", err)
 	}
 	// The fact and the rule of the lines an older polix wrote are only read, never written.
-	if err := (Entry{Kind: "fact", Fact: "reviewed"}).Valid(); err == nil {
+	if err := (Entry{Kind: "fact", Session: "s", Fact: "reviewed"}).Valid(); err == nil {
 		t.Fatal("an entry with the fact of an older polix")
 	}
-	if err := (Entry{Kind: "injected", Rule: "GO-2"}).Valid(); err == nil {
+	if err := (Entry{Kind: "injected", Session: "s", Rule: "GO-2"}).Valid(); err == nil {
 		t.Fatal("an entry with the rule of an older polix")
+	}
+}
+
+// An entry without a session is never written: there is no file for it.
+func TestEntryValidWithoutSession(t *testing.T) {
+	err := (Entry{Kind: KindDecision, Outcome: "allow"}).Valid()
+	if err == nil || !strings.Contains(err.Error(), "session") {
+		t.Fatalf("an entry without session: %v", err)
+	}
+	if err := (Entry{Kind: KindDecision, Session: "s"}).Valid(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -56,6 +70,7 @@ func TestObservedEntryValid(t *testing.T) {
 		{Kind: KindObserved, Outcome: OutcomeWatched, Key: "toolu_1"},
 	}
 	for _, e := range valid {
+		e.Session = "s"
 		if err := e.Valid(); err != nil {
 			t.Errorf("%+v: %v", e, err)
 		}
@@ -72,6 +87,7 @@ func TestObservedEntryValid(t *testing.T) {
 		{Kind: KindDecision, Outcome: "block", Before: "g"},
 	}
 	for _, e := range invalid {
+		e.Session = "s"
 		if err := e.Valid(); err == nil {
 			t.Errorf("%+v is valid", e)
 		}

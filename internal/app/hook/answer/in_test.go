@@ -122,7 +122,12 @@ func (p *fakePort) LoadRules(context.Context, string) ([]rule.Rule, error) {
 	return p.rules, p.rulesErr
 }
 
-func (p *fakePort) LoadState(context.Context) (state.State, error) {
+// LoadState gives the state of the fake for any session, and, as the adapter, the error of an empty session.
+func (p *fakePort) LoadState(_ context.Context, session state.Session) (state.State, error) {
+	p.calls = append(p.calls, "LoadState "+string(session))
+	if _, err := session.File(); err != nil {
+		return state.State{}, err
+	}
 	if p.stateErr != nil {
 		return state.State{}, p.stateErr
 	}
@@ -178,7 +183,11 @@ func (p *fakePort) Restore(_ context.Context, source string, paths []string) err
 	return p.restErr
 }
 
+// Append appends e unless it is not valid, as the adapter, or the fake is told to fail.
 func (p *fakePort) Append(_ context.Context, e state.Entry) error {
+	if err := e.Valid(); err != nil {
+		return err
+	}
 	if p.appendErr != nil {
 		return p.appendErr
 	}
@@ -197,7 +206,8 @@ func TestMergesEvents(t *testing.T) {
 	port := &fakePort{yaml: "version: 1\non:\n  pre_command:\n    - action: { block: \"no\" }\n" +
 		"  pre_commit:\n    - action: { block: \"no\" }\n"}
 	res, err := run(context.Background(), port, claudeRequest(
-		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git commit -m x"}}`))
+		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","session_id":"s1",`+
+			`"tool_input":{"command":"git commit -m x"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +219,8 @@ func TestMergesEvents(t *testing.T) {
 // AC9: the shell tells each event how many come after it, so a notice of the pre_command of a commit is written as
 // notified only when the commit is not blocked, and shown to the user then.
 func TestNotifiedOnceTheCallIsKnown(t *testing.T) {
-	const input = `{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git commit -m x"}}`
+	const input = `{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","session_id":"s1",` +
+		`"tool_input":{"command":"git commit -m x"}}`
 	for _, c := range []struct {
 		branch   string
 		code     int
@@ -327,9 +338,52 @@ func TestDir(t *testing.T) {
 	}
 }
 
+// AC5: the shell reads the state of the session of the event. An event without a session reads no state, even one
+// that would spare its verbs: the run acts, the block with once blocks, the hook warns as when the log cannot be
+// read, and nothing is appended.
+func TestStateOfTheSession(t *testing.T) {
+	const yaml = "version: 1\non:\n  pre_command:\n    - action: { run: [just, test] }\n" +
+		"    - action: { block: { message: x, once: true } }\n"
+	st := state.State{Entries: []state.Entry{
+		{Kind: state.KindObserved, Session: "s1", Actor: agent.ActorSession, Branch: "main", Head: "c0ffee", Hash: "h",
+			Key: "just test", Line: 4, Outcome: state.OutcomePassed},
+		{Kind: state.KindObserved, Session: "s1", Actor: agent.ActorSession, Branch: "main", Head: "c0ffee", Hash: "h",
+			Line: 5, Outcome: state.OutcomeBlocked},
+	}}
+	const command = `"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"ls"}`
+	port := &fakePort{yaml: yaml, state: st}
+	res, err := run(context.Background(), port, claudeRequest(`{`+command+`,"session_id":"s1"}`))
+	if err != nil || res.Code != 0 || !slices.Contains(port.calls, "LoadState s1") ||
+		slices.Contains(port.calls, "Run just test") {
+		t.Fatalf("s1: %+v %v %q", res, err, port.calls)
+	}
+	port = &fakePort{yaml: yaml, state: st}
+	res, err = run(context.Background(), port, claudeRequest(`{`+command+`}`))
+	if err != nil || res.Code != 2 || !slices.Contains(port.calls, "LoadState ") ||
+		!slices.Contains(port.calls, "Run just test") || len(port.appended) != 0 {
+		t.Fatalf("no session: %+v %v %q %+v", res, err, port.calls, port.appended)
+	}
+	// A block shows the user no message (rule 15), so the warning is seen on a call that does not block.
+	port = &fakePort{yaml: "version: 1\non:\n  pre_command:\n    - action: { run: [just, test] }\n", state: st}
+	res, err = run(context.Background(), port, claudeRequest(`{`+command+`}`))
+	if err != nil || res.Code != 0 || !slices.Contains(port.calls, "Run just test") || len(port.appended) != 0 ||
+		!strings.Contains(systemMessage(t, res.Stdout), "polix cannot use its log (a session needs an id") {
+		t.Fatalf("no session warns: %+v %v %q %+v", res, err, port.calls, port.appended)
+	}
+	// An event that never reads the state warns too: the entries it would write are rejected.
+	port = &fakePort{yaml: "version: 1\non:\n  pre_command:\n    - action: { run: { command: [just, test], " +
+		"always: true } }\n", state: st}
+	res, err = run(context.Background(), port, claudeRequest(`{`+command+`}`))
+	if err != nil || res.Code != 0 || slices.Contains(port.calls, "LoadState ") ||
+		!slices.Contains(port.calls, "Run just test") || len(port.appended) != 0 ||
+		strings.Count(systemMessage(t, res.Stdout), "polix cannot use its log (a session needs an id") != 1 {
+		t.Fatalf("no session, no state, warns: %+v %v %q %+v", res, err, port.calls, port.appended)
+	}
+}
+
 // Each error of the port that a step meets is data of the answer, as the failure policy says.
 func TestPortErrors(t *testing.T) {
-	stop := `{"hook_event_name":"Stop","cwd":"/repo"}`
+	stop := `{"hook_event_name":"Stop","cwd":"/repo","session_id":"s1"}`
 	for _, c := range []struct {
 		name  string
 		port  *fakePort
@@ -363,7 +417,8 @@ func TestPortErrors(t *testing.T) {
 	// A file that cannot be read gives no context.
 	port := &fakePort{yaml: "version: 1\non:\n  prompt:\n    - action: { inject: { file: notes.md } }\n",
 		readErr: errors.New("boom")}
-	res, err := run(context.Background(), port, claudeRequest(`{"hook_event_name":"UserPromptSubmit","cwd":"/repo"}`))
+	res, err := run(context.Background(), port, claudeRequest(
+		`{"hook_event_name":"UserPromptSubmit","cwd":"/repo","session_id":"s1"}`))
 	if err != nil || res.Stdout != "" || !slices.Contains(port.calls, "Read notes.md") {
 		t.Fatalf("unreadable context: %+v %v %q", res, err, port.calls)
 	}
@@ -445,9 +500,10 @@ func TestUnusableWorkflow(t *testing.T) {
 func TestComparesTrees(t *testing.T) {
 	yaml := "version: 1\non:\n  pre_commit:\n    - when: { changed: \"*.go\" }\n" +
 		"      unless: { finished: polix:reviewer }\n      action: { block: \"revisa\" }\n"
-	commit := `{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"git commit -m x"}}`
+	commit := `{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","session_id":"s1",` +
+		`"tool_input":{"command":"git commit -m x"}}`
 	reviewed := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeFinished,
-		Key: "polix:reviewer", Branch: "main", Hash: "old"}}}
+		Session: "s1", Key: "polix:reviewer", Branch: "main", Hash: "old"}}}
 	for name, c := range map[string]struct {
 		trees []string
 		err   error

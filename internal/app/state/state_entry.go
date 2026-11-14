@@ -109,7 +109,8 @@ func (e Entry) Chained(before string) Entry {
 	return e
 }
 
-// Valid tells why the entry is not valid to be appended: it has no kind or a negative line, it carries the fact or
+// Valid tells why the entry is not valid to be appended: it has no kind or no session, which names the file it is
+// written to, or a negative line, it carries the fact or
 // the rule of the lines an older polix wrote, or it is observed without a known outcome, or without the hash its
 // outcome is about, or it carries refs without being a snapshot. A kind this polix does not know is accepted,
 // as a log may hold lines of a newer polix. The lines read from the log are kept whatever they hold (see Load).
@@ -118,20 +119,16 @@ func (e Entry) Valid() error {
 	if e.Kind == "" {
 		errs = append(errs, errors.New("an entry needs a kind"))
 	}
+	if e.Session == "" {
+		errs = append(errs, errors.New("an entry needs a session, which names the file it is written to"))
+	}
 	if e.Line < 0 {
 		errs = append(errs, errors.New("the line of an entry must not be negative"))
 	}
 	if e.Fact != "" || e.Rule != "" {
 		errs = append(errs, errors.New("the fact and the rule of the lines an older polix wrote are never written"))
 	}
-	if e.Kind == KindObserved {
-		switch {
-		case !slices.Contains(Outcomes, e.Outcome):
-			errs = append(errs, fmt.Errorf("an observed entry needs an outcome of %v, got %q", Outcomes, e.Outcome))
-		case slices.Contains(hashed, e.Outcome) && e.Hash == "":
-			errs = append(errs, fmt.Errorf("an observed entry %s needs the hash of the content", e.Outcome))
-		}
-	}
+	errs = append(errs, e.observedProblem())
 	if e.Refs != "" && (e.Kind != KindObserved || e.Outcome != OutcomeSnapshot) {
 		errs = append(errs, errors.New("only a snapshot line carries the refs"))
 	}
@@ -139,4 +136,18 @@ func (e Entry) Valid() error {
 		errs = append(errs, errors.New("only a blocked line carries the hash its event started from"))
 	}
 	return errors.Join(errs...)
+}
+
+// observedProblem tells why an observed entry has no known outcome or lacks the hash its outcome is about, nil for
+// an entry of another kind.
+func (e Entry) observedProblem() error {
+	switch {
+	case e.Kind != KindObserved:
+		return nil
+	case !slices.Contains(Outcomes, e.Outcome):
+		return fmt.Errorf("an observed entry needs an outcome of %v, got %q", Outcomes, e.Outcome)
+	case slices.Contains(hashed, e.Outcome) && e.Hash == "":
+		return fmt.Errorf("an observed entry %s needs the hash of the content", e.Outcome)
+	}
+	return nil
 }

@@ -370,9 +370,10 @@ on:
   #   content and lets the next one through; an edit inside the scope of the entry, another actor or a new session
   #   is reminded again. A reminder is for a request the agent may rightly decline; a gate that must hold has no
   #   `once`, since the agent would pass a reminder by trying again.
-  # - run is not run again once it passed on the same branch and content (the same command, whoever's entry it is;
-  #   {path} in it makes one command per path); a failing run runs again on the next event. `always: true` runs it
-  #   every time, for a command whose result depends on more than the files (network, clock).
+  # - run is not run again once it passed in the session on the same branch and content (the same command,
+  #   whoever's entry it is; {path} in it makes one command per path); a failing run runs again on the next event,
+  #   and a new session runs it again. `always: true` runs it every time, for a command whose result depends on more
+  #   than the files (network, clock).
   # - inject reaches each actor once per session for each text it expands to, and again after the context is
   #   compacted or, for a subagent, on its next run. `always: true` injects it on every event. A text with a
   #   placeholder that changes on every event ({command}, a measure) is a new text, so it is injected every time;
@@ -384,12 +385,15 @@ on:
   # scope, so an edit of README.md or docs/ keeps a review of `changed: "src/**"` and a reminder already given. Name
   # in `changed` every file the subagent reviews (go.mod is not "*.go").
   #
-  # What polix remembers: its log (<git-dir>/polix/log.jsonl, read with `polix log`) holds a decision for each
-  # answer, and an `observed` line only for what this file asks about: the end of a subagent a `finished` names,
-  # a run of polix that passed, a block of a `once` entry or of a stop, an inject made once, a notice shown once and
-  # the start of a session or of a subagent. When an inject acts once, or the file uses agents_are_running (an item
-  # of run_on_stop that waits does), the end of any subagent is also written, without hash, so its next run gets the
-  # inject again and it stops counting as running; `finished` never reads those lines. A command the AI runs is
+  # What polix remembers: one log per session of the agent, its subagents included
+  # (<git-dir>/polix/sessions/<session id>.jsonl, read with `polix log`, which groups it by session; the old
+  # log.jsonl is ignored), holds a decision for each answer, and an `observed` line only for what this file asks
+  # about: the end of a subagent a `finished` names, a run of polix that passed, a block of a `once` entry or of a
+  # stop, an inject made once, a notice shown once and the start of a session or of a subagent. When an inject acts
+  # once, or the file uses agents_are_running (an item of run_on_stop that waits does), the end of any subagent is
+  # also written, without hash, so its next run gets the inject again and it stops counting as running; `finished`
+  # never reads those lines. A hook reads only the log of its session: a new session starts empty, so `finished` and
+  # the checks that passed count again only within it, and `claude --resume` keeps them. A command the AI runs is
   # never recorded and never counts as passed: polix cannot know what it really ran (an alias, another folder, a
   # command still running in the background). A check that must hold is a `run` of polix.
   #
@@ -661,9 +665,9 @@ on:
     # files of the nearest `changed` (in their own map, else in the enclosing one), else the whole change.
     # changed_lines sums added and deleted lines; changed_files counts files, deleted and binary included;
     # risk_score uses risk.weights. When git cannot measure the change they hold and the call warns (fail closed).
-    # finished: every subagent type of the list (a string is a list of one) ended on this branch, its stop not
-    # refused nor let through by the loop guard, and the files of the scope of the entry did not change since. polix
-    # observes the end of the subagents a finished names by itself: no entry on subagent_stop is needed.
+    # finished: every subagent type of the list (a string is a list of one) ended in this session, on this branch,
+    # its stop not refused nor let through by the loop guard, and the files of the scope of the entry did not change
+    # since. polix observes the end of the subagents a finished names by itself: no entry on subagent_stop is needed.
     # A gate released by finished: a small change of the source commits without a review; a large or risky one
     # waits for polix:reviewer, whose review survives an edit of README.md or docs/, outside the scope.
     - when: { changed: "src/**", any: { changed_lines: 150, changed_files: 5, risk_score: 25 } }

@@ -86,11 +86,16 @@ type passInject struct {
 // none, the event is answered, and the facts the next event starts from know the answer (hook.Facts.Answered), so
 // the messages for the user a block of the call hides are logged as not shown (see warn), and the lines written
 // only when the whole call does not block are carried to its last event (see settle). An edit a command made
-// already happened, so it is evaluated as informed.
+// already happened, so it is evaluated as informed. An event whose session names no file, one without a session id,
+// reads no state and writes no line, so it warns as a log that cannot be read does (see warnLog), whether it reads
+// the state or not.
 func Decide(ev hook.Evaluation) Output {
 	byCommand := ev.Event.ByCommand
 	r := &pass{ev: ev, epoch: ev.Facts.Epoch, state: ev.Facts.State, byCommand: byCommand,
 		informed: byCommand || slices.Contains(workflow.Informed, ev.Event.Name), pending: ev.Facts.Pending}
+	if _, err := state.Session(ev.Event.Session).File(); err != nil {
+		r.warnLog(err)
+	}
 	var ans agent.Answer
 	if family := route(ev.Event.Name); family != nil {
 		ans = family(r)

@@ -70,9 +70,14 @@ func (r *repo) write(rel, content string) {
 	}
 }
 
-// log returns the log of polix of the repository.
+// log returns the log of polix of the session s1, the session of the calls that name none.
 func (r *repo) log() string {
-	data, _ := os.ReadFile(filepath.Join(r.dir, ".git", "polix", "log.jsonl"))
+	return r.logOf("s1")
+}
+
+// logOf returns the log of polix of session, the file of the session in the state folder.
+func (r *repo) logOf(session string) string {
+	data, _ := os.ReadFile(sessionLog(filepath.Join(r.dir, ".git"), session))
 	return string(data)
 }
 
@@ -337,6 +342,10 @@ func TestProtections(t *testing.T) {
 	expect(t, "a subagent edits AGENTS.md", code, 0, stderr)
 	code, _, stderr = r.edit(".git/polix/log.jsonl", "")
 	expect(t, "anyone edits the state", code, 2, stderr)
+	code, _, stderr = r.edit(".git/polix/sessions/s1.jsonl", "")
+	expect(t, "anyone edits the file of a session", code, 2, stderr)
+	code, _, stderr = r.bash("rm .git/polix/sessions/s2.jsonl", false)
+	expect(t, "a command deletes the file of a session", code, 2, stderr)
 	code, _, stderr = r.bash("rm .git/polix/log.jsonl", false)
 	expect(t, "a command deletes the state", code, 2, stderr)
 	code, _, stderr = r.bash("echo x > .git/polix/log.jsonl", false)
@@ -424,8 +433,8 @@ on:
 
 	r.subagentStop("polix:reviewer")
 	commit("commit after a new review", 0)
-	r.write(".git/polix/log.jsonl", `{"kind":"observed","outcome":"finished","key":"polix:reviewer","branch":"main",`+
-		`"hash":"`+strings.Repeat("1", 40)+`"}`+"\n")
+	r.write(".git/polix/sessions/s1.jsonl", `{"kind":"observed","outcome":"finished","key":"polix:reviewer",`+
+		`"session":"s1","branch":"main","hash":"`+strings.Repeat("1", 40)+`"}`+"\n")
 	commit("commit with the tree of the review missing", 2)
 	if !strings.Contains(r.log(), "the content polix:reviewer finished on cannot be compared") {
 		t.Fatalf("the failed comparison is logged: %s", r.log())
@@ -478,6 +487,49 @@ func TestRunRepeatOnTheContent(t *testing.T) {
 	r.stops("", 0)
 	if n := strings.Count(r.log(), `"outcome":"passed"`); n != 2 {
 		t.Fatalf("an edit runs it again: %s", r.log())
+	}
+}
+
+// AC1, AC3: the passed of a run and the finished of a subagent count only in the session that wrote them: on the
+// same branch and content, a stop of s1 skips the run and finished holds, while a stop of s2 runs it again and
+// blocks; each session writes to its own file, and nothing to the old log.jsonl.
+func TestRepeatAndFinishedWithinTheSession(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", `version: 1
+on:
+  stop:
+    - action: { run: [git, status, --short] }
+    - when: { changed: "**" }
+      unless: { finished: reviewer }
+      action: { block: "Falta la revisión" }
+`)
+	r.write("src/app.go", "package app\n")
+	stop := func(session string) (int, string) {
+		t.Helper()
+		code, _, stderr := r.hook("claude", map[string]any{"hook_event_name": "Stop", "session_id": session})
+		return code, stderr
+	}
+	code, stderr := stop("s1")
+	expect(t, "s1 stops before the review", code, 2, stderr)
+	code, _, stderr = r.subagentStop("reviewer")
+	expect(t, "the reviewer of s1 stops", code, 0, stderr)
+	code, stderr = stop("s1")
+	expect(t, "s1 stops after its review", code, 0, stderr)
+	if !strings.Contains(r.log(), `"action":"run","line":4,"outcome":"skip"`) {
+		t.Fatalf("s1 skips the run that passed in s1: %s", r.log())
+	}
+	code, stderr = stop("s2")
+	expect(t, "s2 stops on the content s1 reviewed", code, 2, stderr)
+	s2 := r.logOf("s2")
+	if strings.Count(s2, `"key":"git status --short","outcome":"passed"`) != 1 ||
+		strings.Contains(s2, `"outcome":"skip"`) || strings.Contains(s2, `"session":"s1"`) {
+		t.Fatalf("s2 runs again what passed in s1: %s", s2)
+	}
+	if strings.Contains(r.log(), `"session":"s2"`) {
+		t.Fatalf("s2 writes to the file of s1: %s", r.log())
+	}
+	if _, err := os.Stat(filepath.Join(r.dir, ".git", "polix", "log.jsonl")); err == nil {
+		t.Fatal("polix wrote the old log.jsonl")
 	}
 }
 
@@ -595,6 +647,9 @@ func TestStateProtectionByPath(t *testing.T) {
 		"rm .git/polix* x",
 		"echo x >&.git/polix/log.jsonl",
 		"echo x >& .git/polix/log.jsonl",
+		"rm -rf .git/polix/sessions",
+		"echo x >> .git/polix/sessions/s1.jsonl",
+		"cp /tmp/x " + filepath.Join(r.dir, ".git", "polix", "sessions", "s2.jsonl"),
 	} {
 		code, _, stderr := r.bash(c, false)
 		expect(t, c, code, 2, stderr)
@@ -1044,8 +1099,8 @@ func TestDecisionsSkipTheHash(t *testing.T) {
 	r := newRepo(t, "main")
 	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - action: { block: x }\n")
 	r.edit("src/a.go", "")
-	data, _ := os.ReadFile(filepath.Join(r.dir, ".git", "polix", "log.jsonl"))
-	if !strings.Contains(string(data), `"action":"block","line":4`) || strings.Contains(string(data), `"hash"`) {
+	data := r.log()
+	if !strings.Contains(data, `"action":"block","line":4`) || strings.Contains(data, `"hash"`) {
 		t.Fatalf("log: %s", data)
 	}
 }
@@ -1056,12 +1111,12 @@ func TestStopLoopGuardHugeLogLine(t *testing.T) {
 	r := newRepo(t, "main")
 	r.write("polix.yaml", "version: 1\nmax_stop_retries: 2\n"+strings.TrimPrefix(reviewOnStop, "version: 1\n"))
 	r.write("src/app.go", "package app\n")
-	r.write(".git/polix/log.jsonl", `{"kind":"decision","reason":"`+strings.Repeat("x", 5*1024*1024)+"\"}\n")
+	r.write(".git/polix/sessions/s1.jsonl", `{"kind":"decision","session":"s1","reason":"`+
+		strings.Repeat("x", 5*1024*1024)+"\"}\n")
 	r.stops("", 2, 2, 0)
 	// polix log on such a log is tested in internal/app/workflow/log (TestCommand).
-	data, err := os.ReadFile(filepath.Join(r.dir, ".git", "polix", "log.jsonl"))
-	if err != nil || !strings.Contains(string(data), "loop_guard") {
-		t.Fatalf("the log records the loop guard: %v", err)
+	if !strings.Contains(r.log(), "loop_guard") {
+		t.Fatal("the log records the loop guard")
 	}
 }
 
@@ -1072,9 +1127,9 @@ func TestStopLoopGuardReadOnlyState(t *testing.T) {
 	r := newRepo(t, "main")
 	r.write("polix.yaml", reviewOnStop)
 	r.write("src/app.go", "package app\n")
-	dir := filepath.Join(r.dir, ".git", "polix")
-	r.write(".git/polix/log.jsonl", "")
-	if err := os.Chmod(filepath.Join(dir, "log.jsonl"), 0o444); err != nil {
+	dir := filepath.Join(r.dir, ".git", "polix", "sessions")
+	r.write(".git/polix/sessions/s1.jsonl", "")
+	if err := os.Chmod(filepath.Join(dir, "s1.jsonl"), 0o444); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(dir, 0o555); err != nil {
@@ -1100,7 +1155,7 @@ on:
 	r.write("big.txt", strings.Repeat("y", 4*1000*1000)+"\n")
 	code, _, stderr := r.stop()
 	expect(t, "stop with a failing run", code, 2, stderr)
-	data, err := os.ReadFile(filepath.Join(r.dir, ".git", "polix", "log.jsonl"))
+	data, err := os.ReadFile(sessionLog(filepath.Join(r.dir, ".git"), "s1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1179,8 +1234,7 @@ func TestPostToolUseFailure(t *testing.T) {
 	if strings.Contains(stdout, "post edit") || strings.Contains(stderr, "post edit") {
 		t.Fatalf("a failed edit runs no post_edit: %q %q", stdout, stderr)
 	}
-	data, _ := os.ReadFile(filepath.Join(r.dir, ".git", "polix", "log.jsonl"))
-	if strings.Contains(string(data), "post_edit") {
+	if data := r.log(); strings.Contains(data, "post_edit") {
 		t.Fatalf("no post_edit in the log: %s", data)
 	}
 }
@@ -1221,8 +1275,8 @@ on:
 func TestAdapterLoadStateUnreadable(t *testing.T) {
 	skipFileModes(t)
 	r := newRepo(t, "main")
-	r.write(".git/polix/log.jsonl", `{"kind":"stop_block"}`+"\n")
-	p := filepath.Join(r.dir, ".git", "polix", "log.jsonl")
+	r.write(".git/polix/sessions/s1.jsonl", `{"kind":"stop_block"}`+"\n")
+	p := sessionLog(filepath.Join(r.dir, ".git"), "s1")
 	if err := os.Chmod(p, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -1231,7 +1285,7 @@ func TestAdapterLoadStateUnreadable(t *testing.T) {
 	if _, _, err := a.Open(context.Background(), r.dir); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.LoadState(context.Background()); err == nil {
+	if _, err := a.LoadState(context.Background(), "s1"); err == nil {
 		t.Fatal("want the error of the unreadable log")
 	}
 }
@@ -1332,14 +1386,15 @@ func TestAdapter(t *testing.T) {
 	if out, err := a.Run(ctx, []string{"git", "rev-parse", "--abbrev-ref", "HEAD"}); err != nil || out != "feature\n" {
 		t.Fatalf("Run = %q %v", out, err)
 	}
-	if err := a.Append(ctx, state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeFinished,
+	if err := a.Append(ctx, state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeFinished, Session: "s1",
 		Key: "polix:reviewer"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Append(ctx, state.Entry{Kind: state.KindObserved, Outcome: state.OutcomePassed}); err == nil {
+	if err := a.Append(ctx, state.Entry{Kind: state.KindObserved, Outcome: state.OutcomePassed,
+		Session: "s1"}); err == nil {
 		t.Fatal("an observed passed without hash is appended")
 	}
-	s, err := a.LoadState(ctx)
+	s, err := a.LoadState(ctx, "s1")
 	if err != nil || len(s.Entries) != 1 || s.Entries[0].At == "" ||
 		!strings.Contains(r.log(), `"key":"polix:reviewer","outcome":"finished"`) {
 		t.Fatalf("LoadState = %+v %v", s, err)
@@ -1541,6 +1596,33 @@ func TestAgentsAreRunningOnCommit(t *testing.T) {
 				"hash=<nil>") != 1 {
 			t.Fatalf("%v: the lines of the subagent: %s", want, r.log())
 		}
+	}
+}
+
+// AC2: the start and the end of a subagent of s1 go to the file of s1, and agents_are_running of s2 never sees it.
+func TestAgentsAreRunningWithinTheSession(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", fmt.Sprintf(agentsRunningOnCommit, true, true))
+	commit := func(session string) (int, string) {
+		t.Helper()
+		code, _, stderr := r.hook("claude", map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash",
+			"tool_input": map[string]any{"command": "git commit -m x"}, "session_id": session})
+		return code, stderr
+	}
+	code, _, stderr := r.subagent("a1", false)
+	expect(t, "a subagent of s1 starts", code, 0, stderr)
+	code, stderr = commit("s1")
+	expect(t, "s1 commits while its subagent runs", code, 2, stderr)
+	code, stderr = commit("s2")
+	expect(t, "s2 commits while a subagent of s1 runs", code, 0, stderr)
+	code, _, stderr = r.subagent("a1", true)
+	expect(t, "the subagent of s1 stops", code, 0, stderr)
+	if r.lines("kind=observed", "outcome=started", "event=subagent_start", "agent_id=a1") != 1 ||
+		r.lines("kind=observed", "outcome=finished", "event=subagent_stop", "agent_id=a1") != 1 {
+		t.Fatalf("the lines of the subagent in the file of s1: %s", r.log())
+	}
+	if s2 := r.logOf("s2"); strings.Contains(s2, "subagent") || strings.Contains(s2, `"session":"s1"`) {
+		t.Fatalf("the file of s2: %s", s2)
 	}
 }
 

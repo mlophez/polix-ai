@@ -51,7 +51,9 @@ polix rules check --changed  # only the rules whose scope matches the files chan
 polix rules fmt            # format every rules file of rules.path in place, retired.yaml included
                            # (--check only tells whether they are formatted, exiting with 1 when not)
 polix graph                # print the workflow as a Mermaid diagram
-polix log --tail 20        # print the last entries of the state log (--json for the raw lines)
+polix log --tail 5         # print the last sessions of the state log, each whole under `== session <id> ==`,
+                           # the most recently active last (-n counts sessions, 5 by default, 0 for all;
+                           # --json prints only the raw lines)
 polix risk                 # print the lines, files and risk score of the uncommitted change, file by file
                            # (--changed GLOB, repeatable; --commit REV for the changes of one commit)
 polix doctor               # check that this machine and repository are ready (--hook, --offline)
@@ -293,9 +295,9 @@ as an argument, so `find -exec rm`, `xargs rm` and `sudo -u x rm` count), has a 
 interpreters polix knows, whose script it does not see whole (such as `sh`, `bash`, `zsh`, `ksh`, `tcsh`, `pwsh`,
 `powershell`, `eval`, `source`, `awk`, `perl`, `python`, `ruby`, `node` or `php`, with any version, as `python3.12`),
 runs `.`, or runs a program whose name is not literal (`$SHELL -c ...`). For this protection names are compared
-without case, since macOS and Windows run `Bash` as `bash`. Reading it is allowed, `cat .git/polix/log.jsonl
-2>/dev/null` included, and `polix log` prints it; a reading line that mentions a writer, an interpreter or a `>`
-(`grep rm .git/polix/log.jsonl`) is refused too.
+without case, since macOS and Windows run `Bash` as `bash`. Reading it is allowed, `cat
+.git/polix/sessions/<id>.jsonl 2>/dev/null` included, and `polix log` prints it; a reading line that mentions a
+writer, an interpreter or a `>` (`grep rm .git/polix/sessions/<id>.jsonl`) is refused too.
 A command names the state by its absolute path or below a git directory (`.git/polix`,
 `.git/worktrees/<name>/polix`), followed by a slash, a space, a quote, `;`, `&`, `|`, `)`, `*` or the end of the
 line: the bare word `polix` is the binary, not the state. On macOS and Windows, whose file names ignore case,
@@ -706,8 +708,8 @@ Conditions:
   heuristic as `protected_files` (see [Protections](#protections)); reading does not count. Only on `pre_command`, `post_command` and `pre_commit`.
 - `actor`: who acts, `session` or the subagent type. An agent of a plugin is named with its prefix, as
   `polix:rules-reviewer`; an agent of `.claude/agents/` by its bare name.
-- `finished`: a subagent type, or a list of them (all must hold), ended on this branch, or on another one with the
-  same HEAD commit, and the files of the scope of the entry did not change since. See
+- `finished`: a subagent type, or a list of them (all must hold), ended in this session, on this branch or on
+  another one with the same HEAD commit, and the files of the scope of the entry did not change since. See
   [What polix observes](#what-polix-observes-and-finished).
 - `agents_are_running: true|false`: subagents of the session, of any type, are still running, the one that acts
   aside: on `subagent_stop` the subagent that stops does not count itself, so the last one to stop sees `false`. It
@@ -867,8 +869,10 @@ enforcing it: try a new gate in a branch, and read its decisions with `polix log
   again, an edit outside does not, and another actor or a new session, which never saw it, is reminded on its own.
   A reminder is for a request the agent may rightly decline, such as checking whether the docs need an update;
   a gate that must hold has no `once`, since the agent would pass a reminder by trying again.
-- A `run` is not run again once it passed on the same content, on the same branch or on another one with the same
-  HEAD commit: the second `stop` on unchanged files runs nothing, also after a `git checkout -b`. The repeat is
+- A `run` is not run again once it passed in the session on the same content, on the same branch or on another one
+  with the same HEAD commit: the second `stop` on unchanged files runs nothing, also after a `git checkout -b`. A
+  new session runs it again, even on the same content; `claude --resume` keeps the session, and what passed in
+  it. The repeat is
   keyed by what it runs, the expanded arguments joined by spaces (`rules` and the expanded target for
   `run` with `rules`), whoever's entry it is, so two entries that run `just test` share it and
   `{path}` in the command makes one key per path. A failing `run` runs again on the next event, and any edit makes
@@ -949,17 +953,21 @@ the decisions included, also carries `agent_id`, the id the agent gives that sub
 - `watched`: a `post_command` found the `snapshot` of its key and compared it, with the same key and without hash,
   so a later `post_command` of the same key does not compare that snapshot again.
 
-`finished: <subagent>` (or a list, all of them) holds when the latest `finished` line with a hash of that type on
-the current branch, or on the same HEAD commit, has a content equal to the current one on the scope of the entry:
+`finished: <subagent>` (or a list, all of them) holds when the latest `finished` line with a hash of that type in
+the session, on the current branch or on the same HEAD commit, has a content equal to the current one on the scope
+of the entry:
 the files that differ between its tree and the current tree, if any, are all outside the scope. So a review of the
 Go code survives an edit of the docs, and any edit of a Go file asks for a new one. It never holds for another
 type, nor without a known content hash, nor when the `subagent_stop` of the subagent was refused: a subagent the
 loop guard let through after its blocks did not finish, and the `finished` line without hash it may get is never
 read by the condition. A tree git no longer has (pruned by `git gc`) or a comparison that fails counts as changed,
 with a `warn` decision that names the error: the gate asks again.
-A line counts when it was written on the current branch, or when its `head` is the current HEAD commit, both
-known: a branch made with `git checkout -b` sits on the same commit, so the review, the checks that passed and the
-reminders given before it still count there, and only an identical content on the scope carries over, since the
+Only the lines of the session count, since a hook reads only the file of its session (see [State](#state)): a
+review or a check that passed in another session does not, even on the same branch and content, so a new session
+asks for them again, and `claude --resume`, which keeps the session, keeps them. Within the session, a line counts
+when it was written on the current branch, or when its `head` is the current HEAD commit, both known: a branch
+made with `git checkout -b` sits on the same commit, so the review, the checks that passed and the reminders given
+before it still count there, and only an identical content on the scope carries over, since the
 tree is still compared. A branch on another commit does not see them. On the same branch a line keeps counting
 after a commit moves HEAD, so a reviewed change committed in two parts asks for no second review. A detached HEAD,
 whose branch is empty, sees the lines written on a branch at the same commit, and the lines written on a detached
@@ -1241,7 +1249,28 @@ the agent meets both, `on.pre_commit` first. `on.pre_commit` has the whole vocab
 
 ## State
 
-`<git-dir>/polix/log.jsonl`, one JSON object per line, only written by polix:
+One file per session of the agent, `<git-dir>/polix/sessions/<name>.jsonl`, one JSON object per line, only written
+by polix. The file of a session holds every line of its events, those of its subagents included, which carry the
+session id of the main session. Its name is the session id as it is when the id is made only of `A-Z`, `a-z`, `0-9`,
+`.`, `_` and `-`, has at most 128 characters and is not only dots; otherwise it is the lowercase hex sha256 of the
+id, so an id never reaches a path with a separator, `.` or `..`. Each line is written with one append, without a
+lock: the main session and its parallel subagents append to the same file.
+
+A hook reads only the file of its own session, for every verb and condition: what another session wrote never
+counts, `finished` and the repeat of a `run` included, so a new session starts from an empty state and runs its
+checks and asks for its reviews again, even on the same content. To keep the state of earlier work, resume that
+session (`claude --resume`) instead of opening a new one; a version of the agent that gave a resumed session a new
+id would start it from an empty state. An event without a session id writes nothing and reads no state: it acts as
+when the log cannot be read, with the warning of a log polix cannot use. The single log of earlier releases,
+`<git-dir>/polix/log.jsonl`, is ignored by the hook and by `polix log`, and left on disk: remove it by hand when its
+history is no longer wanted.
+
+`polix log` prints the sessions grouped, each whole and in file order under the line `== session <id> ==`, ordered
+by their last activity (the latest `at` of their lines), the most recent last. `-n` (`--tail`) counts sessions, the
+last 5 by default and all of them with `0`, and `--json` prints only the lines of those sessions, in the same order
+and without headers.
+
+Each line is of one of two kinds:
 
 - `decision`: what it answered (`block`, `deny` for a protection, `inform`, `notify` for a notice shown to the user,
   `warn`, `skip` or `loop_guard`), the
@@ -1459,8 +1488,11 @@ may outlive the budget, since polix does not kill the whole process tree.
   response may give no exit code, a failed commit reads as 0 and fires it (Codex support is not implemented). A line
   with two commits measures only the last one, and `git commit --amend` measures the amended commit: the commit just
   made is the one HEAD points to when the event is evaluated, compared with its first parent.
-- Every hook call reads the whole log, which grows without bound: one decision per answer, and one `passed` line
-  per run of polix that passed.
+- Every hook call reads the whole file of its session, which grows with the session: one decision per answer, and
+  one `passed` line per run of polix that passed. The files of old sessions, and the old `log.jsonl`, stay on disk
+  until removed by hand.
+- The state lives in the session: a new session, rather than `claude --resume`, runs again the checks that passed
+  and asks again for the reviews that finished, even on the same content.
 - A subagent type launched twice in a session gets an `inject` that acts once again only because the first one
   finished; two of them running at once share it, so the second may not get it.
 - A `run` whose result depends on more than the files (the network, the clock) is skipped after it passed once on
@@ -1472,7 +1504,8 @@ may outlive the budget, since polix does not kill the whole process tree.
   attestations) is pending.
 - The actions of `.github/workflows/release.yml` are pinned by tag, not by commit SHA.
 - The condition `pr` (state of the pull request) is not implemented.
-- The log is appended without a lock; parallel subagents could in theory interleave lines.
+- The file of a session is appended without a lock; parallel subagents of the session could in theory interleave
+  lines.
 - Injected rules are not bounded: a project with many rules without scope gets all of them on its first edit.
 - The files a command changed are found by comparing two content hashes, which hold no file git ignores: a
   protected file that git ignores, as `.env`, is only guarded by the check of the command line before it runs, and a

@@ -1,5 +1,6 @@
-// Package load is the use case LoadState, the loader of the log of polix (state.Load): cmd/polix builds it once and
-// passes it to every use case that reads the log, which call it with the file they resolved.
+// Package load is the use case LoadState, the loader of the log of polix (state.Load), one file of a session at a
+// time: cmd/polix builds it once and passes it to every use case that reads the log, which call it with the file of
+// a session they resolved.
 package load
 
 import (

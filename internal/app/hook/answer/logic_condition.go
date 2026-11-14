@@ -226,8 +226,8 @@ func (r *pass) writes(patterns []string) (p, held string, ok bool) {
 	return lineWrites(patterns, ev.Command, ev.Cwd, r.ev.Root, reals, r.ev.Fold(), r.ev.Windows())
 }
 
-// finished reports whether the subagent type name finished on the current branch or on the same HEAD commit, on a
-// content whose files in scope did not change since: the tree of its latest observed finished with a hash is
+// finished reports whether the subagent type name finished in the session, whose log alone the state holds, on the
+// current branch or on the same HEAD commit, on a content whose files in scope did not change since: the tree of its latest observed finished with a hash is
 // compared with the current one (see sameScope). The log is read first, so without such a line the content hash is
 // never computed. A log that cannot be read, with a warning, an unknown hash, a tree git no longer has or a
 // comparison that fails never holds, the last two with the error in the log.
