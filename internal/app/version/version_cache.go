@@ -126,15 +126,16 @@ func (c Cache) checked(now time.Time) bool {
 }
 
 // NeedsNewer reports whether the problems may come from a newer polix than the running one: they say it requires
-// one, they name something this one does not know (not a name of the old vocabulary, which comes with its new
-// spelling), or they have a later version of the schema.
+// one, they name something this one does not know (not a name it knows, workflow.Problem.Known: one of the old
+// vocabulary, which comes with its new spelling, or one of on that git can never give its hooks, in check_on_save),
+// or they have a later version of the schema.
 func (p Problems) NeedsNewer() bool {
 	problems := string(p)
 	if strings.Contains(problems, "requires polix") || newerSchema.MatchString(problems) {
 		return true
 	}
 	for line := range strings.SplitSeq(problems, "\n") {
-		if strings.Contains(line, "unknown") && !workflow.Problem(line).Renamed() {
+		if strings.Contains(line, "unknown") && !workflow.Problem(line).Known() {
 			return true
 		}
 	}

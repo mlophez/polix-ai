@@ -5,6 +5,7 @@
 # A value is plain only when it holds no ": " nor " #" and does not start with ` " ' [ { * & ! | > % @ - ? or ,.
 # Any other text goes in a literal block "|", one sentence per line, even when it is one line.
 
+---
 version: 1
 title: <One-line description of the change>
 status: planned  # planned | approved | in-progress | blocked | done
@@ -18,6 +19,17 @@ start: none  # the build sets when it first set the plan in-progress, as YYYY-MM
 end: none  # the build sets when the plan ended done or blocked, in the same format
 duration: none  # the build sets end minus start, as 1h 05m 12s
 tokens: none  # the build sets the sum of the totalTokens its subagents reported, across every run
+
+agents:  # the model and effort the build launches each subagent with, proposed from risk
+  - name: polix:builder
+    model: <sonnet | opus | haiku | fable | inherit>
+    effort: <low | medium | high | xhigh | max | inherit>
+  - name: polix:verifier
+    model: <sonnet | opus | haiku | fable | inherit>
+    effort: <low | medium | high | xhigh | max | inherit>
+  - name: polix:reviewer
+    model: <sonnet | opus | haiku | fable | inherit>
+    effort: <low | medium | high | xhigh | max | inherit>
 
 overview:
   summary: |

@@ -1,12 +1,16 @@
 package answer
 
 import (
+	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/githook"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
 )
 
 // The logic is tested with domain values: a call of git and the workflow of polix.yaml in, the output out, without
@@ -110,6 +114,49 @@ func TestDecideRun(t *testing.T) {
 	}
 	if out := Decide(commit("dev").Ran(nil), wf, true, nil); !slices.Equal(out.Reasons, []string{"last"}) {
 		t.Fatalf("an entry that does not hold runs nothing: %+v", out)
+	}
+}
+
+// CUJ-02, AC-01: the items of guardrails.check_on_save run before the entries written in githooks.pre_commit: a
+// failing check aborts the commit with its message and the line of the failure, and the written block is never
+// reached; a check whose changed matches no staged file runs nothing.
+func TestDecideCheckOnSave(t *testing.T) {
+	root := t.TempDir()
+	src := `version: 1
+guardrails:
+  check_on_save:
+    - run: "false"
+      message: "Fix the build before committing"
+
+    - run: go vet ./...
+      changed: "*.go"
+githooks:
+  pre_commit:
+    - action: { block: "Written by hand" }
+`
+	if err := os.WriteFile(filepath.Join(root, workflow.File), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded := workflowload.Command()(context.Background(), filepath.Join(root, workflow.File), "dev")
+	if loaded.Err != nil {
+		t.Fatal(loaded.Err)
+	}
+	wf := loaded.Workflow
+	g := commit("main", "README.md")
+	if out := Decide(g, wf, true, nil); out.Block || !slices.Equal(out.Run, []string{"false"}) {
+		t.Fatalf("first the check: %+v", out)
+	}
+	out := Decide(g.Ran(errors.New("exit status 1")), wf, true, nil)
+	if !out.Block || !slices.Equal(out.Reasons, []string{"Fix the build before committing",
+		"false failed: exit status 1"}) {
+		t.Fatalf("the check aborts before the written block: %+v", out)
+	}
+	if out := Decide(g.Ran(nil), wf, true, nil); !out.Block || !slices.Equal(out.Reasons, []string{"Written by hand"}) {
+		t.Fatalf("go vet runs only on a staged Go file, then the written block: %+v", out)
+	}
+	if out := Decide(commit("main", "a.go").Ran(nil), wf, true, nil); !slices.Equal(out.Run,
+		[]string{"go", "vet", "./..."}) {
+		t.Fatalf("a staged Go file runs go vet: %+v", out)
 	}
 }
 

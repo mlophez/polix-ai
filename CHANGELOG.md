@@ -7,6 +7,54 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- A YAML plan holds `agents` at its root: a list with the `name`, `model` and `effort` of polix:builder,
+  polix:verifier and polix:reviewer. /polix:plan proposes them from the risk of the plan (low: sonnet and high,
+  haiku and medium, sonnet and high; medium: opus and high, sonnet and high, opus and xhigh; high: opus and high,
+  sonnet and xhigh, opus and max), shows them for approval so the user may change them, and proposes them again
+  only when the risk changes; /polix:build launches each subagent with its item, `inherit`, a missing item or a plan
+  without `agents` leaving it to the frontmatter of the agent, and gives them in its stats.
+- Three lifecycle shortcuts of `guardrails`, so the basic runs of each moment of the work need no entry of `on` nor
+  of `githooks`. `exec_on_start`, a list of `run` and `message`, runs each command on every session start (startup,
+  resume, clear and compaction) as an entry of `start` with `always`, after the install of the hooks of git; a
+  failure only reaches the AI. `format_on_save`, a list of `run`, `changed` and `message`, runs each command right
+  before a command line of the agent that stages files (`git add` or `git stage`, also next to a `git commit`) when
+  an uncommitted file matches its `changed`, as an entry of `pre_command`; a failure blocks the line.
+  `check_on_save`, a list of `run`, `changed` and `message`, runs each command on every commit, whoever makes it, as
+  an entry of `githooks.pre_commit` before those written there, with the vocabulary of `githooks` and its `changed`
+  on the staged files; a failure aborts the commit with the message and the line of the failed command, its problems
+  name `guardrails.check_on_save` at the line of the item, a placeholder git can never give its hooks (`{path}`,
+  `{command}`, `{commit}`, `{subject}`) or `wait_agents` there never with the hint of a newer polix, and an item
+  alone makes every session start install the hooks of git. A polix older than this reports them as unknown keys of
+  `guardrails`, so set `requires` to a release that has them.
+
+### Changed
+
+- `guardrails.run_on_stop` is renamed `check_on_stop`, with the same keys and behaviour; only its wait notice now
+  reads `check_on_stop waits for the subagents still running: ...`. `run_on_stop` is rejected as an unknown key of
+  `guardrails` with the hint `use check_on_stop`, never with the hint of a newer polix: rename it in every
+  `polix.yaml` when you update polix, or its agent is blocked until then.
+- `polix config fmt` writes `guardrails` in a fixed order: first the protections, `protected_files`,
+  `protected_branches` and `forbidden_commands`, then the lifecycle shortcuts in the order the work reaches them,
+  `exec_on_start`, `format_on_edit`, `format_on_save`, `check_on_stop` and `check_on_save`. An existing file moves
+  `protected_branches` before `forbidden_commands`.
+- The start context says exactly how to stage and commit so polix sees it: stage with `git add <paths>` or
+  `git stage`, never `git commit -a`, `-am`, `--all` nor paths after `git commit`; run `git commit` by its name,
+  never through a git alias, a variable, a script or a wrapper such as `timeout`; end the line with the commit or
+  follow it only with `&&`, since after `;` or `|` polix cannot tell whether it succeeded; and pass the message with
+  `-m`, `-F` or a heredoc inside `-m`. It no longer forbids chaining a commit with `&&` nor wrapping it in `bash -c`,
+  which polix recognises, and a test pins every form the rules allow or warn about against the recognition of
+  commands.
+
+### Fixed
+
+- A value of `guardrails` written as a YAML alias (`run: *lint`, an argument of a run list as in
+  `run: [*bin, run, ./...]`, `changed: *go`, an item `- *push` or a whole shortcut) reads as the value of its anchor, as in the entries of `on`, instead of failing as a value of another
+  form; so `check_on_save` can reuse the commands and globs anchored in `check_on_stop`, which comes before it. An
+  item read through an alias, among the strings of `protected_files` or `protected_branches` too, is reported at the
+  line where its shortcut writes it, the alias of the list, even when its items are aliases too, or else of the item, never at its anchor in another shortcut.
+
 ## [0.9.0] - 2026-11-15
 
 ### Added

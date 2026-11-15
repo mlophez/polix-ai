@@ -5,10 +5,10 @@
 # docs/reference.md; recipes, one per use case: docs/use-cases.md.
 #
 # Two layers: `guardrails` holds the basics every project wants from the first minute (files and commands no agent
-# touches, branches nobody commits on, a formatter per edited file, the checks before the end of the turn), each a
-# short list; `on` holds the flow of the team (tickets, plans, builders, reviewer subagents) and whatever a shortcut
-# does not cover. Apart from both, `githooks` (at the end) holds the gates git itself runs on every commit, whoever
-# makes it.
+# touches, branches nobody commits on, a command on every session start, a formatter per edited file and before
+# staging, the checks before the end of the turn and on every commit), each a short list; `on` holds the flow of the
+# team (tickets, plans, builders, reviewer subagents) and whatever a shortcut does not cover. Apart from both,
+# `githooks` (at the end) holds the gates git itself runs on every commit, whoever makes it.
 #
 # How a hook call is answered:
 # 1. The adapter turns the hook input into neutral events (an edit of several files gives one event per path; a
@@ -35,7 +35,7 @@
 #
 # Cheat sheet (each one is explained where it is first used below):
 # - Shortcuts of guardrails, each in its one form: protected_files and protected_branches take a list of strings;
-#   forbidden_commands, format_on_edit and run_on_stop a list of maps.
+#   forbidden_commands, exec_on_start, format_on_edit, format_on_save, check_on_stop and check_on_save a list of maps.
 # - Events, in lifecycle order: start, prompt, subagent_start, pre_edit, post_edit, pre_command, post_command,
 #   pre_commit, post_commit, subagent_stop, stop.
 # - Verbs, exactly one per action, only where Claude Code and Codex both support them:
@@ -62,18 +62,20 @@ version: 1
 # absolute, the root itself, outside the root or a glob. It replaces the keys path of rules, plans and reports,
 # which polix config check reports with their migration, as it does with guidance, also removed.
 # Start context: on every start (startup, resume, clear, compaction) of a valid file polix injects, in English and
-# before the injects of the start entries, the rules on commits (each git commit a command of its own, so pre_commit
-# sees it), the root of the working tree and the four folders below path, each with its purpose; no switch turns it
-# off, subagent_start gets none of it, and its text is the template templates/session_start.md.tmpl of the binary.
+# before the injects of the start entries, the rules on staging and commits (git add or git stage, never git commit
+# -a; git commit by its name, last on the line or followed only by &&, with its message given), so polix sees them,
+# the root of the working tree and the four folders below path, each with its purpose; no switch turns it off,
+# subagent_start gets none of it, and its text is the template templates/session_start.md.tmpl of the binary.
 path: ai
 
 # Optional. The oldest polix that knows every option this file uses; set it when an option needs a newer polix
 # than the one the team may have. It is read before the rest of the file, so an older polix that does not know the
 # other options blocks edits and commands asking to run `polix update`, instead of reporting them as mistakes, and
 # the session start hook looks for the new release at once. A development build ignores it. `polix config check`
-# rejects a value that is not a version like 0.2.0. Known since polix 0.1.0: no earlier polix exists. This file needs
-# 0.3.0: `guardrails.run_on_stop`, `base_branch`, `max_stop_retries`, `subagent_start` and `notify` are unknown to
-# an older polix.
+# rejects a value that is not a version like 0.2.0. Known since polix 0.1.0: no earlier polix exists. 0.3.0 is not
+# enough for this file: it knows `base_branch`, `max_stop_retries`, `subagent_start` and `notify`, but not the
+# lifecycle shortcuts `exec_on_start`, `format_on_save`, `check_on_stop` and `check_on_save` of guardrails, which
+# need the release that brings them, the first after 0.9.0. Set requires to the release you install.
 requires: 0.3.0
 
 # Optional, default main. The branch the change merges into, or a list of candidates, used only by
@@ -168,19 +170,27 @@ risk:
 # set `requires` to a release that knows it.
 requirements: [go, golangci-lint]
 
-# Optional. The guardrails every project wants from the first minute, each a short list in exactly one form. Two
-# of them are protections of the engine: protected_files and forbidden_commands apply before every entry of `on`, to
-# every actor, without exceptions, also to the files git ignores, and only with a valid file. The other three are
-# shortcuts: polix expands each one into ordinary entries of `on` when it reads the file, so they act, log and show
-# in `polix graph` (with the name of their shortcut) as any entry; when one falls short, write its entries in `on`
-# and tune them. The flow of the team (tickets, plans, builders, reviewer subagents) and any other condition or verb
-# go to `on`.
-# In each event, the entries of protected_branches, format_on_edit and run_on_stop come before those written in
-# `on`, each group in file order, but for the notice of run_on_stop, which comes last on stop. Each expanded entry takes the line of its item, so `polix config check`, the
-# log and the repeat rules tell them apart.
-# `polix config check` rejects a key of guardrails other than these five, an unknown key of an item, an empty glob,
-# pattern, branch or command, and a shortcut written in another form than its own (a single string where a list
-# goes, a string where a map goes), showing the expected form.
+# Optional. The guardrails every project wants from the first minute, each a short list in exactly one form, in two
+# groups that `polix config fmt` writes in the order below:
+# - The protections, what no actor may do: protected_files, protected_branches and forbidden_commands.
+#   protected_files and forbidden_commands are applied by the engine itself, before every entry of `on`, to every
+#   actor, without exceptions, also to the files git ignores, and only with a valid file.
+# - The lifecycle shortcuts, each a command run at one moment of the work, in the order the work reaches them; the
+#   verb says what it does (exec_ prepares, format_ changes files, check_ gates) and the suffix when: exec_on_start on
+#   every session start, format_on_edit after each edit, format_on_save right before the agent stages files,
+#   check_on_stop before the agent ends its turn and check_on_save on every commit, whoever makes it.
+# protected_branches and the lifecycle shortcuts are sugar: polix expands each one into ordinary entries of `on`
+# when it reads the file (check_on_save into entries of githooks), so they act, log and show in `polix graph` (with
+# the name of their shortcut) as any entry; when one falls short, write its entries in `on` and tune them. The flow
+# of the team (tickets, plans, builders, reviewer subagents) and any other condition or verb go to `on`.
+# In each event, the entries of the shortcuts come before those written in `on`, and those of check_on_save before
+# those written in githooks.pre_commit, each group in file order, but for the notice of check_on_stop, which comes
+# last on stop. Each expanded entry takes the line of its item, so `polix config check`, the log and the repeat rules
+# tell them apart.
+# `polix config check` rejects a key of guardrails other than these eight (run_on_stop, the old name of
+# check_on_stop, with the hint `use check_on_stop`), an unknown key of an item, an empty glob, pattern, branch or
+# command, and a shortcut written in another form than its own (a single string where a list goes, a string where a
+# map goes), showing the expected form.
 guardrails:
   # protected_files: paths no agent writes, the main session included: only a person changes them by hand. A list
   # of path globs. It denies an edit of a matching path (never one outside the repository) and a command that writes
@@ -203,6 +213,14 @@ guardrails:
     - /CLAUDE.md
     # - /polix.yaml       # the workflow itself: then only a person changes it
     # - ai/rules/**       # the rules: then the skill add-rule cannot write them
+  # protected_branches: branches nobody commits on. A list of branch names, each matched whole; `*` in a name
+  # matches any text (`release/*`). It expands into one regular entry on pre_commit with the condition `branch`, an
+  # anchored regular expression of the names (here `^(?:main|dev|release/.*)$`), whose message, in English, asks to
+  # create a branch for the change.
+  protected_branches:
+    - main
+    - dev
+    - "release/*"
   # forbidden_commands: commands no agent runs, the main session included, in any position of the line
   # (`cd tmp && rm -rf /` too). The line is parsed as bash into its commands, nested ones included (`bash -c '...'`,
   # `$(...)`, subshells, `if`, `eval`), and each is matched as written or normalized (without assignments, the known
@@ -227,14 +245,18 @@ guardrails:
 
     - pattern: "kubectl delete*"
       reason: "Los recursos de Kubernetes se borran desde el pipeline: pídele al usuario que lo haga él."
-  # protected_branches: branches nobody commits on. A list of branch names, each matched whole; `*` in a name
-  # matches any text (`release/*`). It expands into one regular entry on pre_commit with the condition `branch`, an
-  # anchored regular expression of the names (here `^(?:main|dev|release/.*)$`), whose message, in English, asks to
-  # create a branch for the change.
-  protected_branches:
-    - main
-    - dev
-    - "release/*"
+  # exec_on_start: the commands that prepare the environment on every start of a session (startup, resume, clear and
+  # compaction), such as the dependencies of the tests. A list of maps with:
+  # - run: required, the command, as the short form of the verb `run` takes it: a string split on spaces or a list
+  #   of arguments;
+  # - message: optional, the text before the output of a failure (placeholders allowed).
+  # Each item expands into one entry on start, without `when`, with `run` and `always: true`, after the entry that
+  # installs the hooks of git (see githooks) and before the entries of start written in `on`: it runs on every start,
+  # also on a content it passed on, since its result depends on the machine. A failure never blocks the start: its
+  # message and output reach the AI as context. A step that should run once per content goes in on.start instead.
+  exec_on_start:
+    - run: uv sync --locked --quiet
+      message: "uv no ha podido instalar las dependencias de los tests:"
   # format_on_edit: the commands that format or lint each edited file. A list of maps with:
   # - run: required, the command, as the short form of the verb `run` takes it: a string split on spaces or a list
   #   of arguments, placeholders allowed ({path} is the edited file, and stays one argument);
@@ -261,7 +283,23 @@ guardrails:
     - run: polix rules fmt
       path: ai/rules/*.yaml
       message: "polix rules fmt could not format the rules:"
-  # run_on_stop: the commands that must pass before the main session ends its turn. A list of maps with:
+  # format_on_save: the commands that format or fix the files right before the agent stages them. A list of maps
+  # with:
+  # - run: required, the command, as in exec_on_start;
+  # - changed: optional, a glob or a list, as the condition `changed`: the item runs only when some file not committed
+  #   yet matches; without it, on every line that stages files;
+  # - message: optional, the text before the output of a failure (placeholders allowed).
+  # Each item expands into one entry on pre_command with `command: ["git add*", "git stage*"]`, its `changed` and
+  # `run`: it runs right before a command line of the agent that stages files (git add or git stage, also next to a
+  # git commit in the same line), and a failure blocks that line, its message first. A run that passed is not run
+  # again in the session on the same content. `git commit -a` and paths after `git commit` stage without git add, so
+  # they are not formatted: check_on_save still checks them.
+  format_on_save:
+    - run: npx eslint --fix
+      changed: ["*.ts", "*.tsx"]
+      message: "ESLint ha dejado problemas sin arreglar:"
+  # check_on_stop: the commands that must pass before the main session ends its turn; run_on_stop is its old name,
+  # which `polix config check` rejects with the hint `use check_on_stop`. A list of maps with:
   # - run: required, the command, as in format_on_edit;
   # - changed: optional, a glob or a list, as the condition `changed`: the item runs only when some file not
   #   committed yet matches; without it, on every turn;
@@ -273,10 +311,10 @@ guardrails:
   # while it fails the turn does not end (up to max_stop_retries), and it does not run again on a content it passed
   # on. An item that waits also gets `agents_are_running: false` in its `when`, and, when one waits, one `notify`
   # with `always` goes last on stop, after the entries written in `on`: every stop that holds a check back tells the
-  # user once "run_on_stop waits for the subagents still running: its checks run on the next stop after they end."
+  # user once "check_on_stop waits for the subagents still running: its checks run on the next stop after they end."
   # A subagent ends with subagent_stop, where these entries never run (see `on`). Put first the check whose
   # failure makes the later ones pointless, and the cheaper one: here the lint before the tests.
-  run_on_stop:
+  check_on_stop:
     # The lint is quick and its failures are worth fixing at once: it runs while subagents run too.
     - run: golangci-lint run ./...
       changed: ["src/**", "go.mod", "go.sum"]
@@ -285,6 +323,24 @@ guardrails:
     - run: just test
       changed: "src/**"
       message: "Los tests no pasan: arréglalos antes de terminar."
+  # check_on_save: the checks git runs on every commit, whoever makes it (a person, an IDE or an agent), before the
+  # commit is made. A list of maps with:
+  # - run: required, the command, as in exec_on_start;
+  # - changed: optional, a glob or a list: the item runs only when a file staged for the commit matches (the
+  #   condition `changed` of githooks); without it, on every commit;
+  # - message: optional, the text before the line of a failure, with the placeholders of githooks.pre_commit only
+  #   ({branch} and the variables of vars).
+  # Each item expands into one entry of githooks.pre_commit with `run`, before the entries written there (see
+  # githooks): a failure aborts the commit with the message and the line `<command> failed: <error>`, and the first
+  # failure ends the evaluation. Like githooks, it makes every session start install the hooks of git, and needs git
+  # 2.54 or later; git runs them without knowing the subagents, so it has no wait_agents, and `git commit
+  # --no-verify` skips them. `polix config check` reports its problems at the line of the item, as
+  # guardrails.check_on_save.
+  check_on_save:
+    # The tests run on every commit that stages source code, also one a person makes from the terminal.
+    - run: just test
+      changed: "src/**"
+      message: "Los tests no pasan: no se commitea."
 
 # Placeholders, replaced in the strings of conditions (except `branch`), verbs and `contains`; an unknown one
 # is rejected by `polix config check`:
@@ -299,10 +355,10 @@ guardrails:
 # The placeholders of rules.run ({file}, {dir}, {id}, {name}, {names}, {files}, {dirs}) only exist there.
 #
 # Path globs (`path`, `changed`, `file`, `writes`, the items of `protected_files`, the `path` of `format_on_edit`
-# and the `changed` of `run_on_stop`, risk.weights, rule scopes) are relative to the root and use `/`: `*` and `?`
-# stay inside a segment, `**` crosses segments, a pattern without `/` also matches the base name anywhere (`*.md`
-# matches docs/guide.md), and a leading `/` anchors it to the root (`/polix.yaml` is not examples/polix.yaml), like
-# .gitignore. The whole path must match. On macOS and Windows the globs of `path` and `writes`, and those of
+# and the `changed` of `format_on_save`, `check_on_stop` and `check_on_save`, risk.weights, rule scopes) are
+# relative to the root and use `/`: `*` and `?` stay inside a segment, `**` crosses segments, a pattern without `/`
+# also matches the base name anywhere (`*.md` matches docs/guide.md), and a leading `/` anchors it to the root
+# (`/polix.yaml` is not examples/polix.yaml), like .gitignore. The whole path must match. On macOS and Windows the globs of `path` and `writes`, and those of
 # `protected_files` and of the `path` of `format_on_edit`, ignore case.
 #
 # Command patterns (`command`, the `pattern` of `forbidden_commands`) match each command of the line as a whole,
@@ -332,9 +388,10 @@ on:
   # A YAML comment above the entry is the place for its reason, for people; the message of a block or a run is the
   # reason the AI reads.
   #
-  # The shortcuts protected_branches, format_on_edit and run_on_stop add their entries to these events, before
-  # the entries written here (see `guardrails`); `polix graph` draws each event with all of them, each named by its
-  # shortcut. protected_files and forbidden_commands are no entries: they apply before all of them.
+  # The shortcuts protected_branches, exec_on_start, format_on_edit, format_on_save and check_on_stop add their
+  # entries to these events, before the entries written here (see `guardrails`); `polix graph` draws each event with
+  # all of them, each named by its shortcut. protected_files and forbidden_commands are no entries: they apply before
+  # all of them.
   #
   # The entries of `on` skip the edits outside the repository, but not those of files git ignores: a plan, a build
   # output or a local .env fires them like any other file, so an entry that must leave them out says it with
@@ -377,7 +434,7 @@ on:
   # log.jsonl is ignored), holds a decision for each answer, and an `observed` line only for what this file asks
   # about: the end of a subagent a `finished` names, a run of polix that passed, a block of a `once` entry or of a
   # stop, an inject made once, a notice shown once and the start of a session or of a subagent. When an inject acts
-  # once, or the file uses agents_are_running (an item of run_on_stop that waits does), the end of any subagent is
+  # once, or the file uses agents_are_running (an item of check_on_stop that waits does), the end of any subagent is
   # also written, without hash, so its next run gets the inject again and it stops counting as running; `finished`
   # never reads those lines. A hook reads only the log of its session: a new session starts empty, so `finished` and
   # the checks that passed count again only within it, and `claude --resume` keeps them. A command the AI runs is
@@ -392,7 +449,8 @@ on:
 
   # start: a session starts, resumes, is cleared or is compacted. It cannot be blocked: block is rejected, and a
   # failing run reaches the AI as context, its message first. On start every inject acts every time, so the context
-  # survives a compaction, and `always` has no effect there. The start context of polix (see path) comes first.
+  # survives a compaction, and `always` has no effect there. The start context of polix (see path) comes first, then
+  # the entry that installs the hooks of git (see githooks) and those of guardrails.exec_on_start.
   start:
     # inject: text for the AI. The short form is the text (placeholders allowed); the long form a map with exactly
     # one of:
@@ -729,7 +787,7 @@ on:
 
   # stop: the main session is about to end its turn; actor is always `session`. A subagent ends with subagent_stop,
   # which never runs these entries. inject is rejected here and on subagent_stop: the agent cannot receive context
-  # when it stops. The checks of guardrails.run_on_stop, the lint and the tests, come before these entries, and its
+  # when it stops. The checks of guardrails.check_on_stop, the lint and the tests, come before these entries, and its
   # notice for the stops that hold the tests back while subagents run comes after them.
   stop:
     # run with rules: changed: the checks of the rules whose scope matches the changed files.
@@ -773,11 +831,13 @@ on:
 # Without polix.yaml or without entries for the event the commit goes on; a polix.yaml that cannot be used aborts
 # every commit with its problems. `git commit --no-verify` skips the hooks: forbid it to the agent in
 # guardrails.forbidden_commands.
-# Declaring these entries is enough: with at least one, this file expands into one more entry first in start that
-# runs `polix install --githooks` with always: true, so every session start of the AI puts the hooks of git back,
-# and when the run fails (a git older than 2.54) the message "The hooks of git of githooks are not installed, so the
-# gates of githooks do not apply to the commits:" reaches the AI. `polix graph` draws it `from githooks`; removing
-# the entries of githooks turns it off.
+# The checks that only run a command on every commit go to guardrails.check_on_save, whose entries come before
+# those of pre_commit written here.
+# Declaring these entries, or an item of guardrails.check_on_save, is enough: with at least one, this file expands
+# into one more entry first in start that runs `polix install --githooks` with always: true, so every session start
+# of the AI puts the hooks of git back, and when the run fails (a git older than 2.54) the message "The hooks of git
+# of githooks are not installed, so the gates of githooks do not apply to the commits:" reaches the AI. `polix graph`
+# draws it `from githooks`; removing the entries of githooks and check_on_save turns it off.
 githooks:
   pre_commit:
     # Nothing of secrets/ is committed, by anyone.
@@ -785,7 +845,9 @@ githooks:
       action:
         block: "No se commitea nada de secrets/: sácalo del índice con git restore --staged"
 
-    # The linter runs on every commit that stages Go code; its output shows in the terminal of the commit.
+    # The linter runs on every commit that stages Go code; its output shows in the terminal of the commit. Written
+    # here as an entry, the long form of run; as an item of guardrails.check_on_save it would read
+    # { run: golangci-lint run ./..., changed: ["*.go", go.mod], message: ... }.
     - when: { changed: ["*.go", go.mod] }
       action:
         run:

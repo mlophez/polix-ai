@@ -117,6 +117,15 @@ func TestGithooksProblems(t *testing.T) {
 			"polix.yaml:5: githooks.pre_commit: branch: error parsing regexp: missing closing ): `(main`"},
 		{"message does not compile", CommitMsg, entry(Cond{"message": []any{"^fix", "^{key}["}}, ok),
 			"polix.yaml:5: githooks.commit_msg: message: error parsing regexp: missing closing ]: `[`"},
+		// AC-03, DEC-06: the problems of an entry with an origin, an item of guardrails.check_on_save, start with it.
+		{"{path} from check_on_save", PreCommit, Entry{When: Cond{"changed": "*.go"},
+			Action: run(Run{Command: []string{"gofmt", "-l", "{path}"}, Keys: []string{"command"}}),
+			From:   "guardrails.check_on_save", Keys: []string{"when", "action"}, Line: 5},
+			`polix.yaml:5: guardrails.check_on_save: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)`},
+		{"empty changed from check_on_save", PreCommit, Entry{When: Cond{"changed": ""},
+			Action: run(Run{Command: []string{"go", "vet"}, Keys: []string{"command"}}),
+			From:   "guardrails.check_on_save", Keys: []string{"when", "action"}, Line: 5},
+			`polix.yaml:5: guardrails.check_on_save: changed: a pattern cannot be empty`},
 	}
 	for _, c := range cases {
 		w := githooksWorkflow(map[string][]Entry{c.event: {c.entry}})
@@ -211,5 +220,17 @@ func TestExpandGithooks(t *testing.T) {
 		if got := w.ExpandGithooks(); !reflect.DeepEqual(got.On, w.On) {
 			t.Fatalf("%s: %+v", name, got.On)
 		}
+	}
+
+	// CUJ-03, AC-02: without a line for the section, as for the entries of check_on_save in a file without githooks,
+	// the entry takes the line of the first entry of githooks.
+	saved := githooksWorkflow(map[string][]Entry{PreCommit: {
+		{Action: Action{Run: &Run{Command: []string{"go", "vet"}}, Keys: []string{VerbRun}}, From: "guardrails.check_on_save",
+			Keys: []string{"action"}, Line: 4},
+		{Action: Action{Run: &Run{Command: []string{"go", "test"}}, Keys: []string{VerbRun}}, From: "guardrails.check_on_save",
+			Keys: []string{"action"}, Line: 6}}})
+	saved.GithookLines = nil
+	if e := saved.ExpandGithooks().On[Start]; len(e) != 1 || e[0].Line != 4 || e[0].From != "githooks" {
+		t.Fatalf("the line of the first entry: %+v", e)
 	}
 }

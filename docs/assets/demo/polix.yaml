@@ -12,6 +12,10 @@ guardrails:
     - CLAUDE.md
     - .env
 
+  # Nobody commits on these branches.
+  protected_branches:
+    - main
+
   # No agent runs these commands; the reason goes back to the agent.
   forbidden_commands:
     - pattern: "*rm -rf /*"
@@ -19,17 +23,13 @@ guardrails:
     - pattern: "git push*--force*"
       reason: "Force pushes rewrite shared history: ask a person to run it."
 
-  # Nobody commits on these branches.
-  protected_branches:
-    - main
-
   # Format on edit
   format_on_edit:
     - run: golangci-lint fmt {path}
       path: "*.go"
 
   # The agent cannot end its turn while a check fails.
-  run_on_stop:
+  check_on_stop:
     - run: go test ./...
       changed: "*.go"
 

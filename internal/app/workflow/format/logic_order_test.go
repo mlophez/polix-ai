@@ -8,7 +8,8 @@ import (
 )
 
 // The keys of every section follow the reference, with guardrails and on last; the comments travel with their key,
-// and the items of a list and the keys a user names keep their order.
+// and the items of a list and the keys a user names keep their order. CUJ-09, AC-08: guardrails, written in any
+// order, comes out with the protections first and then the lifecycle shortcuts (LIT-09), each with its comment.
 func TestFormat(t *testing.T) {
 	src := `# Workflow of the repository.
 on:
@@ -30,10 +31,31 @@ on:
         actor: session
     - action: { run: { command: go test ./..., always: true } }
 guardrails:
-  run_on_stop:
+  # Every commit, whoever makes it.
+  check_on_save:
+    - message: "lint"
+      changed: ["*.go"]
+      run: golangci-lint run ./...
+    - run: go test ./...
+  # Nobody runs these.
+  forbidden_commands:
+    - pattern: "git push --force*"
+  exec_on_start:
+    - message: "uv failed:"
+      run: uv sync --locked
+    - run: just setup
+  protected_branches: [main]
+  protected_files: [AGENTS.md]
+  check_on_stop:
     - changed: ["*.go"]
       run: go vet ./...
-  protected_files: [AGENTS.md]
+  format_on_save:
+    - changed: "*.ts"
+      message: "eslint:"
+      run: npx eslint --fix
+  format_on_edit:
+    - path: "*.go"
+      run: gofmt -w {path}
 risk:
   weights:
     "z/**": 1
@@ -56,9 +78,32 @@ risk:
     "a/**": 2
 guardrails:
   protected_files: [AGENTS.md]
-  run_on_stop:
+  protected_branches: [main]
+  # Nobody runs these.
+  forbidden_commands:
+    - pattern: "git push --force*"
+  exec_on_start:
+    - run: uv sync --locked
+      message: "uv failed:"
+
+    - run: just setup
+  format_on_edit:
+    - run: gofmt -w {path}
+      path: "*.go"
+  format_on_save:
+    - run: npx eslint --fix
+      changed: "*.ts"
+      message: "eslint:"
+  check_on_stop:
     - run: go vet ./...
       changed: ["*.go"]
+  # Every commit, whoever makes it.
+  check_on_save:
+    - run: golangci-lint run ./...
+      changed: ["*.go"]
+      message: "lint"
+
+    - run: go test ./...
 on:
   # Before a commit.
   pre_commit:
@@ -88,6 +133,14 @@ on:
 	}
 	if again, err := formatData(got); err != nil || string(again) != want {
 		t.Fatalf("not idempotent: %v\n%s", err, again)
+	}
+	lit09 := "protected_files, protected_branches, forbidden_commands, exec_on_start, format_on_edit, format_on_save, " +
+		"check_on_stop, check_on_save"
+	if keys := strings.Join(order([]string{"guardrails"}), ", "); keys != lit09 {
+		t.Fatalf("the order of guardrails: %s", keys)
+	}
+	if strings.Contains(string(got), "polix install") {
+		t.Fatal("CUJ-03: the entry check_on_save expands into in start is never written into the file")
 	}
 }
 
@@ -204,7 +257,7 @@ guardrails:
   forbidden_commands:
     - pattern: "git reset --hard*"
     - pattern: "git clean -f*"
-  run_on_stop:
+  check_on_stop:
     - run: go vet ./...
     - run: go test ./...
       changed: ["*.go"]
@@ -232,7 +285,7 @@ guardrails:
   forbidden_commands:
     - pattern: "git reset --hard*"
     - pattern: "git clean -f*"
-  run_on_stop:
+  check_on_stop:
     - run: go vet ./...
 
     - run: go test ./...

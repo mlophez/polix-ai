@@ -24,10 +24,10 @@ func shortcutsSummary(e Entry) string {
 	return fmt.Sprintf("%s line=%d when=%v %s", e.From, e.Line, e.When, action)
 }
 
-// The notify of run_on_stop while subagents run, as the tests expect it after the when of its entry.
-const waitNotice = `notify "run_on_stop waits for the subagents still running: its checks run on the next stop after they end." always=true`
+// The notify of check_on_stop while subagents run, as the tests expect it after the when of its entry.
+const waitNotice = `notify "check_on_stop waits for the subagents still running: its checks run on the next stop after they end." always=true`
 
-// An item of run_on_stop that waits runs only when no subagent is running, and the items that wait add one notify,
+// An item of check_on_stop that waits runs only when no subagent is running, and the items that wait add one notify,
 // last on stop after the entries written in on, while subagents run, on the globs of all of them; an item that does
 // not wait expands as before and adds none; a waiting item without changed leaves the notify without changed.
 func TestGuardrailsExpandWaits(t *testing.T) {
@@ -40,26 +40,26 @@ func TestGuardrailsExpandWaits(t *testing.T) {
 		{"waits", []GuardrailCheck{
 			{Run: []string{"go", "test", "./..."}, Scope: []any{"*.go", "go.mod"}, Waits: true, Line: 4},
 			{Run: []string{"just", "lint"}, Scope: "*.go", Waits: true, Line: 6},
-			{Run: []string{"x"}, Waits: true, Line: 7, Problems: []string{"guardrails.run_on_stop: message must be a text"}},
+			{Run: []string{"x"}, Waits: true, Line: 7, Problems: []string{"guardrails.check_on_stop: message must be a text"}},
 		}, []string{
-			`guardrails.run_on_stop line=4 when=map[agents_are_running:false changed:[*.go go.mod]] run ["go" "test" "./..."] ""`,
-			`guardrails.run_on_stop line=6 when=map[agents_are_running:false changed:*.go] run ["just" "lint"] ""`,
-		}, `guardrails.run_on_stop line=4 when=map[agents_are_running:true changed:[*.go go.mod]] ` + waitNotice},
+			`guardrails.check_on_stop line=4 when=map[agents_are_running:false changed:[*.go go.mod]] run ["go" "test" "./..."] ""`,
+			`guardrails.check_on_stop line=6 when=map[agents_are_running:false changed:*.go] run ["just" "lint"] ""`,
+		}, `guardrails.check_on_stop line=4 when=map[agents_are_running:true changed:[*.go go.mod]] ` + waitNotice},
 		{"does not wait", []GuardrailCheck{{Run: []string{"go", "test"}, Scope: "*.go", Line: 4}}, []string{
-			`guardrails.run_on_stop line=4 when=map[changed:*.go] run ["go" "test"] ""`,
+			`guardrails.check_on_stop line=4 when=map[changed:*.go] run ["go" "test"] ""`,
 		}, ""},
 		{"one waits without changed", []GuardrailCheck{
 			{Run: []string{"go", "test"}, Scope: "*.go", Line: 4},
 			{Run: []string{"go", "vet"}, Scope: "*.go", Waits: true, Line: 5},
 			{Run: []string{"just", "lint"}, Waits: true, Line: 6},
 		}, []string{
-			`guardrails.run_on_stop line=4 when=map[changed:*.go] run ["go" "test"] ""`,
-			`guardrails.run_on_stop line=5 when=map[agents_are_running:false changed:*.go] run ["go" "vet"] ""`,
-			`guardrails.run_on_stop line=6 when=map[agents_are_running:false] run ["just" "lint"] ""`,
-		}, `guardrails.run_on_stop line=5 when=map[agents_are_running:true] ` + waitNotice},
+			`guardrails.check_on_stop line=4 when=map[changed:*.go] run ["go" "test"] ""`,
+			`guardrails.check_on_stop line=5 when=map[agents_are_running:false changed:*.go] run ["go" "vet"] ""`,
+			`guardrails.check_on_stop line=6 when=map[agents_are_running:false] run ["just" "lint"] ""`,
+		}, `guardrails.check_on_stop line=5 when=map[agents_are_running:true] ` + waitNotice},
 	}
 	for _, c := range cases {
-		on := Guardrails{RunOnStop: c.items}.Expand(map[string][]Entry{Stop: {{Action: Action{Block: &Block{
+		on := Guardrails{CheckOnStop: c.items}.Expand(map[string][]Entry{Stop: {{Action: Action{Block: &Block{
 			Message: "regular"}}, Line: 30}}})
 		var got []string
 		for _, e := range on[Stop] {
@@ -78,7 +78,7 @@ func TestGuardrailsExpandWaits(t *testing.T) {
 	}
 }
 
-// protected_branches, format_on_edit and run_on_stop expand into entries before those written in on, in file
+// protected_branches, format_on_edit and check_on_stop expand into entries before those written in on, in file
 // order and with the line of their item; an empty name or an item with problems expands into nothing, and without
 // them on stays as it is.
 func TestGuardrailsExpand(t *testing.T) {
@@ -88,7 +88,7 @@ func TestGuardrailsExpand(t *testing.T) {
 		FormatOnEdit: []GuardrailCheck{{Run: []string{"gofmt", "-w", "{path}"}, Scope: "*.go", Line: 13},
 			{Run: []string{"x"}, Line: 14, Problems: []string{"guardrails.format_on_edit: message must be a text"}},
 			{Run: []string{"prettier"}, Message: "Format failed", Line: 15}},
-		RunOnStop: []GuardrailCheck{{Run: []string{"go", "test", "./..."}, Scope: []any{"*.go"}, Waits: true,
+		CheckOnStop: []GuardrailCheck{{Run: []string{"go", "test", "./..."}, Scope: []any{"*.go"}, Waits: true,
 			Line: 18}},
 	}
 	want := map[string][]string{
@@ -101,8 +101,8 @@ func TestGuardrailsExpand(t *testing.T) {
 			`guardrails.format_on_edit line=15 when=map[] run ["prettier"] "Format failed"`,
 		},
 		Stop: {
-			`guardrails.run_on_stop line=18 when=map[agents_are_running:false changed:[*.go]] run ["go" "test" "./..."] ""`,
-			`guardrails.run_on_stop line=18 when=map[agents_are_running:true changed:[*.go]] ` + waitNotice,
+			`guardrails.check_on_stop line=18 when=map[agents_are_running:false changed:[*.go]] run ["go" "test" "./..."] ""`,
+			`guardrails.check_on_stop line=18 when=map[agents_are_running:true changed:[*.go]] ` + waitNotice,
 		},
 	}
 	on := g.Expand(written)
@@ -152,13 +152,13 @@ func TestGuardrailsProblems(t *testing.T) {
 		ProtectedFiles:    []GuardrailItem{{Text: "", Line: 3}},
 		ForbiddenCommands: []GuardrailForbidden{{Line: 7, Problems: []string{"guardrails.forbidden_commands: an item needs a pattern"}}},
 		ProtectedBranches: []GuardrailItem{{Text: "main", Line: 8}, {Text: "", Line: 9}},
-		RunOnStop:         []GuardrailCheck{{Line: 5, Problems: []string{"guardrails.run_on_stop: an item needs run"}}},
+		CheckOnStop:       []GuardrailCheck{{Line: 5, Problems: []string{"guardrails.check_on_stop: an item needs run"}}},
 	}
 	w := Workflow{Version: 2, On: map[string][]Entry{PreEdit: {{Line: 6, Keys: []string{"blok"}}}}}
 	want := []string{
 		"polix.yaml: version must be 1, got 2",
 		"polix.yaml:3: guardrails.protected_files: a path glob cannot be empty",
-		"polix.yaml:5: guardrails.run_on_stop: an item needs run",
+		"polix.yaml:5: guardrails.check_on_stop: an item needs run",
 		`polix.yaml:6: unknown key "blok" (when, unless, action)`,
 		"polix.yaml:6: the entry needs an action with one of run, inject, block, notify",
 		"polix.yaml:7: guardrails.forbidden_commands: an item needs a pattern",
@@ -185,7 +185,7 @@ func TestGuardrailsValid(t *testing.T) {
 		"empty branch":   {ProtectedBranches: []GuardrailItem{{Line: 3}}},
 		"no pattern":     {ForbiddenCommands: []GuardrailForbidden{{Line: 4}}},
 		"item problems":  {ForbiddenCommands: []GuardrailForbidden{{Pattern: "a", Problems: []string{"x"}}}},
-		"no run":         {RunOnStop: []GuardrailCheck{{Line: 5}}},
+		"no run":         {CheckOnStop: []GuardrailCheck{{Line: 5}}},
 		"check problems": {FormatOnEdit: []GuardrailCheck{{Run: []string{"x"}, Problems: []string{"x"}}}},
 	} {
 		if g.Valid() == nil {

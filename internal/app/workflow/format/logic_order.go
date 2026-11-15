@@ -36,8 +36,7 @@ func spaced(path []string) bool {
 	case "on", "githooks":
 		return true
 	case "guardrails":
-		return path[1] == workflow.ShortcutForbiddenCommands || path[1] == workflow.ShortcutFormatOnEdit ||
-			path[1] == workflow.ShortcutRunOnStop
+		return orderShortcut(path[1]) != nil
 	}
 	return false
 }
@@ -78,15 +77,22 @@ func orderSection(key string) []string {
 	return nil
 }
 
-// orderShortcut returns the order of the keys of an item of the shortcut key of guardrails.
+// orderShortcut returns the order of the keys of an item of the shortcut key of guardrails, one that takes a list of
+// maps; nil for the others.
 func orderShortcut(key string) []string {
 	switch key {
 	case workflow.ShortcutForbiddenCommands:
 		return workflow.ForbiddenKeys
+	case workflow.ShortcutExecOnStart:
+		return workflow.ExecOnStartKeys
 	case workflow.ShortcutFormatOnEdit:
 		return workflow.FormatOnEditKeys
-	case workflow.ShortcutRunOnStop:
-		return workflow.RunOnStopKeys
+	case workflow.ShortcutFormatOnSave:
+		return workflow.FormatOnSaveKeys
+	case workflow.ShortcutCheckOnStop:
+		return workflow.CheckOnStopKeys
+	case workflow.ShortcutCheckOnSave:
+		return workflow.CheckOnSaveKeys
 	}
 	return nil
 }

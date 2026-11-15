@@ -71,6 +71,48 @@ func TestGithookCommit(t *testing.T) {
 	}
 }
 
+// CUJ-01, AC-01: with the hooks of git installed, a real commit of a person runs the items of
+// guardrails.check_on_save: one with a staged file its changed matches is aborted with the message of the item and
+// the line of the failed command, and the files stay staged; one whose staged files match no changed is made.
+func TestGithookCheckOnSave(t *testing.T) {
+	bin := buildPolix(t)
+	testenv.Machine(t, false, false)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	r := testenv.GitRepo(t)
+	if code, stdout, stderr := runSetup("install", "--githooks", "--dir", r); code != 0 {
+		if out, _ := gitOut(r, "hook", "list", "pre-commit"); !strings.Contains(out, "polix-pre-commit") {
+			version, _ := gitOut(r, "--version")
+			t.Skipf("%s does not run the hooks of its configuration (git hook list: %q)", strings.TrimSpace(version), out)
+		}
+		t.Fatalf("install: %d\n%s%s", code, stdout, stderr)
+	}
+	// A command that fails with exit 1 on every system, as false does: git is the only program on the PATH of the test.
+	failing := "git rev-parse --verify --quiet refs/heads/none"
+	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nguardrails:\n  check_on_save:\n"+
+		"    - run: "+failing+"\n      changed: \"*.go\"\n      message: \"Fix the build before committing\"\n")
+	testenv.Write(t, filepath.Join(r, "main.go"), "package main\n")
+	mustGit(t, r, "add", "main.go")
+	out, err := gitOut(r, "commit", "-m", "x")
+	if err == nil || !strings.Contains(out, "polix: Fix the build before committing\npolix: "+failing+
+		" failed: exit status 1") {
+		t.Fatalf("a staged Go file: %v\n%s", err, out)
+	}
+	if staged, _ := gitOut(r, "diff", "--cached", "--name-only"); strings.TrimSpace(staged) != "main.go" {
+		t.Fatalf("the files stay staged: %q", staged)
+	}
+	mustGit(t, r, "rm", "--quiet", "--cached", "main.go")
+	testenv.Write(t, filepath.Join(r, "README.md"), "x\n")
+	mustGit(t, r, "add", "README.md")
+	if out, err := gitOut(r, "commit", "-m", "x"); err != nil {
+		t.Fatalf("no staged file matches the changed: %v\n%s", err, out)
+	}
+	if subject, _ := gitOut(r, "log", "-1", "--format=%s"); strings.TrimSpace(subject) != "x" {
+		t.Fatalf("last commit: %q", subject)
+	}
+}
+
 // AC18, AC20: polix install --githooks writes the four keys of the hooks of git into the local configuration of
 // the repository and nothing else, no plugin nor settings of the agents, printing only what changed, and a second
 // run prints nothing; with --agent or outside a repository it fails and writes nothing. It skips,

@@ -42,7 +42,8 @@ the outcomes of the runs carried out so far, `githook.Githook.Outcomes`):
 2. A workflow that cannot be used (`invalid`: a file that cannot be read, broken YAML, an unknown key, a newer polix
    it requires, or the problems of `workflow.Workflow.Valid`) aborts the commit, with each problem as a reason; a
    newer polix it requires says `run polix update`.
-3. Else it walks the entries of `Workflow.Githooks` for the event, in file order. An entry applies when every
+3. Else it walks the entries of `Workflow.Githooks` for the event, in file order, those of
+   `guardrails.check_on_save` first on `pre_commit`, as the loading put them. An entry applies when every
    condition of its `when` holds (an empty `when` holds) and, with an `unless`, not every condition of its `unless`
    does:
    - `branch`: a regular expression the current branch matches; a detached HEAD has the branch "".

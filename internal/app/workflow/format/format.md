@@ -57,8 +57,9 @@ vocabulary of the domain:
   `workflow.GithookEvents` (`pre_commit`, `commit_msg`), and its entries are ordered as those of `on`, but for the
   conditions of their `when` and `unless`, which follow `workflow.GithookConditions` (`branch`, `changed`,
   `message`). An unknown key goes after the known ones, in its order in the source.
-- One blank line separates two entries of an event of `on` or of `githooks`, and two items of `forbidden_commands`, `format_on_edit`
-  and `run_on_stop`, above the comments of the later one, unless both are written on one line each, without comments
+- One blank line separates two entries of an event of `on` or of `githooks`, and two items of every shortcut of
+  `guardrails` that takes a list of maps (`forbidden_commands` and the lifecycle shortcuts), above the comments of the
+  later one, unless both are written on one line each, without comments
   above or below them (a comment at the end of the line is allowed), as `- pattern: "git clean -f*"`. The lists of texts (`protected_files`, `requirements`) and the lists inside an
   entry stay together, and the blank lines of the source are kept.
 - The items of a list never move, nor the keys a user names: the variables of `vars`, the globs of `risk.weights`

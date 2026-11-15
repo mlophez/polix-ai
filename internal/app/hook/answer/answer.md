@@ -172,8 +172,10 @@ The rules it follows, as before this use case:
    of `onlyPolixCommands` as written with no redirection but `2>&1` or `1>&2`, and a clause or a test, a command
    without words, fails closed; on a line the parser rejects, the
    text check of before); any other event only warns, so a stop is never blocked. Problems that may come from a
-   newer polix hint to run `polix update` (`hook.Evaluation.Running`, which the shell asks); a name of the old
-   vocabulary, reported with its new spelling, does not.
+   newer polix hint to run `polix update` (`hook.Evaluation.Running`, which the shell asks); a name this polix
+   knows (`workflow.Problem.Known`) does not: one of the old vocabulary, reported with its new spelling, or, in
+   `guardrails.check_on_save`, one of `on` that git can never give its hooks (`workflow.AgentOnlyBuiltins`,
+   `wait_agents`).
 3. Without polix.yaml, for an edit outside the repository, and for a `pre_commit` whose
    commits all happen in another repository (a `post_commit` of such commits skips its entries too) (`git -C ../other commit`), only the protections apply, and for that
    `pre_commit` the `snapshot` of rule 16, since the rest of its line may still change this repository: an edit of
@@ -185,13 +187,13 @@ The rules it follows, as before this use case:
    the cwd after its -C options joined without cleaning, so its real path and `hook.Step.Foreign` resolve a `..` after a
    link as git does. The hook skips only when every folder is outside the root, symlinks resolved, and inside
    another existing repository (`hook.Step.Foreign`, a linked worktree of this one excluded). Anything else is a commit
-   of this repository. The other shortcuts of `guardrails` (`protected_branches`, `format_on_edit`,
-   `run_on_stop`) reach the hook already expanded into entries (`workflow.Entry.From` names the shortcut),
+   of this repository. The other shortcuts of `guardrails` (`protected_branches`, `exec_on_start`,
+   `format_on_edit`, `format_on_save`, `check_on_stop`) reach the hook already expanded into entries (`workflow.Entry.From` names the shortcut),
    before those written in `on`.
 4. On `start`, the session context (`workflow.Workflow.SessionContext`) is always injected as one context first,
    so the contexts of the entries come after it: the template `templates/session_start.md.tmpl` rendered with the
    root of the working tree of the event (`hook.Evaluation.Root`, with forward slashes) and the folder of the AI
-   (`Workflow.PolixPath`): the rules on commits, the root and the four folders `rules`, `plans`, `reports` and
+   (`Workflow.PolixPath`): the rules on staging and commits, the root and the four folders `rules`, `plans`, `reports` and
    `tasks` below `path`, each with its purpose.
 5. The entries of the event run in order: one runs when every condition of `when` holds
    and, with `unless`, not every condition of `unless` holds, and carries out the verb of its action

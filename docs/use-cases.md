@@ -8,18 +8,21 @@ the design and its limits are in [polix.md](polix.md).
 
 The recipes come in the three sections of `polix.yaml`:
 
-- **`guardrails:`**, the basics every project wants from the first minute: files no agent writes, commands no
-  agent runs, branches nobody commits on, a formatter or a linter after each edit and the checks that must pass
-  before the agent ends its turn. Each is a short list, a shortcut.
+- **`guardrails:`**, the basics every project wants from the first minute. First the protections: files no agent
+  writes, branches nobody commits on and commands no agent runs. Then the lifecycle shortcuts, a command run at each
+  moment of the work: the setup of every session start, a formatter or a linter after each edit, a formatter before
+  the agent stages files, the checks that must pass before the agent ends its turn and the checks of every commit.
+  Each is a short list, a shortcut.
 - **`on:`**, where the team orchestrates its flow: the review subagents, the builder, the plan, the ticket. Each
   entry says on which event it applies, when, and what it does.
 - **`githooks:`**, the gates git itself runs on every commit, whoever makes it: a person, an IDE or an agent.
 
 `protected_files` and `forbidden_commands` are protections of the engine: they deny before every entry of `on:`,
-for every actor, without exceptions, also on the files git ignores. The other three shortcuts are only sugar: polix
-expands each into ordinary entries of `on:` when it reads the file, and `polix graph` draws them with the name of
-their shortcut. Each of their recipes shows its expansion too: write it in `on:` and tune it when the shortcut
-falls short. A polix older than the shortcuts rejects `guardrails:` as an unknown key, so set `requires` to the
+for every actor, without exceptions, also on the files git ignores. The other six shortcuts, `protected_branches`
+and the five lifecycle shortcuts, are only sugar: polix expands each into ordinary entries of `on:`, or of
+`githooks:` for `check_on_save`, when it reads the file, and `polix graph` draws those of `on:` with the name of
+their shortcut. Each of their recipes shows its expansion too: write it in `on:` or `githooks:` and tune it when
+the shortcut falls short. A polix older than the shortcuts rejects `guardrails:` as an unknown key, so set `requires` to the
 release you install.
 
 The entries of `on:` skip the edits outside the repository, but not those of files git ignores: a plan, a build
@@ -85,15 +88,15 @@ the entries of `on:` it expands into, for those who need more. A file can hold e
 version: 1
 guardrails:
   protected_files: [".env", ".env.*", "AGENTS.md", "CLAUDE.md"]
+  protected_branches: [main, "release/*"]
   forbidden_commands:
     - pattern: "rm -rf*"
     - pattern: "git push --force*"
       reason: "No force pushes: open a pull request or ask a person"
-  protected_branches: [main, "release/*"]
   format_on_edit:
     - run: "gofmt -w {path}"
       path: "*.go"
-  run_on_stop:
+  check_on_stop:
     - run: "golangci-lint run ./..."
       changed: "*.go"
     - run: "go test ./..."
@@ -347,7 +350,7 @@ Instead of asking the agent to run the tests, polix runs them when the agent tri
 
 ```yaml
 guardrails:
-  run_on_stop:
+  check_on_stop:
     - run: just test
       changed: ["*.go", "go.mod", "go.sum"]
 ```
@@ -358,7 +361,7 @@ without one:
 ```yaml
 on:
   stop:
-    # from guardrails.run_on_stop
+    # from guardrails.check_on_stop
     - when: { changed: ["*.go", "go.mod", "go.sum"] }
       action:
         run: just test
@@ -855,7 +858,7 @@ the tests do not run on code the documenter is about to change, and a failing ru
 reviewer is not asked for before the tests are green.
 
 The basics stay in `guardrails:`; the order of the phases is the flow of the team, so it goes in `on:`. The tests
-are an entry of `on:` and not of `run_on_stop`, since they wait for the documenter.
+are an entry of `on:` and not of `check_on_stop`, since they wait for the documenter.
 
 ```yaml
 version: 1

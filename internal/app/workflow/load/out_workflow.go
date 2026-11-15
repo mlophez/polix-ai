@@ -142,9 +142,10 @@ func (workflowYAML) names() *strings.Replacer {
 }
 
 // workflow builds the domain value of the file, with the line of each event of `on` (eventLines) and of githooks
-// (githookLines), the entries of githooks, the protected files and the forbidden commands of guardrails, and its
-// other shortcuts expanded into entries of on, with first in start the entry that installs the hooks of git when
-// githooks has entries (workflow.Workflow.ExpandGithooks), and returns it with the section guardrails as written.
+// (githookLines), the entries of githooks after those of guardrails.check_on_save (workflow.Guardrails.Githooks), the
+// protected files and the forbidden commands of guardrails, and its other shortcuts expanded into entries of on, with
+// first in start the entry that installs the hooks of git when githooks has entries, those of check_on_save included
+// (workflow.Workflow.ExpandGithooks), and returns it with the section guardrails as written.
 // The problems of each value are reported by Workflow.Valid, which walks them all together with those that depend on
 // the event and the vars, so the errors of the parts are not returned on their own; the problems of the values of
 // the shortcuts, which the workflow does not hold, are left to Guardrails.Problems.
@@ -166,7 +167,7 @@ func (y workflowYAML) workflow(eventLines, githookLines map[string]int) (workflo
 		On:                guardrails.Expand(y.entries(y.On)),
 		Rules:             rules,
 		EventLines:        eventLines,
-		Githooks:          y.entries(y.Githooks),
+		Githooks:          guardrails.Githooks(y.entries(y.Githooks)),
 		GithookLines:      githookLines,
 	}
 	// The entry of start that installs the hooks of git goes first, before those of the shortcuts.

@@ -158,6 +158,49 @@ func TestCommandPath(t *testing.T) {
 	}
 }
 
+// CUJ-07: polix config check on a polix.yaml with run_on_stop exits 1 with the unknown key of guardrails, its
+// shortcuts and the hint to use check_on_stop, and never with the hint of a newer polix.
+func TestCheckRenamed(t *testing.T) {
+	r := testenv.GitRepo(t)
+	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nguardrails:\n  run_on_stop:\n    - run: go test ./...\n")
+	want := `line 3: unknown key "run_on_stop" in guardrails (protected_files, protected_branches, forbidden_commands, ` +
+		`exec_on_start, format_on_edit, format_on_save, check_on_stop, check_on_save): use check_on_stop`
+	code, _, stderr := runCommand(r)
+	if code != 1 || !strings.Contains(stderr, want) || strings.Contains(stderr, "newer polix") {
+		t.Fatalf("%d %q, want %s", code, stderr, want)
+	}
+}
+
+// CUJ-04, AC-03: polix config check on a check_on_save item with a placeholder of an agent's event or with
+// wait_agents exits 1 with the problem at the item's line and never with the hint of a newer polix, since git can
+// never give those names to its hooks. A measure git can compute, there or in an entry written in githooks, and any
+// unknown placeholder of such an entry keep the hint, as before check_on_save.
+func TestCheckCheckOnSave(t *testing.T) {
+	r := testenv.GitRepo(t)
+	for src, want := range map[string]struct {
+		problem string
+		newer   bool
+	}{
+		"guardrails:\n  check_on_save:\n    - run: gofmt -l {path}\n": {"polix.yaml:4: guardrails.check_on_save: " +
+			"unknown placeholder {path} (githooks allow {branch}, or a variable of vars)", false},
+		"guardrails:\n  check_on_save:\n    - { run: go test, wait_agents: false }\n": {`polix.yaml:4: unknown key ` +
+			`"wait_agents" in guardrails.check_on_save (run, changed, message)`, false},
+		"guardrails:\n  check_on_save:\n    - { run: go test, message: \"{changed_lines} lines\" }\n": {"polix.yaml:4: " +
+			"guardrails.check_on_save: unknown placeholder {changed_lines} (githooks allow {branch}, or a variable of vars)",
+			true},
+		"githooks:\n  pre_commit:\n    - action: { run: \"echo {changed_files}\" }\n": {"polix.yaml:4: " +
+			"githooks.pre_commit: unknown placeholder {changed_files} (githooks allow {branch}, or a variable of vars)", true},
+		"githooks:\n  pre_commit:\n    - action: { run: \"gofmt -l {path}\" }\n": {"polix.yaml:4: githooks.pre_commit: " +
+			"unknown placeholder {path} (githooks allow {branch}, or a variable of vars)", true},
+	} {
+		testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\n"+src)
+		code, _, stderr := runCommand(r)
+		if code != 1 || !strings.Contains(stderr, want.problem) || strings.Contains(stderr, "newer polix") != want.newer {
+			t.Errorf("%s: %d %q, want %s, newer polix %v", src, code, stderr, want.problem, want.newer)
+		}
+	}
+}
+
 // With a file, polix config check validates that workflow file in place of polix.yaml, with the rules of the
 // repository, and names it in its problems and its summary; a missing file is a problem.
 func TestCommandFile(t *testing.T) {

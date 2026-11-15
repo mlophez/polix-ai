@@ -1204,11 +1204,11 @@ guardrails:
 	}
 }
 
-// AC8: run_on_stop blocks the end of the turn while a check fails, and runs a check only when its changed holds.
-func TestRunOnStop(t *testing.T) {
+// AC8: check_on_stop blocks the end of the turn while a check fails, and runs a check only when its changed holds.
+func TestCheckOnStop(t *testing.T) {
 	ev := eval(t, `version: 1
 guardrails:
-  run_on_stop:
+  check_on_stop:
     - run: "go test ./..."
       changed: "*.go"
       message: "Tests fail"
@@ -1229,6 +1229,74 @@ guardrails:
 	}
 	if out.Answer.Block {
 		t.Fatalf("blocked: %+v", out.Answer)
+	}
+}
+
+// CUJ-06, AC-05: exec_on_start runs its command on every start, also after it passed on the same content, and its
+// failure reaches the AI as context, its message first, and never blocks the start.
+func TestAnswerExecOnStart(t *testing.T) {
+	ev := eval(t, `version: 1
+guardrails:
+  exec_on_start:
+    - run: uv sync --locked --quiet
+      message: "uv could not install the test dependencies:"
+`, workflow.Start)
+	_, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h"}})
+	want := [][]string{{"uv", "sync", "--locked", "--quiet"}}
+	if got := runs(steps); !slices.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("first start: %q", got)
+	}
+	passed := logged(t, state.State{}, steps)
+	if _, steps = walk(t, ev, facts{branch: "main", hashes: []string{"h"}, state: passed}); !slices.EqualFunc(runs(steps),
+		want, slices.Equal) {
+		t.Fatalf("a second start on the same content runs it again: %q", runs(steps))
+	}
+	out, _ := walk(t, ev, facts{branch: "main", hashes: []string{"h"}, runErr: errors.New("exit status 1")})
+	contexts := out.Answer.Contexts
+	if len(contexts) > 0 && contexts[0] == ev.Workflow.SessionContext(ev.Root) {
+		contexts = contexts[1:] // the start context always comes first on start
+	}
+	if out.Answer.Block || len(contexts) != 1 || !strings.HasPrefix(contexts[0],
+		"uv could not install the test dependencies:\n\nuv sync --locked --quiet failed: exit status 1") {
+		t.Fatalf("a failure informs and never blocks: %+v", out.Answer)
+	}
+}
+
+// CUJ-05, AC-04: format_on_save runs its command right before a command line of the agent that stages files, with
+// git add or git stage, also next to a git commit, when an uncommitted file matches its changed; a failure blocks the
+// line with the message, and git status or a change outside its changed runs nothing.
+func TestAnswerFormatOnSave(t *testing.T) {
+	ev := eval(t, `version: 1
+guardrails:
+  format_on_save:
+    - run: npx eslint --fix
+      changed: "*.ts"
+      message: "ESLint left problems:"
+`, workflow.PreCommand)
+	eslint := [][]string{{"npx", "eslint", "--fix"}}
+	for _, c := range []struct {
+		line    string
+		changed []string
+		want    [][]string
+	}{
+		{"git add app.ts", []string{"app.ts"}, eslint},
+		{"git stage app.ts", []string{"app.ts"}, eslint},
+		{`git add . && git commit -m "x"`, []string{"app.ts"}, eslint},
+		{"git -C . add app.ts", []string{"app.ts"}, eslint},
+		{"git status", []string{"app.ts"}, nil},
+		{"git add README.md", []string{"README.md"}, nil},
+	} {
+		e := with(t, ev, func(e *agent.Event) { e.Command = c.line })
+		out, steps := walk(t, e, facts{branch: "main", hashes: []string{"h"}, changed: c.changed})
+		if got := runs(steps); !slices.EqualFunc(got, c.want, slices.Equal) || out.Answer.Block {
+			t.Errorf("%s: ran %q, answer %+v", c.line, got, out.Answer)
+		}
+		out, _ = walk(t, e, facts{branch: "main", hashes: []string{"h"}, changed: c.changed,
+			runErr: errors.New("exit status 1")})
+		if blocks := c.want != nil; out.Answer.Block != blocks || blocks && (len(out.Answer.Reasons) != 1 ||
+			!strings.HasPrefix(out.Answer.Reasons[0], "ESLint left problems:\n\nnpx eslint --fix failed: exit status 1")) {
+			t.Errorf("%s: a failure blocks %v: %+v", c.line, blocks, out.Answer)
+		}
 	}
 }
 

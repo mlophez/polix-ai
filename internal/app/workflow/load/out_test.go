@@ -156,14 +156,15 @@ guardrails:
 	}
 }
 
-// guardrails is a map of the five shortcuts: any other key or value stops the parse, and an empty one expands into
+// guardrails is a map of its shortcuts: any other key or value stops the parse, and an empty one expands into
 // nothing.
 func TestDecodeGuardrails(t *testing.T) {
 	var invalid workflow.InvalidError
-	five := "protected_files, forbidden_commands, protected_branches, format_on_edit, run_on_stop"
+	shortcuts := "protected_files, protected_branches, forbidden_commands, exec_on_start, format_on_edit, " +
+		"format_on_save, check_on_stop, check_on_save"
 	for src, want := range map[string]string{
-		"version: 1\nguardrails:\n  protected_file: [.env]\n": `polix.yaml: line 3: unknown key "protected_file" in guardrails (` + five + ")",
-		"version: 1\nguardrails: [.env]\n":                    "polix.yaml: line 2: guardrails must be a map with " + five,
+		"version: 1\nguardrails:\n  protected_file: [.env]\n": `polix.yaml: line 3: unknown key "protected_file" in guardrails (` + shortcuts + ")",
+		"version: 1\nguardrails: [.env]\n":                    "polix.yaml: line 2: guardrails must be a map with " + shortcuts,
 	} {
 		_, err := parse(t, src, "dev")
 		if err == nil || errors.As(err, &invalid) || err.Error() != want {

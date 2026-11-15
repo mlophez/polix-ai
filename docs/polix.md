@@ -18,13 +18,15 @@ repository pin the oldest polix that knows every option it uses.
   `description`, `scope`, `deterministic` and `check` of each rule; the rest of the format belongs to the skills
   that write and use the rules. `retired.yaml` holds retired rules, which never apply.
 - `polix.yaml`: what happens on each event of a session, and on every commit: what is blocked, what runs and what
-  is injected. It has three sections: `guardrails:`, the basics every project wants from the first minute (files no
-  agent writes, commands no agent runs, branches nobody commits on, a formatter after each edit, the checks before the
-  agent ends its turn), each a short list; and `on:`, where the team orchestrates its flow (the review subagents,
-  the builder, the plan, the ticket) as entries per event. The files and the commands of `guardrails:` are
-  protections of the engine, applied before the entries; its other shortcuts expand into entries of `on:` (see
-  [Guardrails](#guardrails)); and `githooks:`, the gates git itself runs on every commit, whoever makes it, apart
-  from the events of the AI (see [The gates of git: githooks](#the-gates-of-git-githooks)).
+  is injected. It has three sections: `guardrails:`, the basics every project wants from the first minute, each a
+  short list: first the protections (files no agent writes, branches nobody commits on, commands no agent runs), then
+  the lifecycle shortcuts, the basic runs of each moment of the work (a command on every session start, a formatter
+  after each edit and before staging, the checks before the agent ends its turn and on every commit); and `on:`,
+  where the team orchestrates its flow (the review subagents, the builder, the plan, the ticket) as entries per
+  event. The files and the commands of `guardrails:` are protections of the engine, applied before the entries; its
+  other shortcuts expand into entries of `on:` or of `githooks:` (see [Guardrails](#guardrails)); and `githooks:`,
+  the gates git itself runs on every commit, whoever makes it, apart from the events of the AI (see
+  [The gates of git: githooks](#the-gates-of-git-githooks)).
 - `polix`: the same binary in every repository; it reads the three and answers the hooks.
 
 The human writes the three files; polix only enforces them.
@@ -447,7 +449,9 @@ repaired after.
   file is fixed. It never blocks a stop, which
   would trap the agent in a loop. When a problem names something unknown, the reason adds that it may be an
   option of a newer polix, to update instead of removing it; a name of the old vocabulary is reported with its
-  new spelling instead (see [Names of the old vocabulary](#names-of-the-old-vocabulary)).
+  new spelling instead (see [Names of the old vocabulary](#names-of-the-old-vocabulary)), and a name of `on` that
+  git can never give its hooks, in `check_on_save` (`{path}`, `{command}`, `{commit}`, `{subject}` or
+  `wait_agents`), gets no such hint either; an entry written in `githooks` keeps it.
 - A diff that cannot be measured makes `changed_lines`, `changed_files` and `risk_score` hold (fail closed), with
   one warning per call that names the cause.
 - A workflow that `requires` a newer polix than the one running is not broken but ahead: it blocks the same way,
@@ -464,21 +468,29 @@ a test validates it. [reference.md](reference.md) describes every key, event, co
 ```yaml
 version: 1
 path: ai              # the folder of the AI: rules/, plans/, reports/ and tasks/ (optional, default ai)
-requires: 0.3.0       # oldest polix that knows every option of the file (optional, since 0.1.0)
+requires: 0.3.0       # oldest polix the file needs (optional); the lifecycle shortcuts need a newer one
 base_branch: [main, dev]  # branch, or candidates, a change merges into, for rules check --changed (default main)
 max_stop_retries: 3   # loop guard of every block on stop and subagent_stop, per entry (default 3)
 requirements: [go, golangci-lint]  # programs the repository needs on the PATH: told to the AI, never blocking
 guardrails:           # the basics every project wants (optional)
   protected_files: [".env"]                       # path globs no agent writes, the main session included
+  protected_branches: [main]                      # branches nobody commits on
   forbidden_commands:                             # commands no agent runs, each command of the line as written
     - pattern: "git push*--force*"
       reason: "No force pushes"
-  protected_branches: [main]                      # branches nobody commits on
+  exec_on_start:                                  # runs on every session start; a failure informs
+    - run: "uv sync --locked"
   format_on_edit:                                 # runs on each edited file of its path; a failure informs
     - run: "gofmt -w {path}"
       path: "*.go"
-  run_on_stop:                                    # must pass before the agent ends its turn
+  format_on_save:                                 # runs right before the agent stages files; a failure blocks
+    - run: "npx eslint --fix"
+      changed: "*.ts"
+  check_on_stop:                                  # must pass before the agent ends its turn
     - run: "go test ./..."   # waits for running subagents unless wait_agents: false
+      changed: "*.go"
+  check_on_save:                                  # must pass on every commit, whoever makes it (githooks)
+    - run: "golangci-lint run ./..."
       changed: "*.go"
 rules:
   run:                # how a check of a rule runs, by the glob of its file (optional)
@@ -557,40 +569,72 @@ sets `requires` to a release that knows it. `polix graph` does not draw it, sinc
 
 ### Guardrails
 
-`guardrails` holds the basics as five shortcuts, each with exactly one form: `protected_files` and
-`protected_branches` take a list of strings, and `forbidden_commands`, `format_on_edit` and `run_on_stop` a
-list of maps.
+`guardrails` holds the basics as eight shortcuts, each with exactly one form: `protected_files` and
+`protected_branches` take a list of strings, and the others a list of maps. They come in two groups, which
+`polix config fmt` writes in this order:
 
-Two of them are protections of the engine, which the workflow holds as lists (`workflow.Workflow.ProtectedFiles`
-and `ForbiddenCommands`) and the hook applies before every entry, also on the files git ignores, to every actor and
-without exceptions (see [Protections](#protections)):
+- The protections, what no actor may do: `protected_files`, `protected_branches` and `forbidden_commands`.
+- The lifecycle shortcuts, each a command run at one moment of the work, in the order the work reaches them:
+  `exec_on_start`, `format_on_edit`, `format_on_save`, `check_on_stop` and `check_on_save`. The verb says what the
+  command does, `exec_` prepares, `format_` changes files and `check_` gates; the suffix says when.
+
+`run_on_stop`, the old name of `check_on_stop`, is an unknown key of `guardrails` reported with the hint
+`use check_on_stop`, never with the hint of a newer polix.
+
+`protected_files` and `forbidden_commands` are protections of the engine, which the workflow holds as lists
+(`workflow.Workflow.ProtectedFiles` and `ForbiddenCommands`) and the hook applies before every entry, also on the
+files git ignores, to every actor and without exceptions (see [Protections](#protections)):
 
 - `protected_files: [<glob>, ...]`: no actor edits a matching path nor runs a command that writes one.
 - `forbidden_commands`, a list of items with `pattern` and `reason`: no actor runs a line in which a command matches a
   pattern; the reason is the `reason` of the first matching item, or `This command is forbidden by polix.yaml: a person
   must run it.`, followed by the line.
 
-The other three are only sugar: the loading of polix.yaml (`internal/app/workflow/load`, through
-`workflow.Guardrails.Expand`) expands each one into entries of `on`, so the hook,
-`polix graph`, the repeat rules and the loop guard see them as any entry.
+The other six are only sugar: the loading of polix.yaml (`internal/app/workflow/load`, through
+`workflow.Guardrails.Expand` and `workflow.Guardrails.Githooks`) expands each one into entries of `on`, or of
+`githooks` for `check_on_save`, so the hook, `polix graph`, the repeat rules and the loop guard see them as any
+entry.
 
 - `protected_branches: [<name>, ...]`: a regular entry on `pre_commit` with `branch`, the anchored regular
   expression of the names (`*` matches any text), and the message
   `{branch} is protected in polix.yaml: create a branch for this change and commit there.`
+- `exec_on_start`, a list of items with `run` and `message`: a regular entry on `start` per item, without `when`,
+  that runs its command with `always`, so it runs on every start of a session (startup, resume, clear and
+  compaction), also on a content it passed on. Its entries come after the entry that installs the hooks of git and
+  before the entries of `start` written in `on`; a failure never blocks the start: its message and output reach the
+  AI as context.
 - `format_on_edit`, a list of items with `run`, `path` and `message`: a regular entry on `post_edit` per item that runs
   its command, with the condition `path` when it has one (the edited file, not `changed`).
-- `run_on_stop`, a list of items with `run`, `changed`, `message` and `wait_agents`: a regular entry on `stop` per item
+- `format_on_save`, a list of items with `run`, `changed` and `message`: a regular entry on `pre_command` per item
+  that runs its command, with the condition `command: ["git add*", "git stage*"]` and `changed` when it has one. So it
+  runs right before a command line of the agent that stages files, also one with a `git commit` after the `git add`,
+  when a file not committed yet matches; a failure blocks the line, and a run that passed is not run again on the same
+  content. `git commit -a`, `-am`, `--all` and paths after `git commit` stage without `git add`: no item runs on them.
+- `check_on_stop`, a list of items with `run`, `changed`, `message` and `wait_agents`: a regular entry on `stop` per item
   that runs its command, with the condition `changed` when it has one. An item waits for the subagents still running by
   default: its entry also has `agents_are_running: false`, so while a subagent of the session runs, in the background or
   interrupted without its end reaching polix, its check is skipped, and it runs on the next `stop` after the subagents
   end. When at least one item waits, one more entry goes last on `stop`, after the entries written in `on`: a `notify`
   with `always`, under `agents_are_running: true` and a `changed` with the globs of every item that waits (none when one
-  of them has none), so every stop that holds a check back tells the user once `run_on_stop waits for the subagents
+  of them has none), so every stop that holds a check back tells the user once `check_on_stop waits for the subagents
   still running: its checks run on the next stop after they end.` `wait_agents: false` keeps an item running whether
   subagents run or not, as before; any other value than `true` or `false` is a problem at the line of the item.
+- `check_on_save`, a list of items with `run`, `changed` and `message`: a regular entry on `githooks.pre_commit` per
+  item, before the entries written there, that runs its command, with the condition `changed` of `githooks` (the files
+  staged for the commit) when it has one. git runs it on every commit, whoever makes it, a person too (see
+  [The gates of git: githooks](#the-gates-of-git-githooks)): a failure aborts the commit with the message and the line
+  `<command> failed: <error>`, and the first failure ends the evaluation. Its strings take only the placeholders of
+  `githooks.pre_commit` (`{branch}` and the variables of `vars`), it has no `wait_agents` since git does not know the
+  subagents, and its problems start with `guardrails.check_on_save` at the line of the item
+  (`workflow.Entry.From`); a placeholder git can never give its hooks (`{path}` and `{command}`, of an event of an
+  agent, `{commit}` and `{subject}`, of a commit already made) or `wait_agents` there never suggests a newer polix
+  (`workflow.Problem.Known`), while a measure git can compute (`{changed_lines}`, `{changed_files}`,
+  `{risk_score}`) may. An item makes every session start install the hooks of git, as an entry of `githooks`
+  does.
 
-In each event the entries of `protected_branches`, `format_on_edit` and `run_on_stop` come first, then the
-entries written in `on`, each group in the order of the file, the notify of `run_on_stop` aside. Each expanded
+In each event the entries of `protected_branches`, `exec_on_start`, `format_on_edit`, `format_on_save` and
+`check_on_stop` come first, then the entries written in `on`, each group in the order of the file, the notify of
+`check_on_stop` aside; on `githooks.pre_commit`, those of `check_on_save` come before the entries written there. Each expanded
 entry takes the line of its item, so the messages of `polix config check`, the keys of the repeat rules and the loop guard tell them apart, and the
 path of its shortcut (`workflow.Entry.From`), which `polix graph` names; `polix graph` draws `protected_files` and
 `forbidden_commands` in a subgraph `guardrails` before the events. `polix config check` reports a value in another
@@ -639,8 +683,15 @@ when it fails, `GOARCH-4` (`check: tests/architecture/goarch04_test.go`) runs al
 `go test ./tests/architecture -run ^Test(GOARCH4)$`.
 
 The start context is the text polix injects into the agent by itself on every `start`, with no switch to turn it
-off. It asks to run each commit as a `git commit` command of its own, not chained with `&&`, `;` or `|` nor wrapped
-in `sh -c`, so `pre_commit` sees it; then it names the root of the working tree, with forward slashes on every
+off. Its rules on git allow every form polix recognises and name only what it misses, so the gates of staging and
+committing apply: stage files with `git add <paths>` or `git stage`, never `git commit -a`, `-am`, `--all` nor
+paths after `git commit`, which stage without a `git add` the entries of `git add*` could see; run `git commit` by
+its name, never through a git alias, a variable, a script or a wrapper such as `timeout`, which polix does not
+recognise as a commit; end the line with the `git commit`, or follow it only with `&&`, since after `;` or `|` polix
+cannot tell whether it succeeded and gives no `post_commit`; and pass the message with `-m`, `-F` or a heredoc inside
+`-m`, so git never opens an editor. A commit chained with `&&` or wrapped in `bash -c` is recognised, and the rules
+allow it. `TestStartRulesForms` of `internal/app/hook/answer` pins every form against the recognition of commands.
+Then it names the root of the working tree, with forward slashes on every
 system, and the four folders below `path` (`rules/`, `plans/`, `reports/` and `tasks/`), each with its purpose, so
 the agent and the skills use them instead of assuming `ai/`. The text is the template
 `templates/session_start.md.tmpl`, embedded in the binary (`text/template`, with the root and `path`), rendered as
@@ -922,7 +973,7 @@ the decisions included, also carries `agent_id`, the id the agent gives that sub
   that type; polix observes it
   by itself, so no entry on `subagent_stop` is needed. Without a content hash it is written for any subagent when
   the workflow has an `inject` that acts once, so the inject reaches its next run, or uses `agents_are_running`
-  (`run_on_stop` included, whose items wait by default), so the subagent stops counting as running; a subagent the
+  (`check_on_stop` included, whose items wait by default), so the subagent stops counting as running; a subagent the
   loop guard let through gets this line too, never one with the hash. A refused `subagent_stop` writes nothing: the
   subagent goes on.
 - `passed`: a `run` of polix passed, with or without `always`, on a content that did not change while it ran; the
@@ -1040,7 +1091,8 @@ or `unless`), `run` and `context` at the level of the entry (now `run` and `inje
 alone), also inside an old `if`, all in the same pass. The entries of an old event are checked as those of its new name.
 Three top-level keys were renamed too: `protected` is now `guardrails.protected_files`, `base` is now `base_branch`, and
 the key of the loop guard is now `max_stop_retries`; each old one is reported as an unknown key with its new spelling,
-without the hint of a newer polix. Lines of the kinds `fact`, `injected` and `stop_block` written by those builds stay
+without the hint of a newer polix. So is the shortcut `run_on_stop` of `guardrails`, now `check_on_stop`
+(`unknown key "run_on_stop" in guardrails (<the shortcuts>): use check_on_stop`). Lines of the kinds `fact`, `injected` and `stop_block` written by those builds stay
 in the log, are ignored by every condition and are shown by `polix log` with their kind (and the name of a `fact`):
 after the upgrade, the reminders, the injects and the loop guard start from zero.
 
@@ -1057,8 +1109,8 @@ For every event the [protections](#protections) come first, before any entry is 
 state, then, with a valid `polix.yaml`, `protected_files` and `forbidden_commands`, also on the edits of files git
 ignores; the first that denies ends the evaluation. Then, unless the edit or commit is outside the repository, the
 entries of the event run one after the other, in the order of the file, never in parallel. The shortcuts
-`protected_branches`, `format_on_edit` and `run_on_stop` are already entries by then, before the entries
-written in `on` (see [Guardrails](#guardrails)). An entry whose `when` does not hold, or whose `unless` holds, is
+`protected_branches` and the lifecycle shortcuts but `check_on_save`, which expands into `githooks`, are already
+entries by then, before the entries written in `on` (see [Guardrails](#guardrails)). An entry whose `when` does not hold, or whose `unless` holds, is
 skipped; one that applies carries out the verb of its action, unless the repeat rules of [How often each verb acts](#how-often-each-verb-acts)
 skip it. A `run` waits for its command to finish before the next entry starts, so a `stop` takes the sum of
 its runs, all of them bounded by the budget of 10 minutes of the hook call (see
@@ -1089,7 +1141,7 @@ What a block does depends on the event:
   is rejected by `polix config check`, and a failing `run` reaches the agent, or the subagent that starts, as
   context, logged as an `inform` decision.
 
-The `stop` of this repository shows it. Its `guardrails.run_on_stop` has two items, golangci-lint over the
+The `stop` of this repository shows it. Its `guardrails.check_on_stop` has two items, golangci-lint over the
 module and `go test ./...`, which expand into two plain `run` entries of `stop`, each with a `when` on the files it
 depends on. When the agent ends a turn after changing a Go file:
 
@@ -1176,10 +1228,15 @@ fails, when git does not list them. A hook disabled with `hook.polix-pre-commit.
 `git hook list` names as `disabled<TAB>polix-pre-commit`, stays disabled: install never touches `enabled`, and both install and `polix doctor` warn that it is disabled in the
 git configuration, without blaming the version of git.
 
+The checks that only run a command on every commit are written as items of `guardrails.check_on_save` (see
+[Guardrails](#guardrails)): each expands into an entry of `githooks.pre_commit` with `run`, before the entries written
+there, and is checked with the vocabulary of `githooks`, its problems named `guardrails.check_on_save`.
+
 Installed on every session start. `.git/config` is not committed, so declaring `githooks` is enough for each person
-who works on the repository with the AI to have the hooks: a `polix.yaml` with at least one entry in `githooks`
-expands, with nothing more to write, into one more entry first in `start`, before the shortcuts and the entries
-written there:
+who works on the repository with the AI to have the hooks: a `polix.yaml` with at least one entry in `githooks`, or
+an item of `guardrails.check_on_save`, expands, with nothing more to write, into one more entry first in `start`,
+before the shortcuts and the entries written there, at the line of the first event of `githooks` with entries, or of
+the first item of `check_on_save` when the file has no `githooks`:
 
 ```yaml
 - action:
@@ -1197,7 +1254,7 @@ at the start of the session, so it knows the gates of git do not apply. A hook a
 (`enabled=false`) is no failure: the run passes and the hook stays disabled; `polix doctor` warns about it.
 `polix graph` draws it in `start` as
 `from githooks`, `polix config fmt` never writes it, and there is no key to turn it off: removing the entries of
-`githooks` does. A person who never opens a session of the AI in the repository gets the hooks with `polix install`.
+`githooks` and the items of `check_on_save` does. A person who never opens a session of the AI in the repository gets the hooks with `polix install`.
 
 The events. `pre_commit` runs before the commit is made, and `commit_msg` once its message is written; git runs no
 other event of `githooks`. `polix githook <pre-commit|commit-msg> [file]` loads `polix.yaml` and evaluates the
@@ -1393,7 +1450,10 @@ also prints that Codex support is not implemented in this release and the setup 
     the run and is the only one that edits the plan: the builder builds the tasks and reports the `status` and
     `evidence` of each, `build` writes them in the plan, then the verifier and the reviewer check them; when they leave something to fix, it adds an iteration (`ITER-NN`) to `iterations` with the findings to fix
     (`FND-NN`) and launches the builder on it; it sets at the root of the plan its `start`, `end`, `duration`
-    and the `tokens` the subagents report; a run that did not end resumes where its last iteration stopped. A
+    and the `tokens` the subagents report; it launches the builder, the verifier and the reviewer each with the `model`
+    and `effort` of its item of `agents` of the plan, which `plan` proposes from the risk and the user may change,
+    `inherit` or a missing item leaving it to the frontmatter of the agent; a run that did not end resumes
+    where its last iteration stopped. A
     plan in Markdown is still built in its own format, under `### Iteration N` of `## Iterations`.
   - Codex, only with `--agent codex` (not implemented): `codex plugin marketplace add ~/.polix/marketplace` and
     `[plugins."polix@polix"] enabled = true` in `~/.codex/config.toml`, the rest of the file kept. Codex documents
@@ -1496,8 +1556,11 @@ may outlive the budget, since polix does not kill the whole process tree.
   commit run through a variable, an alias or a script that is not literal (`$GIT commit`, `bash -c "$CMD"`) is not
   seen, nor one behind a wrapper polix does not know or a wrapper option that takes a value (`timeout 60 git
   commit`, `nice -n 10 git commit`, `sudo -u x git commit`), which the former regular expression caught; a line the parser rejects falls back to a regular expression, for which the text of a commit inside
-  quotes counts too. The start context
-  asks the agent to run each commit on its own, so it stays recognisable.
+  quotes counts too. The start context asks the agent to run `git commit` by its name, never through an alias, a
+  variable, a script or a wrapper such as `timeout`, so it stays recognisable. A `git commit -a`, `-am`, `--all` or
+  with paths after it stages files without a `git add`, so no entry on `git add*` (nor `format_on_save`) sees that
+  staging: the start context asks the agent to stage with `git add` or `git stage`, and `check_on_save` still checks
+  the commit.
   A commit in another repository skips the entries of `pre_commit` only in the plain forms of the allowlist (see
   [How a hook call is answered](#how-a-hook-call-is-answered)); `cd <folder> && git commit`, `git -C ~/x commit`,
   `git -c user.name=x -C ../x commit` or a line with any other command still counts as a commit of this repository
@@ -1560,7 +1623,7 @@ may outlive the budget, since polix does not kill the whole process tree.
   `agent_id` of the subagent; this pairing is still to be checked against a running Claude Code, and a mismatch would
   end live subagents in the log and let the one that stops count itself.
 - Lost lines of the log (parallel subagents appending at once) can leave a subagent open, holding back
-  `run_on_stop` until the next reconciliation; `wait_agents: false` keeps an item running regardless.
+  `check_on_stop` until the next reconciliation; `wait_agents: false` keeps an item running regardless.
 - The hooks of git need git 2.54 or later: an older git ignores the keys of its configuration without error, so a
   team may believe its commits are gated; `polix install` and `polix doctor` warn about it.
 - git runs the hooks of git with plain `polix`: a client without `polix` on its `PATH` (some GUI clients) aborts

@@ -42,6 +42,11 @@ var Measures = []string{"changed_lines", "changed_files", "risk_score"}
 var Builtins = []string{"path", "command", "branch", "changed_lines", "changed_files", "risk_score", "commit",
 	"subject"}
 
+// AgentOnlyBuiltins are the placeholders of Builtins that only an event of an agent can give, never a hook of git:
+// path and command, of the edit or the command line of an agent, and commit and subject, of a commit already made
+// (post_commit). The others, the branch and the measures of the diff, git can compute.
+var AgentOnlyBuiltins = []string{"path", "command", "commit", "subject"}
+
 // conditionEvents limits the conditions that only make sense on some events; the rest hold on any event.
 var conditionEvents = map[string][]string{
 	"path":    {PreEdit, PostEdit},

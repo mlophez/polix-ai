@@ -193,15 +193,16 @@ func (e Evaluation) Running(running string) Evaluation {
 }
 
 // mayNeedNewer reports whether the problems of the workflow may come from a newer polix: it requires one, it names
-// something this one does not know (not a name of the old vocabulary, which comes with its new spelling), or it has
-// a later version of the schema.
+// something this one does not know (not a name it knows, workflow.Problem.Known: one of the old vocabulary, which
+// comes with its new spelling, or one of on that git can never give its hooks, in check_on_save), or it has a later
+// version of the schema.
 func (e Evaluation) mayNeedNewer() bool {
 	problems := e.Invalid.Error()
 	if strings.Contains(problems, "requires polix") || newerVersion.MatchString(problems) {
 		return true
 	}
 	for line := range strings.SplitSeq(problems, "\n") {
-		if strings.Contains(line, "unknown") && !workflow.Problem(line).Renamed() {
+		if strings.Contains(line, "unknown") && !workflow.Problem(line).Known() {
 			return true
 		}
 	}

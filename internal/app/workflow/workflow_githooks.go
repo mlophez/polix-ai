@@ -20,18 +20,24 @@ const githooksInstallMessage = "The hooks of git of githooks are not installed, 
 // repository, without asking, and exiting 1 when git does not run them.
 var githooksInstallCommand = []string{"polix", "install", "--githooks"}
 
-// ExpandGithooks returns a copy of w whose On has, when some event of githooks has entries, one more entry first in
-// start, before those written in on and those of the shortcuts: a run of polix install --githooks with always, so
-// every session start puts back the hooks of git, with the fixed message githooksInstallMessage, from githooks and
-// at the line of the first event of githooks with entries. Without entries in githooks w is returned as it is.
-// polix config fmt formats the file as written, so it never writes this entry.
+// ExpandGithooks returns a copy of w whose On has, when some event of githooks has entries, those of
+// guardrails.check_on_save included, one more entry first in start, before those written in on and those of the
+// shortcuts: a run of polix install --githooks with always, so every session start puts back the hooks of git, with
+// the fixed message githooksInstallMessage, from githooks and at the first line among the events of githooks with
+// entries, an event taking the line of its first entry when the file does not write it (only check_on_save fills it).
+// Without entries in githooks w is returned as it is. polix config fmt formats the file as written, so it never writes
+// this entry.
 func (w Workflow) ExpandGithooks() Workflow {
 	line, used := 0, false
 	for ev, entries := range w.Githooks {
 		if len(entries) == 0 {
 			continue
 		}
-		if l := w.GithookLines[ev]; !used || l < line {
+		l := w.GithookLines[ev]
+		if l == 0 {
+			l = entries[0].Line
+		}
+		if !used || l < line {
 			line = l
 		}
 		used = true
@@ -94,8 +100,10 @@ func (v *validator) githookVars(w Workflow) {
 }
 
 // githookEntry reports the problems of the entry e of the githooks event ev: its unknown keys, its conditions and
-// its action.
+// its action. Each starts with githooks.<ev>, or with the origin of an entry a shortcut expands into
+// (guardrails.check_on_save), which names where the file wrote it.
 func (v *validator) githookEntry(ev string, e Entry) {
+	first := len(v.problems)
 	for _, k := range e.Keys {
 		if !slices.Contains(EntryKeys, k) {
 			v.add(e.Line, "githooks.%s: unknown key %q in an entry (%s)", ev, k, strings.Join(EntryKeys, ", "))
@@ -104,6 +112,12 @@ func (v *validator) githookEntry(ev string, e Entry) {
 	v.githookCond(ev, e.When, e.Line)
 	v.githookCond(ev, e.Unless, e.Line)
 	v.githookAction(ev, e.Line, e.Action)
+	if e.From == "" {
+		return
+	}
+	for i := first; i < len(v.problems); i++ {
+		v.problems[i] = strings.Replace(v.problems[i], ": githooks."+ev+": ", ": "+e.From+": ", 1)
+	}
 }
 
 // githookCond reports the problems of the conditions c of the githooks event ev, in the order of their names: a

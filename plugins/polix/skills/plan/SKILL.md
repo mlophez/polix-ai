@@ -183,6 +183,7 @@ Fix each gap with a targeted edit of the plan file at its path, never by writing
 
 - Show, in the language of the session, the final result the plan builds, with the path of the plan.
   It is the `summary` of `overview`, the `interface` and the journeys, `scope` and the titles of the criteria.
+  Then the model and effort of each agent of `agents`, which the user may change.
 - Ask the user to approve it, with `AskUserQuestion` or in free text: approve, or adjust with comments.
 - Approved: set `status: approved`, and nothing else.
 - Adjust: go back to Step 5 or 6 with the comments, keeping `status: planned`, for the keys they touch.
@@ -475,6 +476,14 @@ The top-level keys, beyond what their placeholders say:
   The build moves it to `in-progress`, then to `done` or `blocked`.
 - `risk`: `high` when a task touches an item of `High risk`.
   `medium` when one changes an internal contract or code that several callers share; `low` otherwise.
+- `agents`: one item per subagent of the build, `polix:builder`, `polix:verifier` and `polix:reviewer`, in that order.
+  Each has its `name` and the `model` and `effort` the build launches it with.
+  Propose them from `risk`, and show them at Step 8 so the user may change them:
+  - `low`: builder `sonnet` and `high`, verifier `sonnet` and `medium`, reviewer `sonnet` and `high`.
+  - `medium`: builder `opus` and `medium`, verifier `sonnet` and `high`, reviewer `opus` and `high`.
+  - `high`: builder `opus` and `medium`, verifier `sonnet` and `xhigh`, reviewer `fable` and `medium`.
+    A value the user gives wins, and `inherit` leaves it to the frontmatter of the agent.
+    Each name appears once, and only these three.
 - `reference`: the ticket, issue or link of the request or the conversation, or `none`; never invent one.
 - `branch`: the branch the plan is written on, from `git branch --show-current`; the build switches to it first.
   On a detached `HEAD`, ask the user the branch to build on, and never create it.
@@ -516,6 +525,8 @@ Rewrite in place a task `pending`, `departed` or `blocked`, and set it `pending`
 Add a new task after the last one; never renumber the tasks, since `iterations` names them.
 With a task not `done`, set `status` back to `planned` until the user approves the adjustment (see Step 8).
 Recompute `risk` and `risk_reason`, never `created`, `branch`, `iterations`, `start`, `end`, `duration` nor `tokens`.
+When `risk` changes, propose `agents` again from it; otherwise keep it, since the user may have chosen it.
+A plan without `agents` gets it proposed from `risk`.
 Add the new `artifacts`.
 Keep `iterations` always as it is.
 

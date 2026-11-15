@@ -60,8 +60,9 @@ The domain decides the rest:
 
 - `version.Cache.ShouldCheck`: the hook of a release build asks once every `version.CheckEvery` (an hour), at once
   when the cache knows a newer release or the workflow is rejected in a way a newer polix may fix
-  (`version.Problems.NeedsNewer`: it requires a newer polix, names something unknown or has a later version of the
-  schema), and never within `version.RetryAfter` (15 minutes) of a failed update; a development build never asks.
+  (`version.Problems.NeedsNewer`: it requires a newer polix, names something unknown, not a name this polix knows
+  as `workflow.Problem.Known` says, or has a later version of the schema), and never within `version.RetryAfter`
+  (15 minutes) of a failed update; a development build never asks.
 - `version.Cache.Saw`: a latest release seen counts as a check only when this binary is that release or a later
   one, so a check that leaves it behind (`--check`, a failed download) is repeated.
 - `version.Cache.Fail`: the time of a failed update of the hook.

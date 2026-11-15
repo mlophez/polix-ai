@@ -5,13 +5,18 @@ import (
 	"testing"
 )
 
-// cuj01 is the start context of CUJ-01: the root /work/repo and the folders below docs/ai.
-const cuj01 = `This project is managed by polix.
+// lit13 are the rules on staging and committing that open the start context (CUJ-12, LIT-13).
+const lit13 = `This project is managed by polix.
 Follow these rules:
-- Run each git commit as a command of its own: never chain it with &&, ; or |, nor wrap it in sh -c or bash -c.
-- Pass the commit message with -m, -F or a heredoc inside -m.
-- Otherwise polix does not recognise the commit and skips its pre_commit gates.
-- The root of the project is /work/repo.
+- Stage files with git add <paths> or git stage: never git commit -a, -am, --all or paths after git commit.
+- Run git commit by its name: never through a git alias, a variable, a script or a wrapper such as timeout.
+- End the line with the git commit, or follow it only with &&: after ; or | polix cannot tell whether it succeeded.
+- Pass the commit message with -m, -F or a heredoc inside -m, so git never opens an editor.
+- Otherwise polix misses the staging or the commit and skips its gates.
+`
+
+// cuj01 is the start context of CUJ-01: the root /work/repo and the folders below docs/ai.
+const cuj01 = lit13 + `- The root of the project is /work/repo.
 - Use these folders, below the root, and no other paths:
   - docs/ai/rules/: the rules on how to write the code, one yaml file per topic.
   - docs/ai/plans/: the implementation plans, one per file.
@@ -40,6 +45,14 @@ func TestWorkflowSessionContext(t *testing.T) {
 		if strings.HasPrefix(line, "- Create and change files") || strings.Contains(line, "edit tool") {
 			t.Fatalf("an edit line: %q", line)
 		}
+	}
+	// CUJ-12, AC-12: the rules on git open the context, before the root and the folders, and no longer forbid the
+	// forms polix sees: a commit chained with && or wrapped in sh -c or bash -c.
+	if !strings.HasPrefix(defaults, lit13+"- The root of the project is /work/repo.\n") {
+		t.Fatalf("LIT-13 first:\n%s", defaults)
+	}
+	if strings.Contains(defaults, "never chain") || strings.Contains(defaults, "sh -c") {
+		t.Fatalf("a rule forbids a form polix sees:\n%s", defaults)
 	}
 }
 

@@ -1,16 +1,19 @@
 {{- /*
 Context polix injects on every session start of a valid polix.yaml, agent neutral, as the agent reads it: the header
-lines, then the "- " items on commits, the root and the folders of the AI, with no blank lines; the whole text is
-trimmed. Each line is concise and at most 120 characters with the default folders and a short root (a test checks
-it): split a rule into several items rather than wrap it.
+lines, then the "- " items on staging and commits, the root and the folders of the AI, with no blank lines; the
+whole text is trimmed. Each line is concise and at most 120 characters with the default folders and a short root (a
+test checks it): split a rule into several items rather than wrap it. The rules on git allow every form polix
+recognises and name only what it misses; TestStartRulesForms of internal/app/hook/answer pins them.
 Data: .Root (the root of the working tree, with forward slashes) and .Path (the folder of the AI, path of
 polix.yaml cleaned, relative to the root, without a trailing slash; ai by default).
 */ -}}
 This project is managed by polix.
 Follow these rules:
-- Run each git commit as a command of its own: never chain it with &&, ; or |, nor wrap it in sh -c or bash -c.
-- Pass the commit message with -m, -F or a heredoc inside -m.
-- Otherwise polix does not recognise the commit and skips its pre_commit gates.
+- Stage files with git add <paths> or git stage: never git commit -a, -am, --all or paths after git commit.
+- Run git commit by its name: never through a git alias, a variable, a script or a wrapper such as timeout.
+- End the line with the git commit, or follow it only with &&: after ; or | polix cannot tell whether it succeeded.
+- Pass the commit message with -m, -F or a heredoc inside -m, so git never opens an editor.
+- Otherwise polix misses the staging or the commit and skips its gates.
 - The root of the project is {{.Root}}.
 - Use these folders, below the root, and no other paths:
   - {{.Path}}/rules/: the rules on how to write the code, one yaml file per topic.

@@ -94,7 +94,7 @@ Build progress:
 - [ ] Step 2: Note the changes made before the run (see Step 2).
 - [ ] Step 3: Show the user the tasks to build, in order, and go on without waiting.
 - [ ] Step 4: Set the plan `in-progress` (see `Status`) and set its `start` (see `Time and tokens`).
-- [ ] Step 5: Build the tasks with the builder (see `Builder prompt`).
+- [ ] Step 5: Build the tasks with the builder (see `Models` and `Builder prompt`).
   Write its report in the plan (see `Builder report`).
   Then update the docs (see `Docs`).
 - [ ] Step 6: Check and fix until nothing is open or the loop stops (see `Loop` and `Iteration`).
@@ -121,6 +121,7 @@ The builder works on top of them, and never reverts nor fixes them.
 After the builder, check, and repeat until nothing is open:
 
 1. **Checks**: launch the verifier and the reviewer in one message, so they run in parallel, and wait for both.
+   Launch each with its values of `agents` (see `Models`).
    Skip them when the builder left a task `not started`: launch it again from that task first.
    Set the iteration the builder worked on, if any, to `status: checked`.
 2. **Criteria**: set the criteria from the verification (see `Acceptance criteria`).
@@ -214,6 +215,17 @@ duration: 42m 22s
 tokens: 491603
 ```
 
+### Models
+
+Launch each subagent with the `model` and `effort` of its item in `agents` of the plan.
+Its item is the one whose `name` is its type, and both go as options of the launch.
+
+- Leave out an option whose value is `inherit`, and both for an agent without an item.
+  So does a plan without `agents`, as a Markdown plan: the frontmatter of the agent then decides.
+- With two items of one name, use the first and say so in `Pending`.
+- A value the launch does not take: leave that option out and say so in `Pending`.
+- In the fallback of `Requirements` there is no launch: the values do not apply, and `Stats` says so.
+
 ### Builder prompt
 
 Send the builder this block, in the language of the session:
@@ -302,7 +314,7 @@ Gather the figures of this run from the plan and from git, and give them as a sh
 - **Tasks**: done, departed and blocked, of the total.
 - **Criteria**: met, not met and not verified, of the total.
 - **Findings**: of the iterations, found, fixed and skipped, by `source`, and the reviewer's `minor` ones apart.
-- **Agents**: how many times the builder, the verifier and the reviewer ran.
+- **Agents**: how many times the builder, the verifier and the reviewer ran, and the model and effort of each.
 - **Time**: the `start`, `end` and `duration` of the plan.
 - **Tokens**: the tokens of this run by agent, and the `tokens` of the plan.
   Say that they count the subagents only, not this skill's own.

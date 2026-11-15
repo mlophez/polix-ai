@@ -17,7 +17,7 @@ risk:
     "internal/app/state/**": 3
     "internal/platform/git/**": 2
 
-# The programs run_on_stop and format_on_edit run: polix tells the AI on the first prompt when one is missing.
+# The programs check_on_stop, check_on_save and format_on_edit run: polix tells the AI on the first prompt when one is missing.
 requirements:
   - go
   - golangci-lint
@@ -49,7 +49,7 @@ guardrails:
       path: "ai/rules/*.yaml"
 
   # Before the turn ends, in order; each check runs again only on new content.
-  run_on_stop:
+  check_on_stop:
     # Lint the whole module when Go code or the lint configuration changes.
     - run: &lint golangci-lint run ./...
       changed: &lint_changed ["*.go", "go.mod", "go.sum", ".golangci.yml"]
@@ -57,6 +57,18 @@ guardrails:
     # Run every test when Go code, the install scripts or scripts/ change.
     - run: &test go test ./...
       changed: &test_changed ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"]
+
+  # The gates git runs on every commit, whoever makes it, a person too: a polix.yaml or a rule that does not validate,
+  # a lint error or a failing test never lands. Lint and test reuse the commands and globs of check_on_stop.
+  check_on_save:
+    - run: polix config check
+      changed: ["polix.yaml", "ai/rules/**"]
+
+    - run: *lint
+      changed: *lint_changed
+
+    - run: *test
+      changed: *test_changed
 
 # Entries run in file order after guardrails, and the first block ends the evaluation.
 on:
@@ -139,16 +151,3 @@ on:
     - when: { actor: session }
       action:
         notify: "Commit a main: {changed_lines} líneas en {changed_files} ficheros, riesgo {risk_score}."
-
-# The gates git runs on every commit, whoever makes it, a person too: a polix.yaml or a rule that does not validate,
-# a lint error or a failing test never lands. Lint and test reuse the commands and globs of run_on_stop.
-githooks:
-  pre_commit:
-    - when: { changed: ["polix.yaml", "ai/rules/**"] }
-      action: { run: polix config check }
-
-    - when: { changed: *lint_changed }
-      action: { run: *lint }
-
-    - when: { changed: *test_changed }
-      action: { run: *test }

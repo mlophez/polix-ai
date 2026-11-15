@@ -142,6 +142,15 @@ func TestEvaluationRunning(t *testing.T) {
 		"polix.yaml:3: unknown event \"session_start\": use start":                                                                   false,
 		"polix.yaml:4: unknown condition \"done\": use finished: <subagent>\npolix.yaml:5: unknown key \"x\" (when, unless, action)": true,
 		"polix.yaml:4: unknown key \"context\" in action: use inject":                                                                false,
+		// CUJ-04: the names of on that git can never give its hooks, in check_on_save.
+		"polix.yaml:4: guardrails.check_on_save: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)": false,
+		"polix.yaml:4: unknown key \"wait_agents\" in guardrails.check_on_save (run, changed, message)":                       false,
+		"polix.yaml:4: guardrails.check_on_save: unknown placeholder {kye} (githooks allow {branch}, or a variable of vars)":  true,
+		// A measure git can compute may come from a newer polix, in check_on_save or in githooks, and so may every
+		// placeholder of the entries written in githooks.
+		"polix.yaml:4: guardrails.check_on_save: unknown placeholder {risk_score} (githooks allow {branch}, or a variable of vars)": true,
+		"polix.yaml:4: githooks.pre_commit: unknown placeholder {changed_files} (githooks allow {branch}, or a variable of vars)":   true,
+		"polix.yaml:4: githooks.pre_commit: unknown placeholder {command} (githooks allow {branch}, or a variable of vars)":         true,
 	} {
 		err := unusable(errors.New(problem), "0.1.0")
 		if got := strings.Contains(err.Error(), "do not remove them: run polix update"); got != hint {

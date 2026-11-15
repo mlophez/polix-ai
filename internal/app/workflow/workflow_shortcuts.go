@@ -3,22 +3,24 @@ package workflow
 import (
 	"errors"
 	"maps"
-	"regexp"
 	"slices"
 	"strings"
 )
 
 // Guardrails is the section guardrails of polix.yaml as written: the items of each of its shortcuts, the common
 // cases, in file order and each with its line. protected_files and forbidden_commands are protections the workflow
-// holds as lists (Protected and Forbidden); the rest are only sugar, which Expand turns into entries of on. The
-// decoding of the file finds what is wrong with the values of an item and keeps it with the item, for Problems to
-// report it with the rest of the problems of the workflow.
+// holds as lists (Protected and Forbidden); the rest are only sugar, which Expand turns into entries of on and
+// Githooks into entries of githooks. The decoding of the file finds what is wrong with the values of an item and keeps
+// it with the item, for Problems to report it with the rest of the problems of the workflow.
 type Guardrails struct {
 	ProtectedFiles    []GuardrailItem      // the path globs of protected_files
-	ForbiddenCommands []GuardrailForbidden // the items of forbidden_commands
 	ProtectedBranches []GuardrailItem      // the branch names of protected_branches
+	ForbiddenCommands []GuardrailForbidden // the items of forbidden_commands
+	ExecOnStart       []GuardrailCheck     // the items of exec_on_start
 	FormatOnEdit      []GuardrailCheck     // the items of format_on_edit
-	RunOnStop         []GuardrailCheck     // the items of run_on_stop
+	FormatOnSave      []GuardrailCheck     // the items of format_on_save
+	CheckOnStop       []GuardrailCheck     // the items of check_on_stop
+	CheckOnSave       []GuardrailCheck     // the items of check_on_save
 }
 
 // GuardrailItem is an item of a shortcut that takes a list of strings: a path glob of protected_files or a branch
@@ -37,10 +39,11 @@ type GuardrailForbidden struct {
 	Problems []string
 }
 
-// GuardrailCheck is an item of format_on_edit or run_on_stop: the command to run, the globs that scope it (the
-// path of format_on_edit or the changed of run_on_stop, as written, nil without them), the message before
-// the output of a failure and, for run_on_stop, whether it waits for the subagents still running (wait_agents, true
-// when left out). Problems holds what is wrong with its values, reported at its line.
+// GuardrailCheck is an item of a lifecycle shortcut (exec_on_start, format_on_edit, format_on_save, check_on_stop or
+// check_on_save): the command to run, the globs that scope it (the path of format_on_edit or the changed of the
+// others, as written, nil without them; exec_on_start has none), the message before the output of a failure and, for
+// check_on_stop, whether it waits for the subagents still running (wait_agents, true when left out). Problems holds
+// what is wrong with its values, reported at its line.
 type GuardrailCheck struct {
 	Run      []string
 	Scope    any
@@ -53,31 +56,42 @@ type GuardrailCheck struct {
 // The shortcuts of the section guardrails.
 const (
 	ShortcutProtectedFiles    = "protected_files"
-	ShortcutForbiddenCommands = "forbidden_commands"
 	ShortcutProtectedBranches = "protected_branches"
+	ShortcutForbiddenCommands = "forbidden_commands"
+	ShortcutExecOnStart       = "exec_on_start"
 	ShortcutFormatOnEdit      = "format_on_edit"
-	ShortcutRunOnStop         = "run_on_stop"
+	ShortcutFormatOnSave      = "format_on_save"
+	ShortcutCheckOnStop       = "check_on_stop"
+	ShortcutCheckOnSave       = "check_on_save"
 )
 
 // branchMessage is the message of the entry of protected_branches, in English since polix writes it.
 const branchMessage = "{branch} is protected in " + File + ": create a branch for this change and commit there."
 
-// waitMessage is the notice of the stops that hold back the items of run_on_stop that wait while subagents run, in
+// waitMessage is the notice of the stops that hold back the items of check_on_stop that wait while subagents run, in
 // English since polix writes it.
-const waitMessage = ShortcutRunOnStop + " waits for the subagents still running: its checks run on the next stop " +
+const waitMessage = ShortcutCheckOnStop + " waits for the subagents still running: its checks run on the next stop " +
 	"after they end."
 
-// GuardrailsKeys are the shortcuts of the section guardrails, in the order they expand.
-var GuardrailsKeys = []string{ShortcutProtectedFiles, ShortcutForbiddenCommands, ShortcutProtectedBranches,
-	ShortcutFormatOnEdit, ShortcutRunOnStop}
+// GuardrailsKeys are the shortcuts of the section guardrails, in the order polix config fmt writes them: first the
+// protections, then the lifecycle shortcuts in the order the work reaches them.
+var GuardrailsKeys = []string{ShortcutProtectedFiles, ShortcutProtectedBranches, ShortcutForbiddenCommands,
+	ShortcutExecOnStart, ShortcutFormatOnEdit, ShortcutFormatOnSave, ShortcutCheckOnStop, ShortcutCheckOnSave}
 
-// ForbiddenKeys, FormatOnEditKeys and RunOnStopKeys are the keys of an item of forbidden_commands,
-// format_on_edit and run_on_stop.
+// ForbiddenKeys, ExecOnStartKeys, FormatOnEditKeys, FormatOnSaveKeys, CheckOnStopKeys and CheckOnSaveKeys are the
+// keys of an item of forbidden_commands, exec_on_start, format_on_edit, format_on_save, check_on_stop and
+// check_on_save. git runs the hooks without knowing the subagents of a session, so check_on_save has no wait_agents.
 var (
 	ForbiddenKeys    = []string{"pattern", "reason"}
+	ExecOnStartKeys  = []string{"run", "message"}
 	FormatOnEditKeys = []string{"run", "path", "message"}
-	RunOnStopKeys    = []string{"run", "changed", "message", "wait_agents"}
+	FormatOnSaveKeys = []string{"run", "changed", "message"}
+	CheckOnStopKeys  = []string{"run", "changed", "message", "wait_agents"}
+	CheckOnSaveKeys  = []string{"run", "changed", "message"}
 )
+
+// stagingCommands are the command patterns of the lines that stage files, on which format_on_save runs.
+var stagingCommands = []any{"git add*", "git stage*"}
 
 // Valid tells why the section is not valid: the items that are not, each with why.
 func (g Guardrails) Valid() error {
@@ -88,7 +102,7 @@ func (g Guardrails) Valid() error {
 	for _, f := range g.ForbiddenCommands {
 		errs = append(errs, f.Valid())
 	}
-	for _, c := range append(append([]GuardrailCheck(nil), g.FormatOnEdit...), g.RunOnStop...) {
+	for _, c := range g.checks() {
 		errs = append(errs, c.Valid())
 	}
 	return errors.Join(errs...)
@@ -122,13 +136,18 @@ func (c GuardrailCheck) Valid() error {
 	return nil
 }
 
-// Expand returns the entries of on with those the shortcuts protected_branches, format_on_edit and run_on_stop
-// expand into, before the entries written in on in each event, each group in file order. An item with problems
-// expands into nothing: Problems reports them.
+// Expand returns the entries of on with those the shortcuts protected_branches, exec_on_start, format_on_edit,
+// format_on_save and check_on_stop expand into, before the entries written in on in each event, each group in file
+// order. An item with problems expands into nothing: Problems reports them. check_on_save expands into entries of
+// githooks instead (Githooks).
 //
 //   - protected_branches: an entry on pre_commit with branch, an anchored regular expression of the names.
+//   - exec_on_start: an entry on start per item, without when, that runs its command with always, so it runs on every
+//     start, also on a content it passed on.
 //   - format_on_edit: an entry on post_edit per item that runs its command, on the edits of its path when it has one.
-//   - run_on_stop: an entry on stop per item that runs its command, when its changed holds if it has one and, for an
+//   - format_on_save: an entry on pre_command per item that runs its command on the lines that stage files (command
+//     git add* or git stage*), when its changed holds if it has one.
+//   - check_on_stop: an entry on stop per item that runs its command, when its changed holds if it has one and, for an
 //     item that waits, when no subagent is running (agents_are_running: false); and, when an item waits, one notify
 //     that tells the user, every time, that the checks wait, while subagents run and a changed holding the globs of
 //     every item that waits holds, left out when one of them has none (waitNotice). The notify goes last on stop,
@@ -137,22 +156,7 @@ func (c GuardrailCheck) Valid() error {
 // Each entry takes the line of its item, the first one for an entry of several items, and the path of its shortcut.
 // protected_files and forbidden_commands expand into nothing: they are protections, not entries.
 func (g Guardrails) Expand(on map[string][]Entry) map[string][]Entry {
-	regular := map[string][]Entry{}
-	if expr, line := g.branchExpr(); expr != "" {
-		when := Cond{"branch": expr}
-		e, _ := when.shortcutBlock("guardrails."+ShortcutProtectedBranches, line, branchMessage)
-		regular[PreCommit] = append(regular[PreCommit], e)
-	}
-	for _, c := range g.FormatOnEdit {
-		if e, ok := c.entry(ShortcutFormatOnEdit, "path"); ok {
-			regular[PostEdit] = append(regular[PostEdit], e)
-		}
-	}
-	for _, c := range g.RunOnStop {
-		if e, ok := c.entry(ShortcutRunOnStop, "changed"); ok {
-			regular[Stop] = append(regular[Stop], e)
-		}
-	}
+	regular := g.entries()
 	if len(regular) == 0 {
 		return on
 	}
@@ -215,7 +219,7 @@ func (g Guardrails) Problems(w Workflow) []string {
 			v.add(it.Line, "guardrails.%s: a branch name cannot be empty", ShortcutProtectedBranches)
 		}
 	}
-	for _, c := range append(append([]GuardrailCheck(nil), g.FormatOnEdit...), g.RunOnStop...) {
+	for _, c := range g.checks() {
 		for _, p := range c.Problems {
 			v.add(c.Line, "%s", p)
 		}
@@ -227,119 +231,7 @@ func (g Guardrails) Problems(w Workflow) []string {
 	return v.byLine()
 }
 
-// entry returns the entry of the item c of the shortcut key, whose scope goes in the condition cond, and, when the
-// item waits, agents_are_running: false; false when the item has problems.
-func (c GuardrailCheck) entry(key, cond string) (Entry, bool) {
-	if len(c.Problems) > 0 {
-		return Entry{}, false
-	}
-	var when Cond
-	switch {
-	case c.Scope != nil && c.Waits:
-		when = Cond{cond: c.Scope, "agents_are_running": false}
-	case c.Scope != nil:
-		when = Cond{cond: c.Scope}
-	case c.Waits:
-		when = Cond{"agents_are_running": false}
-	}
-	e, _ := when.shortcutRun("guardrails."+key, c.Line, c.Run, c.Message)
-	return e, true
-}
-
-// waitNotice returns the notify of run_on_stop that tells the user its checks wait for the subagents still running,
-// at the line of the first item that waits, when subagents run and a file in the globs of every item that waits, in
-// file order and once each, changed; without changed when one of them has none. False when no item without problems
-// waits.
-func (g Guardrails) waitNotice() (Entry, bool) {
-	line := 0
-	var globs []any
-	scoped := true
-	for _, c := range g.RunOnStop {
-		if len(c.Problems) > 0 || !c.Waits {
-			continue
-		}
-		if line == 0 {
-			line = c.Line
-		}
-		list, err := Cond{"changed": c.Scope}.Strings("changed")
-		scoped = scoped && c.Scope != nil
-		for _, s := range list {
-			if err == nil && !slices.Contains(globs, any(s)) {
-				globs = append(globs, s)
-			}
-		}
-	}
-	if line == 0 {
-		return Entry{}, false
-	}
-	when := Cond{"agents_are_running": true}
-	if scoped {
-		when = Cond{"agents_are_running": true, "changed": globs}
-	}
-	e, _ := when.shortcutNotify("guardrails."+ShortcutRunOnStop, line, waitMessage)
-	return e, true
-}
-
-// branchExpr returns the regular expression of the branch condition of protected_branches: any of the names that are
-// not empty, whole, where `*` matches any text; and the line of the first one. It is "" without them.
-func (g Guardrails) branchExpr() (string, int) {
-	var alts []string
-	line := 0
-	for _, it := range g.ProtectedBranches {
-		if it.Valid() != nil {
-			continue
-		}
-		if line == 0 {
-			line = it.Line
-		}
-		parts := strings.Split(it.Text, "*")
-		for i := range parts {
-			parts[i] = regexp.QuoteMeta(parts[i])
-		}
-		alts = append(alts, strings.Join(parts, ".*"))
-	}
-	if len(alts) == 0 {
-		return "", 0
-	}
-	return "^(?:" + strings.Join(alts, "|") + ")$", line
-}
-
-// shortcutBlock returns the entry of a shortcut from at line that blocks with message when the conditions of c, its
-// when, hold.
-func (c Cond) shortcutBlock(from string, line int, message string) (Entry, error) {
-	b := Block{Message: message}
-	a := Action{Block: &b, Keys: []string{VerbBlock}}
-	e := Entry{When: c, Action: a, From: from, Line: line, Keys: c.shortcutKeys()}
-	return e, errors.Join(b.Valid(), a.Valid(), e.Valid())
-}
-
-// shortcutRun returns the entry of a shortcut from at line that runs command, with message before the output of a
-// failure, when the conditions of c, its when, hold.
-func (c Cond) shortcutRun(from string, line int, command []string, message string) (Entry, error) {
-	keys := []string{"command"}
-	if message != "" {
-		keys = append(keys, "message")
-	}
-	r := Run{Command: command, Message: message, Keys: keys}
-	a := Action{Run: &r, Keys: []string{VerbRun}}
-	e := Entry{When: c, Action: a, From: from, Line: line, Keys: c.shortcutKeys()}
-	return e, errors.Join(r.Valid(), a.Valid(), e.Valid())
-}
-
-// shortcutNotify returns the entry of a shortcut from at line that shows message to the user every time the
-// conditions of c, its when, hold.
-func (c Cond) shortcutNotify(from string, line int, message string) (Entry, error) {
-	n := Notify{Message: message, Always: true, Keys: []string{"always", "message"}}
-	a := Action{Notify: &n, Keys: []string{VerbNotify}}
-	e := Entry{When: c, Action: a, From: from, Line: line, Keys: c.shortcutKeys()}
-	return e, errors.Join(n.Valid(), a.Valid(), e.Valid())
-}
-
-// shortcutKeys returns the keys an entry of a shortcut whose when is c would have written in on.
-func (c Cond) shortcutKeys() []string {
-	var keys []string
-	if c != nil {
-		keys = append(keys, "when")
-	}
-	return append(keys, "action")
+// checks returns the items of the lifecycle shortcuts, shortcut by shortcut in the order of GuardrailsKeys.
+func (g Guardrails) checks() []GuardrailCheck {
+	return slices.Concat(g.ExecOnStart, g.FormatOnEdit, g.FormatOnSave, g.CheckOnStop, g.CheckOnSave)
 }

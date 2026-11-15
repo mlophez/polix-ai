@@ -1,6 +1,9 @@
 package workflow
 
-import "regexp"
+import (
+	"regexp"
+	"slices"
+)
 
 // Problem is a problem of the workflow: one line of Problems, or the text of a UnknownKeyError.
 type Problem string
@@ -20,7 +23,8 @@ var renamed = map[string]map[string]string{
 		"reports":         "remove it: the reports go to reports/ below path (ai/reports by default)",
 		"guidance":        "remove it: polix always injects the rules on commits and the folders below path on start",
 	},
-	"rules": {"path": "move it to the top-level key path, the folder that holds rules/ (ai by default)"},
+	"rules":      {"path": "move it to the top-level key path, the folder that holds rules/ (ai by default)"},
+	"guardrails": {"run_on_stop": "use check_on_stop"},
 	"key": {
 		"if":      "use when",
 		"why":     "remove it, or keep the text as a YAML comment",
@@ -42,9 +46,46 @@ var oldActions = []string{"deny", "require", "allow", "run", "context", "record"
 
 // renamedProblem finds, in a problem of the validator or in a UnknownKeyError, the unknown name it reports with its new
 // spelling: the place (key, event or condition), the name and the section of a key below the top level, "action"
-// for a key of the action and "rules" for a key of rules, whose problem lists the keys of rules before the hint. A
-// top-level key is reported as a key.
-var renamedProblem = regexp.MustCompile(`unknown (key|event|condition) "([^"]*)"(?: in (action|rules)(?: \([^)]*\))?)?: `)
+// for a key of the action, "rules" for a key of rules and "guardrails" for a shortcut, whose problems list the known
+// keys before the hint. A top-level key is reported as a key.
+var renamedProblem = regexp.MustCompile(
+	`unknown (key|event|condition) "([^"]*)"(?: in (action|rules|guardrails)(?: \([^)]*\))?)?: `)
+
+// Hinted returns the problem p, about the unknown name of the place of the file (a section of renamed, such as
+// "guardrails"), followed by the hint of its new spelling when the name is one of the old vocabulary there; p as it
+// is otherwise.
+func (p Problem) Hinted(place, name string) Problem {
+	if hint, ok := renamed[place][name]; ok {
+		return p + Problem(": "+hint)
+	}
+	return p
+}
+
+// savePlaceholder and saveKey find, in a problem of guardrails.check_on_save, the name it reports as unknown: a
+// placeholder, which the vocabulary of githooks reports with the ones it allows, or a key of an item. The entries
+// written in githooks match neither: their problems stay as they were before check_on_save.
+var (
+	savePlaceholder = regexp.MustCompile(`guardrails\.check_on_save: unknown placeholder \{([^}]*)\} \(githooks allow `)
+	saveKey         = regexp.MustCompile(`unknown key "([^"]*)" in guardrails\.check_on_save \(`)
+)
+
+// Known reports whether the problem is about a name this polix knows, never an option of a newer polix: a name of the
+// old vocabulary (Renamed), or, in an item of check_on_save, a name of on that git can never give its hooks, since
+// it runs them without a session and before the commit: a placeholder only an event of an agent gives
+// (AgentOnlyBuiltins), or a key of check_on_stop (wait_agents). A measure of the diff, which git can compute, may be
+// an option of a newer polix there, as any unknown name in an entry written in githooks.
+func (p Problem) Known() bool {
+	if p.Renamed() {
+		return true
+	}
+	if m := savePlaceholder.FindStringSubmatch(string(p)); m != nil {
+		return slices.Contains(AgentOnlyBuiltins, m[1])
+	}
+	if m := saveKey.FindStringSubmatch(string(p)); m != nil {
+		return slices.Contains(CheckOnStopKeys, m[1])
+	}
+	return false
+}
 
 // Renamed reports whether the problem is about a name of the old vocabulary, reported with its new spelling: it is
 // a name this polix knows it replaced, never an option of a newer polix.

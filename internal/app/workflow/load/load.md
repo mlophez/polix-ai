@@ -78,20 +78,34 @@ with the domain:
   5. `guardrailsYAML` of `out_guardrails.go` reads the section guardrails into a `workflow.Guardrails`: each
      shortcut in its one form, else an error with the form it takes; each item with its line and the problems of
      its values (a key unknown or written twice, a text that is not one, no pattern, no run, a `wait_agents` that is
-     not true or false). An item of `run_on_stop` waits for the subagents still running
-     (`workflow.GuardrailCheck.Waits`) unless its `wait_agents` is `false`; one of `format_on_edit` never does, and
-     `wait_agents` is an unknown key there.
+     not true or false). An unknown shortcut is an error with the shortcuts in their order, and `run_on_stop`, the
+     old name of `check_on_stop`, carries the hint `use check_on_stop` (`workflow.Problem.Hinted`), so
+     `workflow.Problem.Renamed` holds for it. An item of `check_on_stop` waits for the subagents still running
+     (`workflow.GuardrailCheck.Waits`) unless its `wait_agents` is `false`; one of the other lifecycle shortcuts
+     never does, and `wait_agents` is an unknown key there, which `workflow.Problem.Known` tells from an option of a
+     newer polix in `check_on_save`, as a placeholder there that only an event of an agent gives
+     (`workflow.AgentOnlyBuiltins`). An item of `exec_on_start` takes only `run` and
+     `message`. The command of `run` is a string or a list of strings, an alias among them read as its anchor.
+     An alias, as the value of a shortcut or as one of its items, reads as the value of its anchor. Each item takes
+     the line where its shortcut writes it: the line of the alias when the value of the shortcut is an alias, else
+     the line of the item, an aliased item at the line of its own alias, never at its anchor in another shortcut.
+     The entries the shortcuts expand into (steps 6 and 7), the install entry of `start` included, take that line.
   6. The workflow takes the protections of the section (`Guardrails.Protected`, `Guardrails.Forbidden`) and the
      entries its other shortcuts expand into, before those written in `on` (`Guardrails.Expand`): an item of
-     `run_on_stop` that waits runs only under `agents_are_running: false`, and, when one waits, a `notify` with
+     `exec_on_start` is an entry of `start` without `when` whose `run` has `always`; an item of `format_on_save` an
+     entry of `pre_command` with `command: ["git add*", "git stage*"]` and its `changed`; an item of
+     `check_on_stop` that waits runs only under `agents_are_running: false`, and, when one waits, a `notify` with
      `always` goes last on `stop`, under `agents_are_running: true` and a `changed` with the globs of every item
-     that waits (none when one of them has none), with the text `run_on_stop waits for the subagents still running:
-     its checks run on the next stop after they end.`; the error is the one of its `Valid`.
-  7. When an event of `githooks` has entries, the workflow takes one more entry first in `start`, before those of
-     the shortcuts and those written in `on` (`Workflow.ExpandGithooks`): a `run` of `polix install --githooks` with
-     `always`, so every session start puts back the hooks of git, with the message `The hooks of git of githooks are
-     not installed, so the gates of githooks do not apply to the commits:`, its `From` `githooks` and the line of
-     the first event of `githooks` with entries. Without entries in `githooks` the workflow stays as it is; every
+     that waits (none when one of them has none), with the text `check_on_stop waits for the subagents still running:
+     its checks run on the next stop after they end.`. The entries of `githooks` take first in `pre_commit` those of
+     the items of `check_on_save` (`Guardrails.Githooks`), each a `run` with its `changed`, its `From`
+     `guardrails.check_on_save` and the line of its item. The error is the one of its `Valid`.
+  7. When an event of `githooks` has entries, those of `check_on_save` included, the workflow takes one more entry
+     first in `start`, before those of the shortcuts and those written in `on` (`Workflow.ExpandGithooks`): a `run`
+     of `polix install --githooks` with `always`, so every session start puts back the hooks of git, with the
+     message `The hooks of git of githooks are not installed, so the gates of githooks do not apply to the commits:`,
+     its `From` `githooks` and the first line among the events of `githooks` with entries, an event the file does not
+     write taking the line of its first entry. Without entries in `githooks` the workflow stays as it is; every
      reader of the workflow (`polix hook`, `polix graph`, `polix config check`) sees the entry, while
      `polix config fmt`, which formats the file as written, never writes it.
 

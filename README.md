@@ -61,7 +61,10 @@ the copy in the next repository.
 session: what is blocked, what runs and what is injected into the context. The same binary answers every hook in
 milliseconds and keeps an append-only log of what it observed and decided.
 
-`polix.yaml` has three sections. `guardrails:` holds the basics every project wants from the first minute. `on:` is
+`polix.yaml` has three sections. `guardrails:` holds the basics every project wants from the first minute: first the
+protections (files no agent writes, branches nobody commits on, commands no agent runs), then the lifecycle
+shortcuts, the basic command of each moment of the work, named by what it does and when: `exec_on_start`,
+`format_on_edit`, `format_on_save`, `check_on_stop` and `check_on_save`. `on:` is
 where your team orchestrates its flow: reviews, plans, tickets, each one an entry that says which event it applies
 to, when, and what it does. `githooks:` turns the same gates into git hooks, so they hold for every commit, whoever
 makes it.
@@ -137,7 +140,7 @@ or from [`examples/polix.yaml`](examples/polix.yaml), which annotates every opti
 
 <details>
 <summary><b>Example <code>polix.yaml</code></b>: protected files, forbidden commands, format on edit, tests before
-stopping, a review before large commits and a ticket key in every commit message</summary>
+stopping, the lint on every commit, a review before large commits and a ticket key in every commit message</summary>
 
 ```yaml
 version: 1
@@ -154,6 +157,10 @@ guardrails:
     - CLAUDE.md
     - .env
 
+  # The agent commits on none of these branches.
+  protected_branches:
+    - main
+
   # No agent runs these commands; the reason goes back to the agent.
   forbidden_commands:
     - pattern: "*rm -rf /*"
@@ -161,18 +168,19 @@ guardrails:
     - pattern: "git push*--force*"
       reason: "Force pushes rewrite shared history: ask a person to run it."
 
-  # The agent commits on none of these branches.
-  protected_branches:
-    - main
-
   # Each Go file is formatted right after the agent edits it.
   format_on_edit:
     - run: golangci-lint fmt {path}
       path: "*.go"
 
   # The agent cannot end its turn while the tests fail; they run only when Go code changed.
-  run_on_stop:
+  check_on_stop:
     - run: go test ./...
+      changed: "*.go"
+
+  # Git runs the lint on every commit that stages Go code, also the commits people make.
+  check_on_save:
+    - run: golangci-lint run ./...
       changed: "*.go"
 
 on:

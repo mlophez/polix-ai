@@ -97,8 +97,8 @@ func (r *pass) requirements(ans agent.Answer) agent.Answer {
 }
 
 // guidance adds to ans the start context of the workflow (workflow.Workflow.SessionContext), rendered with the root
-// of the working tree of the event: the rules on commits, the root and the folders of the AI below path. It is
-// always injected on start; only a template that failed to render would leave it empty.
+// of the working tree of the event: the rules on staging and commits, the root and the folders of the AI below path.
+// It is always injected on start; only a template that failed to render would leave it empty.
 func (r *pass) guidance(ans agent.Answer) agent.Answer {
 	if text := r.ev.Workflow.SessionContext(r.ev.Root); text != "" {
 		return ans.Inform(text)

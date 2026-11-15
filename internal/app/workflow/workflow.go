@@ -56,7 +56,7 @@ type Workflow struct {
 	ForbiddenCommands []ForbiddenCommand
 	Vars              map[string]Var
 	// On holds the entries of each event: those written in `on` and those the shortcuts of guardrails
-	// protected_branches, format_on_edit and run_on_stop expand into.
+	// protected_branches and the lifecycle shortcuts but check_on_save expand into.
 	On    map[string][]Entry
 	Rules Rules // how the checks of the rules run
 	// Weights are the factors of the risk score per path glob (risk.weights), in file order: the first glob that
@@ -65,7 +65,8 @@ type Workflow struct {
 	// EventLines is the line of each event of `on` in the file, for messages.
 	EventLines map[string]int
 	// Githooks holds the entries of each event of githooks (GithookEvents), the gates git runs on every commit,
-	// apart from the events of the AI in On and with a vocabulary of their own.
+	// apart from the events of the AI in On and with a vocabulary of their own: those of guardrails.check_on_save
+	// first in pre_commit, then those written in githooks.
 	Githooks map[string][]Entry
 	// GithookLines is the line of each event of githooks in the file, for messages.
 	GithookLines map[string]int

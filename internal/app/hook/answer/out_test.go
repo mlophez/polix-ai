@@ -916,7 +916,7 @@ on:
 	r.stops("", 0)
 }
 
-// A failing check of run_on_stop whose command writes a file the tree does not ignore leaves a new content on every
+// A failing check of check_on_stop whose command writes a file the tree does not ignore leaves a new content on every
 // stop: the guard chains its blocks through the content each stop started from, so it lets the agent stop after
 // max_stop_retries blocks on a content the agent left alone, and keeps letting it stop; an edit of the agent breaks
 // the chain and the check blocks again.
@@ -924,7 +924,7 @@ func TestStopLoopGuardOnARunThatWrites(t *testing.T) {
 	r := newRepo(t, "main")
 	r.write("polix.yaml", `version: 1
 guardrails:
-  run_on_stop:
+  check_on_stop:
     - run: [git, -c, "alias.check=!echo x >> out.txt; exit 1", check]
 `)
 	r.stops("", 2, 2, 2, 0, 0)
@@ -954,21 +954,21 @@ func TestStopLoopGuardAfterAnotherRunWrites(t *testing.T) {
 		yaml string
 		want []int
 	}{
-		{"two failing checks", "guardrails:\n  run_on_stop:\n    - run: " + fmt.Sprintf(writer, "exit 1") +
+		{"two failing checks", "guardrails:\n  check_on_stop:\n    - run: " + fmt.Sprintf(writer, "exit 1") +
 			"\n    - run: " + missingRef + "\n", []int{2, 2, 2, 2, 2, 2, 0, 0}},
-		{"a passing writer", "guardrails:\n  run_on_stop:\n    - run: " + fmt.Sprintf(writer, "true") +
+		{"a passing writer", "guardrails:\n  check_on_stop:\n    - run: " + fmt.Sprintf(writer, "true") +
 			"\n    - run: " + missingRef + "\n", []int{2, 2, 2, 0, 0}},
 		{"a block", "on:\n  stop:\n    - action: { run: " + fmt.Sprintf(writer, "true") +
 			" }\n    - action: { block: revisa }\n", []int{2, 2, 2, 0, 0}},
 		{"a block with once", "on:\n  stop:\n    - action: { run: " + fmt.Sprintf(writer, "true") +
 			" }\n    - action: { block: { message: revisa, once: true } }\n", []int{2, 2, 2, 0, 0, 0}},
-		{"two failing writers", "guardrails:\n  run_on_stop:\n    - run: " + fmt.Sprintf(writer, "exit 1") +
+		{"two failing writers", "guardrails:\n  check_on_stop:\n    - run: " + fmt.Sprintf(writer, "exit 1") +
 			"\n    - run: " + fmt.Sprintf(writer, "exit 2") + "\n", []int{2, 2, 2, 2, 2, 2, 0, 0, 0}},
-		{"a failing check, then a passing writer", "guardrails:\n  run_on_stop:\n    - run: " + missingRef +
+		{"a failing check, then a passing writer", "guardrails:\n  check_on_stop:\n    - run: " + missingRef +
 			"\n    - run: " + fmt.Sprintf(writer, "true") + "\n", []int{2, 2, 2, 0, 0, 0}},
 		{"a block, then a passing writer", "on:\n  stop:\n    - action: { block: revisa }\n    - action: { run: " +
 			fmt.Sprintf(writer, "true") + " }\n", []int{2, 2, 2, 0, 0, 0}},
-		{"a failing writer, then a passing one", "guardrails:\n  run_on_stop:\n    - run: " +
+		{"a failing writer, then a passing one", "guardrails:\n  check_on_stop:\n    - run: " +
 			fmt.Sprintf(writer, "exit 1") + "\n    - run: " + fmt.Sprintf(writer, "true") + "\n",
 			[]int{2, 2, 2, 0, 0, 0}},
 	}
@@ -984,7 +984,7 @@ func TestStopLoopGuardAfterAnotherRunWrites(t *testing.T) {
 // The warning of a stop let through names max_stop_retries, however many stops were let through before.
 func TestStopLoopGuardWarningCount(t *testing.T) {
 	r := newRepo(t, "main")
-	r.write("polix.yaml", "version: 1\nmax_stop_retries: 1\nguardrails:\n  run_on_stop:\n    - run: "+
+	r.write("polix.yaml", "version: 1\nmax_stop_retries: 1\nguardrails:\n  check_on_stop:\n    - run: "+
 		fmt.Sprintf(writer, "exit 1")+"\n")
 	r.stops("", 2)
 	for i := range 3 {
@@ -1842,24 +1842,24 @@ on:
 	}
 }
 
-// waitingRunOnStop has a run_on_stop item that fails on a changed Go file, with the option of the format verb after
+// waitingCheckOnStop has a check_on_stop item that fails on a changed Go file, with the option of the format verb after
 // its message.
-const waitingRunOnStop = `version: 1
+const waitingCheckOnStop = `version: 1
 guardrails:
-  run_on_stop:
+  check_on_stop:
     - run: [git, rev-parse, --verify, --quiet, missing]
       changed: "*.go"
       message: "Fallan los tests"%s
 `
 
-// noticeWait is the notice of the stops that hold run_on_stop back while subagents run.
-const noticeWait = "run_on_stop waits for the subagents still running: its checks run on the next stop after they end."
+// noticeWait is the notice of the stops that hold check_on_stop back while subagents run.
+const noticeWait = "check_on_stop waits for the subagents still running: its checks run on the next stop after they end."
 
-// AC9, AC11: an item of run_on_stop that waits does not run while a subagent runs, even without background_tasks:
+// AC9, AC11: an item of check_on_stop that waits does not run while a subagent runs, even without background_tasks:
 // the stop does not block, shows the notice once and logs no run; it runs on the next stop after the subagent ends.
-func TestRunOnStopWaitsForAgents(t *testing.T) {
+func TestCheckOnStopWaitsForAgents(t *testing.T) {
 	r := newRepo(t, "main")
-	r.write("polix.yaml", fmt.Sprintf(waitingRunOnStop, ""))
+	r.write("polix.yaml", fmt.Sprintf(waitingCheckOnStop, ""))
 	r.write("src/a.go", "package a\n")
 	r.subagent("a1", false)
 	code, stdout, stderr := r.stop()
@@ -1879,9 +1879,9 @@ func TestRunOnStopWaitsForAgents(t *testing.T) {
 }
 
 // AC10: an item with wait_agents: false runs while a subagent runs, as before.
-func TestRunOnStopDoesNotWait(t *testing.T) {
+func TestCheckOnStopDoesNotWait(t *testing.T) {
 	r := newRepo(t, "main")
-	r.write("polix.yaml", fmt.Sprintf(waitingRunOnStop, "\n      wait_agents: false"))
+	r.write("polix.yaml", fmt.Sprintf(waitingCheckOnStop, "\n      wait_agents: false"))
 	r.write("src/a.go", "package a\n")
 	r.subagent("a1", false)
 	code, _, stderr := r.stop()
@@ -1893,11 +1893,11 @@ func TestRunOnStopDoesNotWait(t *testing.T) {
 
 // AC11: two items that wait and whose changed match show the notice once in the answer, and a stop with no subagent
 // running shows none.
-func TestRunOnStopNoticeOnce(t *testing.T) {
+func TestCheckOnStopNoticeOnce(t *testing.T) {
 	r := newRepo(t, "main")
 	r.write("polix.yaml", `version: 1
 guardrails:
-  run_on_stop:
+  check_on_stop:
     - run: git --version
       changed: "*.go"
     - run: git status
@@ -1906,7 +1906,7 @@ guardrails:
 	r.write("src/a.go", "package a\n")
 	code, stdout, stderr := r.stop()
 	expect(t, "stop without subagents", code, 0, stderr)
-	if strings.Contains(stdout, "run_on_stop waits") {
+	if strings.Contains(stdout, "check_on_stop waits") {
 		t.Fatalf("a notice without subagents: %q", stdout)
 	}
 	r.subagent("a1", false)

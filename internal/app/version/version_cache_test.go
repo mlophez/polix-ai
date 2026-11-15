@@ -144,6 +144,14 @@ func TestNeedsNewer(t *testing.T) {
 		"polix.yaml: version must be 1, got 12":                                        true,
 		"polix.yaml: version must be 1, got 0":                                         false,
 		"polix.yaml: max_stop_blocks must be positive, got -1":                         false,
+		// CUJ-04: the names of on that git can never give its hooks, in check_on_save.
+		"polix.yaml:4: guardrails.check_on_save: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)": false,
+		`polix.yaml:4: unknown key "wait_agents" in guardrails.check_on_save (run, changed, message)`:                         false,
+		// A measure git can compute may come from a newer polix, in check_on_save or in githooks, and so may every
+		// placeholder of the entries written in githooks.
+		"polix.yaml:4: guardrails.check_on_save: unknown placeholder {changed_lines} (githooks allow {branch}, or a variable of vars)": true,
+		"polix.yaml:4: githooks.pre_commit: unknown placeholder {changed_files} (githooks allow {branch}, or a variable of vars)":      true,
+		"polix.yaml:4: githooks.pre_commit: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)":               true,
 	} {
 		if got := Problems(problems).NeedsNewer(); got != want {
 			t.Errorf("Problems(%q).NeedsNewer() = %v, want %v", problems, got, want)

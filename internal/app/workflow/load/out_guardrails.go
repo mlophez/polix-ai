@@ -1,6 +1,7 @@
 package load
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -14,10 +15,13 @@ import (
 // with its line, which it turns into a workflow.Guardrails.
 type guardrailsYAML struct {
 	protectedFiles    []itemYAML
-	forbiddenCommands []forbiddenYAML
 	protectedBranches []itemYAML
+	forbiddenCommands []forbiddenYAML
+	execOnStart       []checkYAML
 	formatOnEdit      []checkYAML
-	runOnStop         []checkYAML
+	formatOnSave      []checkYAML
+	checkOnStop       []checkYAML
+	checkOnSave       []checkYAML
 }
 
 // itemYAML is an item of a shortcut that takes a list of strings, with the fields of workflow.GuardrailItem in its
@@ -36,7 +40,7 @@ type forbiddenYAML struct {
 	Problems []string
 }
 
-// checkYAML is an item of format_on_edit or run_on_stop, with the fields of workflow.GuardrailCheck in its order,
+// checkYAML is an item of a lifecycle shortcut, with the fields of workflow.GuardrailCheck in its order,
 // so it converts to one: Problems holds what is wrong with its values.
 type checkYAML struct {
 	Run      []string
@@ -45,6 +49,13 @@ type checkYAML struct {
 	Waits    bool
 	Line     int
 	Problems []string
+}
+
+// placedYAML is an item of a shortcut that takes a list of maps, an alias read as the node of its anchor, with the
+// line where the shortcut writes it (see nodeYAML.itemLine).
+type placedYAML struct {
+	nodeYAML
+	line int
 }
 
 // UnmarshalYAML reads the section guardrails, a map of shortcuts. It checks the kind of each node before reading it,
@@ -71,7 +82,8 @@ func (y *guardrailsYAML) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
-// shortcut reads the value val of the shortcut whose key is k into y; an unknown key is an error.
+// shortcut reads the value val of the shortcut whose key is k into y, an alias as the value of its anchor; an unknown
+// key is an error, with the hint of its new spelling when it is an old name of a shortcut.
 func (y *guardrailsYAML) shortcut(k *yaml.Node, val nodeYAML) error {
 	var err error
 	switch k.Value {
@@ -80,26 +92,26 @@ func (y *guardrailsYAML) shortcut(k *yaml.Node, val nodeYAML) error {
 	case workflow.ShortcutProtectedBranches:
 		y.protectedBranches, err = val.items(k.Value, `branch names, as [main, "release/*"]`)
 	case workflow.ShortcutForbiddenCommands:
-		var items []*yaml.Node
+		var items []placedYAML
 		items, err = val.maps(k.Value, `{ pattern: "git push --force*", reason: "..." }`)
 		for _, item := range items {
-			y.forbiddenCommands = append(y.forbiddenCommands, nodeYAML{item}.forbidden())
+			y.forbiddenCommands = append(y.forbiddenCommands, item.forbidden())
 		}
+	case workflow.ShortcutExecOnStart:
+		y.execOnStart, err = val.checkItems(k.Value, workflow.ExecOnStartKeys, `{ run: "uv sync --locked" }`)
 	case workflow.ShortcutFormatOnEdit:
-		var items []*yaml.Node
-		items, err = val.maps(k.Value, `{ run: "gofmt -w {path}", path: "*.go" }`)
-		for _, item := range items {
-			y.formatOnEdit = append(y.formatOnEdit, nodeYAML{item}.check(k.Value, workflow.FormatOnEditKeys))
-		}
-	case workflow.ShortcutRunOnStop:
-		var items []*yaml.Node
-		items, err = val.maps(k.Value, `{ run: "go test ./...", changed: "*.go" }`)
-		for _, item := range items {
-			y.runOnStop = append(y.runOnStop, nodeYAML{item}.check(k.Value, workflow.RunOnStopKeys))
-		}
+		y.formatOnEdit, err = val.checkItems(k.Value, workflow.FormatOnEditKeys, `{ run: "gofmt -w {path}", path: "*.go" }`)
+	case workflow.ShortcutFormatOnSave:
+		y.formatOnSave, err = val.checkItems(k.Value, workflow.FormatOnSaveKeys,
+			`{ run: "npx eslint --fix", changed: "*.ts" }`)
+	case workflow.ShortcutCheckOnStop:
+		y.checkOnStop, err = val.checkItems(k.Value, workflow.CheckOnStopKeys, `{ run: "go test ./...", changed: "*.go" }`)
+	case workflow.ShortcutCheckOnSave:
+		y.checkOnSave, err = val.checkItems(k.Value, workflow.CheckOnSaveKeys, `{ run: "go test ./...", changed: "*.go" }`)
 	default:
-		return fmt.Errorf("line %d: unknown key %q in guardrails (%s)", k.Line, k.Value,
-			strings.Join(workflow.GuardrailsKeys, ", "))
+		unknown := workflow.Problem(fmt.Sprintf("line %d: unknown key %q in guardrails (%s)", k.Line, k.Value,
+			strings.Join(workflow.GuardrailsKeys, ", ")))
+		return errors.New(string(unknown.Hinted("guardrails", k.Value)))
 	}
 	return err
 }
@@ -108,10 +120,13 @@ func (y *guardrailsYAML) shortcut(k *yaml.Node, val nodeYAML) error {
 func (y *guardrailsYAML) guardrails() (workflow.Guardrails, error) {
 	g := workflow.Guardrails{
 		ProtectedFiles:    y.items(y.protectedFiles),
-		ForbiddenCommands: y.forbidden(),
 		ProtectedBranches: y.items(y.protectedBranches),
+		ForbiddenCommands: y.forbidden(),
+		ExecOnStart:       y.checks(y.execOnStart),
 		FormatOnEdit:      y.checks(y.formatOnEdit),
-		RunOnStop:         y.checks(y.runOnStop),
+		FormatOnSave:      y.checks(y.formatOnSave),
+		CheckOnStop:       y.checks(y.checkOnStop),
+		CheckOnSave:       y.checks(y.checkOnSave),
 	}
 	return g, g.Valid()
 }
@@ -134,7 +149,7 @@ func (y *guardrailsYAML) forbidden() []workflow.GuardrailForbidden {
 	return out
 }
 
-// checks converts the items of format_on_edit or run_on_stop; nil without them.
+// checks converts the items of a lifecycle shortcut; nil without them.
 func (*guardrailsYAML) checks(items []checkYAML) []workflow.GuardrailCheck {
 	var out []workflow.GuardrailCheck
 	for _, c := range items {
@@ -143,45 +158,84 @@ func (*guardrailsYAML) checks(items []checkYAML) []workflow.GuardrailCheck {
 	return out
 }
 
-// items reads the value n of the shortcut key, a list of strings described by form: null is an empty list, and any
-// other node is an error that shows the form.
+// items reads the value n of the shortcut key, a list of strings described by form, each alias, of the list or of an
+// item, as the value of its anchor and each item at the line of itemLine: null is an empty list, and any other node
+// is an error that shows the form.
 func (n nodeYAML) items(key, form string) ([]itemYAML, error) {
-	if n.ShortTag() == "!!null" {
+	list := n.resolved()
+	if list.ShortTag() == "!!null" {
 		return nil, nil
 	}
-	if n.Kind != yaml.SequenceNode {
+	if list.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("line %d: guardrails.%s takes a list of %s", n.Line, key, form)
 	}
-	out := make([]itemYAML, 0, len(n.Content))
-	for _, item := range n.Content {
+	out := make([]itemYAML, 0, len(list.Content))
+	for _, node := range list.Content {
+		item := nodeYAML{node}.resolved()
 		if item.Kind != yaml.ScalarNode {
-			return nil, fmt.Errorf("line %d: guardrails.%s takes a list of %s", item.Line, key, form)
+			return nil, fmt.Errorf("line %d: guardrails.%s takes a list of %s", n.itemLine(node), key, form)
 		}
-		out = append(out, itemYAML{Text: item.Value, Line: item.Line})
+		out = append(out, itemYAML{Text: item.Value, Line: n.itemLine(node)})
 	}
 	return out, nil
 }
 
-// maps returns the items of the value n of the shortcut key, a list of maps like example: null is an empty list,
-// and any other node is an error that shows the form.
-func (n nodeYAML) maps(key, example string) ([]*yaml.Node, error) {
-	if n.ShortTag() == "!!null" {
+// maps returns the items of the value n of the shortcut key, a list of maps like example, each alias, of the list or
+// of an item, as the value of its anchor and each item at the line of itemLine: null is an empty list, and any other
+// node is an error that shows the form.
+func (n nodeYAML) maps(key, example string) ([]placedYAML, error) {
+	list := n.resolved()
+	if list.ShortTag() == "!!null" {
 		return nil, nil
 	}
-	if n.Kind != yaml.SequenceNode {
+	if list.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("line %d: guardrails.%s takes a list of maps, each as %s", n.Line, key, example)
 	}
-	for _, item := range n.Content {
+	out := make([]placedYAML, 0, len(list.Content))
+	for _, node := range list.Content {
+		item := nodeYAML{node}.resolved()
 		if item.Kind != yaml.MappingNode {
-			return nil, fmt.Errorf("line %d: an item of guardrails.%s must be a map, as %s", item.Line, key, example)
+			return nil, fmt.Errorf("line %d: an item of guardrails.%s must be a map, as %s", n.itemLine(node), key,
+				example)
 		}
+		out = append(out, placedYAML{item, n.itemLine(node)})
 	}
-	return n.Content, nil
+	return out, nil
 }
 
-// forbidden reads the item n of forbidden_commands, a map, with the problems of its values.
-func (n nodeYAML) forbidden() forbiddenYAML {
-	y := forbiddenYAML{Line: n.Line}
+// itemLine returns the line where the shortcut whose value is n, as written, writes its item node, so an item read
+// through an alias is reported in its shortcut, never at its anchor in another one: the alias of the list, since every
+// node of an aliased list, an alias among them too, sits in another shortcut; else the item, an alias at its own line.
+func (n nodeYAML) itemLine(node *yaml.Node) int {
+	if n.Kind == yaml.AliasNode {
+		return n.Line
+	}
+	return node.Line
+}
+
+// resolved returns the node an alias stands for, so a value written as *name reads as the value of its anchor, as
+// the decoding of yaml does for the entries of on; any other node as it is.
+func (n nodeYAML) resolved() nodeYAML {
+	for n.Node != nil && n.Kind == yaml.AliasNode && n.Alias != nil {
+		n = nodeYAML{n.Alias}
+	}
+	return n
+}
+
+// checkItems reads the value n of the lifecycle shortcut key, a list of maps like example whose items take keys: each
+// item with the problems of its values (check), or the error of maps that shows the form.
+func (n nodeYAML) checkItems(key string, keys []string, example string) ([]checkYAML, error) {
+	items, err := n.maps(key, example)
+	var out []checkYAML
+	for _, item := range items {
+		out = append(out, item.check(key, keys))
+	}
+	return out, err
+}
+
+// forbidden reads the item n of forbidden_commands, a map at its line, with the problems of its values.
+func (n placedYAML) forbidden() forbiddenYAML {
+	y := forbiddenYAML{Line: n.line}
 	badPattern := false
 	y.Problems = n.fields(workflow.ShortcutForbiddenCommands, workflow.ForbiddenKeys, func(k string, val nodeYAML) string {
 		s, ok := val.text()
@@ -203,12 +257,12 @@ func (n nodeYAML) forbidden() forbiddenYAML {
 	return y
 }
 
-// check reads the item n of format_on_edit or run_on_stop (the shortcut key, whose items take keys), a map, with
+// check reads the item n of a lifecycle shortcut (the shortcut key, whose items take keys), a map at its line, with
 // the problems of its values. The command of run is a string split on spaces or a list of arguments, and the scope
-// keeps the value as written, which the validator checks as the condition it becomes. An item of run_on_stop waits
+// keeps the value as written, which the validator checks as the condition it becomes. An item of check_on_stop waits
 // for the subagents still running unless its wait_agents, true or false, is false.
-func (n nodeYAML) check(key string, keys []string) checkYAML {
-	y := checkYAML{Line: n.Line, Waits: key == workflow.ShortcutRunOnStop}
+func (n placedYAML) check(key string, keys []string) checkYAML {
+	y := checkYAML{Line: n.line, Waits: key == workflow.ShortcutCheckOnStop}
 	badRun := false
 	y.Problems = n.fields(key, keys, func(k string, val nodeYAML) string {
 		switch k {
@@ -263,7 +317,7 @@ func (n nodeYAML) fields(key string, known []string, read func(k string, val nod
 			out = append(out, fmt.Sprintf("unknown key %q in guardrails.%s (%s)", k.Value, key, strings.Join(known, ", ")))
 			continue
 		}
-		if p := read(k.Value, nodeYAML{val}); p != "" {
+		if p := read(k.Value, nodeYAML{val}.resolved()); p != "" {
 			out = append(out, fmt.Sprintf("guardrails.%s: %s", key, p))
 		}
 	}
@@ -281,14 +335,15 @@ func (n nodeYAML) text() (string, bool) {
 	return n.Value, true
 }
 
-// command reports whether n is a command: a string, or a list of strings.
+// command reports whether n is a command: a string, or a list of strings, each alias among them as the string of its
+// anchor, as in an entry of on.
 func (n nodeYAML) command() bool {
 	switch n.Kind {
 	case yaml.ScalarNode:
 		return true
 	case yaml.SequenceNode:
 		for _, a := range n.Content {
-			if a.Kind != yaml.ScalarNode {
+			if (nodeYAML{a}).resolved().Kind != yaml.ScalarNode {
 				return false
 			}
 		}
