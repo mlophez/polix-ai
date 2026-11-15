@@ -7,6 +7,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-15
+
 ### Changed
 
 - A YAML plan groups the figures of its build under `stats`: `start`, `end`, `duration` and `tokens` move from its
@@ -713,7 +715,8 @@ Claude Code is the supported agent; Codex support is not implemented.
 - The condition `pr`, on the state of the pull request, is not implemented.
 - The rest of the known limits are in [docs/polix.md](docs/polix.md#known-limits).
 
-[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/mlophez/polix-ai/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/mlophez/polix-ai/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/mlophez/polix-ai/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/mlophez/polix-ai/compare/v0.8.0...v0.8.1
