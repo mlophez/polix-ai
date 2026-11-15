@@ -86,7 +86,7 @@ holds only what its events do and calls the engine as a library:
   a `pre_commit` or a `post_commit` (rule 3). A `post_commit` comes after the command, as a `post_command` does, but
   with no watch, and sets `always` and `every`, so its injects and notices act on every commit and write no line.
 - `stop` (`logic_stop.go`), for `stop` and `subagent_stop`: the reconciliation of the log with the subagents in
-  flight before the entries (rule 17), the loop guard of `max_stop_retries` (rule 10) and the `finished` line of
+  flight before the entries (rule 17), the loop guard of `stop_retries` (rule 10) and the `finished` line of
   `subagent_stop` (rule 9).
 
 The engine is the rest, in the `logic_<topic>.go` files, and has no `if` on the name of an event: the step machinery
@@ -158,10 +158,12 @@ The rules it follows, as before this use case:
    wildcards included (`lineWrites`): the reason names the path (`<path> is protected in polix.yaml: only a person
    changes it.`) or the protected glob a folder or a wildcard holds (`<folder> holds <glob>, protected in
    polix.yaml: ...`), and it is logged as `guardrails.protected_files`. Reading a protected path passes. Nor does any
-   actor run a command of `guardrails.forbidden_commands` (`workflow.Workflow.ForbiddenCommands`, the first in file
-   order whose pattern matches any command of the line, `forbidden`) on `pre_command` or `pre_commit`: the reason
-   is its `reason`, or `reasonForbidden`, followed by the line, and it is logged as `guardrails.forbidden_commands`
-   with the line of its item. An edit a command made (rule 16) gets none of the protections of an edit: its
+   actor run a command of `guardrails.forbidden_commands` (`workflow.Workflow.ForbiddenCommands`, the first,
+   among the items the presets of `guardrails.builtin` add and then those written in file order, whose pattern
+   matches any command of the line, `forbidden`) on `pre_command` or `pre_commit`: the reason is its `reason`, or `reasonForbidden`, followed by
+   the line, and it is logged from the origin of its item (`workflow.ForbiddenCommand.From`,
+   `guardrails.builtin.<key>` for a preset, at the line of `builtin`, 0 when the file leaves it out) or as
+   `guardrails.forbidden_commands`, with the line of its item. An edit a command made (rule 16) gets none of the protections of an edit: its
    `post_command` already put the protected files back, and the state of polix lives in the git directory, which no
    tree holds.
 2. A workflow that cannot be used (it cannot be read or parsed, has problems or requires a newer polix) blocks
@@ -315,7 +317,7 @@ The rules it follows, as before this use case:
     an earlier one, is still bounded while the agent changes nothing. When those runs changed
     the content, a block let through writes its line too, once the entries of the event are done, with the hash they
     ended on (`writeReleased`), so the chain goes on even when a later run writes again, and the warning names
-    `max_stop_retries`. After `max_stop_retries` the agent may
+    `stop_retries`. After `stop_retries` blocks, 1 by default, the agent may
     stop with a warning and the next entries run, and when the log cannot be read or written the guard fails open.
 11. The content hash is computed only when something needs it: the repeat of a `run` and its `passed` line (before
     and after the run), a `block` with `once`, the loop guard, `finished` and its observed line, and, when the

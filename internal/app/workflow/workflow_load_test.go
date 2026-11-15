@@ -10,7 +10,7 @@ import (
 // the problems of a workflow with it.
 func TestLoadedValid(t *testing.T) {
 	boom := errors.New("boom")
-	valid := Workflow{Version: 1, MaxStopRetries: 3}
+	valid := Workflow{Version: 1, StopRetries: 3}
 	bad := Workflow{Version: 2}
 	cases := []struct {
 		name   string

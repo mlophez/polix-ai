@@ -163,7 +163,7 @@ func TestCommandPath(t *testing.T) {
 func TestCheckRenamed(t *testing.T) {
 	r := testenv.GitRepo(t)
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nguardrails:\n  run_on_stop:\n    - run: go test ./...\n")
-	want := `line 3: unknown key "run_on_stop" in guardrails (protected_files, protected_branches, forbidden_commands, ` +
+	want := `line 3: unknown key "run_on_stop" in guardrails (builtin, protected_files, protected_branches, forbidden_commands, ` +
 		`exec_on_start, format_on_edit, format_on_save, check_on_stop, check_on_save): use check_on_stop`
 	code, _, stderr := runCommand(r)
 	if code != 1 || !strings.Contains(stderr, want) || strings.Contains(stderr, "newer polix") {

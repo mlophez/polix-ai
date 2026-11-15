@@ -58,6 +58,32 @@ func shortcutsSummary(e workflow.Entry) string {
 // waitNotice is the notify of check_on_stop while subagents run, as shortcutsSummary describes it.
 const waitNotice = `notify "check_on_stop waits for the subagents still running: its checks run on the next stop after they end." always=true`
 
+// The entries guardrails.builtin expands into when polix.yaml leaves it out, as shortcutsSummary describes them: the
+// two of format_polix_files on post_edit and the one of check_polix_files on githooks.pre_commit.
+const (
+	formatPolixFiles = `guardrails.builtin.format_polix_files line=0 when=map[path:/polix.yaml] run ["polix" "config" "fmt"] ""`
+	formatRules      = `guardrails.builtin.format_polix_files line=0 when=map[path:ai/rules/*.yaml] run ["polix" "rules" "fmt"] ""`
+	checkPolixFiles  = `guardrails.builtin.check_polix_files line=0 when=map[changed:[/polix.yaml ai/rules/**]] run ["polix" "config" "check"] ""`
+)
+
+// writtenForbidden returns the items of forbidden_commands written in the file, without those the presets of
+// guardrails.builtin add first.
+func writtenForbidden(list []workflow.ForbiddenCommand) []workflow.ForbiddenCommand {
+	var out []workflow.ForbiddenCommand
+	for _, f := range list {
+		if f.From == "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// installAt is the entry of start that installs the hooks of git at line, as shortcutsSummary describes it.
+func installAt(line int) string {
+	return fmt.Sprintf(`githooks line=%d when=map[] run ["polix" "install" "--githooks"] "The hooks of git of githooks `+
+		`are not installed, so the gates of githooks do not apply to the commits:"`, line)
+}
+
 // AC12: wait_agents of an item of check_on_stop is true or false, true when left out; an item with wait_agents: false
 // expands as before, and the others wait and add the notify.
 func TestShortcutsWaitAgents(t *testing.T) {
@@ -115,7 +141,10 @@ func TestShortcutsExpand(t *testing.T) {
 			`guardrails.protected_branches line=11 when=map[branch:^(?:main|release/.*)$] block "{branch} is protected in polix.yaml: create a branch for this change and commit there."`,
 			` line=25 when=map[] block "regular commit"`,
 		},
+		workflow.Start: {installAt(0)},
 		workflow.PostEdit: {
+			formatPolixFiles,
+			formatRules,
 			`guardrails.format_on_edit line=13 when=map[path:*.go] run ["gofmt" "-w" "{path}"] ""`,
 			`guardrails.format_on_edit line=15 when=map[] run ["prettier" "--write" "{path}"] "Format failed"`,
 		},
@@ -143,7 +172,7 @@ func TestShortcutsExpand(t *testing.T) {
 	forbidden := []workflow.ForbiddenCommand{{Pattern: "rm -rf /*", Line: 7},
 		{Pattern: "git push --force*", Reason: "Force pushes rewrite the history of others.", Line: 8},
 		{Pattern: "terraform apply*", Line: 10}}
-	if !slices.Equal(w.ForbiddenCommands, forbidden) {
+	if !slices.Equal(writtenForbidden(w.ForbiddenCommands), forbidden) {
 		t.Errorf("forbidden commands: %+v", w.ForbiddenCommands)
 	}
 }
@@ -188,8 +217,8 @@ githooks:
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("start:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if len(w.On) != 1 {
-		t.Fatalf("events: %v", w.On)
+	if len(w.On) != 2 || len(w.On[workflow.PostEdit]) != 2 {
+		t.Fatalf("events: start, and post_edit of guardrails.builtin: %v", w.On)
 	}
 }
 
@@ -225,7 +254,10 @@ on:
 			t.Errorf("entry %d runs with always", i)
 		}
 	}
-	if strings.Join(got, "\n") != strings.Join(want, "\n") || len(w.On) != 1 {
+	// Besides pre_command, only the entries of guardrails.builtin: the format of the polix files on post_edit and the
+	// install of the hooks of git its check needs on start.
+	if strings.Join(got, "\n") != strings.Join(want, "\n") || len(w.On) != 3 || len(w.On[workflow.PostEdit]) != 2 ||
+		len(w.On[workflow.Start]) != 1 {
 		t.Fatalf("pre_command:\n%s\nwant:\n%s\nevents: %v", strings.Join(got, "\n"), strings.Join(want, "\n"), w.On)
 	}
 	_, err = parse(t, "version: 1\nguardrails:\n  format_on_save:\n    - { run: x, path: \"*.ts\" }\n", "dev")
@@ -242,6 +274,7 @@ on:
 func TestShortcutsCheckOnSave(t *testing.T) {
 	src := `version: 1
 guardrails:
+  builtin: { format_polix_files: false, check_polix_files: false }
   check_on_save:
     - run: golangci-lint run ./...
       changed: ["*.go", go.mod]
@@ -253,14 +286,13 @@ guardrails:
 	if err != nil {
 		t.Fatal(err)
 	}
-	install := `githooks line=4 when=map[] run ["polix" "install" "--githooks"] "The hooks of git of githooks are not installed, so the gates of githooks do not apply to the commits:"`
-	if start := w.On[workflow.Start]; len(start) != 1 || shortcutsSummary(start[0]) != install ||
+	if start := w.On[workflow.Start]; len(start) != 1 || shortcutsSummary(start[0]) != installAt(5) ||
 		!start[0].Action.Run.Always {
 		t.Fatalf("start: %+v", start)
 	}
 	want := []string{
-		`guardrails.check_on_save line=4 when=map[changed:[*.go go.mod]] run ["golangci-lint" "run" "./..."] "Fix the lint before committing:"`,
-		`guardrails.check_on_save line=8 when=map[] run ["polix" "config" "check"] ""`,
+		`guardrails.check_on_save line=5 when=map[changed:[*.go go.mod]] run ["golangci-lint" "run" "./..."] "Fix the lint before committing:"`,
+		`guardrails.check_on_save line=9 when=map[] run ["polix" "config" "check"] ""`,
 	}
 	var got []string
 	for _, e := range w.Githooks[workflow.PreCommit] {
@@ -282,10 +314,10 @@ guardrails:
 	for _, e := range w.Githooks[workflow.PreCommit] {
 		got = append(got, shortcutsSummary(e))
 	}
-	if want := append(want, ` line=11 when=map[] block "written"`); strings.Join(got, "\n") != strings.Join(want, "\n") {
+	if want := append(want, ` line=12 when=map[] block "written"`); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("githooks with written entries:\n%s", strings.Join(got, "\n"))
 	}
-	if start := w.On[workflow.Start]; len(start) != 1 || start[0].Line != 10 {
+	if start := w.On[workflow.Start]; len(start) != 1 || start[0].Line != 11 {
 		t.Fatalf("the install at the line of githooks.pre_commit: %+v", start)
 	}
 }
@@ -315,7 +347,8 @@ on:
 		t.Fatal(err)
 	}
 	want := `guardrails.check_on_save line=11 when=map[changed:[*.go go.mod]] run ["golangci-lint" "run" "./..."] ""`
-	if got := w.Githooks[workflow.PreCommit]; len(got) != 1 || shortcutsSummary(got[0]) != want {
+	if got := w.Githooks[workflow.PreCommit]; len(got) != 2 || shortcutsSummary(got[0]) != checkPolixFiles ||
+		shortcutsSummary(got[1]) != want {
 		t.Fatalf("check_on_save: %+v", got)
 	}
 	if stop := w.On[workflow.Stop]; len(stop) == 0 || stop[0].Action.Run.Message != "No force pushes" {
@@ -376,6 +409,7 @@ guardrails:
 		t.Fatal(err)
 	}
 	want := []string{
+		checkPolixFiles,
 		`guardrails.check_on_save line=11 when=map[] run ["golangci-lint" "run" "./..."] ""`,
 		`guardrails.protected_branches line=8 when=map[branch:^(?:main|release/.*)$] block "{branch} is ` +
 			`protected in polix.yaml: create a branch for this change and commit there."`,
@@ -400,7 +434,7 @@ guardrails:
 		t.Fatalf("an item of an aliased list takes the line of the alias: %v", lines)
 	}
 	pushes := []int{}
-	for _, f := range w.ForbiddenCommands {
+	for _, f := range writtenForbidden(w.ForbiddenCommands) {
 		pushes = append(pushes, f.Line)
 	}
 	if !slices.Equal(pushes, []int{15, 16}) {
@@ -497,7 +531,9 @@ func TestShortcutsWrittenOnly(t *testing.T) {
 	if err != nil || len(w.On[workflow.PreEdit]) != 2 || w.On[workflow.PreEdit][0].Action.Block.Message != "a" {
 		t.Fatalf("%v %+v", err, w.On)
 	}
-	w, err = parse(t, "version: 1\nguardrails:\n  protected_files:\n", "dev")
+	off := "  builtin: { forbid_commit_no_verify: false, forbid_git_destructive_commands: false, " +
+		"format_polix_files: false, check_polix_files: false }\n"
+	w, err = parse(t, "version: 1\nguardrails:\n"+off+"  protected_files:\n", "dev")
 	if err != nil || w.On != nil || w.ProtectedFiles != nil || w.ForbiddenCommands != nil {
 		t.Fatalf("an empty shortcut: %v %+v", err, w)
 	}
@@ -639,7 +675,7 @@ func TestShortcutsForms(t *testing.T) {
 func TestShortcutsRenamed(t *testing.T) {
 	src := "version: 1\nguardrails:\n  run_on_stop:\n    - run: go test ./...\n      changed: \"*.go\"\n"
 	_, err := parse(t, src, "dev")
-	want := `polix.yaml: line 3: unknown key "run_on_stop" in guardrails (protected_files, protected_branches, ` +
+	want := `polix.yaml: line 3: unknown key "run_on_stop" in guardrails (builtin, protected_files, protected_branches, ` +
 		`forbidden_commands, exec_on_start, format_on_edit, format_on_save, check_on_stop, check_on_save): use check_on_stop`
 	var invalid workflow.InvalidError
 	if err == nil || errors.As(err, &invalid) || err.Error() != want {
@@ -673,5 +709,136 @@ func TestShortcutsDecodeAsWritten(t *testing.T) {
 	if c := g.CheckOnStop; len(c) != 1 || strings.Join(c[0].Run, " ") != "go test" || c[0].Scope != "*.go" ||
 		c[0].Line != 7 || c[0].Problems != nil {
 		t.Fatalf("check on stop: %+v", c)
+	}
+}
+
+// CUJ-09, AC-06: a value of guardrails.builtin other than true or false (LIT-05) and an unknown key of it (LIT-06)
+// are problems at the line of their key, the practice of a wrong value staying on, and only the unknown key may be
+// an option of a newer polix; a builtin that is not a map is the error of LIT-07. A valid map loads its switches,
+// each one it leaves out on, as are all four without builtin or with null.
+func TestBuiltinProblems(t *testing.T) {
+	for src, want := range map[string]string{
+		"version: 1\nguardrails:\n  builtin:\n    format_polix_files: \"yes\"\n": "polix.yaml:4: guardrails.builtin: format_polix_files must be true or false",
+		"version: 1\nguardrails:\n  builtin:\n    check_polix_files: true\n    bogus: false\n": `polix.yaml:5: unknown key "bogus" in guardrails.builtin ` +
+			"(forbid_commit_no_verify, forbid_git_destructive_commands, format_polix_files, check_polix_files)",
+	} {
+		w, err := parse(t, src, "dev")
+		var invalid workflow.InvalidError
+		if !errors.As(err, &invalid) || strings.Join(invalid, "\n") != want {
+			t.Errorf("%q: got %v, want %s", src, err, want)
+			continue
+		}
+		if !w.Builtin.FormatPolixFiles || !w.Builtin.CheckPolixFiles {
+			t.Errorf("%q: the practice stays on: %+v", src, w.Builtin)
+		}
+	}
+	if workflow.Problem(`polix.yaml:5: unknown key "bogus" in guardrails.builtin (x)`).Known() {
+		t.Error("an unknown key of builtin may be an option of a newer polix")
+	}
+	for _, src := range []string{"version: 1\nguardrails:\n  builtin: true\n", "version: 1\nguardrails:\n  builtin: [x]\n"} {
+		_, err := parse(t, src, "dev")
+		var invalid workflow.InvalidError
+		if err == nil || errors.As(err, &invalid) || err.Error() != "polix.yaml: line 3: guardrails.builtin takes a map "+
+			"of true or false, as { forbid_git_destructive_commands: false }" {
+			t.Errorf("%q: LIT-07: %v", src, err)
+		}
+	}
+	w, err := parse(t, "version: 1\nguardrails:\n  builtin: { forbid_git_destructive_commands: false, "+
+		"check_polix_files: false }\n", "dev")
+	if b := w.Builtin; err != nil || !b.ForbidCommitNoVerify || b.ForbidGitDestructiveCommands || !b.FormatPolixFiles ||
+		b.CheckPolixFiles || b.Line != 3 || len(w.Githooks) != 0 || len(w.On[workflow.Start]) != 0 {
+		t.Fatalf("a valid map: %v %+v", err, w)
+	}
+	for _, src := range []string{"version: 1\n", "version: 1\nguardrails:\n  builtin:\n"} {
+		w, err := parse(t, src, "dev")
+		if b := w.Builtin; err != nil || !b.ForbidCommitNoVerify || !b.ForbidGitDestructiveCommands ||
+			!b.FormatPolixFiles || !b.CheckPolixFiles || len(w.On[workflow.PostEdit]) != 2 ||
+			len(w.Githooks[workflow.PreCommit]) != 1 || len(w.On[workflow.Start]) != 1 {
+			t.Errorf("%q: all on: %v %+v", src, err, w)
+		}
+	}
+}
+
+// FND-06: a path that cannot be the folder of the AI is its only problem: the built-in format and check of the polix
+// files are not built from it, so no placeholder of it is reported and no unknown name is followed by the advice to
+// update polix.
+func TestBuiltinInvalidPath(t *testing.T) {
+	_, err := parse(t, "version: 1\npath: \"a{b}\"\n", "dev")
+	var invalid workflow.InvalidError
+	if !errors.As(err, &invalid) || len(invalid) != 1 || !strings.Contains(invalid[0], `path "a{b}"`) {
+		t.Fatalf("got %v, want only the problem of path", err)
+	}
+	for _, p := range invalid {
+		if strings.Contains(p, "unknown") && !workflow.Problem(p).Known() {
+			t.Errorf("the problem would suggest a newer polix: %s", p)
+		}
+	}
+}
+
+// CUJ-11, AC-07: also_on_save of an item of check_on_stop takes true or false (LIT-08), and with true the strings of
+// the item are checked with the vocabulary of githooks, so a placeholder git can never give is a problem (LIT-09);
+// both come at the line of the item and are names this polix knows, never options of a newer polix. With
+// also_on_save false the same item is valid, and with true it loads also on githooks.pre_commit.
+func TestAlsoOnSaveProblems(t *testing.T) {
+	const item = "version: 1\nguardrails:\n  check_on_stop:\n    - run: %s\n      also_on_save: %s\n"
+	for src, want := range map[string]string{
+		fmt.Sprintf(item, "go vet ./...", "3"):   "polix.yaml:4: guardrails.check_on_stop: also_on_save must be true or false",
+		fmt.Sprintf(item, "echo {path}", "true"): "polix.yaml:4: guardrails.check_on_stop: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)",
+	} {
+		_, err := parse(t, src, "dev")
+		var invalid workflow.InvalidError
+		if !errors.As(err, &invalid) || strings.Join(invalid, "\n") != want {
+			t.Errorf("%q: got %v, want %s", src, err, want)
+			continue
+		}
+		if strings.Contains(want, "unknown") && !workflow.Problem(want).Known() {
+			t.Errorf("%q: the problem would suggest a newer polix", src)
+		}
+	}
+	if _, err := parse(t, fmt.Sprintf(item, "echo {path}", "false"), "dev"); err != nil {
+		t.Errorf("also_on_save false: %v", err)
+	}
+	w, err := parse(t, fmt.Sprintf(item, "go vet ./...", "true"), "dev")
+	if pre := w.Githooks[workflow.PreCommit]; err != nil || len(pre) != 2 || pre[1].From != "guardrails.check_on_stop" ||
+		pre[1].Line != 4 {
+		t.Fatalf("also_on_save true: %v %+v", err, pre)
+	}
+}
+
+// CUJ-15, AC-10: a written format_on_edit item for polix config fmt and a check_on_save item stay, after the entries
+// of format_polix_files on post_edit and of check_polix_files on githooks.pre_commit.
+func TestBuiltinKeepsWritten(t *testing.T) {
+	w, err := parse(t, `version: 1
+guardrails:
+  forbidden_commands:
+    - pattern: "kubectl* apply *"
+      reason: Apply through the pipeline.
+  format_on_edit:
+    - run: polix config fmt
+      path: polix.yaml
+  check_on_save:
+    - run: go test ./...
+`, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var edit, save []string
+	for _, e := range w.On[workflow.PostEdit] {
+		edit = append(edit, e.From+" "+strings.Join(e.Action.Run.Command, " "))
+	}
+	for _, e := range w.Githooks[workflow.PreCommit] {
+		save = append(save, e.From+" "+strings.Join(e.Action.Run.Command, " "))
+	}
+	if want := []string{"guardrails.builtin.format_polix_files polix config fmt",
+		"guardrails.builtin.format_polix_files polix rules fmt", "guardrails.format_on_edit polix config fmt"}; !slices.Equal(edit, want) {
+		t.Errorf("post_edit: %q", edit)
+	}
+	if want := []string{"guardrails.builtin.check_polix_files polix config check",
+		"guardrails.check_on_save go test ./..."}; !slices.Equal(save, want) {
+		t.Errorf("githooks.pre_commit: %q", save)
+	}
+	if f := w.ForbiddenCommands; len(f) == 0 || f[len(f)-1].Reason != "Apply through the pipeline." ||
+		len(writtenForbidden(f)) != 1 || f[0].From != "guardrails.builtin.forbid_commit_no_verify" {
+		t.Errorf("forbidden commands: %+v", f)
 	}
 }

@@ -11,15 +11,26 @@ import (
 // The entries the shortcuts of guardrails expand into: Guardrails.Expand puts those of on before the entries written
 // there, and Guardrails.Githooks those of githooks before the entries written in githooks.
 
-// Githooks returns the entries of githooks with those check_on_save expands into before the entries written in
-// githooks.pre_commit: one entry per item, in file order, that runs its command with its message, when a staged file
-// matches its changed if it has one. Each takes the line of its item and the path of its shortcut, which the
-// validator of githooks names in its problems. An item with problems expands into nothing: Problems reports them.
-// Without such items githooks is returned as it is.
-func (g Guardrails) Githooks(githooks map[string][]Entry) map[string][]Entry {
-	var saved []Entry
+// Githooks returns the entries of githooks with those builtin and check_on_save expand into before the entries written
+// in githooks.pre_commit: first the entry of check_polix_files, which runs polix config check when a staged file is
+// the root polix.yaml or below rules, the folder of the rules (Builtin.checkEntries); then one entry per item of
+// check_on_save, in file order, that runs its command with its message, when a staged file matches its changed if it
+// has one; then, as those of check_on_save, one entry per item of check_on_stop with also_on_save, in file order,
+// whose wait_agents applies only to its entry on stop. Each takes the line of its item, or of builtin, and the path
+// of its shortcut, which the validator of githooks names in its problems. An item with problems expands into
+// nothing: Problems reports them. Without such entries githooks is returned as it is.
+func (g Guardrails) Githooks(githooks map[string][]Entry, rules string) map[string][]Entry {
+	saved := g.Builtin.checkEntries(rules)
 	for _, c := range g.CheckOnSave {
 		if e, ok := c.entry(ShortcutCheckOnSave, nil, "changed", false); ok {
+			saved = append(saved, e)
+		}
+	}
+	for _, c := range g.CheckOnStop {
+		if !c.AlsoOnSave {
+			continue
+		}
+		if e, ok := c.onSave().entry(ShortcutCheckOnStop, nil, "changed", false); ok {
 			saved = append(saved, e)
 		}
 	}
@@ -32,9 +43,13 @@ func (g Guardrails) Githooks(githooks map[string][]Entry) map[string][]Entry {
 	return out
 }
 
-// entries returns the entries the shortcuts expand into in on, by event, each group in file order (see Expand).
-func (g Guardrails) entries() map[string][]Entry {
+// entries returns the entries builtin and the shortcuts expand into in on, by event, each group in file order, for
+// the folder of the rules rules (see Expand).
+func (g Guardrails) entries(rules string) map[string][]Entry {
 	regular := map[string][]Entry{}
+	if format := g.Builtin.formatEntries(rules); len(format) > 0 {
+		regular[PostEdit] = format
+	}
 	if expr, line := g.branchExpr(); expr != "" {
 		when := Cond{"branch": expr}
 		e, _ := when.shortcutBlock("guardrails."+ShortcutProtectedBranches, line, branchMessage)
@@ -74,6 +89,13 @@ func (c GuardrailCheck) entry(key string, base Cond, cond string, always bool) (
 	}
 	e, _ := when.shortcutRun("guardrails."+key, c.Line, c.Run, c.Message, always)
 	return e, true
+}
+
+// onSave returns the item c of check_on_stop as it runs on every commit (also_on_save): without waiting for the
+// subagents, which git does not know.
+func (c GuardrailCheck) onSave() GuardrailCheck {
+	c.Waits = false
+	return c
 }
 
 // waitNotice returns the notify of check_on_stop that tells the user its checks wait for the subagents still running,

@@ -14,7 +14,7 @@ func (v *validator) order(ev string, entries []Entry) {
 
 // unreachable reports each entry of the event ev that follows a block that always blocks the event, which never runs.
 // stop and subagent_stop are left out, since their loop guard lets the later entries run once a block has blocked
-// max_stop_retries times.
+// stop_retries times.
 func (v *validator) unreachable(ev string, entries []Entry) {
 	if ev == Stop || ev == SubagentStop {
 		return

@@ -68,7 +68,8 @@ func (r *pass) lastBefore(ans agent.Answer) agent.Answer {
 // where it comes from: reading is always allowed (the log is the evidence of the process), but nobody runs a command
 // that could write and names the state of polix, whatever the workflow says; and, with a valid workflow, no actor,
 // the main session included, writes a path of guardrails.protected_files, also when git ignores it, nor runs a
-// command of guardrails.forbidden_commands, wherever it comes in the line.
+// command of guardrails.forbidden_commands, wherever it comes in the line, those the presets of guardrails.builtin add
+// first. The refusal of a forbidden command is its reason followed by the line, logged from the origin of its item.
 func (r *pass) protectCommand() (agent.Answer, bool) {
 	ev, wf := r.ev.Event, r.guardrails()
 	if mayWrite(ev.Command, r.ev.Windows()) {
@@ -96,7 +97,11 @@ func (r *pass) protectCommand() (agent.Answer, bool) {
 		if reason == "" {
 			reason = reasonForbidden
 		}
-		return r.deny(forbiddenCommandsShortcut, f.Line, reason+"\n"+ev.Command)
+		from := f.From
+		if from == "" {
+			from = forbiddenCommandsShortcut
+		}
+		return r.deny(from, f.Line, reason+"\n"+ev.Command)
 	}
 	return agent.Answer{}, false
 }

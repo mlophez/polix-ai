@@ -9,7 +9,7 @@ import (
 // first, then the other settings, then requirements right before guardrails, since it is not a shortcut that
 // expands into entries, the two sections that hold the workflow of the AI, guardrails and on, and githooks, the
 // gates git runs, last.
-var topKeys = []string{"version", "path", "requires", "base_branch", "max_stop_retries", "vars", "rules",
+var topKeys = []string{"version", "path", "requires", "base_branch", "stop_retries", "vars", "rules",
 	"risk", "requirements", "guardrails", "on", "githooks"}
 
 // varKeys are the keys of a variable of vars.
@@ -50,8 +50,8 @@ func order(path []string) []string {
 		return orderSection(path[0])
 	case path[0] == "vars" && len(path) == 2:
 		return varKeys
-	case path[0] == "guardrails" && len(path) == 3 && path[2] == "-":
-		return orderShortcut(path[1])
+	case path[0] == "guardrails":
+		return orderGuardrails(path[1:])
 	case path[0] == "on" && len(path) >= 3 && path[2] == "-":
 		return orderEntry(path[3:])
 	case path[0] == "githooks" && len(path) >= 3 && path[2] == "-":
@@ -73,6 +73,18 @@ func orderSection(key string) []string {
 		return workflow.RulesKeys
 	case "risk":
 		return workflow.RiskKeys
+	}
+	return nil
+}
+
+// orderGuardrails returns the order of the keys of the mapping at the path below guardrails: the keys of builtin, and
+// those of an item of a shortcut that takes a list of maps; nil for the others.
+func orderGuardrails(path []string) []string {
+	switch {
+	case len(path) == 1 && path[0] == workflow.ShortcutBuiltin:
+		return workflow.BuiltinKeys
+	case len(path) == 2 && path[1] == "-":
+		return orderShortcut(path[0])
 	}
 	return nil
 }

@@ -16,7 +16,8 @@ type Output struct {
 }
 
 // Decide draws the workflow as a Mermaid flowchart: first a subgraph guardrails with the protections the hook applies
-// before every event, then one subgraph per event with entries, in the order of workflow.Events, and one node per
+// before every event, then one subgraph per event with entries, in the order of workflow.Events, then one subgraph
+// githooks.<event> per event of githooks with entries, in the order of workflow.GithookEvents, and one node per
 // entry, linked in the order of the file. Without polix.yaml (found false) it draws nothing and says so.
 func Decide(wf workflow.Workflow, found bool) Output {
 	if !found {
@@ -26,52 +27,65 @@ func Decide(wf workflow.Workflow, found bool) Output {
 	b.WriteString("flowchart TD\n")
 	n := 0
 	if labels := guardrails(wf); len(labels) > 0 {
-		b.WriteString("  subgraph guardrails\n")
-		for i, label := range labels {
-			fmt.Fprintf(&b, "    n%d[\"%s\"]\n", n, label)
-			if i > 0 {
-				fmt.Fprintf(&b, "    n%d --> n%d\n", n-1, n)
-			}
-			n++
-		}
-		b.WriteString("  end\n")
+		n = subgraph(&b, "guardrails", labels, n)
 	}
 	for _, ev := range workflow.Events {
-		entries := wf.On[ev]
-		if len(entries) == 0 {
-			continue
-		}
-		fmt.Fprintf(&b, "  subgraph %s\n", ev)
-		prev := ""
-		for _, e := range entries {
-			id := fmt.Sprintf("n%d", n)
-			n++
-			fmt.Fprintf(&b, "    %s[\"%s\"]\n", id, label(e))
-			if prev != "" {
-				fmt.Fprintf(&b, "    %s --> %s\n", prev, id)
-			}
-			prev = id
-		}
-		b.WriteString("  end\n")
+		n = subgraph(&b, ev, labelsOf(wf.On[ev]), n)
+	}
+	for _, ev := range workflow.GithookEvents {
+		n = subgraph(&b, "githooks_"+ev+" [githooks."+ev+"]", labelsOf(wf.Githooks[ev]), n)
 	}
 	return Output{Mermaid: b.String()}
 }
 
-// guardrails describes the protections of the workflow, in the order the hook applies them: one label for the globs
-// of protected_files, and one per item of forbidden_commands with its pattern and its reason.
-func guardrails(wf workflow.Workflow) []string {
-	var labels []string
-	if len(wf.ProtectedFiles) > 0 {
-		labels = append(labels, text(workflow.ShortcutProtectedFiles+": "+strings.Join(wf.ProtectedFiles, ", ")))
+// subgraph writes into b the subgraph head, its id and title, with one node per label, numbered from n and each
+// linked to the one before, and returns the number of the next node; without labels it writes nothing.
+func subgraph(b *strings.Builder, head string, labels []string, n int) int {
+	if len(labels) == 0 {
+		return n
 	}
+	fmt.Fprintf(b, "  subgraph %s\n", head)
+	for i, l := range labels {
+		fmt.Fprintf(b, "    n%d[\"%s\"]\n", n, l)
+		if i > 0 {
+			fmt.Fprintf(b, "    n%d --> n%d\n", n-1, n)
+		}
+		n++
+	}
+	b.WriteString("  end\n")
+	return n
+}
+
+// labelsOf describes the entries, each as label says, in their order.
+func labelsOf(entries []workflow.Entry) []string {
+	labels := make([]string, 0, len(entries))
+	for _, e := range entries {
+		labels = append(labels, label(e))
+	}
+	return labels
+}
+
+// guardrails describes the protections of the workflow: first one label per item of forbidden_commands the presets
+// of guardrails.builtin add, then one for the globs of protected_files, then one per item written in
+// forbidden_commands, in the order the hook applies them; each item with its pattern, its reason and, for a preset,
+// its origin.
+func guardrails(wf workflow.Workflow) []string {
+	var labels, written []string
 	for _, f := range wf.ForbiddenCommands {
 		label := workflow.ShortcutForbiddenCommands + ": " + f.Pattern
 		if f.Reason != "" {
 			label += "<br/>" + f.Reason
 		}
-		labels = append(labels, text(label))
+		if f.From == "" {
+			written = append(written, text(label))
+			continue
+		}
+		labels = append(labels, text(label+"<br/>from "+f.From))
 	}
-	return labels
+	if len(wf.ProtectedFiles) > 0 {
+		labels = append(labels, text(workflow.ShortcutProtectedFiles+": "+strings.Join(wf.ProtectedFiles, ", ")))
+	}
+	return append(labels, written...)
 }
 
 // label describes an entry: its conditions, its action and the shortcut it was expanded from, written as text says.

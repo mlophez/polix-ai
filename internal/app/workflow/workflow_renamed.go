@@ -16,12 +16,13 @@ var renamedEvents = map[string]string{"session_start": Start, "turn_stop": Stop}
 // A removed key is one too: its hint tells how to migrate it.
 var renamed = map[string]map[string]string{
 	"top": {
-		"protected":       "use guardrails.protected_files",
-		"base":            "use base_branch",
-		"max_stop_blocks": "use max_stop_retries",
-		"plans":           "remove it: the plans go to plans/ below path (ai/plans by default)",
-		"reports":         "remove it: the reports go to reports/ below path (ai/reports by default)",
-		"guidance":        "remove it: polix always injects the rules on commits and the folders below path on start",
+		"protected":        "use guardrails.protected_files",
+		"base":             "use base_branch",
+		"max_stop_blocks":  "use stop_retries",
+		"max_stop_retries": "use stop_retries",
+		"plans":            "remove it: the plans go to plans/ below path (ai/plans by default)",
+		"reports":          "remove it: the reports go to reports/ below path (ai/reports by default)",
+		"guidance":         "remove it: polix always injects the rules on commits and the folders below path on start",
 	},
 	"rules":      {"path": "move it to the top-level key path, the folder that holds rules/ (ai by default)"},
 	"guardrails": {"run_on_stop": "use check_on_stop"},
@@ -62,18 +63,22 @@ func (p Problem) Hinted(place, name string) Problem {
 }
 
 // savePlaceholder and saveKey find, in a problem of guardrails.check_on_save, the name it reports as unknown: a
-// placeholder, which the vocabulary of githooks reports with the ones it allows, or a key of an item. The entries
-// written in githooks match neither: their problems stay as they were before check_on_save.
+// placeholder, which the vocabulary of githooks reports with the ones it allows, or a key of an item. savePlaceholder
+// also finds the placeholder of an item of guardrails.check_on_stop with also_on_save, whose entry of githooks the
+// same vocabulary checks. The entries written in githooks match neither: their problems stay as they were before
+// check_on_save.
 var (
-	savePlaceholder = regexp.MustCompile(`guardrails\.check_on_save: unknown placeholder \{([^}]*)\} \(githooks allow `)
-	saveKey         = regexp.MustCompile(`unknown key "([^"]*)" in guardrails\.check_on_save \(`)
+	savePlaceholder = regexp.MustCompile(
+		`guardrails\.check_on_(?:save|stop): unknown placeholder \{([^}]*)\} \(githooks allow `)
+	saveKey = regexp.MustCompile(`unknown key "([^"]*)" in guardrails\.check_on_save \(`)
 )
 
 // Known reports whether the problem is about a name this polix knows, never an option of a newer polix: a name of the
-// old vocabulary (Renamed), or, in an item of check_on_save, a name of on that git can never give its hooks, since
-// it runs them without a session and before the commit: a placeholder only an event of an agent gives
-// (AgentOnlyBuiltins), or a key of check_on_stop (wait_agents). A measure of the diff, which git can compute, may be
-// an option of a newer polix there, as any unknown name in an entry written in githooks.
+// old vocabulary (Renamed), or, in an item of check_on_save or of check_on_stop with also_on_save, a name of on that
+// git can never give its hooks, since it runs them without a session and before the commit: a placeholder only an
+// event of an agent gives (AgentOnlyBuiltins), or, in check_on_save, a key of check_on_stop (wait_agents,
+// also_on_save). A measure of the diff, which git can compute, may be an option of a newer polix there, as any
+// unknown name in an entry written in githooks.
 func (p Problem) Known() bool {
 	if p.Renamed() {
 		return true

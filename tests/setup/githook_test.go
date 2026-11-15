@@ -113,6 +113,56 @@ func TestGithookCheckOnSave(t *testing.T) {
 	}
 }
 
+// CUJ-03, AC-02: with the hooks of git installed and a polix.yaml without githooks nor check_on_save, a real commit
+// that stages a broken polix files is aborted by guardrails.builtin.check_polix_files with HEAD unchanged: a
+// polix.yaml with an unknown top-level key, and a rule without description, which only polix config check finds;
+// a commit that stages only README.md is made without running polix config check, though the broken rule stays in
+// the working tree. It skips, naming the version of git, when git does not run the hooks of its configuration.
+func TestGithookCheckPolixFiles(t *testing.T) {
+	bin := buildPolix(t)
+	testenv.Machine(t, false, false)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	r := testenv.GitRepo(t)
+	if code, stdout, stderr := runSetup("install", "--githooks", "--dir", r); code != 0 {
+		if out, _ := gitOut(r, "hook", "list", "pre-commit"); !strings.Contains(out, "polix-pre-commit") {
+			version, _ := gitOut(r, "--version")
+			t.Skipf("%s does not run the hooks of its configuration (git hook list: %q)", strings.TrimSpace(version), out)
+		}
+		t.Fatalf("install: %d\n%s%s", code, stdout, stderr)
+	}
+	head := func() string {
+		out, _ := gitOut(r, "rev-parse", "HEAD")
+		return strings.TrimSpace(out)
+	}
+	before := head()
+	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbogus: 1\n")
+	mustGit(t, r, "add", "polix.yaml")
+	out, err := gitOut(r, "commit", "-m", "x")
+	if err == nil || !strings.Contains(out, `unknown key "bogus"`) || head() != before {
+		t.Fatalf("a broken polix.yaml: %v\n%s", err, out)
+	}
+
+	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\n")
+	testenv.Write(t, filepath.Join(r, "ai", "rules", "go.yaml"), "rules:\n  - id: GO-1\n")
+	mustGit(t, r, "add", "polix.yaml", "ai/rules/go.yaml")
+	out, err = gitOut(r, "commit", "-m", "x")
+	if err == nil || !strings.Contains(out, "polix: polix config check failed") || head() != before {
+		t.Fatalf("a broken rule: %v\n%s", err, out)
+	}
+
+	mustGit(t, r, "rm", "--quiet", "--cached", "ai/rules/go.yaml", "polix.yaml")
+	testenv.Write(t, filepath.Join(r, "README.md"), "x\n")
+	mustGit(t, r, "add", "README.md")
+	if out, err := gitOut(r, "commit", "-m", "y"); err != nil {
+		t.Fatalf("a commit of README.md: %v\n%s", err, out)
+	}
+	if subject, _ := gitOut(r, "log", "-1", "--format=%s"); strings.TrimSpace(subject) != "y" || head() == before {
+		t.Fatalf("last commit: %q", subject)
+	}
+}
+
 // AC18, AC20: polix install --githooks writes the four keys of the hooks of git into the local configuration of
 // the repository and nothing else, no plugin nor settings of the agents, printing only what changed, and a second
 // run prints nothing; with --agent or outside a repository it fails and writes nothing. It skips,

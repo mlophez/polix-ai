@@ -12,7 +12,7 @@ func githooksWorkflow(githooks map[string][]Entry) Workflow {
 	for ev := range githooks {
 		lines[ev] = 4
 	}
-	return Workflow{Version: 1, MaxStopRetries: DefaultMaxStopRetries,
+	return Workflow{Version: 1, StopRetries: DefaultStopRetries,
 		Vars:     map[string]Var{"key": {Branch: "^([A-Z][A-Z0-9]+-[0-9]+)", Keys: []string{"branch"}}},
 		Githooks: githooks, GithookLines: lines}
 }

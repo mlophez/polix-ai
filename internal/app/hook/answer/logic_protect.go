@@ -61,8 +61,8 @@ func (r *pass) guardrails() workflow.Workflow {
 	return workflow.Workflow{}
 }
 
-// deny refuses the event for a protection with reason, logged as a denial of from (builtinProtection or the shortcut
-// of guardrails) at line, the line of its item or 0. The pending warnings of the call are logged as not shown (see
+// deny refuses the event for a protection with reason, logged as a denial of from (builtinProtection, the shortcut
+// of guardrails or the origin of a preset item of forbidden_commands) at line, the line of its item or 0. The pending warnings of the call are logged as not shown (see
 // warn).
 func (r *pass) deny(from string, line int, reason string) (agent.Answer, bool) {
 	r.log(from, line, "deny", reason)

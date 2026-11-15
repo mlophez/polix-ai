@@ -1,8 +1,6 @@
 ---
 version: 1
 base_branch: main
-# A stop gate that keeps failing on the same content lets the agent stop after 1 block.
-max_stop_retries: 1
 
 # The Go checks of ai/rules/ run as one `go test` of their package, only the test of the rule.
 rules:
@@ -37,16 +35,10 @@ guardrails:
     - pattern: "*Generated with [Claude Code]*"
       reason: Remove the line Generated with Claude Code from the message of the commit or the pull request.
 
-  # Format each edited Go file, this polix.yaml and the rules files of ai/rules/ right after the edit.
+  # Format each edited Go file right after the edit; polix formats this polix.yaml and ai/rules/ by itself (builtin).
   format_on_edit:
     - run: golangci-lint fmt {path}
       path: "*.go"
-
-    - run: polix config fmt
-      path: polix.yaml
-
-    - run: polix rules fmt
-      path: "ai/rules/*.yaml"
 
   # Before the turn ends, in order; each check runs again only on new content.
   check_on_stop:
@@ -58,12 +50,9 @@ guardrails:
     - run: &test go test ./...
       changed: &test_changed ["*.go", "go.mod", "go.sum", "install.sh", "install.ps1", "scripts/**"]
 
-  # The gates git runs on every commit, whoever makes it, a person too: a polix.yaml or a rule that does not validate,
-  # a lint error or a failing test never lands. Lint and test reuse the commands and globs of check_on_stop.
+  # The gates git runs on every commit, whoever makes it, a person too: a lint error or a failing test never lands.
+  # Lint and test reuse the commands and globs of check_on_stop.
   check_on_save:
-    - run: polix config check
-      changed: ["polix.yaml", "ai/rules/**"]
-
     - run: *lint
       changed: *lint_changed
 

@@ -52,8 +52,8 @@ func (a Adapter) decode(data []byte, running string) (workflow.Workflow, workflo
 		return workflow.Workflow{}, workflow.Guardrails{}, fmt.Errorf("%s: %s", workflow.File,
 			y.names().Replace(err.Error()))
 	}
-	if y.MaxStopRetries == 0 {
-		y.MaxStopRetries = workflow.DefaultMaxStopRetries
+	if y.StopRetries == 0 {
+		y.StopRetries = workflow.DefaultStopRetries
 	}
 	return y.workflow(lines["on"], lines["githooks"])
 }

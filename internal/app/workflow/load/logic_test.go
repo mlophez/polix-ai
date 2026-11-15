@@ -13,7 +13,7 @@ import (
 func TestDecideWithoutTheFile(t *testing.T) {
 	got := Decide(workflow.Workflow{}, workflow.Guardrails{}, false, nil).Loaded
 	w := got.Workflow
-	if got.Exists || got.Err != nil || w.Version != 1 || w.MaxStopRetries != workflow.DefaultMaxStopRetries ||
+	if got.Exists || got.Err != nil || w.Version != 1 || w.StopRetries != workflow.DefaultStopRetries ||
 		w.PolixPath() != workflow.DefaultPolixPath || len(w.On) != 0 {
 		t.Fatalf("got %+v", got)
 	}
@@ -30,13 +30,13 @@ func TestDecideKeepsTheError(t *testing.T) {
 	if got := Decide(workflow.Workflow{}, workflow.Guardrails{}, true, old).Loaded; !errors.As(got.Err, &old) {
 		t.Fatalf("too old: %+v", got)
 	}
-	wf := workflow.Workflow{Version: 2, MaxStopRetries: 3}
+	wf := workflow.Workflow{Version: 2, StopRetries: 3}
 	got := Decide(wf, workflow.Guardrails{}, true, wf.Valid()).Loaded
 	if _, ok := errors.AsType[workflow.InvalidError](got.Err); !ok || got.Workflow.Version != 2 ||
 		got.Err.Error() != "polix.yaml: version must be 1, got 2" {
 		t.Fatalf("invalid: %+v", got)
 	}
-	valid := workflow.Workflow{Version: 1, MaxStopRetries: 3}
+	valid := workflow.Workflow{Version: 1, StopRetries: 3}
 	if got := Decide(valid, workflow.Guardrails{}, true, nil).Loaded; got.Err != nil || got.Workflow.Version != 1 {
 		t.Fatalf("valid: %+v", got)
 	}
@@ -44,7 +44,7 @@ func TestDecideKeepsTheError(t *testing.T) {
 
 // The problems of the values of the shortcuts come with those of the workflow, in the order of the file.
 func TestDecideMergesTheProblemsOfTheShortcuts(t *testing.T) {
-	wf := workflow.Workflow{Version: 2, MaxStopRetries: 3,
+	wf := workflow.Workflow{Version: 2, StopRetries: 3,
 		On: map[string][]workflow.Entry{workflow.PreEdit: {{Line: 6, Keys: []string{"blok"}}}}}
 	guardrails := workflow.Guardrails{ProtectedFiles: []workflow.GuardrailItem{{Text: "", Line: 3}}}
 	got := Decide(wf, guardrails, true, wf.Valid()).Loaded

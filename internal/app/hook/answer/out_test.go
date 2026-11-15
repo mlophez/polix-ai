@@ -208,14 +208,29 @@ func TestReviewOnStop(t *testing.T) {
 	expect(t, "stop after a new edit", code, 2, stderr)
 }
 
-// The loop guard lets the agent stop after max_stop_retries blocked stops on the same content.
+// The loop guard lets the agent stop after stop_retries blocked stops on the same content.
 func TestStopLoopGuard(t *testing.T) {
 	r := newRepo(t, "main")
-	r.write("polix.yaml", "version: 1\nmax_stop_retries: 2\n"+strings.TrimPrefix(reviewOnStop, "version: 1\n"))
+	r.write("polix.yaml", "version: 1\nstop_retries: 2\n"+strings.TrimPrefix(reviewOnStop, "version: 1\n"))
 	r.write("src/app.go", "package app\n")
 	for i, want := range []int{2, 2, 0} {
 		code, _, stderr := r.stop()
 		expect(t, "stop "+string(rune('1'+i)), code, want, stderr)
+	}
+}
+
+// CUJ-12, AC-08: without stop_retries a failing stop gate blocks once and lets the second stop on the same content
+// through; with stop_retries 2 it blocks twice and lets the third through.
+func TestStopRetriesLoopGuard(t *testing.T) {
+	gate := "guardrails:\n  check_on_stop:\n    - run: git rev-parse --verify --quiet never\n"
+	for retries, wants := range map[string][]int{"": {2, 0}, "stop_retries: 2\n": {2, 2, 0}} {
+		r := newRepo(t, "main")
+		r.write("polix.yaml", "version: 1\n"+retries+gate)
+		r.write("src/app.go", "package app\n")
+		for i, want := range wants {
+			code, _, stderr := r.stop()
+			expect(t, fmt.Sprintf("%q: stop %d", retries, i+1), code, want, stderr)
+		}
 	}
 }
 
@@ -490,6 +505,7 @@ on:
 func TestFinishedSinceCommitLoopGuard(t *testing.T) {
 	r := newRepo(t, "main")
 	r.write("polix.yaml", `version: 1
+stop_retries: 3
 on:
   subagent_stop:
     - when: { actor: polix:builder }
@@ -876,6 +892,7 @@ func TestRunRulesFailsOnBadRules(t *testing.T) {
 func TestStopLoopGuardOnAnyBlock(t *testing.T) {
 	r := newRepo(t, "main")
 	r.write("polix.yaml", `version: 1
+stop_retries: 3
 on:
   stop:
     - action: { block: "nunca paras" }
@@ -891,6 +908,7 @@ on:
 func TestStopLoopGuardPerEntry(t *testing.T) {
 	r := newRepo(t, "main")
 	r.write("polix.yaml", `version: 1
+stop_retries: 3
 on:
   stop:
     - action: { block: "A" }
@@ -918,11 +936,12 @@ on:
 
 // A failing check of check_on_stop whose command writes a file the tree does not ignore leaves a new content on every
 // stop: the guard chains its blocks through the content each stop started from, so it lets the agent stop after
-// max_stop_retries blocks on a content the agent left alone, and keeps letting it stop; an edit of the agent breaks
+// stop_retries blocks on a content the agent left alone, and keeps letting it stop; an edit of the agent breaks
 // the chain and the check blocks again.
 func TestStopLoopGuardOnARunThatWrites(t *testing.T) {
 	r := newRepo(t, "main")
 	r.write("polix.yaml", `version: 1
+stop_retries: 3
 guardrails:
   check_on_stop:
     - run: [git, -c, "alias.check=!echo x >> out.txt; exit 1", check]
@@ -946,7 +965,7 @@ const (
 )
 
 // The files a run writes do not escape the guard when another entry of the stop blocks or writes after a block let
-// through: each entry that blocks is let through after max_stop_retries blocks on a content the agent left alone, and
+// through: each entry that blocks is let through after stop_retries blocks on a content the agent left alone, and
 // so are the next stops while the agent changes nothing.
 func TestStopLoopGuardAfterAnotherRunWrites(t *testing.T) {
 	cases := []struct {
@@ -975,16 +994,16 @@ func TestStopLoopGuardAfterAnotherRunWrites(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			r := newRepo(t, "main")
-			r.write("polix.yaml", "version: 1\n"+c.yaml)
+			r.write("polix.yaml", "version: 1\nstop_retries: 3\n"+c.yaml)
 			r.stops("", c.want...)
 		})
 	}
 }
 
-// The warning of a stop let through names max_stop_retries, however many stops were let through before.
+// The warning of a stop let through names stop_retries, however many stops were let through before.
 func TestStopLoopGuardWarningCount(t *testing.T) {
 	r := newRepo(t, "main")
-	r.write("polix.yaml", "version: 1\nmax_stop_retries: 1\nguardrails:\n  check_on_stop:\n    - run: "+
+	r.write("polix.yaml", "version: 1\nstop_retries: 1\nguardrails:\n  check_on_stop:\n    - run: "+
 		fmt.Sprintf(writer, "exit 1")+"\n")
 	r.stops("", 2)
 	for i := range 3 {
@@ -1081,7 +1100,7 @@ func TestUnknownOptionsHintAnUpdate(t *testing.T) {
 	if _, _, stderr = r.edit("src/a.go", ""); !strings.Contains(stderr, "polix update") {
 		t.Fatalf("a later version of the schema hints an update: %q", stderr)
 	}
-	r.write("polix.yaml", "version: 1\nmax_stop_retries: -1\n")
+	r.write("polix.yaml", "version: 1\nstop_retries: -1\n")
 	if _, _, stderr = r.edit("src/a.go", ""); strings.Contains(stderr, "polix update") {
 		t.Fatalf("no hint for a plain mistake: %q", stderr)
 	}
@@ -1186,7 +1205,7 @@ func TestDecisionsSkipTheHash(t *testing.T) {
 // and polix log prints the other entries and says how many lines it skipped.
 func TestStopLoopGuardHugeLogLine(t *testing.T) {
 	r := newRepo(t, "main")
-	r.write("polix.yaml", "version: 1\nmax_stop_retries: 2\n"+strings.TrimPrefix(reviewOnStop, "version: 1\n"))
+	r.write("polix.yaml", "version: 1\nstop_retries: 2\n"+strings.TrimPrefix(reviewOnStop, "version: 1\n"))
 	r.write("src/app.go", "package app\n")
 	r.write(".git/polix/sessions/s1.jsonl", `{"kind":"decision","session":"s1","reason":"`+
 		strings.Repeat("x", 5*1024*1024)+"\"}\n")
@@ -1771,6 +1790,7 @@ func task(id string) map[string]any {
 }
 
 const agentsRunningOnStop = `version: 1
+stop_retries: 3
 on:
   pre_commit:
     - when: { agents_are_running: true }

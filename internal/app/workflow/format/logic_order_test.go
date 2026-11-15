@@ -134,8 +134,8 @@ on:
 	if again, err := formatData(got); err != nil || string(again) != want {
 		t.Fatalf("not idempotent: %v\n%s", err, again)
 	}
-	lit09 := "protected_files, protected_branches, forbidden_commands, exec_on_start, format_on_edit, format_on_save, " +
-		"check_on_stop, check_on_save"
+	lit09 := "builtin, protected_files, protected_branches, forbidden_commands, exec_on_start, format_on_edit, " +
+		"format_on_save, check_on_stop, check_on_save"
 	if keys := strings.Join(order([]string{"guardrails"}), ", "); keys != lit09 {
 		t.Fatalf("the order of guardrails: %s", keys)
 	}
@@ -208,6 +208,118 @@ rules:
 	got, err = formatData([]byte("rules:\n  run: { x: [y] }\npath: docs/ai\nversion: 1\n"))
 	if err != nil || !strings.HasPrefix(string(got), "version: 1\npath: docs/ai\nrules:\n") {
 		t.Fatalf("CUJ-09: %v\n%s", err, got)
+	}
+}
+
+// CUJ-14, AC-09: builtin, written after check_on_save with its keys in reverse order, goes first in guardrails with
+// its keys in the order of workflow.BuiltinKeys and its comment, in the block or the flow form, and a second run
+// changes nothing.
+func TestFormatBuiltin(t *testing.T) {
+	src := `version: 1
+guardrails:
+  check_on_save:
+    - run: go test ./...
+  # What polix applies by itself.
+  builtin:
+    check_polix_files: false
+    format_polix_files: true
+    forbid_git_destructive_commands: false
+    forbid_commit_no_verify: true
+  protected_files: [AGENTS.md]
+`
+	want := `version: 1
+guardrails:
+  # What polix applies by itself.
+  builtin:
+    forbid_commit_no_verify: true
+    forbid_git_destructive_commands: false
+    format_polix_files: true
+    check_polix_files: false
+  protected_files: [AGENTS.md]
+  check_on_save:
+    - run: go test ./...
+`
+	got, err := formatData([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	if again, err := formatData(got); err != nil || string(again) != want {
+		t.Fatalf("not idempotent: %v\n%s", err, again)
+	}
+	flow := "version: 1\nguardrails:\n  protected_files: [x]\n  builtin: { check_polix_files: false, forbid_commit_no_verify: true }\n"
+	got, err = formatData([]byte(flow))
+	if want := "version: 1\nguardrails:\n  builtin: { forbid_commit_no_verify: true, check_polix_files: false }\n" +
+		"  protected_files: [x]\n"; err != nil || string(got) != want {
+		t.Fatalf("flow:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// CUJ-14, AC-09: also_on_save, written before run, goes last in an item of check_on_stop, after wait_agents, and a
+// second run changes nothing.
+func TestFormatAlsoOnSave(t *testing.T) {
+	src := `version: 1
+guardrails:
+  check_on_stop:
+    - also_on_save: true
+      wait_agents: false
+      run: go vet ./...
+      message: Fix go vet
+      changed: "*.go"
+`
+	want := `version: 1
+guardrails:
+  check_on_stop:
+    - run: go vet ./...
+      changed: "*.go"
+      message: Fix go vet
+      wait_agents: false
+      also_on_save: true
+`
+	got, err := formatData([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	if again, err := formatData(got); err != nil || string(again) != want {
+		t.Fatalf("not idempotent: %v\n%s", err, again)
+	}
+}
+
+// CUJ-14, AC-09: stop_retries, written after guardrails, goes where max_stop_retries went, right after base_branch,
+// and a second run changes nothing.
+func TestFormatStopRetries(t *testing.T) {
+	src := `version: 1
+vars:
+  key: { branch: "^x" }
+guardrails:
+  protected_files: [AGENTS.md]
+# The loop guard.
+stop_retries: 2
+base_branch: main
+`
+	want := `version: 1
+base_branch: main
+# The loop guard.
+stop_retries: 2
+vars:
+  key: { branch: "^x" }
+guardrails:
+  protected_files: [AGENTS.md]
+`
+	got, err := formatData([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	if again, err := formatData(got); err != nil || string(again) != want {
+		t.Fatalf("not idempotent: %v\n%s", err, again)
 	}
 }
 

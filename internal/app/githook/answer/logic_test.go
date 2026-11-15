@@ -18,7 +18,7 @@ import (
 
 // gates is a valid workflow whose githooks pre_commit holds entries, with the variable key of the branch.
 func gates(entries ...workflow.Entry) workflow.Workflow {
-	return workflow.Workflow{Version: 1, MaxStopRetries: workflow.DefaultMaxStopRetries,
+	return workflow.Workflow{Version: 1, StopRetries: workflow.DefaultStopRetries,
 		Vars:     map[string]workflow.Var{"key": {Branch: "^([A-Z][A-Z0-9]+-[0-9]+)"}},
 		Githooks: map[string][]workflow.Entry{workflow.PreCommit: entries}}
 }

@@ -73,9 +73,10 @@ path: ai
 # other options blocks edits and commands asking to run `polix update`, instead of reporting them as mistakes, and
 # the session start hook looks for the new release at once. A development build ignores it. `polix config check`
 # rejects a value that is not a version like 0.2.0. Known since polix 0.1.0: no earlier polix exists. 0.3.0 is not
-# enough for this file: it knows `base_branch`, `max_stop_retries`, `subagent_start` and `notify`, but not the
-# lifecycle shortcuts `exec_on_start`, `format_on_save`, `check_on_stop` and `check_on_save` of guardrails, which
-# need the release that brings them, the first after 0.9.0. Set requires to the release you install.
+# enough for this file: it knows `base_branch`, `subagent_start` and `notify`, but not the lifecycle shortcuts
+# `exec_on_start`, `format_on_save`, `check_on_stop` and `check_on_save` of guardrails, which need the release that
+# brings them, the first after 0.9.0, nor `stop_retries`, which needs the first release after 0.10.0. Set requires
+# to the release you install.
 requires: 0.3.0
 
 # Optional, default main. The branch the change merges into, or a list of candidates, used only by
@@ -89,13 +90,14 @@ requires: 0.3.0
 # Forms: a single branch, `base_branch: main`, or a list:
 base_branch: [main, dev]
 
-# Optional, default 3 (0 also means 3; negative is rejected). Loop guard of every block of stop and
+# Optional, default 1 (0 also means 1; negative is rejected). Loop guard of every block of stop and
 # subagent_stop (a block or a failing run): after this many blocks of the same entry, in the same session, by the
 # same actor and on the same content hash, the agent may stop, and the log records a `loop_guard` decision. A block
 # let through by the guard does not end the evaluation, and a subagent let through does not count as `finished`.
 # A run that writes files the tree does not ignore does not escape it: while the agent changes nothing, the guard
-# chains the blocks through the content each stop started from.
-max_stop_retries: 3
+# chains the blocks through the content each stop started from. Its old names are reported with the hint
+# `use stop_retries`.
+stop_retries: 3
 
 # Optional. Variables extracted from the current branch name, usable as {name} in any string and by the condition
 # `var`.
@@ -170,8 +172,9 @@ risk:
 # set `requires` to a release that knows it.
 requirements: [go, golangci-lint]
 
-# Optional. The guardrails every project wants from the first minute, each a short list in exactly one form, in two
+# Optional. The guardrails every project wants from the first minute, each a short list in exactly one form, in three
 # groups that `polix config fmt` writes in the order below:
+# - builtin, the good practices polix applies by itself, without writing them, unless the repository turns them off.
 # - The protections, what no actor may do: protected_files, protected_branches and forbidden_commands.
 #   protected_files and forbidden_commands are applied by the engine itself, before every entry of `on`, to every
 #   actor, without exceptions, also to the files git ignores, and only with a valid file.
@@ -183,15 +186,41 @@ requirements: [go, golangci-lint]
 # when it reads the file (check_on_save into entries of githooks), so they act, log and show in `polix graph` (with
 # the name of their shortcut) as any entry; when one falls short, write its entries in `on` and tune them. The flow
 # of the team (tickets, plans, builders, reviewer subagents) and any other condition or verb go to `on`.
-# In each event, the entries of the shortcuts come before those written in `on`, and those of check_on_save before
-# those written in githooks.pre_commit, each group in file order, but for the notice of check_on_stop, which comes
-# last on stop. Each expanded entry takes the line of its item, so `polix config check`, the log and the repeat rules
-# tell them apart.
-# `polix config check` rejects a key of guardrails other than these eight (run_on_stop, the old name of
+# In each event, the entries of builtin and of the shortcuts come before those written in `on`, and those of
+# check_polix_files, check_on_save and also_on_save before those written in githooks.pre_commit, each group in file
+# order, but for the notice of check_on_stop, which comes last on stop. Each expanded entry takes the line of its
+# item, or of builtin, so `polix config check`, the log and the repeat rules tell them apart.
+# `polix config check` rejects a key of guardrails other than builtin and these eight (run_on_stop, the old name of
 # check_on_stop, with the hint `use check_on_stop`), an unknown key of an item, an empty glob, pattern, branch or
 # command, and a shortcut written in another form than its own (a single string where a list goes, a string where a
 # map goes), showing the expected form.
 guardrails:
+  # builtin: the built-in good practices, a map of four switches, each true when left out, as the whole map, so every
+  # repository gets them without writing them; set one to false to turn it off alone. In this order:
+  # - forbid_commit_no_verify: refuses an agent's `git commit` that skips the hooks of git, in every repository, with
+  #   the items of forbidden_commands "git commit*--no-verify*", "git commit* -n *" and "git commit* -n" (-nm is not
+  #   refused). Its message, in English: "Never skip the git hooks: fix what they block and commit again."
+  # - forbid_git_destructive_commands: refuses an agent's forced `git push`, `git reset --hard` and a forced
+  #   `git clean`, with the items "git push*--force*", "git push* -f*", "git reset*--hard*", "git clean* -f*" and
+  #   "git clean*--force*", each with its message in English; a push refspec that starts with + and `git clean -xfd`
+  #   are not refused.
+  # - format_polix_files: runs `polix config fmt` after an edit of the polix.yaml of the root and `polix rules fmt`
+  #   after an edit of a yaml file of the rules folder (rules/ below path), two entries first on post_edit, before
+  #   those of format_on_edit, without message.
+  # - check_polix_files: runs `polix config check` on every commit that stages the polix.yaml of the root or a file of
+  #   the rules folder, the first entry of githooks.pre_commit; as any entry of githooks it makes every session start
+  #   install the hooks of git, which needs git 2.54 or later: on an older git, set it to false.
+  # The two blocks are presets: they expand into items of forbidden_commands before the written ones, so they apply
+  # to every actor, only with a valid file, matched against the text of each command of the line, nested ones
+  # included: `echo "git push --force"` passes, while a commit message that cites --no-verify is refused too; each
+  # refusal is its message followed by the line, logged from guardrails.builtin.<key>. Another value than true or false is rejected at the line of the
+  # key, keeping the practice on, and so is an unknown key. A polix older than builtin reports it as unknown, so set
+  # `requires` to a release that knows it.
+  builtin:
+    forbid_commit_no_verify: true
+    forbid_git_destructive_commands: true
+    format_polix_files: true
+    check_polix_files: true
   # protected_files: paths no agent writes, the main session included: only a person changes them by hand. A list
   # of path globs. It denies an edit of a matching path (never one outside the repository) and a command that writes
   # one (the heuristic of `writes`, which also catches a folder or a wildcard holding it, `rm -rf ai` for
@@ -236,11 +265,10 @@ guardrails:
   # must run it, followed by the line. The log records the denial as `guardrails.forbidden_commands`, with the line
   # of the item. It has no exceptions: to let someone through (an actor, a branch), write a block in `on` with an
   # `unless` instead (see pre_command).
+  # git push --force, git reset --hard and git clean -f need no item: builtin refuses them.
   forbidden_commands:
     - pattern: "*rm -rf /*"
     - pattern: "*rm -fr /*"
-    - pattern: "git reset --hard*"
-    - pattern: "git clean -f*"
     - pattern: "terraform destroy*"
 
     - pattern: "kubectl delete*"
@@ -265,6 +293,8 @@ guardrails:
   # - message: optional, the text before the output of a failure (placeholders allowed).
   # Each item expands into one entry on post_edit with `run`: it runs once per path and content, and a failure
   # reaches the AI as context, its message first. It also runs on each file a command changed (see post_edit).
+  # polix.yaml and the rules need no item: builtin.format_polix_files formats them, before these items; an item that
+  # runs the same command is kept and runs too, and its run is skipped, since it already passed on the same content.
   format_on_edit:
     # A string, with a message:
     - run: "golangci-lint fmt {path}"
@@ -274,15 +304,6 @@ guardrails:
     # A list of arguments, and a list of globs:
     - run: [npx, prettier, --write, --log-level, warn, "{path}"]
       path: ["*.ts", "*.tsx"]
-
-    - run: polix config fmt
-      path: polix.yaml
-      message: "polix config fmt could not format polix.yaml:"
-
-    # The rules and the workflow keep the canonical format of polix.
-    - run: polix rules fmt
-      path: ai/rules/*.yaml
-      message: "polix rules fmt could not format the rules:"
   # format_on_save: the commands that format or fix the files right before the agent stages them. A list of maps
   # with:
   # - run: required, the command, as in exec_on_start;
@@ -306,9 +327,14 @@ guardrails:
   # - message: optional, the text before the output of a failure (placeholders allowed);
   # - wait_agents: optional, true by default: while subagents of the session are still running (in the background,
   #   or interrupted without their end reaching polix), the item is skipped and runs on the next stop after they
-  #   end; false runs it whatever the subagents do. Another value is rejected by `polix config check`.
+  #   end; false runs it whatever the subagents do. Another value is rejected by `polix config check`;
+  # - also_on_save: optional, false by default: true also runs the item on every commit, as an item of check_on_save
+  #   with its run, changed and message, in one more entry of githooks.pre_commit after those of check_on_save, so a
+  #   check is written once for both moments; wait_agents applies only to its entry on stop. Its strings are then
+  #   also checked with the vocabulary of githooks: a placeholder git can never give ({path}) is rejected at the line
+  #   of the item, never with the hint of a newer polix, and so is another value than true or false.
   # Each item expands into one entry on stop with `run`, in file order, before the entries of stop written in `on`:
-  # while it fails the turn does not end (up to max_stop_retries), and it does not run again on a content it passed
+  # while it fails the turn does not end (up to stop_retries), and it does not run again on a content it passed
   # on. An item that waits also gets `agents_are_running: false` in its `when`, and, when one waits, one `notify`
   # with `always` goes last on stop, after the entries written in `on`: every stop that holds a check back tells the
   # user once "check_on_stop waits for the subagents still running: its checks run on the next stop after they end."
@@ -320,9 +346,11 @@ guardrails:
       changed: ["src/**", "go.mod", "go.sum"]
       wait_agents: false
 
+    # The tests also run on every commit that stages source code, also one a person makes from the terminal.
     - run: just test
       changed: "src/**"
       message: "Los tests no pasan: arréglalos antes de terminar."
+      also_on_save: true
   # check_on_save: the checks git runs on every commit, whoever makes it (a person, an IDE or an agent), before the
   # commit is made. A list of maps with:
   # - run: required, the command, as in exec_on_start;
@@ -335,12 +363,13 @@ guardrails:
   # failure ends the evaluation. Like githooks, it makes every session start install the hooks of git, and needs git
   # 2.54 or later; git runs them without knowing the subagents, so it has no wait_agents, and `git commit
   # --no-verify` skips them. `polix config check` reports its problems at the line of the item, as
-  # guardrails.check_on_save.
+  # guardrails.check_on_save. A check that must also pass before the agent ends its turn goes in check_on_stop with
+  # also_on_save instead, written once.
   check_on_save:
-    # The tests run on every commit that stages source code, also one a person makes from the terminal.
-    - run: just test
-      changed: "src/**"
-      message: "Los tests no pasan: no se commitea."
+    # The types are checked on every commit that stages TypeScript, whoever makes it.
+    - run: npx tsc --noEmit
+      changed: ["*.ts", "*.tsx"]
+      message: "TypeScript no compila: no se commitea."
 
 # Placeholders, replaced in the strings of conditions (except `branch`), verbs and `contains`; an unknown one
 # is rejected by `polix config check`:
@@ -444,8 +473,8 @@ on:
   # Unknown events, keys (also inside action, run, inject, block, notify and vars), conditions and verbs are rejected
   # by `polix config check`, and so are conditions on events where they never hold (path, command, writes, exit). A
   # name of the old vocabulary (session_start, turn_stop, if, why, mode, deny, require, allow, run or context as keys
-  # of an entry, record, done, at_least, and the top-level protected, base and max_stop_blocks) is reported with its
-  # new spelling.
+  # of an entry, record, done, at_least, and the top-level protected, base and the old names of stop_retries) is
+  # reported with its new spelling.
 
   # start: a session starts, resumes, is cleared or is compacted. It cannot be blocked: block is rejected, and a
   # failing run reaches the AI as context, its message first. On start every inject acts every time, so the context
@@ -829,15 +858,18 @@ on:
 #   when one item matches; a negation goes in unless; any, not and every other condition are rejected.
 # - Placeholders: {branch}, {message} (only in commit_msg) and the variables of vars.
 # Without polix.yaml or without entries for the event the commit goes on; a polix.yaml that cannot be used aborts
-# every commit with its problems. `git commit --no-verify` skips the hooks: forbid it to the agent in
-# guardrails.forbidden_commands.
-# The checks that only run a command on every commit go to guardrails.check_on_save, whose entries come before
-# those of pre_commit written here.
-# Declaring these entries, or an item of guardrails.check_on_save, is enough: with at least one, this file expands
+# every commit with its problems. `git commit --no-verify` skips the hooks: guardrails.builtin.forbid_commit_no_verify
+# refuses it to the agent by default.
+# The checks that only run a command on every commit go to guardrails.check_on_save, or to check_on_stop with
+# also_on_save, whose entries come, after that of guardrails.builtin.check_polix_files, before those of pre_commit
+# written here.
+# Declaring these entries, an item of guardrails.check_on_save or of also_on_save, or leaving
+# guardrails.builtin.check_polix_files on, as by default, is enough: with at least one, this file expands
 # into one more entry first in start that runs `polix install --githooks` with always: true, so every session start
 # of the AI puts the hooks of git back, and when the run fails (a git older than 2.54) the message "The hooks of git
 # of githooks are not installed, so the gates of githooks do not apply to the commits:" reaches the AI. `polix graph`
-# draws it `from githooks`; removing the entries of githooks and check_on_save turns it off.
+# draws it `from githooks`; removing the entries of githooks, check_on_save and also_on_save and setting
+# check_polix_files to false turns it off.
 githooks:
   pre_commit:
     # Nothing of secrets/ is committed, by anyone.

@@ -27,7 +27,7 @@ func (f *fakePort) ReadWorkflow(_ context.Context, path, running string) (workfl
 
 // The shell reads polix.yaml of the request through the port and builds the response from the logic.
 func TestRun(t *testing.T) {
-	port := &fakePort{wf: workflow.Workflow{Version: 1, MaxStopRetries: 5}, exists: true}
+	port := &fakePort{wf: workflow.Workflow{Version: 1, StopRetries: 5}, exists: true}
 	res, err := run(context.Background(), port, Request{Path: "/repo/polix.yaml", Running: "0.2.0"})
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestRun(t *testing.T) {
 	if !slices.Equal(port.asked, []string{"/repo/polix.yaml 0.2.0"}) {
 		t.Fatalf("asked %v", port.asked)
 	}
-	if l := res.Loaded; !l.Exists || l.Err != nil || l.Workflow.MaxStopRetries != 5 {
+	if l := res.Loaded; !l.Exists || l.Err != nil || l.Workflow.StopRetries != 5 {
 		t.Fatalf("loaded %+v", l)
 	}
 }
@@ -52,13 +52,13 @@ func TestRunNeverFails(t *testing.T) {
 // The loader reads polix.yaml once for the life of the process: a second call for the same file and version returns
 // the same result without reading again; another file, or another version, is read.
 func TestLoaderReadsOnce(t *testing.T) {
-	port := &fakePort{wf: workflow.Workflow{Version: 1, MaxStopRetries: 5}, exists: true}
+	port := &fakePort{wf: workflow.Workflow{Version: 1, StopRetries: 5}, exists: true}
 	l := &loader{port: port, seen: map[Request]workflow.Loaded{}}
 	ctx := context.Background()
 	first := l.load(ctx, "/repo", "dev")
-	port.wf = workflow.Workflow{Version: 1, MaxStopRetries: 7}
+	port.wf = workflow.Workflow{Version: 1, StopRetries: 7}
 	second := l.load(ctx, "/repo", "dev")
-	if first.Workflow.MaxStopRetries != 5 || second.Workflow.MaxStopRetries != 5 || len(port.asked) != 1 {
+	if first.Workflow.StopRetries != 5 || second.Workflow.StopRetries != 5 || len(port.asked) != 1 {
 		t.Fatalf("first %+v, second %+v, asked %v", first, second, port.asked)
 	}
 	l.load(ctx, "/repo", "0.2.0")

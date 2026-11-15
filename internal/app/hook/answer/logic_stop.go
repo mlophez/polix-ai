@@ -47,13 +47,13 @@ func (r *pass) stop() agent.Answer {
 	return r.warn(ans)
 }
 
-// loopGuard counts the block of the entry e for the loop guard of max_stop_retries, on the log st, or err when it
-// cannot be read, and the content hash: after max_stop_retries blocks of this entry of the actor in the session on
+// loopGuard counts the block of the entry e for the loop guard of stop_retries, on the log st, or err when it
+// cannot be read, and the content hash: after stop_retries blocks of this entry of the actor in the session on
 // this same content (the whole hash), the agent may stop and a trace is left. before is the content hash at the
 // start of the event when its runs changed it, else "" (see startOf): the blocks chain through it (see
 // state.State.Chain), so a run whose command writes files the tree does not ignore, the blocking one or an earlier
 // one, does not make the blocks of a content the agent left alone a new content on every stop. The warning names
-// max_stop_retries, not the lines counted, which grow with the stops let through. An unknown hash counts as one
+// stop_retries, not the lines counted, which grow with the stops let through. An unknown hash counts as one
 // content (state.UnknownHash). When the log cannot be read the guard cannot count, so it fails open. It returns the hash the
 // block is written with and, when the guard lets the event through, the warning for the user, else "".
 func (r *pass) loopGuard(e workflow.Entry, st state.State, err error, hash, before string, known bool,
@@ -70,7 +70,7 @@ func (r *pass) loopGuard(e workflow.Entry, st state.State, err error, hash, befo
 	if err := q.Valid(); err != nil {
 		return hash, unusableLog(err, reason)
 	}
-	if n, limit := len(st.Chain(q, before)), r.ev.Workflow.MaxStopRetries; n >= limit {
+	if n, limit := len(st.Chain(q, before)), r.ev.Workflow.StopRetries; n >= limit {
 		return hash, fmt.Sprintf("polix lets the agent stop after %d blocks: %s", limit, reason)
 	}
 	return hash, ""

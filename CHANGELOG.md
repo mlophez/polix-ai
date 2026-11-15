@@ -27,6 +27,55 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   comes from the request or the user, never invented; the benefit is what the role gains, while the cost and the why
   now stay in `Problem`; `Outcome` names the commands, files and messages; and each story has an item of `Done
   when` that shows it. The skill asks the role and the benefit the request leaves open. Earlier tasks stay valid.
+- `guardrails.builtin`, the built-in good practices every repository with a `polix.yaml` gets without writing them:
+  a map, written first in `guardrails` by `polix config fmt`, of four switches, each `true` when left out.
+  `forbid_commit_no_verify` refuses an agent's `git commit` that skips the hooks of git, in every repository, with
+  the items of `forbidden_commands` `git commit*--no-verify*`, `git commit* -n *` and `git commit* -n`, and
+  `Never skip the git hooks: fix what they block and commit again.`
+  `forbid_git_destructive_commands` refuses a forced `git push`, `git reset --hard` and a forced `git clean` with the
+  items `git push*--force*`, `git push* -f*`, `git reset*--hard*`, `git clean* -f*` and `git clean*--force*`, each
+  with its reason. Both are presets that expand at load into items of `forbidden_commands` before the written ones,
+  matched as any item against the text of each command of the line, nested ones included, so a commit message that
+  cites `--no-verify` is refused too while `echo "git push --force"` passes; each refusal is its reason followed by
+  the line, logged from `guardrails.builtin.<key>`, and `polix graph` draws each item first in the subgraph
+  `guardrails` with that origin. `format_polix_files` runs `polix config fmt` after an edit of the root `polix.yaml` and `polix rules
+  fmt` after an edit of a yaml file of the rules folder, before the entries of `format_on_edit`; a written item that
+  runs the same command keeps running, and its run is skipped as already passed. `check_polix_files` runs `polix
+  config check` on every commit that stages the root `polix.yaml` or a file of the rules folder, the first entry of
+  `githooks.pre_commit`. `polix config check` reports a value other than `true` or `false` and an unknown key of
+  `builtin` at the line of the key, and a `builtin` that is not a map. A polix older than this reports `builtin` as an
+  unknown key of `guardrails`, so set `requires` to a release that has it.
+- `also_on_save` in an item of `guardrails.check_on_stop`, `false` when left out and written last by `polix config
+  fmt`: with `true` the check also runs on every commit, as an item of `check_on_save` with its `run`, `changed` and
+  `message`, after those of `check_on_save` and before the entries written in `githooks.pre_commit`, so a check is
+  written once for both moments; `wait_agents` applies only to its entry on `stop`. Its strings are also checked with
+  the vocabulary of `githooks`, and a placeholder git can never give, as `{path}`, is a problem at the line of the
+  item, never with the hint of a newer polix.
+
+### Changed
+
+- `polix graph` draws the entries of `githooks`, written or expanded from `builtin.check_polix_files`,
+  `check_on_save` and `also_on_save`, in a subgraph `githooks.<event>` after the events of `on`.
+- Every repository with a `polix.yaml` now gets the hooks of git installed on every session start, since
+  `check_polix_files` gives it gates of git: on a git older than 2.54 the agent is told on every start that they are
+  not installed, until the repository sets `guardrails.builtin.check_polix_files: false`. Every repository also gets
+  the forced `git push`, `git reset --hard`, forced `git clean` and `git commit --no-verify` of the agent refused;
+  set the key of each one to `false` to keep the old behaviour.
+- The top-level key `max_stop_retries` is now `stop_retries`, and its default drops from 3 to 1: a failing gate of
+  `stop` or `subagent_stop` blocks once on the same content before the loop guard lets the agent stop. A
+  `polix.yaml` that writes `max_stop_retries` stops validating, reported as `unknown key "max_stop_retries": use
+  stop_retries`, never with the hint of a newer polix, and `max_stop_blocks` now hints `use stop_retries` too; rename
+  it, and set `stop_retries: 3` to keep the old limit. A negative value is reported as `stop_retries must be positive`.
+- This repository's `polix.yaml` drops `max_stop_retries`, the format items of `polix.yaml` and the rules and the
+  `polix config check` item of `check_on_save`, which the defaults replace.
+
+### Known limits
+
+- The built-in blocks do not cover other ways to skip the hooks of git, as `git -c core.hooksPath=... commit`, nor
+  the `--no-verify` of `git merge`, `git am` and `git push`, nor a push refspec that starts with `+`.
+- Being globs over the text of a command, they let through the forms their patterns do not match, as `git commit
+  -nm x`, `git clean -xfd`, an abbreviation of a long option and git run by another name or path (`git.exe`), and
+  refuse a commit message that cites `--no-verify` or a word `-n`.
 
 ## [0.10.0] - 2026-11-15
 

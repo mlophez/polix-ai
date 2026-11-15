@@ -14,6 +14,7 @@ import (
 // guardrailsYAML is the section guardrails: the shortcuts of the common cases, each in its one form and each item
 // with its line, which it turns into a workflow.Guardrails.
 type guardrailsYAML struct {
+	builtin           builtinYAML
 	protectedFiles    []itemYAML
 	protectedBranches []itemYAML
 	forbiddenCommands []forbiddenYAML
@@ -43,12 +44,13 @@ type forbiddenYAML struct {
 // checkYAML is an item of a lifecycle shortcut, with the fields of workflow.GuardrailCheck in its order,
 // so it converts to one: Problems holds what is wrong with its values.
 type checkYAML struct {
-	Run      []string
-	Scope    any
-	Message  string
-	Waits    bool
-	Line     int
-	Problems []string
+	Run        []string
+	Scope      any
+	Message    string
+	Waits      bool
+	AlsoOnSave bool
+	Line       int
+	Problems   []string
 }
 
 // placedYAML is an item of a shortcut that takes a list of maps, an alias read as the node of its anchor, with the
@@ -87,6 +89,8 @@ func (y *guardrailsYAML) UnmarshalYAML(n *yaml.Node) error {
 func (y *guardrailsYAML) shortcut(k *yaml.Node, val nodeYAML) error {
 	var err error
 	switch k.Value {
+	case workflow.ShortcutBuiltin:
+		y.builtin, err = val.builtin(k.Line)
 	case workflow.ShortcutProtectedFiles:
 		y.protectedFiles, err = val.items(k.Value, `path globs, as [".env", "secrets/**"]`)
 	case workflow.ShortcutProtectedBranches:
@@ -116,9 +120,12 @@ func (y *guardrailsYAML) shortcut(k *yaml.Node, val nodeYAML) error {
 	return err
 }
 
-// guardrails builds the section of the domain, with the error of its Valid: the items with problems.
+// guardrails builds the section of the domain, with the error of its Valid: the items with problems. The built-in
+// good practices the file leaves out are on, as is every one of them without the section.
 func (y *guardrailsYAML) guardrails() (workflow.Guardrails, error) {
+	builtin, _ := y.builtin.builtin()
 	g := workflow.Guardrails{
+		Builtin:           builtin,
 		ProtectedFiles:    y.items(y.protectedFiles),
 		ProtectedBranches: y.items(y.protectedBranches),
 		ForbiddenCommands: y.forbidden(),
@@ -260,7 +267,8 @@ func (n placedYAML) forbidden() forbiddenYAML {
 // check reads the item n of a lifecycle shortcut (the shortcut key, whose items take keys), a map at its line, with
 // the problems of its values. The command of run is a string split on spaces or a list of arguments, and the scope
 // keeps the value as written, which the validator checks as the condition it becomes. An item of check_on_stop waits
-// for the subagents still running unless its wait_agents, true or false, is false.
+// for the subagents still running unless its wait_agents, true or false, is false, and also runs on every commit when
+// its also_on_save, true or false, is true.
 func (n placedYAML) check(key string, keys []string) checkYAML {
 	y := checkYAML{Line: n.line, Waits: key == workflow.ShortcutCheckOnStop}
 	badRun := false
@@ -279,12 +287,8 @@ func (n placedYAML) check(key string, keys []string) checkYAML {
 				return "message must be a text"
 			}
 			y.Message = s
-		case "wait_agents":
-			var waits bool
-			if val.Kind != yaml.ScalarNode || val.ShortTag() != "!!bool" || val.Decode(&waits) != nil {
-				return "wait_agents must be true or false"
-			}
-			y.Waits = waits
+		case "wait_agents", "also_on_save":
+			return y.flag(k, val)
 		default:
 			var scope any
 			if err := val.Decode(&scope); err != nil {
@@ -300,25 +304,55 @@ func (n placedYAML) check(key string, keys []string) checkYAML {
 	return y
 }
 
+// flag reads the value val of the key k of an item of check_on_stop, wait_agents or also_on_save, which takes true or
+// false, into y: the problem of another value, or "".
+func (y *checkYAML) flag(k string, val nodeYAML) string {
+	var on bool
+	if val.Kind != yaml.ScalarNode || val.ShortTag() != "!!bool" || val.Decode(&on) != nil {
+		return k + " must be true or false"
+	}
+	if k == "wait_agents" {
+		y.Waits = on
+	} else {
+		y.AlsoOnSave = on
+	}
+	return ""
+}
+
 // fields walks the keys of the map item n of the shortcut key: read takes the value of each of the known keys and
 // returns its problem, or "". It returns the problems of the item: those of read, of an unknown key and of a key
-// written twice, each with the path of the shortcut.
+// written twice, each with the path of the shortcut (see fieldsAt).
 func (n nodeYAML) fields(key string, known []string, read func(k string, val nodeYAML) string) []string {
 	var out []string
+	for _, p := range n.fieldsAt(n, key, known, read) {
+		out = append(out, p.Text)
+	}
+	return out
+}
+
+// fieldsAt walks the keys of the map item, the value n stands for (n itself, or the anchor of the alias n), of the
+// section key of guardrails, as fields does, and returns each problem at the line where n writes its key (itemLine):
+// the line of the key, or of the alias n.
+func (n nodeYAML) fieldsAt(item nodeYAML, key string, known []string,
+	read func(k string, val nodeYAML) string) []problemYAML {
+	var out []problemYAML
 	seen := map[string]int{}
-	for i := 0; i+1 < len(n.Content); i += 2 {
-		k, val := n.Content[i], n.Content[i+1]
+	for i := 0; i+1 < len(item.Content); i += 2 {
+		k, val := item.Content[i], item.Content[i+1]
+		line := n.itemLine(k)
 		if first, ok := seen[k.Value]; ok {
-			out = append(out, fmt.Sprintf("guardrails.%s: key %q already defined at line %d", key, k.Value, first))
+			out = append(out, problemYAML{Line: line,
+				Text: fmt.Sprintf("guardrails.%s: key %q already defined at line %d", key, k.Value, first)})
 			continue
 		}
 		seen[k.Value] = k.Line
 		if !slices.Contains(known, k.Value) {
-			out = append(out, fmt.Sprintf("unknown key %q in guardrails.%s (%s)", k.Value, key, strings.Join(known, ", ")))
+			out = append(out, problemYAML{Line: line,
+				Text: fmt.Sprintf("unknown key %q in guardrails.%s (%s)", k.Value, key, strings.Join(known, ", "))})
 			continue
 		}
 		if p := read(k.Value, nodeYAML{val}.resolved()); p != "" {
-			out = append(out, fmt.Sprintf("guardrails.%s: %s", key, p))
+			out = append(out, problemYAML{Line: line, Text: fmt.Sprintf("guardrails.%s: %s", key, p)})
 		}
 	}
 	return out

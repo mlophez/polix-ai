@@ -62,6 +62,8 @@ session: what is blocked, what runs and what is injected into the context. The s
 milliseconds and keeps an append-only log of what it observed and decided.
 
 `polix.yaml` has three sections. `guardrails:` holds the basics every project wants from the first minute: first the
+built-in good practices polix applies by itself unless `builtin` turns one off (format and check its own files, never
+skip the git hooks of a commit, never force a push, `git reset --hard` nor `git clean -f`), then the
 protections (files no agent writes, branches nobody commits on, commands no agent runs), then the lifecycle
 shortcuts, the basic command of each moment of the work, named by what it does and when: `exec_on_start`,
 `format_on_edit`, `format_on_save`, `check_on_stop` and `check_on_save`. `on:` is
@@ -165,18 +167,17 @@ guardrails:
   forbidden_commands:
     - pattern: "*rm -rf /*"
 
-    - pattern: "git push*--force*"
-      reason: "Force pushes rewrite shared history: ask a person to run it."
-
   # Each Go file is formatted right after the agent edits it.
   format_on_edit:
     - run: golangci-lint fmt {path}
       path: "*.go"
 
-  # The agent cannot end its turn while the tests fail; they run only when Go code changed.
+  # The agent cannot end its turn while the tests fail, and git runs them on every commit too; they run only when
+  # Go code changed.
   check_on_stop:
     - run: go test ./...
       changed: "*.go"
+      also_on_save: true
 
   # Git runs the lint on every commit that stages Go code, also the commits people make.
   check_on_save:

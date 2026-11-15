@@ -20,8 +20,8 @@ the agent ends its turn and the checks of every commit. [`on`](#on) is where the
 review subagents, the builder, the plan, the ticket), as entries per event. Files no agent writes and commands no
 agent runs are protections of the engine, applied before every entry; the other six shortcuts of `guardrails`
 (`protected_branches` and the five lifecycle shortcuts) are only sugar: polix expands them into entries of `on`, or
-of `githooks` for `check_on_save`, when it reads the file, and `polix graph` draws those of `on` with the name of
-their shortcut. Apart from both, [`githooks`](#githooks) holds the gates git itself runs on every commit, whoever
+of `githooks` for `check_on_save`, when it reads the file, and `polix graph` draws them, those of `githooks` in a
+subgraph `githooks.<event>` after the events, with the name of their shortcut. Apart from both, [`githooks`](#githooks) holds the gates git itself runs on every commit, whoever
 makes it, with a small vocabulary of its own.
 
 - [The file at a glance](#the-file-at-a-glance)
@@ -43,9 +43,11 @@ version: 1                       # required
 path: ai                         # folder of the AI: rules/, plans/, reports/ and tasks/
 requires: 0.3.0                  # oldest polix the file needs; the lifecycle shortcuts need a newer one
 base_branch: [main, dev]         # branch the change merges into (polix rules check --changed)
-max_stop_retries: 3              # loop guard of stop and subagent_stop
+stop_retries: 3                  # loop guard of stop and subagent_stop (default 1)
 requirements: [go, golangci-lint]  # programs needed on the PATH, told to the AI on the first prompt
 guardrails:                      # the basics every project wants
+  builtin:                                      # the built-in good practices, each true when left out
+    forbid_git_destructive_commands: false      # turn one off
   protected_files: [.env, /AGENTS.md]           # path globs no agent writes, before every entry
   protected_branches: [main, "release/*"]       # branches nobody commits on
   forbidden_commands:                           # commands no agent runs, before every entry
@@ -62,6 +64,7 @@ guardrails:                      # the basics every project wants
   check_on_stop:                                # must pass before the agent ends its turn
     - run: "go test ./..."
       changed: "*.go"
+      also_on_save: true                        # and on every commit, as an item of check_on_save
   check_on_save:                                # must pass on every commit, whoever makes it
     - run: "golangci-lint run ./..."
       changed: "*.go"
@@ -108,7 +111,8 @@ Every key but `version` is optional. The key `guardrails`, a map of shortcuts, h
 this one: [Guardrails](#guardrails).
 
 Earlier builds named three of them otherwise: `protected` is now [`guardrails.protected_files`](#protected_files),
-`base` is now [`base_branch`](#base_branch), and the loop guard is now [`max_stop_retries`](#max_stop_retries).
+`base` is now [`base_branch`](#base_branch), and the loop guard, `max_stop_blocks` and then `max_stop_retries`, is
+now [`stop_retries`](#stop_retries).
 The shortcut `run_on_stop` of `guardrails` is now [`check_on_stop`](#check_on_stop).
 Only the new names are accepted: `polix config check` reports an old one with its line and its new spelling.
 
@@ -169,16 +173,17 @@ base_branch: main
 base_branch: [main, dev]
 ```
 
-### max_stop_retries
+### stop_retries
 
-- Type: non-negative integer. Default: `3` (`0` also means 3).
+- Type: non-negative integer. Default: `1` (`0` also means 1).
 - The loop guard: after this many blocks of the same entry of `stop` or `subagent_stop`, in the same session, by the
   same actor and on the same content, the agent may stop and the log records a `loop_guard` decision. A block let
   through does not end the evaluation, and a subagent let through does not count as `finished`. A `run` whose
   command writes files the tree does not ignore, the blocking one or an earlier one of the stop, does not escape it:
   while the agent changes nothing, the guard chains the blocks through the content each stop started from (see
   [polix.md](polix.md#loop-guard)).
-- `polix config check` rejects a negative value.
+- `polix config check` rejects a negative value (`stop_retries must be positive, got -1`), and reports the old names
+  `max_stop_retries` and `max_stop_blocks` with the hint `use stop_retries`.
 
 ### rules
 
@@ -333,8 +338,12 @@ of `check_on_save` turns it off.
 
 ## Guardrails
 
-`guardrails` holds eight shortcuts, each with exactly one form, so every file reads the same. They come in two
-groups, which `polix config fmt` writes in this order.
+`guardrails` holds the built-in good practices and eight shortcuts, each with exactly one form, so every file reads
+the same. They come in three groups, which `polix config fmt` writes in this order.
+
+What polix applies by itself, unless the repository turns it off:
+
+- [`builtin`](#builtin): a map of four switches, `true` or `false`, each `true` when left out.
 
 The protections, what no actor may do:
 
@@ -349,13 +358,14 @@ says what the command does, `exec_` prepares, `format_` changes files and `check
 - [`format_on_edit`](#format_on_edit): a list of maps with `run`, `path` and `message`, run after each edit;
 - [`format_on_save`](#format_on_save): a list of maps with `run`, `changed` and `message`, run right before the
   agent stages files;
-- [`check_on_stop`](#check_on_stop): a list of maps with `run`, `changed`, `message` and `wait_agents`, run before
-  the agent ends its turn;
+- [`check_on_stop`](#check_on_stop): a list of maps with `run`, `changed`, `message`, `wait_agents` and
+  `also_on_save`, run before the agent ends its turn, and on every commit too with `also_on_save`;
 - [`check_on_save`](#check_on_save): a list of maps with `run`, `changed` and `message`, run by git on every
   commit, whoever makes it.
 
 ```yaml
 guardrails:
+  builtin: { check_polix_files: false }
   protected_files: [".env", ".env.*", "AGENTS.md"]
   protected_branches: [main, "release/*"]
   forbidden_commands:
@@ -383,8 +393,8 @@ guardrails:
 `protected_files` and `forbidden_commands` are protections of the engine: with a valid file, the hook applies them
 right after the protection of the state of polix, before every entry of `on` and before the skip of the edits
 outside the repository, to every actor, the main session included, without exceptions. A denial is logged as
-`guardrails.protected_files` or `guardrails.forbidden_commands`, and `polix graph` draws both lists in a subgraph
-`guardrails` before the events.
+`guardrails.protected_files` or `guardrails.forbidden_commands`, or from `guardrails.builtin.<key>` for an item a
+preset of `builtin` adds, and `polix graph` draws both lists in a subgraph `guardrails` before the events.
 
 `protected_branches` and the lifecycle shortcuts are only sugar: when polix reads the file it expands each one into
 ordinary entries of `on`, or of `githooks` for `check_on_save`, and from then on the hook, `polix graph`, the repeat
@@ -396,11 +406,51 @@ When a shortcut falls short, write the entries it expands into in `on` or `githo
 
 - a value in another form than the one of its shortcut, with that form: a single string for `protected_files` or
   `protected_branches`, or a string where a list of maps or a map goes in the others;
-- an unknown key inside `guardrails`, with the list of the eight, and an unknown key of an item, with its keys;
+- an unknown key inside `guardrails`, with the list of its keys, and an unknown key of an item, with its keys;
   `run_on_stop`, the old name of `check_on_stop`, with the hint `use check_on_stop`;
 - an empty glob, pattern or branch name, an item without `pattern` or `run`, a `pattern`, `reason` or `message`
   that is not a text, a `run` that is not a command, and the problems of the entry an item expands into (an
   unknown placeholder in `run`, say).
+
+### builtin
+
+- Type: a map of `true` or `false` with the keys `forbid_commit_no_verify`, `forbid_git_destructive_commands`,
+  `format_polix_files` and `check_polix_files`, in that order. Default: each key `true` when left out, as the
+  whole map, also without `guardrails`.
+- `forbid_commit_no_verify`: refuses an agent's `git commit` that skips the hooks of git, in every repository, with
+  the items of `forbidden_commands` `git commit*--no-verify*`, `git commit* -n *` and `git commit* -n`, so `-n`
+  counts as a word of its own (`-nm` does not). Reason: `Never skip the git hooks: fix what they block and commit
+  again.`
+- `forbid_git_destructive_commands`: refuses an agent's forced `git push`, `git reset --hard` and forced `git clean`
+  with the items `git push*--force*` (`--force-with-lease` included), `git push* -f*`, `git reset*--hard*`, `git
+  clean* -f*` and `git clean*--force*`. Reasons: `Never force a push: ask the user to run it if it is needed.`, `git
+  reset --hard discards changes for good: ask the user to run it.` and `git clean -f deletes untracked files for
+  good: ask the user to run it.` A push refspec that starts with `+` and `git clean -xfd` are not refused.
+- `format_polix_files`: two entries first on `post_edit`, before those of `format_on_edit`, that run `polix config
+  fmt` when the edited path is `/polix.yaml` and `polix rules fmt` when it is `<path>/rules/*.yaml`
+  (`ai/rules/*.yaml` by default), without message.
+- `check_polix_files`: the first entry of `githooks.pre_commit`, that runs `polix config check` when a staged file
+  is `/polix.yaml` or below `<path>/rules` (`ai/rules/**` by default); as any entry of `githooks`, it makes every
+  session start install the hooks of git, which needs git 2.54 or later.
+- The two blocks are presets: at load they expand into their items of `forbidden_commands`, before the written
+  ones, at the line of `builtin`, so with a valid file they apply to every actor as any item does, matched against
+  the text of each command of the line, nested ones the shell parser reads included; a commit message that cites
+  `--no-verify` or a word `-n` is refused too. Each refusal is its reason followed by the line, logged from
+  `guardrails.builtin.<key>`; `polix graph` draws each item first in the subgraph `guardrails` with its pattern, its
+  reason and `from guardrails.builtin.<key>`, and the entries of the other two `from guardrails.builtin.<key>`.
+- `polix config check` reports a value other than `true` or `false` (`guardrails.builtin: format_polix_files must
+  be true or false`, the practice staying on) and an unknown key (`unknown key "bogus" in guardrails.builtin
+  (forbid_commit_no_verify, forbid_git_destructive_commands, format_polix_files, check_polix_files)`) at the line of
+  the key, and a value that is not a map as `guardrails.builtin takes a map of true or false, as {
+  forbid_git_destructive_commands: false }`. A polix older than `builtin` reports it as an unknown key of
+  `guardrails`, so a file that writes it sets `requires`.
+
+```yaml
+guardrails:
+  builtin:
+    forbid_git_destructive_commands: false   # this repository forces its pushes on purpose
+    check_polix_files: false                 # git is older than 2.54 here
+```
 
 ### protected_files
 
@@ -568,7 +618,9 @@ on:
     (the condition [`changed`](#changed), which also sets the [scope](#scope-of-an-entry) of the entry);
   - `message`: optional, the text before the output of a failure;
   - `wait_agents`: optional, `true` or `false`, `true` when left out: the check waits for the subagents of the
-    session still running (the condition [`agents_are_running`](#agents_are_running)).
+    session still running (the condition [`agents_are_running`](#agents_are_running));
+  - `also_on_save`: optional, `true` or `false`, `false` when left out: the check also runs on every commit, as an
+    item of [`check_on_save`](#check_on_save) with its `run`, `changed` and `message`.
 - The checks that must pass before the agent ends its turn. A failure blocks the `stop` with its output, up to the
   loop guard, and the first one that fails ends the evaluation, so list the cheaper or more basic check first. A
   check that passed is not run again in the session on the same content (see the repeat of [`run`](#run)).
@@ -580,6 +632,13 @@ on:
   none), with the text
   `check_on_stop waits for the subagents still running: its checks run on the next stop after they end.`
   `wait_agents: false` expands as before.
+  With `also_on_save: true` the item also expands into one entry of `githooks.pre_commit`, after those of
+  `check_on_save` and before those written there, with its `run`, `changed` and `message`, from
+  `guardrails.check_on_stop` at the line of the item; `wait_agents` applies only to its entry on `stop`. Its strings
+  are then also checked with the vocabulary of githooks: a placeholder git can never give is the problem
+  `guardrails.check_on_stop: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)`, never
+  with the hint of a newer polix, and a value other than `true` or `false` is the problem
+  `guardrails.check_on_stop: also_on_save must be true or false`, both at the line of the item.
   For `always`, the end of a subagent or a condition such as `finished`, write the entry in `on`.
 - Its old name, `run_on_stop`, is rejected with the hint `use check_on_stop`.
 
@@ -648,15 +707,17 @@ githooks:
 
 In each event the entries come in this order, each group in the order of the file:
 
-1. the entries of `protected_branches`, `exec_on_start`, `format_on_edit`, `format_on_save` and `check_on_stop`;
+1. the entries of `builtin.format_polix_files`, `protected_branches`, `exec_on_start`, `format_on_edit`,
+   `format_on_save` and `check_on_stop`;
 2. the entries written in `on`;
 3. the `notify` of the items of `check_on_stop` that wait, when there is one.
 
-On `start`, the entry that installs the hooks of git comes before all of them. On `githooks.pre_commit`, the entries
-of `check_on_save` come before those written there.
+On `start`, the entry that installs the hooks of git comes before all of them. On `githooks.pre_commit`, the entry of
+`builtin.check_polix_files`, then those of `check_on_save`, then those of the items of `check_on_stop` with
+`also_on_save` come before those written there.
 
-So the basics run before the flow of the team, and `protected_files` and `forbidden_commands`, which are no
-entries, before both.
+So the basics run before the flow of the team, and `protected_files` and `forbidden_commands`, the items of the
+presets of `builtin` included, which are no entries, before both.
 
 ## Entries
 

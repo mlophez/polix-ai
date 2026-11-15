@@ -60,7 +60,7 @@ func TestGuardrailsExpandWaits(t *testing.T) {
 	}
 	for _, c := range cases {
 		on := Guardrails{CheckOnStop: c.items}.Expand(map[string][]Entry{Stop: {{Action: Action{Block: &Block{
-			Message: "regular"}}, Line: 30}}})
+			Message: "regular"}}, Line: 30}}}, DefaultRulesPath)
 		var got []string
 		for _, e := range on[Stop] {
 			got = append(got, shortcutsSummary(e))
@@ -105,7 +105,7 @@ func TestGuardrailsExpand(t *testing.T) {
 			`guardrails.check_on_stop line=18 when=map[agents_are_running:true changed:[*.go]] ` + waitNotice,
 		},
 	}
-	on := g.Expand(written)
+	on := g.Expand(written, DefaultRulesPath)
 	if len(on) != len(want) || len(written[PreCommit]) != 1 {
 		t.Fatalf("events: %v; written %v", on, written)
 	}
@@ -118,8 +118,47 @@ func TestGuardrailsExpand(t *testing.T) {
 			t.Errorf("%s:\n%s\nwant:\n%s", ev, strings.Join(got, "\n"), strings.Join(entries, "\n"))
 		}
 	}
-	if got := (Guardrails{}).Expand(written); len(got) != 1 || len(got[PreCommit]) != 1 {
+	if got := (Guardrails{}).Expand(written, DefaultRulesPath); len(got) != 1 || len(got[PreCommit]) != 1 {
 		t.Fatalf("no shortcuts: %v", got)
+	}
+}
+
+// CUJ-10, AC-07: an item of check_on_stop with also_on_save true expands on stop, with agents_are_running false when
+// it waits, and also on githooks.pre_commit, after the entries of check_on_save and before those written there,
+// without agents_are_running, with its command, changed and message, both from guardrails.check_on_stop at the line
+// of the item; an item without it, or with problems, expands on stop only.
+func TestAlsoOnSaveExpand(t *testing.T) {
+	g := Guardrails{
+		CheckOnStop: []GuardrailCheck{
+			{Run: []string{"go", "vet", "./..."}, Scope: "*.go", Message: "Fix go vet", Waits: true, AlsoOnSave: true,
+				Line: 4},
+			{Run: []string{"just", "lint"}, Waits: true, Line: 8},
+			{Run: []string{"x"}, AlsoOnSave: true, Line: 9, Problems: []string{"guardrails.check_on_stop: message must be a text"}},
+		},
+		CheckOnSave: []GuardrailCheck{{Run: []string{"go", "test", "./..."}, Line: 12}},
+	}
+	written := map[string][]Entry{PreCommit: {{Action: Action{Block: &Block{Message: "no"}}, Line: 20}}}
+	w := Workflow{Version: 1, Githooks: written}.Guard(g)
+	stop := []string{
+		`guardrails.check_on_stop line=4 when=map[agents_are_running:false changed:*.go] run ["go" "vet" "./..."] "Fix go vet"`,
+		`guardrails.check_on_stop line=8 when=map[agents_are_running:false] run ["just" "lint"] ""`,
+	}
+	if got := summaries(w.On[Stop]); len(got) != 3 || !slices.Equal(got[:2], stop) {
+		t.Errorf("stop:\n%q", got)
+	}
+	save := []string{
+		`guardrails.check_on_save line=12 when=map[] run ["go" "test" "./..."] ""`,
+		`guardrails.check_on_stop line=4 when=map[changed:*.go] run ["go" "vet" "./..."] "Fix go vet"`,
+		` line=20 when=map[] block "no"`,
+	}
+	if got := summaries(w.Githooks[PreCommit]); !slices.Equal(got, save) {
+		t.Errorf("githooks.pre_commit:\n%q\nwant:\n%q", got, save)
+	}
+	if err := w.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	if got := (Guardrails{CheckOnStop: g.CheckOnStop[1:2]}).Githooks(nil, DefaultRulesPath); got != nil {
+		t.Errorf("without also_on_save: %v", got)
 	}
 }
 

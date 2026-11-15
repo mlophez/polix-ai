@@ -7,12 +7,14 @@ import (
 	"strings"
 )
 
-// Guardrails is the section guardrails of polix.yaml as written: the items of each of its shortcuts, the common
-// cases, in file order and each with its line. protected_files and forbidden_commands are protections the workflow
-// holds as lists (Protected and Forbidden); the rest are only sugar, which Expand turns into entries of on and
-// Githooks into entries of githooks. The decoding of the file finds what is wrong with the values of an item and keeps
-// it with the item, for Problems to report it with the rest of the problems of the workflow.
+// Guardrails is the section guardrails of polix.yaml as written: the built-in good practices of builtin and the items
+// of each of its shortcuts, the common cases, in file order and each with its line. protected_files and
+// forbidden_commands are protections the workflow holds as lists (Protected and Forbidden); the rest are only sugar,
+// which Expand turns into entries of on and Githooks into entries of githooks, those of builtin included. The
+// decoding of the file finds what is wrong with the values of an item and keeps it with the item, for Problems to
+// report it with the rest of the problems of the workflow.
 type Guardrails struct {
+	Builtin           Builtin              // the built-in good practices, all on when the file leaves builtin out
 	ProtectedFiles    []GuardrailItem      // the path globs of protected_files
 	ProtectedBranches []GuardrailItem      // the branch names of protected_branches
 	ForbiddenCommands []GuardrailForbidden // the items of forbidden_commands
@@ -42,15 +44,17 @@ type GuardrailForbidden struct {
 // GuardrailCheck is an item of a lifecycle shortcut (exec_on_start, format_on_edit, format_on_save, check_on_stop or
 // check_on_save): the command to run, the globs that scope it (the path of format_on_edit or the changed of the
 // others, as written, nil without them; exec_on_start has none), the message before the output of a failure and, for
-// check_on_stop, whether it waits for the subagents still running (wait_agents, true when left out). Problems holds
-// what is wrong with its values, reported at its line.
+// check_on_stop, whether it waits for the subagents still running (wait_agents, true when left out) and whether it
+// also runs on every commit, as an item of check_on_save (also_on_save, false when left out). Problems holds what is
+// wrong with its values, reported at its line.
 type GuardrailCheck struct {
-	Run      []string
-	Scope    any
-	Message  string
-	Waits    bool
-	Line     int
-	Problems []string
+	Run        []string
+	Scope      any
+	Message    string
+	Waits      bool
+	AlsoOnSave bool
+	Line       int
+	Problems   []string
 }
 
 // The shortcuts of the section guardrails.
@@ -73,20 +77,23 @@ const branchMessage = "{branch} is protected in " + File + ": create a branch fo
 const waitMessage = ShortcutCheckOnStop + " waits for the subagents still running: its checks run on the next stop " +
 	"after they end."
 
-// GuardrailsKeys are the shortcuts of the section guardrails, in the order polix config fmt writes them: first the
-// protections, then the lifecycle shortcuts in the order the work reaches them.
-var GuardrailsKeys = []string{ShortcutProtectedFiles, ShortcutProtectedBranches, ShortcutForbiddenCommands,
-	ShortcutExecOnStart, ShortcutFormatOnEdit, ShortcutFormatOnSave, ShortcutCheckOnStop, ShortcutCheckOnSave}
+// GuardrailsKeys are the keys of the section guardrails, in the order polix config fmt writes them: first builtin,
+// what polix applies by itself, then the protections, then the lifecycle shortcuts in the order the work reaches
+// them.
+var GuardrailsKeys = []string{ShortcutBuiltin, ShortcutProtectedFiles, ShortcutProtectedBranches,
+	ShortcutForbiddenCommands, ShortcutExecOnStart, ShortcutFormatOnEdit, ShortcutFormatOnSave, ShortcutCheckOnStop,
+	ShortcutCheckOnSave}
 
 // ForbiddenKeys, ExecOnStartKeys, FormatOnEditKeys, FormatOnSaveKeys, CheckOnStopKeys and CheckOnSaveKeys are the
 // keys of an item of forbidden_commands, exec_on_start, format_on_edit, format_on_save, check_on_stop and
-// check_on_save. git runs the hooks without knowing the subagents of a session, so check_on_save has no wait_agents.
+// check_on_save. git runs the hooks without knowing the subagents of a session, so check_on_save has no wait_agents,
+// nor also_on_save, which only an item of check_on_stop needs.
 var (
 	ForbiddenKeys    = []string{"pattern", "reason"}
 	ExecOnStartKeys  = []string{"run", "message"}
 	FormatOnEditKeys = []string{"run", "path", "message"}
 	FormatOnSaveKeys = []string{"run", "changed", "message"}
-	CheckOnStopKeys  = []string{"run", "changed", "message", "wait_agents"}
+	CheckOnStopKeys  = []string{"run", "changed", "message", "wait_agents", "also_on_save"}
 	CheckOnSaveKeys  = []string{"run", "changed", "message"}
 )
 
@@ -95,7 +102,7 @@ var stagingCommands = []any{"git add*", "git stage*"}
 
 // Valid tells why the section is not valid: the items that are not, each with why.
 func (g Guardrails) Valid() error {
-	var errs []error
+	errs := []error{g.Builtin.Valid()}
 	for _, it := range append(append([]GuardrailItem(nil), g.ProtectedFiles...), g.ProtectedBranches...) {
 		errs = append(errs, it.Valid())
 	}
@@ -136,11 +143,14 @@ func (c GuardrailCheck) Valid() error {
 	return nil
 }
 
-// Expand returns the entries of on with those the shortcuts protected_branches, exec_on_start, format_on_edit,
-// format_on_save and check_on_stop expand into, before the entries written in on in each event, each group in file
-// order. An item with problems expands into nothing: Problems reports them. check_on_save expands into entries of
-// githooks instead (Githooks).
+// Expand returns the entries of on with those builtin and the shortcuts protected_branches, exec_on_start,
+// format_on_edit, format_on_save and check_on_stop expand into, before the entries written in on in each event, each
+// group in file order; rules is the folder of the rules, below path. An item with problems expands into nothing:
+// Problems reports them. check_on_save and check_polix_files expand into entries of githooks instead (Githooks).
 //
+//   - builtin.format_polix_files: two entries first on post_edit, before those of format_on_edit, that run polix
+//     config fmt on the edits of the root polix.yaml and polix rules fmt on those of the yaml files of rules
+//     (Builtin.formatEntries).
 //   - protected_branches: an entry on pre_commit with branch, an anchored regular expression of the names.
 //   - exec_on_start: an entry on start per item, without when, that runs its command with always, so it runs on every
 //     start, also on a content it passed on.
@@ -154,9 +164,10 @@ func (c GuardrailCheck) Valid() error {
 //     after the entries written in on too, so no entry after it may block the stop and hide it.
 //
 // Each entry takes the line of its item, the first one for an entry of several items, and the path of its shortcut.
+// Those of builtin take the line of builtin, 0 when the file leaves it out, and the path of their key.
 // protected_files and forbidden_commands expand into nothing: they are protections, not entries.
-func (g Guardrails) Expand(on map[string][]Entry) map[string][]Entry {
-	regular := g.entries()
+func (g Guardrails) Expand(on map[string][]Entry, rules string) map[string][]Entry {
+	regular := g.entries(rules)
 	if len(regular) == 0 {
 		return on
 	}
@@ -204,6 +215,7 @@ func (g Guardrails) Forbidden() []ForbiddenCommand {
 // of the workflow w they expand into, in the order of the file; nil when the shortcuts have none.
 func (g Guardrails) Problems(w Workflow) []string {
 	v := &validator{w: &w}
+	g.Builtin.problems(v)
 	for _, it := range g.ProtectedFiles {
 		if it.Valid() != nil {
 			v.add(it.Line, "guardrails.%s: a path glob cannot be empty", ShortcutProtectedFiles)

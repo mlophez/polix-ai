@@ -42,8 +42,8 @@ type Workflow struct {
 	Requires string
 	// Base names the branches a change may merge into (base_branch), for `polix rules check --changed`; the hooks
 	// always compare `changed` with HEAD.
-	Base           []string
-	MaxStopRetries int // loop guard of every block on stop and subagent_stop (max_stop_retries)
+	Base        []string
+	StopRetries int // loop guard of every block on stop and subagent_stop (stop_retries)
 	// Requirements are the programs the repository requires on the PATH (requirements), in file order: the hook
 	// checks them, with git (Programs), on the first prompt of a session and `polix doctor` warns about each missing
 	// one; neither blocks.
@@ -52,11 +52,15 @@ type Workflow struct {
 	// a protection the hook applies before the entries of on, also to the files git ignores.
 	ProtectedFiles []string
 	// ForbiddenCommands are the commands no agent runs, wherever they come in a line
-	// (guardrails.forbidden_commands): a protection the hook applies before the entries of on, in file order.
+	// (guardrails.forbidden_commands): a protection the hook applies before the entries of on, the items the presets
+	// of guardrails.builtin add first and then those written, in file order.
 	ForbiddenCommands []ForbiddenCommand
-	Vars              map[string]Var
+	// Builtin holds the built-in good practices of guardrails.builtin, all on when polix.yaml leaves them out and all
+	// off without polix.yaml; its entries are already in On and Githooks, and its presets in ForbiddenCommands.
+	Builtin Builtin
+	Vars    map[string]Var
 	// On holds the entries of each event: those written in `on` and those the shortcuts of guardrails
-	// protected_branches and the lifecycle shortcuts but check_on_save expand into.
+	// protected_branches and the lifecycle shortcuts but check_on_save, and builtin.format_polix_files, expand into.
 	On    map[string][]Entry
 	Rules Rules // how the checks of the rules run
 	// Weights are the factors of the risk score per path glob (risk.weights), in file order: the first glob that
@@ -65,8 +69,9 @@ type Workflow struct {
 	// EventLines is the line of each event of `on` in the file, for messages.
 	EventLines map[string]int
 	// Githooks holds the entries of each event of githooks (GithookEvents), the gates git runs on every commit,
-	// apart from the events of the AI in On and with a vocabulary of their own: those of guardrails.check_on_save
-	// first in pre_commit, then those written in githooks.
+	// apart from the events of the AI in On and with a vocabulary of their own: those of
+	// guardrails.builtin.check_polix_files and then those of guardrails.check_on_save first in pre_commit, then those
+	// written in githooks.
 	Githooks map[string][]Entry
 	// GithookLines is the line of each event of githooks in the file, for messages.
 	GithookLines map[string]int
@@ -83,6 +88,9 @@ type ForbiddenCommand struct {
 	Pattern string // the glob of a command, matched against each command of a line
 	Reason  string // the message of the denial; empty for the default one
 	Line    int    // the line of the item in the file, for messages and the log
+	// From is the origin of an item a preset of guardrails.builtin adds (guardrails.builtin.<key>), for the log and
+	// polix graph; empty for an item written in forbidden_commands.
+	From string
 }
 
 // InvalidError is the error of a value with problems, one per line; the list is the error itself, so a caller gets
@@ -100,8 +108,8 @@ type validator struct {
 // File is the workflow, relative to the repository root.
 const File = "polix.yaml"
 
-// DefaultMaxStopRetries is the loop guard of stop and subagent_stop when the workflow does not say.
-const DefaultMaxStopRetries = 3
+// DefaultStopRetries is the loop guard of stop and subagent_stop when the workflow does not say, or says 0.
+const DefaultStopRetries = 1
 
 // placeholder finds the {name} placeholders of a string.
 var placeholder = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
@@ -152,8 +160,8 @@ func (v *validator) settings(w Workflow) {
 	if w.Requires != "" && !semver.Valid(w.Requires) {
 		v.add(0, "requires must be a version of polix like 0.2.0, got %q", w.Requires)
 	}
-	if w.MaxStopRetries < 0 {
-		v.add(0, "max_stop_retries must be positive, got %d", w.MaxStopRetries)
+	if w.StopRetries < 0 {
+		v.add(0, "stop_retries must be positive, got %d", w.StopRetries)
 	}
 	for _, b := range w.Base {
 		if strings.TrimSpace(b) == "" {

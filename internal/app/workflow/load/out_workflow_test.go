@@ -99,7 +99,7 @@ func TestValidRejects(t *testing.T) {
 		{"any not a map", "version: 1\non:\n  pre_commit:\n    - when: { any: [a] }" + block, "any needs a map of conditions"},
 		{"empty weight glob", "version: 1\nrisk:\n  weights:\n    \"\": 1\n", "risk.weights: weight: empty glob"},
 		{"negative weight", "version: 1\nrisk:\n  weights:\n    a: -1\n", `risk.weights: weight "a": the factor must be a finite, non-negative number`},
-		{"negative max_stop_retries", "version: 1\nmax_stop_retries: -1\n", "max_stop_retries must be positive"},
+		{"negative stop_retries", "version: 1\nstop_retries: -1\n", "stop_retries must be positive"},
 		{"exit outside post_command", "version: 1\non:\n  pre_command:\n    - when: { exit: 0 }" + block, "exit never holds on pre_command"},
 		{"path outside edits", "version: 1\non:\n  stop:\n    - when: { path: x }" + block, "path never holds on stop"},
 		{"command inside not outside commands", "version: 1\non:\n  pre_edit:\n    - when: { not: { command: x } }" + block, "command never holds on pre_edit"},
@@ -428,7 +428,7 @@ func TestDecodeNotify(t *testing.T) {
 		src.WriteString("  " + ev + ":\n    - action: { notify: \"Rama {branch}\" }\n" +
 			"    - action: { notify: { message: \"Aviso\", always: true } }\n")
 	}
-	w, err := parse(t, src.String(), "dev")
+	w, err := parse(t, src.String()+builtinOff, "dev")
 	if err != nil {
 		t.Fatal(err)
 	}

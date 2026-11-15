@@ -8,18 +8,18 @@ import (
 
 // workflowYAML is the shape of polix.yaml.
 type workflowYAML struct {
-	Version        int                    `yaml:"version"`
-	Path           string                 `yaml:"path"`
-	Requires       string                 `yaml:"requires"`
-	BaseBranch     stringsYAML            `yaml:"base_branch"`
-	MaxStopRetries int                    `yaml:"max_stop_retries"`
-	Requirements   requirementsYAML       `yaml:"requirements"`
-	Guardrails     guardrailsYAML         `yaml:"guardrails"`
-	Vars           map[string]varYAML     `yaml:"vars"`
-	On             map[string][]entryYAML `yaml:"on"`
-	Githooks       map[string][]entryYAML `yaml:"githooks"`
-	Rules          rulesYAML              `yaml:"rules"`
-	Risk           riskYAML               `yaml:"risk"`
+	Version      int                    `yaml:"version"`
+	Path         string                 `yaml:"path"`
+	Requires     string                 `yaml:"requires"`
+	BaseBranch   stringsYAML            `yaml:"base_branch"`
+	StopRetries  int                    `yaml:"stop_retries"`
+	Requirements requirementsYAML       `yaml:"requirements"`
+	Guardrails   guardrailsYAML         `yaml:"guardrails"`
+	Vars         map[string]varYAML     `yaml:"vars"`
+	On           map[string][]entryYAML `yaml:"on"`
+	Githooks     map[string][]entryYAML `yaml:"githooks"`
+	Rules        rulesYAML              `yaml:"rules"`
+	Risk         riskYAML               `yaml:"risk"`
 }
 
 // riskYAML is the key risk: the options of the risk score.
@@ -142,10 +142,12 @@ func (workflowYAML) names() *strings.Replacer {
 }
 
 // workflow builds the domain value of the file, with the line of each event of `on` (eventLines) and of githooks
-// (githookLines), the entries of githooks after those of guardrails.check_on_save (workflow.Guardrails.Githooks), the
-// protected files and the forbidden commands of guardrails, and its other shortcuts expanded into entries of on, with
-// first in start the entry that installs the hooks of git when githooks has entries, those of check_on_save included
-// (workflow.Workflow.ExpandGithooks), and returns it with the section guardrails as written.
+// (githookLines), the protected files and the forbidden commands of guardrails, and its built-in good practices and
+// other shortcuts applied with the folder of the rules below path (workflow.Workflow.Guard): the entries of githooks
+// after those of guardrails.builtin.check_polix_files and guardrails.check_on_save, and the other shortcuts expanded
+// into entries of on, with first in start the entry that installs the hooks of git when githooks has entries, those
+// of check_polix_files and check_on_save included (workflow.Workflow.ExpandGithooks); and returns it with the section
+// guardrails as written.
 // The problems of each value are reported by Workflow.Valid, which walks them all together with those that depend on
 // the event and the vars, so the errors of the parts are not returned on their own; the problems of the values of
 // the shortcuts, which the workflow does not hold, are left to Guardrails.Problems.
@@ -159,19 +161,20 @@ func (y workflowYAML) workflow(eventLines, githookLines map[string]int) (workflo
 		Path:              y.Path,
 		Requires:          y.Requires,
 		Base:              []string(y.BaseBranch),
-		MaxStopRetries:    y.MaxStopRetries,
+		StopRetries:       y.StopRetries,
 		Requirements:      []string(y.Requirements),
 		ProtectedFiles:    guardrails.Protected(),
 		ForbiddenCommands: guardrails.Forbidden(),
 		Vars:              y.vars(),
-		On:                guardrails.Expand(y.entries(y.On)),
+		On:                y.entries(y.On),
 		Rules:             rules,
 		EventLines:        eventLines,
-		Githooks:          guardrails.Githooks(y.entries(y.Githooks)),
+		Githooks:          y.entries(y.Githooks),
 		GithookLines:      githookLines,
 	}
-	// The entry of start that installs the hooks of git goes first, before those of the shortcuts.
-	w = w.ExpandGithooks()
+	// The shortcuts and builtin expand with the folder of the rules of path, and the entry of start that installs the
+	// hooks of git goes first, before those of the shortcuts.
+	w = w.Guard(guardrails).ExpandGithooks()
 	return w, guardrails, w.Valid()
 }
 

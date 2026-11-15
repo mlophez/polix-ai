@@ -17,11 +17,16 @@ The recipes come in the three sections of `polix.yaml`:
   entry says on which event it applies, when, and what it does.
 - **`githooks:`**, the gates git itself runs on every commit, whoever makes it: a person, an IDE or an agent.
 
+Before writing anything, `guardrails.builtin` already gives every repository with a `polix.yaml` four good practices,
+each switchable off with `false`: the agent cannot skip the hooks of git of a commit nor run a forced `git push`,
+`git reset --hard` or a forced `git clean`, and polix formats `polix.yaml` and the rules after every edit and checks
+them on every commit (see [Built-in good practices](#built-in-good-practices)).
+
 `protected_files` and `forbidden_commands` are protections of the engine: they deny before every entry of `on:`,
 for every actor, without exceptions, also on the files git ignores. The other six shortcuts, `protected_branches`
 and the five lifecycle shortcuts, are only sugar: polix expands each into ordinary entries of `on:`, or of
-`githooks:` for `check_on_save`, when it reads the file, and `polix graph` draws those of `on:` with the name of
-their shortcut. Each of their recipes shows its expansion too: write it in `on:` or `githooks:` and tune it when
+`githooks:` for `check_on_save`, when it reads the file, and `polix graph` draws them, those of `githooks:` in a
+subgraph `githooks.<event>` after the events, with the name of their shortcut. Each of their recipes shows its expansion too: write it in `on:` or `githooks:` and tune it when
 the shortcut falls short. A polix older than the shortcuts rejects `guardrails:` as an unknown key, so set `requires` to the
 release you install.
 
@@ -107,6 +112,26 @@ The files and the commands are protections: they deny before every entry of `on:
 and bind the main session too. The branches, the formatters and the checks become entries, which run before the
 entries written in `on:` of the same event.
 
+### Built-in good practices
+
+A `polix.yaml` without `guardrails.builtin` gets the four built-in good practices on; the map only turns them off,
+one by one:
+
+```yaml
+guardrails:
+  builtin:
+    forbid_commit_no_verify: true          # git commit --no-verify and -n are refused to the agent
+    forbid_git_destructive_commands: true  # git push --force, git reset --hard and git clean -f are refused
+    format_polix_files: true               # polix config fmt and polix rules fmt after an edit of them
+    check_polix_files: false               # git is older than 2.54 here: no hooks of git to install
+```
+
+The blocks are presets of `forbidden_commands`, placed before the written items and matched as they are, against the
+text of each command, so `echo "git push --force"` passes while `git commit -m "skip --no-verify"` is refused too.
+`forbid_commit_no_verify` holds in every repository, with gates of git or without them. The format and the check of
+the polix files are entries from `guardrails.builtin.<key>`, before those of `format_on_edit` and `check_on_save`; a
+written item that runs the same command keeps running, and its run is skipped as already passed on the same content.
+
 ### Paths no agent writes
 
 polix protects only its own state on its own. Everything else a person wants to keep for themselves goes in
@@ -183,16 +208,15 @@ any staged file under `secrets/`.
 
 ### Destructive commands are left to a person
 
-Commands that throw away work nobody saved are blocked, in any position of the line.
+Commands that throw away work nobody saved are blocked, in any position of the line. A forced `git push`,
+`git reset --hard` and a forced `git clean` need no item: `guardrails.builtin.forbid_git_destructive_commands`
+refuses them by default.
 
 ```yaml
 guardrails:
   forbidden_commands:
     - pattern: "*rm -rf*"
     - pattern: "*rm -fr*"
-    - pattern: "git reset --hard*"
-      reason: "git reset --hard throws away uncommitted work: use git stash, or ask the user to run it."
-    - pattern: "git clean -*f*"
     - pattern: "git checkout -- .*"
     - pattern: "git restore .*"
 ```
@@ -381,6 +405,11 @@ How it works:
   an entry of `stop` whose `action` is a `run` of `command: just test-integration` and `always: true`.
 - `run` executes without a shell and shares a budget of 10 minutes per hook call. The hook timeout that
   `polix install` writes (900 seconds) is above it.
+- A check that must also pass on every commit, whoever makes it, is written once: `also_on_save: true` in its item
+  also runs it as an item of `check_on_save`, an entry of `githooks.pre_commit` with its `run`, `changed` and
+  `message`, after those of `check_on_save`; `wait_agents` applies only to its entry on `stop`.
+- A failing check blocks the stop once on the same content by default: `stop_retries` (1 when left out) is how
+  many blocks of one entry on the same content the loop guard allows before it lets the agent stop.
 - A check that should also gate the end of a subagent, or wait for a reviewer, is an entry of `on:`: see
   [The main session orchestrates, the builder builds](#the-main-session-orchestrates-the-builder-builds) and
   [Putting it together](#putting-it-together-build-document-test-review-commit).
@@ -863,7 +892,7 @@ are an entry of `on:` and not of `check_on_stop`, since they wait for the docume
 ```yaml
 version: 1
 base_branch: main
-max_stop_retries: 3
+stop_retries: 3
 vars:
   key:
     branch: "^([A-Z][A-Z0-9]+-[0-9]+)"
@@ -990,14 +1019,15 @@ A failure aborts the commit with the message and `golangci-lint run ./... failed
 ### The agent cannot skip the hooks of git
 
 `git commit --no-verify` skips both hooks, and `git -c hook.polix-pre-commit.enabled=false commit` one of them.
-People may still do it; the agent may not:
+People may still do it; the agent may not: `guardrails.builtin.forbid_commit_no_verify` refuses `git commit` with
+`--no-verify` or a word `-n` by default. The other ways, which it does not cover, go to `forbidden_commands`:
 
 ```yaml
 guardrails:
   forbidden_commands:
-    - pattern: "git*--no-verify*"
-      reason: "The hooks of git are not skipped: fix what they block"
     - pattern: "git*hook.polix-*"
+      reason: "The hooks of git are not skipped: fix what they block"
+    - pattern: "git*core.hooksPath*"
       reason: "The hooks of git are not skipped: fix what they block"
 ```
 
@@ -1035,7 +1065,7 @@ What polix does, without a script:
 - **Keep a subagent working** (`SubagentStop`): see
   [The main session orchestrates, the builder builds](#the-main-session-orchestrates-the-builder-builds).
 - **Avoid a stop hook that never lets go** (`stop_hook_active`, the cap of eight blocks): built in. After
-  `max_stop_retries` blocks of the same entry on the same content, polix lets the agent stop and logs a
+  `stop_retries` blocks of the same entry on the same content, polix lets the agent stop and logs a
   `loop_guard` decision.
 - **Fail closed when the policy is broken** (`onFailure: "block"`): built in for an invalid `polix.yaml`, which
   blocks edits and commands but never a stop. A machine without polix is not covered: Claude Code treats the

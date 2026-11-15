@@ -87,13 +87,14 @@ func TestCommand(t *testing.T) {
 	if code != 1 || !strings.Contains(stderr, "polix.yaml not found") || strings.Contains(stderr, "<nil>") {
 		t.Fatalf("without workflow: %d %q", code, stderr)
 	}
-	repo := newRepo(t, map[string]string{workflow.File: "version: 1\non:\n  stop:\n    - action: { block: \"r\" }\n"})
+	repo := newRepo(t, map[string]string{workflow.File: "version: 1\non:\n  stop:\n    - action: { block: \"r\" }\n" +
+		"guardrails:\n" + builtinOff})
 	code, stdout, stderr := runCommand(t, repo, "graph")
 	if want := "flowchart TD\n  subgraph stop\n    n0[\"block: r\"]\n  end\n"; code != 0 || stdout != want {
 		t.Fatalf("graph: %d %q %q", code, stdout, stderr)
 	}
 	// The entries of a shortcut are drawn expanded, with their origin.
-	repo = newRepo(t, map[string]string{workflow.File: "version: 1\nguardrails:\n  check_on_stop:\n" +
+	repo = newRepo(t, map[string]string{workflow.File: "version: 1\nguardrails:\n" + builtinOff + "  check_on_stop:\n" +
 		"    - run: \"go test ./...\"\n"})
 	code, stdout, stderr = runCommand(t, repo, "graph")
 	if want := "flowchart TD\n  subgraph stop\n" +

@@ -2,8 +2,13 @@ package answer
 
 import (
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
+	"github.com/mlophez/polix-ai/internal/app/agent"
+	"github.com/mlophez/polix-ai/internal/app/hook"
+	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 )
 
@@ -135,12 +140,157 @@ func TestForbiddenNested(t *testing.T) {
 		"bash --rcfile f <<'EOF'\nrm -rf /\nEOF": true, "bash 3<<'EOF'\nrm -rf /\nEOF": false,
 		"bash -euo pipefail -c 'rm -rf /'": true, "bash -eo pipefail <<'EOF'\nrm -rf /\nEOF": true,
 		"bash -oc pipefail 'rm -rf /'": true, "bash -oe pipefail <<'EOF'\nrm -rf /\nEOF": true,
-		"bash -ou pipefail -s <<'EOF'\nrm -rf /\nEOF": true,
-		"bash -c \"$CMD\"": false, "echo 'rm -rf /'": false,
+		"bash -ou pipefail -s <<'EOF'\nrm -rf /\nEOF": true, "bash -c \"$CMD\"": false, "echo 'rm -rf /'": false,
 	} {
 		if _, ok := forbidden(list, line, false); ok != want {
 			t.Errorf("%q: forbidden %v, want %v", line, ok, want)
 		}
+	}
+}
+
+// denial walks the pre_command of line by actor on the workflow of ev and returns the reasons of its answer and the
+// lines it logged.
+func denial(t *testing.T, ev hook.Evaluation, line, actor string) ([]string, []state.Entry) {
+	t.Helper()
+	e := with(t, ev, func(e *agent.Event) { e.Actor, e.Command = actor, line })
+	out, steps := walk(t, e, facts{branch: "main"})
+	if !out.Answer.Block {
+		return nil, appended(steps)
+	}
+	return out.Answer.Reasons, appended(steps)
+}
+
+// CUJ-04, CUJ-05, AC-03: with the default builtin the hook denies to every actor a commit that skips the hooks,
+// after the global options of git, in the script of bash -c and with the option in the message, with LIT-01 and the
+// line, logged as a denial from guardrails.builtin.forbid_commit_no_verify at the line of builtin, also in a
+// repository without gates of git; the forms the patterns do not match pass.
+func TestBuiltinNoVerifyHook(t *testing.T) {
+	ev := eval(t, "version: 1\non:\n  pre_command:\n    - action: { inject: { text: x, always: true } }\n",
+		workflow.PreCommand)
+	noGates := eval(t, "version: 1\nguardrails:\n  builtin: { check_polix_files: false }\n", workflow.PreCommand)
+	for _, line := range []string{
+		"git commit --no-verify -m x", "git commit -m x --no-verify", "git commit -n -m x", "git commit -m x -n",
+		"git -C . commit --no-verify -m x", `bash -c "git commit -n -m x"`, `git commit -m "skip --no-verify"`,
+	} {
+		for _, actor := range []string{agent.ActorSession, "builder"} {
+			reasons, logged := denial(t, ev, line, actor)
+			if want := "Never skip the git hooks: fix what they block and commit again.\n" + line; !slices.Equal(reasons,
+				[]string{want}) {
+				t.Errorf("%s by %s: reasons %q", line, actor, reasons)
+			}
+			if len(logged) != 1 || logged[0].Outcome != "deny" ||
+				logged[0].Action != "guardrails.builtin.forbid_commit_no_verify" || logged[0].Line != 0 {
+				t.Errorf("%s by %s: logged %+v", line, actor, logged)
+			}
+		}
+		if reasons, _ := denial(t, noGates, line, agent.ActorSession); len(reasons) != 1 ||
+			!strings.HasPrefix(reasons[0], "Never skip the git hooks") {
+			t.Errorf("%s without gates of git: reasons %q", line, reasons)
+		}
+	}
+	for _, line := range []string{
+		"git commit -nm x", "git commit -mn", "git commit --no-verbose -m x", `git commit -m "fix -nothing"`,
+	} {
+		if reasons, _ := denial(t, ev, line, agent.ActorSession); reasons != nil {
+			t.Errorf("%s: refused %q", line, reasons)
+		}
+	}
+}
+
+// CUJ-06, CUJ-07, AC-04: the hook denies a forced push, git reset --hard and a forced git clean, each with its reason
+// and the line, logged from guardrails.builtin.forbid_git_destructive_commands at the line of builtin; the safe forms,
+// git clean -xfd, a known limit, and a quoted mention pass, and an invalid workflow applies no preset.
+func TestBuiltinDestructiveGitHook(t *testing.T) {
+	ev := eval(t, "version: 1\nguardrails:\n  builtin: { check_polix_files: false }\n", workflow.PreCommand)
+	const push, reset, clean = "Never force a push: ask the user to run it if it is needed.",
+		"git reset --hard discards changes for good: ask the user to run it.",
+		"git clean -f deletes untracked files for good: ask the user to run it."
+	for line, reason := range map[string]string{
+		"git push --force": push, "git push -f": push, "git push origin main --force": push,
+		"git push origin main -f": push, "git push --force-with-lease=main origin": push,
+		"git reset --hard": reset, "git reset HEAD~1 --hard": reset,
+		"git clean -f": clean, "git clean -fd": clean, "git clean --force": clean,
+	} {
+		reasons, logged := denial(t, ev, line, agent.ActorSession)
+		if !slices.Equal(reasons, []string{reason + "\n" + line}) {
+			t.Errorf("%s: reasons %q", line, reasons)
+		}
+		if len(logged) != 1 || logged[0].Action != "guardrails.builtin.forbid_git_destructive_commands" ||
+			logged[0].Line != 3 {
+			t.Errorf("%s: logged %+v", line, logged)
+		}
+	}
+	for _, line := range []string{
+		"git push origin main", "git push --no-force origin", "git push --follow-tags", "git reset --soft HEAD~1",
+		"git clean -n", "git clean -xfd", `echo "git push --force"`,
+	} {
+		if reasons, _ := denial(t, ev, line, agent.ActorSession); reasons != nil {
+			t.Errorf("%s: refused %q", line, reasons)
+		}
+	}
+	broken := invalid(with(t, ev, func(e *agent.Event) { e.Command = "git push -f" }))
+	if out, steps := walk(t, broken, facts{branch: "main"}); !out.Answer.Block ||
+		strings.Contains(strings.Join(out.Answer.Reasons, "\n"), "Never force a push") {
+		t.Errorf("an invalid workflow applies a preset: %+v %+v", out.Answer, appended(steps))
+	}
+}
+
+// CON-02: on Windows the hook reads the line the same way, so the presets deny a forced push, also in the script of
+// bash -c, with LIT-02 and the line, and let a quoted mention pass.
+func TestBuiltinDestructiveGitHookWindows(t *testing.T) {
+	ev := eval(t, "version: 1\nguardrails:\n  builtin: { check_polix_files: false }\n", workflow.PreCommand)
+	ev.System = "windows"
+	for _, line := range []string{"git push -f", "git push origin main --force", `bash -c "git push -f"`} {
+		reasons, logged := denial(t, ev, line, agent.ActorSession)
+		if want := "Never force a push: ask the user to run it if it is needed.\n" + line; !slices.Equal(reasons,
+			[]string{want}) {
+			t.Errorf("%s: reasons %q", line, reasons)
+		}
+		if len(logged) != 1 || logged[0].Action != "guardrails.builtin.forbid_git_destructive_commands" {
+			t.Errorf("%s: logged %+v", line, logged)
+		}
+	}
+	if reasons, _ := denial(t, ev, `echo "git push -f"`, agent.ActorSession); reasons != nil {
+		t.Errorf("a quoted mention: %q", reasons)
+	}
+}
+
+// CUJ-08, AC-05: with the four keys of builtin false neither preset refuses, and with only
+// forbid_git_destructive_commands false a forced push passes while a commit that skips the hooks is still refused.
+func TestBuiltinOffHook(t *testing.T) {
+	off := eval(t, "version: 1\n"+builtinOff, workflow.PreCommand)
+	for _, line := range []string{"git commit --no-verify -m x", "git push --force"} {
+		if reasons, _ := denial(t, off, line, agent.ActorSession); reasons != nil {
+			t.Errorf("all off, %s: refused %q", line, reasons)
+		}
+	}
+	one := eval(t, "version: 1\nguardrails:\n  builtin: { forbid_git_destructive_commands: false }\n",
+		workflow.PreCommand)
+	if reasons, _ := denial(t, one, "git push --force", agent.ActorSession); reasons != nil {
+		t.Errorf("forbid_git_destructive_commands false: the push is refused %q", reasons)
+	}
+	if reasons, _ := denial(t, one, "git commit --no-verify -m x", agent.ActorSession); !slices.Equal(reasons,
+		[]string{"Never skip the git hooks: fix what they block and commit again.\ngit commit --no-verify -m x"}) {
+		t.Errorf("forbid_git_destructive_commands false: the commit %q", reasons)
+	}
+}
+
+// CUJ-15, AC-10: a forbidden command the repository writes keeps refusing with its reason next to the built-in
+// blocks, and a forced push is refused by the built-in block with LIT-02.
+func TestBuiltinKeepsWrittenForbidden(t *testing.T) {
+	ev := eval(t, `version: 1
+guardrails:
+  forbidden_commands:
+    - pattern: "kubectl* apply *"
+      reason: Apply through the pipeline.
+`, workflow.PreCommand)
+	if reasons, _ := denial(t, ev, "kubectl apply -f x.yaml", agent.ActorSession); !slices.Equal(reasons,
+		[]string{"Apply through the pipeline.\nkubectl apply -f x.yaml"}) {
+		t.Errorf("kubectl: %q", reasons)
+	}
+	if reasons, _ := denial(t, ev, "git push --force", agent.ActorSession); !slices.Equal(reasons,
+		[]string{"Never force a push: ask the user to run it if it is needed.\ngit push --force"}) {
+		t.Errorf("push: %q", reasons)
 	}
 }
 

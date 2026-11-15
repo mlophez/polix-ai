@@ -168,7 +168,7 @@ func TestRequirementsValid(t *testing.T) {
 
 // Valid joins every problem in one Invalid error, whose list is that of Problems.
 func TestValidJoinsProblems(t *testing.T) {
-	w := Workflow{Version: 2, MaxStopRetries: -1}
+	w := Workflow{Version: 2, StopRetries: -1}
 	err := w.Valid()
 	var invalid InvalidError
 	if !errors.As(err, &invalid) || len(invalid) != 2 || err.Error() != strings.Join(w.Problems(), "\n") {

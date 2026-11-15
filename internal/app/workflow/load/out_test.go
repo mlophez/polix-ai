@@ -121,24 +121,24 @@ func TestDecodeErrors(t *testing.T) {
 	}
 }
 
-// AC2, AC3: base_branch, max_stop_retries and guardrails.protected_files give the values base, max_stop_blocks and
+// AC2, AC3: base_branch, stop_retries and guardrails.protected_files give the values base, max_stop_blocks and
 // protected gave; each old name fails at its line with its new spelling, a problem Renamed tells from an option of
 // a newer polix.
 func TestDecodeRenamedTopKeys(t *testing.T) {
 	w, err := parse(t, `version: 1
 base_branch: [dev, main]
-max_stop_retries: 5
+stop_retries: 5
 guardrails:
   protected_files: [.env, "ai/rules/**"]
 `, "dev")
-	if err != nil || strings.Join(w.Base, ",") != "dev,main" || w.MaxStopRetries != 5 ||
+	if err != nil || strings.Join(w.Base, ",") != "dev,main" || w.StopRetries != 5 ||
 		strings.Join(w.ProtectedFiles, " ") != ".env ai/rules/**" {
 		t.Fatalf("new names: %v %+v", err, w)
 	}
 	for src, want := range map[string]string{
 		"version: 1\nprotected: [.env]\n":             `polix.yaml:2: unknown key "protected": use guardrails.protected_files`,
 		"version: 1\n\nbase: dev\n":                   `polix.yaml:3: unknown key "base": use base_branch`,
-		"version: 1\nmax_stop_blocks: 5\n":            `polix.yaml:2: unknown key "max_stop_blocks": use max_stop_retries`,
+		"version: 1\nmax_stop_blocks: 5\n":            `polix.yaml:2: unknown key "max_stop_blocks": use stop_retries`,
 		"version: 1\nrequires: 0.1.0\nbase: [main]\n": `polix.yaml:3: unknown key "base": use base_branch`,
 	} {
 		_, err := parse(t, src, "0.1.0")
@@ -156,11 +156,55 @@ guardrails:
 	}
 }
 
+// CUJ-12, AC-08: the loop guard is stop_retries, 1 when the file does not write it or writes 0, and a negative
+// value is a problem (LIT-11).
+func TestStopRetriesDefault(t *testing.T) {
+	for src, want := range map[string]int{
+		"version: 1\n":                  1,
+		"version: 1\nstop_retries: 0\n": 1,
+		"version: 1\nstop_retries: 2\n": 2,
+	} {
+		w, err := parse(t, src, "dev")
+		if err != nil || w.StopRetries != want {
+			t.Errorf("%q: got %d, %v, want %d", src, w.StopRetries, err, want)
+		}
+	}
+	if w, err := absentWorkflow(t); err != nil || w.StopRetries != 1 {
+		t.Errorf("without polix.yaml: got %d, %v", w.StopRetries, err)
+	}
+	_, err := parse(t, "version: 1\nstop_retries: -1\n", "dev")
+	if err == nil || !strings.Contains(err.Error(), "stop_retries must be positive, got -1") {
+		t.Fatalf("LIT-11: %v", err)
+	}
+	if workflow.Problem(err.Error()).Known() {
+		t.Error("LIT-11 is a problem of a value, not a name this polix replaced")
+	}
+}
+
+// CUJ-13, AC-08: max_stop_retries and max_stop_blocks are unknown keys with the hint of stop_retries (LIT-10), names
+// this polix replaced, so the advice to update polix never follows them.
+func TestStopRetriesRenamed(t *testing.T) {
+	for src, want := range map[string]string{
+		"version: 1\nmax_stop_retries: 3\n": `polix.yaml:2: unknown key "max_stop_retries": use stop_retries`,
+		"version: 1\nmax_stop_blocks: 3\n":  `polix.yaml:2: unknown key "max_stop_blocks": use stop_retries`,
+	} {
+		_, err := parse(t, src, "dev")
+		var unknown workflow.UnknownKeyError
+		if !errors.As(err, &unknown) || err.Error() != want {
+			t.Errorf("%q: got %v, want %s", src, err, want)
+			continue
+		}
+		if !workflow.Problem(err.Error()).Renamed() {
+			t.Errorf("%q: the old name would suggest a newer polix: %v", src, err)
+		}
+	}
+}
+
 // guardrails is a map of its shortcuts: any other key or value stops the parse, and an empty one expands into
 // nothing.
 func TestDecodeGuardrails(t *testing.T) {
 	var invalid workflow.InvalidError
-	shortcuts := "protected_files, protected_branches, forbidden_commands, exec_on_start, format_on_edit, " +
+	shortcuts := "builtin, protected_files, protected_branches, forbidden_commands, exec_on_start, format_on_edit, " +
 		"format_on_save, check_on_stop, check_on_save"
 	for src, want := range map[string]string{
 		"version: 1\nguardrails:\n  protected_file: [.env]\n": `polix.yaml: line 3: unknown key "protected_file" in guardrails (` + shortcuts + ")",
@@ -171,21 +215,27 @@ func TestDecodeGuardrails(t *testing.T) {
 			t.Errorf("%q: got %v, want %s", src, err, want)
 		}
 	}
+	// An empty guardrails expands only into the entries of builtin, on: the format of the polix files on post_edit and
+	// the install of the hooks of git its check needs on start.
 	w, err := parse(t, "version: 1\nguardrails: {}\n", "dev")
-	if err != nil || len(w.On) != 0 {
+	if err != nil || len(w.On) != 2 || len(w.On[workflow.PostEdit]) != 2 || len(w.On[workflow.Start]) != 1 {
 		t.Fatalf("empty guardrails: %v %+v", err, w)
 	}
 }
 
+// builtinOff is a section guardrails that turns off the built-in good practices that expand into entries, appended
+// at the end of a file without guardrails, so the tests of other entries keep their events and their lines.
+const builtinOff = "guardrails:\n  builtin: { format_polix_files: false, check_polix_files: false }\n"
+
 // No file is the default workflow; an empty file is a workflow without version, as before.
 func TestDecodeDefaults(t *testing.T) {
 	w, err := absentWorkflow(t)
-	if err != nil || w.Version != 1 || w.MaxStopRetries != workflow.DefaultMaxStopRetries || len(w.On) != 0 {
+	if err != nil || w.Version != 1 || w.StopRetries != workflow.DefaultStopRetries || len(w.On) != 0 {
 		t.Fatalf("default: %v %+v", err, w)
 	}
 	w, err = parse(t, "version: 1\n", "dev")
-	if err != nil || w.MaxStopRetries != workflow.DefaultMaxStopRetries {
-		t.Fatalf("max_stop_retries default: %v %+v", err, w)
+	if err != nil || w.StopRetries != workflow.DefaultStopRetries {
+		t.Fatalf("stop_retries default: %v %+v", err, w)
 	}
 	if _, err := parse(t, "", "dev"); err == nil || !strings.Contains(err.Error(), "version must be 1, got 0") {
 		t.Fatalf("empty file: %v", err)
@@ -195,7 +245,7 @@ func TestDecodeDefaults(t *testing.T) {
 // The values of the file reach the domain: lines, keys, commands split on spaces and the runners in file order.
 func TestDecodeValues(t *testing.T) {
 	src := `version: 1
-max_stop_retries: 5
+stop_retries: 5
 on:
   stop:
     - when: { changed: "src/**" }
@@ -216,7 +266,7 @@ rules:
 	if e.Line != 5 || r == nil || strings.Join(r.Command, ",") != "just,test" || r.Message != "Arregla los tests" ||
 		!r.Always || e.When["changed"] != "src/**" || e.Unless["finished"] != "polix:reviewer" ||
 		strings.Join(e.Keys, ",") != "when,unless,action" || strings.Join(e.Action.Keys, ",") != "run" ||
-		strings.Join(r.Keys, ",") != "command,message,always" || w.MaxStopRetries != 5 ||
+		strings.Join(r.Keys, ",") != "command,message,always" || w.StopRetries != 5 ||
 		w.EventLines[workflow.Stop] != 4 {
 		t.Fatalf("entry: %+v %+v", e, r)
 	}
@@ -298,7 +348,7 @@ githooks:
         block: { message: "{message} needs {key}" }
     - action:
         run: { command: just lint, message: "Arregla el lint" }
-`
+` + builtinOff
 	w, err := parse(t, src, "dev")
 	if err != nil {
 		t.Fatal(err)
@@ -339,7 +389,7 @@ githooks:
 		t.Fatalf("problems: %v", err)
 	}
 
-	w, err = parse(t, "version: 1\non:\n  stop:\n    - action: { block: x }\n", "dev")
+	w, err = parse(t, "version: 1\non:\n  stop:\n    - action: { block: x }\n"+builtinOff, "dev")
 	if err != nil || w.Githooks != nil || w.GithookLines != nil || len(w.On[workflow.Stop]) != 1 {
 		t.Fatalf("without githooks: %v %+v", err, w)
 	}
@@ -350,7 +400,7 @@ githooks:
 // githooks events, loads its start as before.
 func TestDecodeGithooksInstall(t *testing.T) {
 	const on = "version: 1\non:\n  start:\n    - action: { inject: hola }\n"
-	w, err := parse(t, on+"githooks:\n  pre_commit: []\n  commit_msg:\n    - action: { block: x }\n", "dev")
+	w, err := parse(t, on+"githooks:\n  pre_commit: []\n  commit_msg:\n    - action: { block: x }\n"+builtinOff, "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +411,7 @@ func TestDecodeGithooksInstall(t *testing.T) {
 		t.Fatalf("start: %+v", start)
 	}
 	for _, src := range []string{on, on + "githooks:\n  pre_commit: []\n  commit_msg: []\n"} {
-		w, err := parse(t, src, "dev")
+		w, err := parse(t, src+builtinOff, "dev")
 		if start := w.On[workflow.Start]; err != nil || len(start) != 1 || start[0].Action.Inject == nil {
 			t.Fatalf("%q: %v %+v", src, err, start)
 		}
@@ -587,7 +637,8 @@ func TestDecodeBaseBranches(t *testing.T) {
 			t.Errorf("%q: BaseBranches = %q, want %q", src, got, want)
 		}
 	}
-	w, err := parse(t, "version: 1\nguardrails:\n  protected_files: [.env, \"ai/rules/**\"]\n", "dev")
+	w, err := parse(t, "version: 1\nguardrails:\n  protected_files: [.env, \"ai/rules/**\"]\n"+
+		"  builtin: { format_polix_files: false, check_polix_files: false }\n", "dev")
 	if err != nil || len(w.ProtectedFiles) != 2 || len(w.On) != 0 {
 		t.Fatalf("protected_files: %v %+v", err, w)
 	}

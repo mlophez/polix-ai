@@ -25,20 +25,25 @@ port:
 
 - `wf`: the workflow of polix.yaml, drawn as it is even when `polix config check` would report problems, with its
   protected files and forbidden commands (`ProtectedFiles`, `ForbiddenCommands`) and the other shortcuts of
-  `guardrails` already expanded into entries of `on`.
+  `guardrails` already expanded into entries of `on` and of `githooks` (`Githooks`).
 - `found`: whether polix.yaml exists.
 
 `Output` holds `Mermaid`, the flowchart, and `Missing`, set when there is no polix.yaml. The rules it follows:
 
 1. Without polix.yaml there is nothing to draw: `Missing`, and no flowchart.
-2. The flowchart starts with `flowchart TD`. With protected files or forbidden commands, a subgraph `guardrails` comes
-   first, with the protections the hook applies before the entries of every event: one node `protected_files: <globs>`,
-   the globs joined with `, `, and one node per forbidden command, `forbidden_commands: <pattern>`, followed by `<br/>`
-   and its reason when it has one, in the order the hook applies them and linked with `-->`. Then one subgraph per event
-   with entries, in the order of `workflow.Events`. Each subgraph is closed by `end`.
+2. The flowchart starts with `flowchart TD`. With protected files or forbidden commands, a subgraph `guardrails`
+   comes first, with the protections the hook applies before the entries of every event: first one node per item of
+   `forbidden_commands` the presets of `guardrails.builtin` add (`workflow.ForbiddenCommand.From` set), then one node
+   `protected_files: <globs>`, the globs joined with `, `, then one node per forbidden command written in the file,
+   each forbidden command as `forbidden_commands: <pattern>`, followed by `<br/>` and its reason when it has one and,
+   for a preset item, by `<br/>from guardrails.builtin.<key>`, linked with `-->`. Then one subgraph per event
+   with entries, in the order of `workflow.Events`, and then one subgraph `githooks_<event> [githooks.<event>]` per
+   event of `githooks` with entries, in the order of `workflow.GithookEvents` (`pre_commit`, `commit_msg`), so the gates
+   git runs are told apart from the events of the AI of the same name. Each subgraph is closed by `end`.
 3. Each entry is a node `n<k>`, numbered across the whole flowchart after the nodes of `guardrails`, linked to the
    previous entry of its event with `-->`, in the order of the workflow: those of the shortcuts before those written
-   in `on`.
+   in `on`, and on `githooks.pre_commit` those of `builtin.check_polix_files`, `check_on_save` and the items of
+   `check_on_stop` with `also_on_save` before those written in `githooks`.
 4. The label of a node of an event joins with `<br/>`: its `when` and `unless` conditions, as `when key=value` and
    `unless key=value` ordered by key; the verb of its action: `block: <message>`, followed by `(once)` with
    `once: true`; `run` with its command or `rules <target>`, `inject` with `file <file>`, `rules <target>` or

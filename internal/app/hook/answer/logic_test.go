@@ -159,6 +159,11 @@ func parseWorkflow(src, running string) (workflow.Workflow, error) {
 }
 
 // eval returns the evaluation of event name of the main session with the workflow of yaml.
+// builtinOff is a section guardrails that turns off the built-in good practices, appended at the end of a workflow
+// without guardrails, so a test of other entries keeps its events, its runs and its lines.
+const builtinOff = "guardrails:\n  builtin: { forbid_commit_no_verify: false, forbid_git_destructive_commands: false, " +
+	"format_polix_files: false, check_polix_files: false }\n"
+
 func eval(t *testing.T, yaml, name string) hook.Evaluation {
 	t.Helper()
 	wf, err := parseWorkflow(yaml, "dev")
@@ -318,7 +323,7 @@ on:
 // blocks on its own, with the warning of the guard.
 func TestLoopGuardGoesOn(t *testing.T) {
 	yaml := `version: 1
-max_stop_retries: 1
+stop_retries: 1
 on:
   stop:
     - action: { %s }
@@ -413,9 +418,9 @@ on:
 	}
 }
 
-// The loop guard lets the agent stop after max_stop_retries blocks of the entry on the same content.
+// The loop guard lets the agent stop after stop_retries blocks of the entry on the same content.
 func TestLoopGuard(t *testing.T) {
-	ev := eval(t, "version: 1\nmax_stop_retries: 2\non:\n  stop:\n    - action: { block: \"revisa\" }\n",
+	ev := eval(t, "version: 1\nstop_retries: 2\non:\n  stop:\n    - action: { block: \"revisa\" }\n",
 		workflow.Stop)
 	block := state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeBlocked, Session: "s1",
 		Event: workflow.Stop, Actor: agent.ActorSession, Line: 5, Hash: "h"}
@@ -432,7 +437,7 @@ func TestLoopGuard(t *testing.T) {
 	two := state.State{Entries: []state.Entry{block, block}}
 	out, steps = walk(t, ev, facts{branch: "main", hashes: []string{"h"}, state: two})
 	if out.Answer.Block || len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "after 2 blocks") {
-		t.Fatalf("answer after max_stop_retries: %+v", out.Answer)
+		t.Fatalf("answer after stop_retries: %+v", out.Answer)
 	}
 	if logged := appended(steps); len(logged) != 1 || logged[0].Outcome != "loop_guard" {
 		t.Fatalf("logged: %+v", logged)
@@ -479,7 +484,7 @@ func TestMessagesOfABlockedEvent(t *testing.T) {
 	block := state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeBlocked, Session: "s1",
 		Event: workflow.Stop, Actor: agent.ActorSession, Line: 5, Hash: "h"}
 	guarded := state.State{Entries: []state.Entry{block}}
-	ev := eval(t, "version: 1\nmax_stop_retries: 1\non:\n  stop:\n    - action: { block: \"revisa\" }\n",
+	ev := eval(t, "version: 1\nstop_retries: 1\non:\n  stop:\n    - action: { block: \"revisa\" }\n",
 		workflow.Stop)
 	out, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h"}, state: guarded})
 	if out.Answer.Block || len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "after 1 blocks") ||
@@ -492,7 +497,7 @@ func TestMessagesOfABlockedEvent(t *testing.T) {
 		f                 facts
 		want              string
 	}{
-		{"stop", "version: 1\nmax_stop_retries: 1\non:\n  stop:\n    - action: { block: \"revisa\" }\n" +
+		{"stop", "version: 1\nstop_retries: 1\non:\n  stop:\n    - action: { block: \"revisa\" }\n" +
 			"    - action: { run: just test }\n", workflow.Stop,
 			facts{branch: "main", hashes: []string{"h", "h"}, state: guarded, runErr: errors.New("exit status 1")},
 			"polix lets the agent stop after 1 blocks: revisa"},
@@ -638,7 +643,7 @@ func TestRunInformsAfterTheFact(t *testing.T) {
 		t.Run(event, func(t *testing.T) {
 			ev := eval(t, "version: 1\non:\n  "+
 				event+":\n    - action: { run: { command: [ruff, check], message: \"Corrige el estilo\" } }\n"+
-				"    - action: { inject: { text: \"después\", always: true } }\n", event)
+				"    - action: { inject: { text: \"después\", always: true } }\n"+builtinOff, event)
 			out, steps := walk(t, ev, facts{branch: "main", runErr: errors.New("exit status 1")})
 			contexts := out.Answer.Contexts
 			if event == workflow.Start && len(contexts) > 0 && contexts[0] == ev.Workflow.SessionContext(ev.Root) {
@@ -696,7 +701,7 @@ on:
 // workflow does not observe, a refused stop and a stop let through by the loop guard write nothing.
 func TestObservesFinished(t *testing.T) {
 	yaml := `version: 1
-max_stop_retries: 1
+stop_retries: 1
 on:
   pre_commit:
     - unless: { finished: polix:reviewer }
@@ -1064,6 +1069,7 @@ func TestProtectedOutside(t *testing.T) {
 func TestForbiddenCommands(t *testing.T) {
 	ev := eval(t, `version: 1
 guardrails:
+  builtin: { forbid_git_destructive_commands: false }
   forbidden_commands:
     - pattern: "rm -rf /*"
     - pattern: "git push --force*"
@@ -1076,10 +1082,10 @@ on:
 		want string
 		line int
 	}{
-		"cd tmp && rm -rf /":            {"This command is forbidden by polix.yaml: a person must run it.\ncd tmp && rm -rf /", 4},
-		"rm -rf / ; ls":                 {"This command is forbidden by polix.yaml: a person must run it.\nrm -rf / ; ls", 4},
-		"git fetch && git push --force": {"Ask a person to force a push.\ngit fetch && git push --force", 5},
-		"rm -rf build":                  {"regular", 9},
+		"cd tmp && rm -rf /":            {"This command is forbidden by polix.yaml: a person must run it.\ncd tmp && rm -rf /", 5},
+		"rm -rf / ; ls":                 {"This command is forbidden by polix.yaml: a person must run it.\nrm -rf / ; ls", 5},
+		"git fetch && git push --force": {"Ask a person to force a push.\ngit fetch && git push --force", 6},
+		"rm -rf build":                  {"regular", 10},
 	}
 	for line, c := range cases {
 		for _, actor := range []string{agent.ActorSession, "builder"} {
@@ -1237,6 +1243,7 @@ guardrails:
 func TestAnswerExecOnStart(t *testing.T) {
 	ev := eval(t, `version: 1
 guardrails:
+  builtin: { check_polix_files: false }
   exec_on_start:
     - run: uv sync --locked --quiet
       message: "uv could not install the test dependencies:"
@@ -1621,6 +1628,30 @@ func hashed(steps []hook.Step) bool {
 	return slices.ContainsFunc(steps, func(s hook.Step) bool { return s.Hash })
 }
 
+// CUJ-15, AC-10: a written format_on_edit item for polix config fmt on polix.yaml stays next to the entry of
+// guardrails.builtin.format_polix_files: an edit of polix.yaml runs polix config fmt once, from the default entry, and
+// logs the written one as skipped, already passed on this content.
+func TestBuiltinFormatOnce(t *testing.T) {
+	base := eval(t, `version: 1
+guardrails:
+  builtin: { check_polix_files: false }
+  format_on_edit:
+    - run: polix config fmt
+      path: polix.yaml
+`, workflow.PostEdit)
+	_, steps := walk(t, edit(t, base, workflow.PostEdit, "polix.yaml", agent.ActorSession),
+		facts{branch: "main", hashes: []string{"h", "h", "h", "h"}})
+	if got := runs(steps); len(got) != 1 || !slices.Equal(got[0], []string{"polix", "config", "fmt"}) {
+		t.Fatalf("runs: %q", got)
+	}
+	passed := observed(steps)
+	skips := decided(steps, "skip")
+	if len(passed) != 1 || passed[0].Outcome != state.OutcomePassed || len(skips) != 1 || skips[0].Line != 5 ||
+		skips[0].Reason != "polix config fmt already passed on this content" {
+		t.Fatalf("passed %+v, skips %+v", passed, skips)
+	}
+}
+
 // AC14 and AC13: a run without always that passed is not run again on the same branch and content, and the skip is
 // logged; an edit or another branch makes it run again, and a failing run runs again on the next event.
 func TestRunRepeat(t *testing.T) {
@@ -1629,6 +1660,7 @@ on:
   stop:
     - action: { run: just lint }
     - action: { run: { command: [just, test], message: "Arregla los tests" } }
+stop_retries: 3
 `, workflow.Stop)
 	f := facts{branch: "main", hashes: []string{"h", "h", "h"}}
 	out, steps := walk(t, ev, f)
@@ -1934,7 +1966,7 @@ on:
 // starts a new count, and the blocks of an unknown hash are counted together, so a broken git never traps the agent.
 func TestLoopGuardCountsBlocked(t *testing.T) {
 	ev := eval(t, `version: 1
-max_stop_retries: 2
+stop_retries: 2
 on:
   stop:
     - when: { changed: "*.go" }
@@ -1983,7 +2015,7 @@ func TestInjectOnce(t *testing.T) {
 on:
   pre_edit:
     - action: { inject: "Lee el plan antes de editar" }
-`, workflow.PreEdit)
+`+builtinOff, workflow.PreEdit)
 	const text = "Lee el plan antes de editar"
 	var st state.State
 	walkInject := func(ev hook.Evaluation) (Output, []hook.Step) {
@@ -2189,7 +2221,7 @@ func TestObservesOnlyWhatTheWorkflowAsks(t *testing.T) {
 		"subagent_start":   "  subagent_start:\n    - action: { inject: x }\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			yaml := "version: 1\non:\n" + entries
+			yaml := "version: 1\non:\n" + entries + builtinOff
 			start := eval(t, yaml, workflow.Start)
 			spawn := as(t, eval(t, yaml, workflow.SubagentStart), "acme:builder")
 			stop := as(t, eval(t, yaml, workflow.SubagentStop), "acme:builder")
@@ -2258,7 +2290,7 @@ func TestRepeatWithoutLog(t *testing.T) {
 // run of the subagent, with a new context, gets the injects again, and finished still never holds for it.
 func TestLoopGuardMakesInjectsDue(t *testing.T) {
 	yaml := `version: 1
-max_stop_retries: 1
+stop_retries: 1
 on:
   pre_edit:
     - action: { inject: "Lee el plan" }

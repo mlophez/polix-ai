@@ -85,8 +85,8 @@ func TestWatchSnapshot(t *testing.T) {
 	}
 
 	for name, ev := range map[string]hook.Evaluation{
-		"not watching": command(t, "version: 1\non:\n  pre_command:\n    - action: { inject: { text: x, always: true } }\n",
-			workflow.PreCommand, "ls", "toolu_1"),
+		"not watching": command(t, "version: 1\non:\n  pre_command:\n    - action: { inject: { text: x, always: true } }\n"+
+			builtinOff, workflow.PreCommand, "ls", "toolu_1"),
 		"invalid":           invalid(command(t, watchYAML, workflow.PreCommand, "ls", "toolu_1")),
 		"denied":            command(t, watchYAML, workflow.PreCommand, "rm AGENTS.md", "toolu_1"),
 		"before pre_commit": following(command(t, watchYAML, workflow.PreCommand, "git commit -m x", "toolu_1")),

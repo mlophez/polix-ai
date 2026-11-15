@@ -43,7 +43,7 @@ type pass struct {
 	// every tells that every notify of the event shows its notice each time it applies, with no notified line, as
 	// with always (see command on post_commit).
 	every bool
-	// loop tells that every block of the event goes through the loop guard of max_stop_retries (see stop).
+	// loop tells that every block of the event goes through the loop guard of stop_retries (see stop).
 	loop bool
 	// guarded tells that the loop guard let a block of the event through: the event did not end as asked.
 	guarded bool

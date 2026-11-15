@@ -62,7 +62,13 @@ Workflow progress:
 [reference.yaml](reference.yaml) is an annotated example of every option of `polix.yaml`.
 
 - The first layer is the shortcuts of `guardrails`, the basics every project wants, each a short list in its one form.
-- They come in two groups, in the order `polix config fmt` writes them.
+- They come in the order `polix config fmt` writes them: `builtin`, then the protections, then the lifecycle shortcuts.
+- `builtin` comes first: a map of four switches, each `true` when left out, for what polix applies by itself.
+  `forbid_commit_no_verify` refuses `git commit --no-verify` or `-n` in every repository.
+  `forbid_git_destructive_commands` refuses a forced `git push`, `git reset --hard` and a forced `git clean`.
+  Both blocks are presets: items of `forbidden_commands` placed before the written ones.
+  `format_polix_files` formats `polix.yaml` and the rules after each edit.
+  `check_polix_files` runs `polix config check` on every commit that stages them, so the hooks of git get installed.
 - The protections say what no actor may do: `protected_files`, `protected_branches` and `forbidden_commands`.
 - The lifecycle shortcuts each run a command at one moment of the work, in the order the work reaches them.
   The verb says what the command does: `exec_` prepares, `format_` changes files, `check_` gates.
@@ -74,6 +80,7 @@ Workflow progress:
   A failure blocks the `git add` or `git stage` of the agent.
 - `check_on_stop` (`run`, `changed`, `message`, `wait_agents`) is a list of maps: it must pass before the turn ends.
   An item of `check_on_stop` waits for the subagents still running unless `wait_agents: false`.
+  With `also_on_save: true` it also runs on every commit, after the items of `check_on_save`.
   `run_on_stop` is its old name: rename it to `check_on_stop` wherever it appears.
 - `check_on_save` (`run`, `changed`, `message`) is a list of maps: git runs it on every commit, a person's included.
   It takes the vocabulary of `githooks`: its `changed` matches the staged files, and only `{branch}` and `vars` expand.
@@ -82,7 +89,7 @@ Workflow progress:
 - `protected_files` and `forbidden_commands` are protections of the engine: they deny before every entry of `on`.
   They hold for every actor, without exceptions, also on files git ignores.
 - polix expands the other shortcuts into entries of `on`, and `check_on_save` into entries of `githooks.pre_commit`.
-  `polix graph` draws those of `on` with their shortcut name.
+  `polix graph` draws them with their shortcut name, those of `githooks` in a subgraph `githooks.<event>`.
 - An entry says when it applies (`when`, `unless`) and what it does (`action`, with one verb).
   The verb is `block`, `run` or `inject`.
 - The entries of `on` skip edits outside the repository; edits of files git ignores fire them like any other.
@@ -101,19 +108,12 @@ Workflow progress:
   A check that must pass before the end of the turn goes in `check_on_stop`.
   A check that must pass on every commit, whoever makes it, goes in `check_on_save`.
   Tell the user that `check_on_save` also gates the commits people make.
-- Keep in `format_on_edit` the two items that keep the files of polix in its canonical format.
-  Add them when missing, also to a new `polix.yaml`, with `rules` below `path` (`ai` by default) in the second glob:
-
-  ```yaml
-  - run: polix config fmt
-    path: polix.yaml
-    message: "polix config fmt could not format polix.yaml:"
-
-  # The rules and the workflow keep the canonical format of polix.
-  - run: polix rules fmt
-    path: ai/rules/*.yaml
-    message: "polix rules fmt could not format the rules:"
-  ```
+- Never write the format of `polix.yaml` and the rules, the check of them on commit, the ban of `--no-verify`
+  nor the destructive git commands: `guardrails.builtin` applies them by default.
+  Remove the items of `format_on_edit`, `check_on_save` and `forbidden_commands` that only repeat them.
+  Set a key of `builtin` to `false` only when the user asks to turn that practice off.
+- A check that must pass both before the end of the turn and on every commit is one item of `check_on_stop` with
+  `also_on_save: true`, never the same item written twice or through YAML anchors.
 
 - Write an entry of `on` only for what no shortcut says: another event, condition or verb, an exception, a subagent.
 - When `protected_branches` or a lifecycle shortcut falls short, write the entries it stands for in `on`.
@@ -137,7 +137,7 @@ Workflow progress:
 - Put the reason of an entry in a YAML comment above it.
 - Write the messages of `block`, `run` and `inject` in the language of the team, as instructions the agent can follow.
 - When `polix config check` names an old name with its new spelling, rewrite it as told.
-  Old names include `protected`, `base`, `max_stop_blocks`, `if`, `deny`, `record`, `done` and `turn_stop`.
+  Old names include `protected`, `base`, `max_stop_blocks`, `max_stop_retries`, `if`, `deny`, `record`, `done` and `turn_stop`.
 - When the change uses a key, event, condition or verb the file did not use yet, set `requires`.
   Set it to the output of `polix version`, unless it is `dev` or `requires` is already newer.
 - When `path` changes, tell the user to move the folders `rules/`, `plans/`, `reports/` and `tasks/` of the old one.
