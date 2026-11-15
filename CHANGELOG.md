@@ -7,6 +7,14 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- A task of /polix:task holds `User stories`, after its summary: one line `As a <role>, I want <capability>, so
+  that <benefit>.` per role or capability a `feature` or an `idea` serves, and "none" for any other type. The role
+  comes from the request or the user, never invented; the benefit is what the role gains, while the cost and the why
+  now stay in `Problem`; `Outcome` names the commands, files and messages; and each story has an item of `Done
+  when` that shows it. The skill asks the role and the benefit the request leaves open. Earlier tasks stay valid.
+
 ## [0.10.0] - 2026-11-15
 
 ### Added

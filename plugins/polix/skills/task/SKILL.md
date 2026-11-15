@@ -68,6 +68,7 @@ Task progress:
 ### Step 3: Ask in one round what the template needs and the request leaves open
 
 - Ask only what changes the task: the `Problem` when its who or why is unclear, the `Outcome`, the `Done when`.
+- For a `feature` or an `idea`, ask the role and the benefit of each user story the request does not settle.
 - Ask `type` and `priority` when the request does not settle them, each with the recommended option first.
 - Use `AskUserQuestion`, or grouped free text without it, in at most one round of four questions.
 - What the user leaves unanswered goes to `Open questions`; never fill it with a choice of yours.
@@ -99,6 +100,12 @@ The frontmatter, beyond what its placeholders say:
 
 The body:
 
+- `User stories` holds who wants what and for what: `As a <role>, I want <capability>, so that <benefit>.`
+  - One line per role or capability the task serves, for a `feature` or an `idea`; "none" for any other type.
+  - The role is a user, team or caller the request names or the user gives, never "a user" nor an invented one.
+  - The benefit is what that role gains; the cost and the why now stay in `Problem`.
+  - The capability is what the role can do, in its words; `Outcome` names the commands, files and messages.
+  - Each story has at least one item of `Done when` that shows the capability.
 - `Problem` holds the why and `Outcome` the what; neither says how.
 - Each item of `Done when` is decidable by a person or a test, with its expected result, never "works well".
 - An `idea` may leave `Done when` and `Scope` with "none" and carry its doubts in `Open questions`.

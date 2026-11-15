@@ -12,6 +12,10 @@ created: <today as YYYY-MM-DD>
 
 <One sentence with what the task achieves once done, for a reader who reads nothing else.>
 
+## User stories
+
+- As a <role>, I want <capability>, so that <benefit>.
+
 ## Problem
 
 <Who suffers what today, what it costs them and why it matters, in two or three sentences.
