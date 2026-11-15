@@ -7,8 +7,21 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- A YAML plan groups the figures of its build under `stats`: `start`, `end`, `duration` and `tokens` move from its
+  root into it, with the same values and formats. /polix:plan writes each of them `none`, and /polix:build sets them
+  there; a plan written before keeps its values, which the build moves under `stats` when it next runs.
+- A YAML plan opens with `version`, `title`, `branch`, `status`, `reference`, `artifacts` and `created`, then the
+  blocks `risk`, `stats` and `agents`. `risk` is a map of `level` and `reason`, which replace `risk` and
+  `risk_reason`. /polix:plan proposes `agents` from `risk.level`, and moves the two keys of a plan written before
+  into `risk` when it adjusts it.
+
 ### Added
 
+- Two fields of `stats` of a YAML plan, which /polix:build sets: `iterations`, the runs of the build on the plan, a
+  resumed one included, and `code`, the `files` changed and the `lines` added plus removed against `HEAD`, the plan
+  left out and the untracked files counted, as the last run measured them. The stats of the build give both.
 - A task of /polix:task holds `User stories`, after its summary: one line `As a <role>, I want <capability>, so
   that <benefit>.` per role or capability a `feature` or an `idea` serves, and "none" for any other type. The role
   comes from the request or the user, never invented; the benefit is what the role gains, while the cost and the why

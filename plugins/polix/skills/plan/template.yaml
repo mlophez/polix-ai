@@ -7,20 +7,29 @@
 
 ---
 version: 1
+
 title: <One-line description of the change>
+branch: <the git branch the plan builds on>
 status: planned  # planned | approved | in-progress | blocked | done
-risk: <low | medium | high>
-risk_reason: <the reason in one line>
 reference: <the ticket, issue, task file or link the change comes from, or none>
 artifacts: []  # or a list of links or paths
-branch: <the git branch the plan builds on>
 created: <today as YYYY-MM-DD>
-start: none  # the build sets when it first set the plan in-progress, as YYYY-MM-DDTHH:MM:SS+HH:MM
-end: none  # the build sets when the plan ended done or blocked, in the same format
-duration: none  # the build sets end minus start, as 1h 05m 12s
-tokens: none  # the build sets the sum of the totalTokens its subagents reported, across every run
 
-agents:  # the model and effort the build launches each subagent with, proposed from risk
+risk:
+  level: <low | medium | high>
+  reason: <the reason in one line>
+
+stats:  # the build sets every field; the plan writes none
+  start: none  # when it first set the plan in-progress, as YYYY-MM-DDTHH:MM:SS+HH:MM
+  end: none  # when the plan ended done or blocked, in the same format
+  duration: none  # end minus start, as 1h 05m 12s
+  tokens: none  # the sum of the totalTokens its subagents reported, across every run
+  iterations: none  # the runs of the build on the plan, a resumed one included
+  code:  # as the build last measured it, against HEAD and without the plan
+    files: none  # the files changed, the untracked ones included
+    lines: none  # the lines added plus removed
+
+agents:  # the model and effort the build launches each subagent with, proposed from risk.level
   - name: polix:builder
     model: <sonnet | opus | haiku | fable | inherit>
     effort: <low | medium | high | xhigh | max | inherit>

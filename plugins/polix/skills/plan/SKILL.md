@@ -474,11 +474,12 @@ The top-level keys, beyond what their placeholders say:
 - `version`: `1`, the version of the format of the plan.
 - `status`: `planned` when you write the plan, and `approved` once the user approves it (see Step 8).
   The build moves it to `in-progress`, then to `done` or `blocked`.
-- `risk`: `high` when a task touches an item of `High risk`.
+- `risk`: its `level` and the `reason` for it, in one line.
+  `level` is `high` when a task touches an item of `High risk`.
   `medium` when one changes an internal contract or code that several callers share; `low` otherwise.
 - `agents`: one item per subagent of the build, `polix:builder`, `polix:verifier` and `polix:reviewer`, in that order.
   Each has its `name` and the `model` and `effort` the build launches it with.
-  Propose them from `risk`, and show them at Step 8 so the user may change them:
+  Propose them from `risk.level`, and show them at Step 8 so the user may change them:
   - `low`: builder `sonnet` and `high`, verifier `sonnet` and `medium`, reviewer `sonnet` and `high`.
   - `medium`: builder `opus` and `medium`, verifier `sonnet` and `high`, reviewer `opus` and `high`.
   - `high`: builder `opus` and `medium`, verifier `sonnet` and `xhigh`, reviewer `fable` and `medium`.
@@ -492,7 +493,7 @@ The top-level keys, beyond what their placeholders say:
   Never invent one.
   The plan stays self-contained: what an artifact settles goes to `outcome`, `constraints` or a decision in words.
 - `iterations`: `[]`; the item of the template shows the format the build appends, one per iteration.
-- `start`, `end`, `duration` and `tokens`: `none`; the build sets them.
+- `stats`: each of its fields `none`; the build sets them.
 
 The plan holds no derived data: no count of tasks or iterations, no list of progress, no checklist of criteria.
 The `status` of each task and criterion is their progress.
@@ -524,9 +525,10 @@ Never rewrite a task with `status: done`: it is built, so what changes it goes i
 Rewrite in place a task `pending`, `departed` or `blocked`, and set it `pending` with `evidence: none`.
 Add a new task after the last one; never renumber the tasks, since `iterations` names them.
 With a task not `done`, set `status` back to `planned` until the user approves the adjustment (see Step 8).
-Recompute `risk` and `risk_reason`, never `created`, `branch`, `iterations`, `start`, `end`, `duration` nor `tokens`.
-When `risk` changes, propose `agents` again from it; otherwise keep it, since the user may have chosen it.
-A plan without `agents` gets it proposed from `risk`.
+Recompute `risk`, never `created`, `branch`, `iterations` nor `stats`.
+When `risk.level` changes, propose `agents` again from it; otherwise keep it, since the user may have chosen it.
+A plan without `agents` gets it proposed from `risk.level`.
+A plan with `risk` and `risk_reason` as two keys gets them as `risk.level` and `risk.reason`.
 Add the new `artifacts`.
 Keep `iterations` always as it is.
 

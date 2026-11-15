@@ -72,7 +72,7 @@ The folder of plans is the one the start context of polix names, below the root.
 - Never edit the code yourself: only the builder changes it, except in the fallback of `Requirements`.
   You edit only the Markdown docs of the project (see `Docs`) and five parts of the plan.
   Those are its `status`, the `status` and `evidence` of each task and of each criterion.
-  Also the iterations you add, and `start`, `end`, `duration` and `tokens` (see `Time and tokens`).
+  Also the iterations you add, and the fields of `stats` (see `Plan stats`).
   Of the iterations, you set their `status` and the `status` and `evidence` of their findings.
 - Edit the plan with targeted edits that keep it valid YAML, never writing it again whole.
 - Never commit, stage, stash, reset nor create branches.
@@ -93,13 +93,13 @@ Build progress:
   Read the plan whole.
 - [ ] Step 2: Note the changes made before the run (see Step 2).
 - [ ] Step 3: Show the user the tasks to build, in order, and go on without waiting.
-- [ ] Step 4: Set the plan `in-progress` (see `Status`) and set its `start` (see `Time and tokens`).
+- [ ] Step 4: Set the plan `in-progress` (see `Status`), its `stats.start` and `stats.iterations` (see `Plan stats`).
 - [ ] Step 5: Build the tasks with the builder (see `Models` and `Builder prompt`).
   Write its report in the plan (see `Builder report`).
   Then update the docs (see `Docs`).
 - [ ] Step 6: Check and fix until nothing is open or the loop stops (see `Loop` and `Iteration`).
 - [ ] Step 7: Set the plan `done` or `blocked` (see `Status`).
-  Set its `end`, `duration` and `tokens` (see `Time and tokens`).
+  Set its `stats.end`, `stats.duration`, `stats.tokens` and `stats.code` (see `Plan stats`).
 - [ ] Step 8: Gather the stats of the build (see `Stats`).
 - [ ] Step 9: Report (see `Output`), stop and return control to the user.
 ```
@@ -194,25 +194,38 @@ iterations:
           `TestExportDates` covers `2026-02-30`; it panicked before the fix and passes.
 ```
 
-### Time and tokens
+### Plan stats
 
-Four keys of the root of the plan record the build as a whole, across every run, a resumed one included:
+The fields of `stats`, at the root of the plan, record the build as a whole across every run, a resumed one too.
+A plan written before `stats` holds `start`, `end`, `duration` and `tokens` at its root.
+Move them under `stats`, keeping their values, and add the fields it lacks.
 
 - `start`: at Step 4, the current time from the shell, as `YYYY-MM-DDTHH:MM:SS+HH:MM` with the local offset.
   Take it from a command, such as `date -Iseconds` or `Get-Date -Format "yyyy-MM-ddTHH:mm:sszzz"`; never guess it.
   Set it only when it is `none`: a resumed plan keeps the `start` of its first run.
 - `end`: at Step 7, the current time the same way; a later run of the plan writes it again.
 - `duration`: `end` minus `start`, as `1h 05m 12s`; it includes the time the plan stood interrupted.
-- `tokens`: the `totalTokens` of the usage each subagent reports when it returns, added to the `tokens` of the plan.
+- `tokens`: the `totalTokens` of the usage each subagent reports when it returns, added to `stats.tokens`.
   Start from `0` when it is `none`, and add each subagent as it returns, never estimated.
   They leave out your own tokens, which no report gives: say so in `Stats`.
   When a subagent reports no usage, as in the fallback of `Requirements`, set it `unknown` and add no more.
+- `iterations`: at Step 4, the runs of the build on the plan: `1` when it is `none`, else one more.
+  Every run counts, a resumed one too; it is not the number of items of the key `iterations` of the plan.
+- `code`: at Step 7, the `files` changed and the `lines` added plus removed, against `HEAD`, leaving out the plan.
+  Take them from `git diff --shortstat HEAD -- . ':(exclude)<plan>'`, and add the untracked files of
+  `git ls-files --others --exclude-standard`, each line of one as added; never stage them to measure them.
+  A later run of the plan measures it again, so it holds the code of the last run, the changes of Step 2 included.
 
 ```yaml
-start: 2026-11-14T21:05:40+01:00
-end: 2026-11-14T21:48:02+01:00
-duration: 42m 22s
-tokens: 491603
+stats:
+  start: 2026-11-14T21:05:40+01:00
+  end: 2026-11-14T21:48:02+01:00
+  duration: 42m 22s
+  tokens: 491603
+  iterations: 2
+  code:
+    files: 7
+    lines: 360
 ```
 
 ### Models
@@ -315,10 +328,10 @@ Gather the figures of this run from the plan and from git, and give them as a sh
 - **Criteria**: met, not met and not verified, of the total.
 - **Findings**: of the iterations, found, fixed and skipped, by `source`, and the reviewer's `minor` ones apart.
 - **Agents**: how many times the builder, the verifier and the reviewer ran, and the model and effort of each.
-- **Time**: the `start`, `end` and `duration` of the plan.
-- **Tokens**: the tokens of this run by agent, and the `tokens` of the plan.
+- **Time**: the `start`, `end` and `duration` of `stats` of the plan, and its `iterations`, the runs of the build.
+- **Tokens**: the tokens of this run by agent, and the `tokens` of `stats` of the plan.
   Say that they count the subagents only, not this skill's own.
-- **Code**: the files changed and the lines added and removed, from `git diff --shortstat` and the untracked files.
+- **Code**: the `files` and `lines` of `code` of `stats` of the plan, and the lines added and removed apart.
 
 ### Markdown plans
 
@@ -329,7 +342,7 @@ Without `Progress`, start at Task 1, and a task is done when the builder reports
 With `Progress`, mark the line of each task with the one the builder reports (see `Builder report`).
 A task's files are the `files` of its `yaml` block, or its `Files:` in a plan of the earlier format.
 
-- **Time and tokens**: it gets no such keys: the time and tokens of the run go only to `Stats`.
+- **Plan stats**: it gets no `stats`: the figures of the run go only to `Stats`, the code from `git` as for `code`.
 - **Status**: the `status` of its frontmatter.
   A plan with a `- Status:` header instead needs no approval and keeps its values.
   There, `building` stands for `in-progress` and `planned` for `approved`.

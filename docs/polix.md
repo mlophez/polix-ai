@@ -1449,8 +1449,8 @@ also prints that Codex support is not implemented in this release and the setup 
     `CUJ-NN`, `AC-NN`, `TN`); it keeps `template.md` to adjust a plan written before in Markdown. `build` coordinates
     the run and is the only one that edits the plan: the builder builds the tasks and reports the `status` and
     `evidence` of each, `build` writes them in the plan, then the verifier and the reviewer check them; when they leave something to fix, it adds an iteration (`ITER-NN`) to `iterations` with the findings to fix
-    (`FND-NN`) and launches the builder on it; it sets at the root of the plan its `start`, `end`, `duration`
-    and the `tokens` the subagents report; it launches the builder, the verifier and the reviewer each with the `model`
+    (`FND-NN`) and launches the builder on it; it sets in `stats` at the root of the plan its `start`, `end`, `duration`,
+    the `tokens` the subagents report, the `iterations`, its runs, and the `code` it changed; it launches the builder, the verifier and the reviewer each with the `model`
     and `effort` of its item of `agents` of the plan, which `plan` proposes from the risk and the user may change,
     `inherit` or a missing item leaving it to the frontmatter of the agent; a run that did not end resumes
     where its last iteration stopped. A
