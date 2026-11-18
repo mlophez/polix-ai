@@ -1477,7 +1477,9 @@ also prints that Codex support is not implemented in this release and the setup 
   for `plan`, `plan` writes a plan in the folder of plans, driven by its outcome (`Overview`, then
   `Specification` with the outcome, its design and examples, the scope and the acceptance criteria, then `Approach`
   with the tasks, and the user approves its outcome before it is built; its frontmatter records in `branch` the branch
-  it was written on), `build` switches to the `branch` of an approved plan and implements it unattended, in iterations: each one launches a `builder` agent on the open tasks, else on the open findings,
+  it was written on; before the approval the read-only agent `critic` reviews the plan alone for undefined facts,
+  contradictions and edge cases left open, the skill fixes what the plan settles and asks the user the rest, up to
+  three rounds, and `plan` never runs in plan mode), `build` switches to the `branch` of an approved plan and implements it unattended, in iterations: each one launches a `builder` agent on the open tasks, else on the open findings,
   updates the Markdown docs of the project, has the agents `verifier` (against the plan) and `reviewer` (the code's
   quality) check the change in parallel, adds their reports to the `Iterations` of the plan and counts it in its
   `iterations`, until nothing is open or two iterations close nothing, then marks the acceptance criteria and reports
@@ -1487,8 +1489,9 @@ also prints that Codex support is not implemented in this release and the setup 
   report in the folder of reports, `writing-skills` and `writing-agents` write a skill or a subagent in one format,
   whose `Limits` hold only what applies across its steps) and, for Claude Code, agents (`workflow-author`, `rules-author`, `builder`, which
   implements a plan test first from a task to the end, or fixes the findings of its checks, without committing, and
-  the read-only `verifier`, which checks a change against its plan, `reviewer`, which reviews the quality of the
-  code, `rules-reviewer` and `auditor`). Install writes it,
+  the read-only `critic`, which reviews a plan for internal coherence before its approval, `verifier`, which
+  checks a change against its plan, `reviewer`, which reviews the quality of the code, `rules-reviewer` and
+  `auditor`). Install writes it,
   with the version of the binary in its manifests, to the local marketplace
   `~/.polix/marketplace/` and registers it. A development build, whose version is always `dev`, writes
   `0.0.0-dev+<hash of the plugin>` instead, so every change of the plugin is a new version.
@@ -1497,15 +1500,15 @@ also prints that Codex support is not implemented in this release and the setup 
     (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
     `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
     skills are `/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`, `/polix:task`,
-    `/polix:plan`, `/polix:build`, `/polix:review`, `/polix:audit`, `/polix:writing-skills` and
+    `/polix:grill-me`, `/polix:plan`, `/polix:build`, `/polix:review`, `/polix:audit`, `/polix:writing-skills` and
     `/polix:writing-agents`, its agents `polix:workflow-author`,
-    `polix:rules-author`, `polix:builder`, `polix:verifier`, `polix:reviewer`, `polix:rules-reviewer` and
-    `polix:auditor`. The skills `build`, `review` and `audit` launch the agents; Codex, which has no agents of
+    `polix:rules-author`, `polix:builder`, `polix:verifier`, `polix:reviewer`, `polix:critic`,
+    `polix:rules-reviewer` and `polix:auditor`. The skills `plan`, `build`, `review` and `audit` launch the agents; Codex, which has no agents of
     plugins and whose support is not
     implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
     or the workflow of polix asks for it, as its description says, and the frontmatter enforces it.
-    `init`, `doctor`, `risk`, `task`, `plan`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
+    `init`, `doctor`, `risk`, `task`, `grill-me`, `plan`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
     user runs them, typing the command; when a message of polix asks for one, as the session start does for
     `/polix:doctor` or a gate without a plan for `/polix:plan`, the model tells the user to run it. So the flow of
     the harness always starts by hand, and a gate the model must satisfy alone asks for an agent, as
@@ -1516,7 +1519,7 @@ also prints that Codex support is not implemented in this release and the setup 
     skill and agent names the invariants of its whole task `## Limits`, never `## Rules`, which in polix are the
     rules of the folder of rules. The agents stay
     open to the model, so a rule that asks for `polix:reviewer` still works.
-    The read-only agents (`verifier`, `reviewer`,
+    The read-only agents (`critic`, `verifier`, `reviewer`,
     `rules-reviewer`, `auditor`) fill the report template inside their own file. The skills `audit` and `review`
     save their report in the folder of reports from the `template.md` next to them; a `polix:reviewer` launched
     without a skill answers in the chat and saves no file. `plan` writes the plan as a YAML file from the

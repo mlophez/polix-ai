@@ -2,7 +2,8 @@
 name: plan
 description: >
   Writes an outcome-driven plan for a feature, refactor or bugfix in the folder of plans the start context names.
-  It interviews the user on what the request leaves open, replaces plan mode and never writes code nor commits.
+  It interviews the user on what the request leaves open and has polix:critic review the plan.
+  It never runs in plan mode, never writes code and never commits.
   It runs only when the user or the workflow of polix asks for it.
 effort: high
 model: inherit
@@ -23,6 +24,8 @@ The folders of plans, of rules and of tasks are those the start context of polix
 - [template.yaml](template.yaml) next to this file.
   Without it, stop and tell the user.
 - [template.md](template.md) next to this file, only to adjust a plan in Markdown (see `Markdown plans`).
+- The subagent `polix:critic`, which reviews the plan at Step 8.
+  Without it, stop and tell the user.
 
 ## Input
 
@@ -41,15 +44,17 @@ The folders of plans, of rules and of tasks are those the start context of polix
 
 ## Output
 
-- **Plan**: the path of the plan file and its `status`; Step 8 already showed its outcome, so never repeat it.
+- **Plan**: the path of the plan file and its `status`; Step 9 already showed its outcome, so never repeat it.
 - **Decisions**: every decision of the plan with `source: delegated`, or "none".
 - **Next steps**: adjust the plan, or implement, review and check it with `/polix:build <plan>`.
-- **Pending**: open blockers and stale or missing docs, with `/polix:add-rule` when rules are missing; or "none".
+- **Pending**: open blockers and stale or missing docs, with `/polix:add-rule` when rules are missing.
+  Also the findings of `polix:critic` its last round left open; or "none".
 
 ## Limits
 
-- Never call `EnterPlanMode`; in plan mode, follow `Plan mode`.
-- Approval never starts the build: Step 9 still applies.
+- Never plan in plan mode, nor call `EnterPlanMode`, since the plan file is written as the interview goes.
+  Started in plan mode, stop and tell the user to leave it and run the skill again.
+- Approval never starts the build: Step 10 still applies.
 - Explore read-only: you write only the plan file and the frontmatter of its task, and run only the project's tests.
 - Define tasks, never code: no snippets, implementations or signatures (see `Plan file`).
 - One plan is one change, delivered whole: never phases or follow-up plans.
@@ -69,12 +74,14 @@ Plan progress:
 - [ ] Step 4: Settle with the user the problem and the split (see Step 4).
 - [ ] Step 5: Write `overview` and `specification`, asking what they lack in rounds (see Step 5).
 - [ ] Step 6: Write `approach` and `tasks`, asking the approach first and what they lack in rounds (see Step 6).
-- [ ] Step 7: Self-review the plan file and fix every gap (see Step 7); in plan mode, then call `ExitPlanMode`.
-- [ ] Step 8: Show the user the outcome of the plan and ask for approval (see Step 8).
-- [ ] Step 9: Report (see `Output`), stop and return control to the user.
+- [ ] Step 7: Self-review the plan file and fix every gap (see Step 7).
+- [ ] Step 8: Have `polix:critic` review the plan, and fix or ask what it finds, up to three rounds (see Step 8).
+- [ ] Step 9: Show the user the outcome of the plan and ask for approval (see Step 9).
+- [ ] Step 10: Report (see `Output`), stop and return control to the user.
 ```
 
-Never reach Step 8 before Step 7 is done: the self-review is what the approval relies on.
+Never reach Step 9 before Steps 7 and 8 are done: the self-review and the critique are what the approval relies on.
+Every time the plan goes back to Step 5 or 6, Steps 7 and 8 run again whole before Step 9.
 
 ### Step 2: Read the project context and explore the docs and the code yourself
 
@@ -179,11 +186,29 @@ Fix each gap with a targeted edit of the plan file at its path, never by writing
     Each task's `summary` reads alone, without its data.
     Every `requirement` reads alone, and every `verify` names the test or case that proves its criterion.
 
-### Step 8: Show the user the outcome of the plan and ask for approval
+### Step 8: Have `polix:critic` review the plan, and fix or ask what it finds, up to three rounds
+
+The critic reads only the plan, in a context of its own, and judges whether an executor could build it without deciding.
+
+1. Launch the subagent `polix:critic` with the prompt of `Critic prompt`, and wait for its report.
+2. Sort each finding of the report:
+   - Mechanical: the plan, the request, the code, a rule or an answer of the user already settles its fix.
+     Fix it with a targeted edit of the plan file, as Step 7 does, `minor` ones too.
+   - Decision: its fix is a choice no source settles, as a fix `decision` says.
+     Ask the user every one of the round together (see `Questions`), then write the answers into their keys.
+3. Run Step 7 again on the keys you edited, so a fix breaks nothing else.
+4. Launch the critic again, with the next round and the findings so far in `Previous`.
+5. Stop when the verdict has no `blocking` nor `major` finding, or after the third round.
+   What the last report leaves open goes to `Pending`, each finding with its severity and its first words.
+
+When the subagent `polix:critic` is not available, stop and tell the user: never review the plan in its place.
+
+### Step 9: Show the user the outcome of the plan and ask for approval
 
 - Show, in the language of the session, the final result the plan builds, with the path of the plan.
   It is the `summary` of `overview`, the `interface` and the journeys, `scope` and the titles of the criteria.
   Then the model and effort of each agent of `agents`, which the user may change.
+- Then the critique in a few lines: the rounds, the findings fixed, those asked to the user and those left open.
 - Ask the user to approve it, with `AskUserQuestion` or in free text: approve, or adjust with comments.
 - Approved: set `status: approved`, and nothing else.
 - Adjust: go back to Step 5 or 6 with the comments, keeping `status: planned`, for the keys they touch.
@@ -394,6 +419,16 @@ Return, with paths and symbols, never whole files nor what Known already says:
 - The commands, options and functions that call the code to change.
 ```
 
+### Critic prompt
+
+What to send `polix:critic` at each round of Step 8, in the language of the session:
+
+```text
+Plan: <the path of the plan file>
+Round: <the round, as 1 of 3>
+Previous: <each finding of the earlier rounds, with fixed, answered by the user or left open, or "none">
+```
+
 ### Questions
 
 - Write every question in the language the user writes in.
@@ -472,14 +507,14 @@ At Step 7, every `<...>` is replaced and every comment of the template is delete
 The top-level keys, beyond what their placeholders say:
 
 - `version`: `1`, the version of the format of the plan.
-- `status`: `planned` when you write the plan, and `approved` once the user approves it (see Step 8).
+- `status`: `planned` when you write the plan, and `approved` once the user approves it (see Step 9).
   The build moves it to `in-progress`, then to `done` or `blocked`.
 - `risk`: its `level` and the `reason` for it, in one line.
   `level` is `high` when a task touches an item of `High risk`.
   `medium` when one changes an internal contract or code that several callers share; `low` otherwise.
 - `agents`: one item per subagent of the build, `polix:builder`, `polix:verifier` and `polix:reviewer`, in that order.
   Each has its `name` and the `model` and `effort` the build launches it with.
-  Propose them from `risk.level`, and show them at Step 8 so the user may change them:
+  Propose them from `risk.level`, and show them at Step 9 so the user may change them:
   - `low`: builder `sonnet` and `high`, verifier `sonnet` and `medium`, reviewer `sonnet` and `high`.
   - `medium`: builder `opus` and `medium`, verifier `sonnet` and `high`, reviewer `opus` and `high`.
   - `high`: builder `opus` and `medium`, verifier `sonnet` and `xhigh`, reviewer `fable` and `medium`.
@@ -506,12 +541,6 @@ Never write placeholders:
 - "Similar to T1" or "as above": the executor reads each task with only the code and the plan.
 - Types, functions or files defined neither in a task nor in the code.
 
-### Plan mode
-
-In plan mode, Steps 5 to 7 work on a draft that you pass whole to `ExitPlanMode`, since the file is blocked.
-The approval of `ExitPlanMode` is the approval of Step 8: save the plan with `status: approved`.
-When rejected, go back to Step 5 or 6 with the comments, for the keys they touch.
-
 ### Adjusting a plan
 
 Revise the file in place with targeted edits, never writing it again whole nor elsewhere.
@@ -524,7 +553,7 @@ Set back to `status: pending` and `evidence: none` a criterion that changes, or 
 Never rewrite a task with `status: done`: it is built, so what changes it goes in a new task.
 Rewrite in place a task `pending`, `departed` or `blocked`, and set it `pending` with `evidence: none`.
 Add a new task after the last one; never renumber the tasks, since `iterations` names them.
-With a task not `done`, set `status` back to `planned` until the user approves the adjustment (see Step 8).
+With a task not `done`, set `status` back to `planned` until the user approves the adjustment (see Step 9).
 Recompute `risk`, never `created`, `branch`, `iterations` nor `stats`.
 When `risk.level` changes, propose `agents` again from it; otherwise keep it, since the user may have chosen it.
 A plan without `agents` gets it proposed from `risk.level`.

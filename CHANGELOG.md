@@ -7,6 +7,32 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- The skill `/polix:grill-me` interviews the user one question at a time about a plan, a decision or an idea until
+  both share one understanding: it maps the decisions as a tree, asks alone the decision whose prerequisites are
+  settled that unblocks the most, with `AskUserQuestion` (its number and progress in the header, two to four
+  alternatives with the pros and cons of each in their description, the recommended one first) or as text without
+  it, as in Codex, finds the facts itself with the agent `Explore` without holding the question for them, and acts on
+  nothing until the user confirms the summary, also with `AskUserQuestion`. Adapted from the skill `grilling` of
+  mattpocock/skills.
+- The agent `polix:critic` reviews a plan of `/polix:plan` before its approval, in a context of its own and reading
+  only the plan: every fact the executor needs defined, no two places of the plan in contradiction, and every edge
+  case studied. It walks the tasks as the executor would, never edits a file and returns a verdict with findings
+  `blocking`, `major` or `minor`, runs on `fable` with effort `high`, and joins the agents `polix install --skills`
+  lists.
+
+### Changed
+
+- `/polix:plan` has a new Step 8 between its self-review and the approval: it launches `polix:critic`, fixes with
+  targeted edits what the plan, the request, the code, a rule or an answer already settles, asks the user in one round
+  the findings that need a decision, and launches it again, until no `blocking` nor `major` finding is left or after
+  three rounds; what stays open goes to `Pending`, and the approval shows the rounds, the findings fixed, asked and
+  left open. Every time the plan goes back to its interview, the self-review and the critique run again. Without the
+  agent, the skill stops. The approval and the report become Steps 9 and 10, and nothing of the review is saved.
+- `/polix:plan` never runs in plan mode: started in it, it stops and asks the user to leave it and run the skill
+  again; the section `Plan mode`, which wrote the plan as a draft for `ExitPlanMode`, is gone.
+
 ## [0.11.0] - 2026-11-15
 
 ### Changed
