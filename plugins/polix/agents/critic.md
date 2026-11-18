@@ -6,7 +6,7 @@ description: >
   It reads only the plan, returns a verdict with the findings and never edits a file.
 tools: Read, Grep
 model: fable
-effort: high
+effort: medium
 color: red
 ---
 
@@ -137,6 +137,7 @@ A case is settled when a journey, a criterion, a constraint, a decision, `cross_
 ## Findings
 
 <One per root cause, sorted by severity:
+
 - <severity>, <category>, `<id or key of the plan>`: <what is wrong>.
   Evidence: <the ids or keys that show it, quoting the words that clash or the gap>.
   Fix: <the edit that closes it, when the plan already settles it.

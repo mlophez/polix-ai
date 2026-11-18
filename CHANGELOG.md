@@ -19,7 +19,7 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 - The agent `polix:critic` reviews a plan of `/polix:plan` before its approval, in a context of its own and reading
   only the plan: every fact the executor needs defined, no two places of the plan in contradiction, and every edge
   case studied. It walks the tasks as the executor would, never edits a file and returns a verdict with findings
-  `blocking`, `major` or `minor`, runs on `fable` with effort `high`, and joins the agents `polix install --skills`
+  `blocking`, `major` or `minor`, runs on `fable` with effort `medium`, and joins the agents `polix install --skills`
   lists.
 - `polix install` turns the auto memory of Claude Code off with its hooks: whenever it writes the hooks of Claude
   Code into a repository, it also sets `"autoMemoryEnabled": false` in the same `.claude/settings.json`, in the same
