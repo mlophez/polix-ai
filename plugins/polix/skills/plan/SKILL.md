@@ -2,7 +2,7 @@
 name: plan
 description: >
   Writes an outcome-driven plan for a feature, refactor or bugfix in the folder of plans the start context names.
-  It interviews the user on what the request leaves open and has polix:critic review the plan.
+  It interviews the user one decision at a time on what the request leaves open and has polix:critic review the plan.
   It never runs in plan mode, never writes code and never commits.
   It runs only when the user or the workflow of polix asks for it.
 effort: high
@@ -24,7 +24,7 @@ The folders of plans, of rules and of tasks are those the start context of polix
 - [template.yaml](template.yaml) next to this file.
   Without it, stop and tell the user.
 - [template.md](template.md) next to this file, only to adjust a plan in Markdown (see `Markdown plans`).
-- The subagent `polix:critic`, which reviews the plan at Step 8.
+- The subagent `polix:critic`, which reviews the plan at Step 6.
   Without it, stop and tell the user.
 
 ## Input
@@ -44,17 +44,19 @@ The folders of plans, of rules and of tasks are those the start context of polix
 
 ## Output
 
-- **Plan**: the path of the plan file and its `status`; Step 9 already showed its outcome, so never repeat it.
+- **Plan**: the path of the plan file and its `status`; Step 7 already showed its outcome, so never repeat it.
 - **Decisions**: every decision of the plan with `source: delegated`, or "none".
 - **Next steps**: adjust the plan, or implement, review and check it with `/polix:build <plan>`.
 - **Pending**: open blockers and stale or missing docs, with `/polix:add-rule` when rules are missing.
-  Also the findings of `polix:critic` its last round left open; or "none".
+  Also the decisions the user left deferred and the findings of `polix:critic` its last round left open; or "none".
 
 ## Limits
 
 - Never plan in plan mode, nor call `EnterPlanMode`, since the plan file is written as the interview goes.
   Started in plan mode, stop and tell the user to leave it and run the skill again.
-- Approval never starts the build: Step 10 still applies.
+- Approval never starts the build: Step 8 still applies.
+- Ask one decision per call of `AskUserQuestion`, or per message without it, and wait for its answer.
+  Never two decisions in one call or message, nor a list of them (see `Questions`).
 - Explore read-only: you write only the plan file and the frontmatter of its task, and run only the project's tests.
 - Define tasks, never code: no snippets, implementations or signatures (see `Plan file`).
 - One plan is one change, delivered whole: never phases or follow-up plans.
@@ -71,17 +73,15 @@ Plan progress:
 - [ ] Step 1: Resolve the request and the plan to adjust, if any (see `Input`).
 - [ ] Step 2: Read the project context and explore the docs and the code yourself (see Step 2).
 - [ ] Step 3: Brainstorm the approaches and the cases the request does not consider (see Step 3).
-- [ ] Step 4: Settle with the user the problem and the split (see Step 4).
-- [ ] Step 5: Write `overview` and `specification`, asking what they lack in rounds (see Step 5).
-- [ ] Step 6: Write `approach` and `tasks`, asking the approach first and what they lack in rounds (see Step 6).
-- [ ] Step 7: Self-review the plan file and fix every gap (see Step 7).
-- [ ] Step 8: Have `polix:critic` review the plan, and fix or ask what it finds, up to three rounds (see Step 8).
-- [ ] Step 9: Show the user the outcome of the plan and ask for approval (see Step 9).
-- [ ] Step 10: Report (see `Output`), stop and return control to the user.
+- [ ] Step 4: Map the design tree and interview the user on its frontier, writing each key (see Step 4).
+- [ ] Step 5: Self-review the plan file and fix every gap (see Step 5).
+- [ ] Step 6: Have `polix:critic` review the plan, and fix or ask what it finds, up to three rounds (see Step 6).
+- [ ] Step 7: Show the user the outcome of the plan and ask for approval (see Step 7).
+- [ ] Step 8: Report (see `Output`), stop and return control to the user.
 ```
 
-Never reach Step 9 before Steps 7 and 8 are done: the self-review and the critique are what the approval relies on.
-Every time the plan goes back to Step 5 or 6, Steps 7 and 8 run again whole before Step 9.
+Never reach Step 7 before Steps 5 and 6 are done: the self-review and the critique are what the approval relies on.
+Every time the plan goes back to Step 4, Steps 5 and 6 run again whole before Step 7.
 
 ### Step 2: Read the project context and explore the docs and the code yourself
 
@@ -120,38 +120,43 @@ A report is a lead, never a fact: read yourself what the plan names from it (see
 4. **Size**: estimate the tasks and changed lines, to know whether the change fits one review (see Step 4).
 5. Tag each case with the key it belongs to (see `Sections`).
    Settle a case only when the request, the docs, the code or a rule settle it.
-   Every other case is asked in its key at Step 5 or 6.
+   Every other case is a decision of the tree of Step 4, in its key.
 
-### Step 4: Settle with the user the problem and the split
+### Step 4: Map the design tree and interview the user on its frontier, writing each key
 
-- Ask first what changes the whole plan, before any key (see `Questions`).
-- When the problem is unclear enough to change the outcome, ask it here (see `Sections`).
-- When the change is too big for one review, propose splitting it into plans, each with its outcome and dependencies.
-  Split by function, never by layer (data, API, UI) or into preparatory steps.
-  Once the user confirms, plan only the part they pick and list the others in the `out` of `scope`.
-- Never ask the approach here: it waits for Step 6, once the outcome settles what it must build.
-- When nothing is open at this level, skip the step and say so.
-
-### Step 5: Write `overview` and `specification`, asking what they lack in rounds
+The interview is one design tree for the whole plan: each decision branches into the decisions that hang off it.
+A decision is each fact, value or choice of a key that the request, the docs, the code and a rule do not settle.
+The frontier is every open decision whose prerequisites are settled: what you can ask now without guessing answers.
 
 1. Create the plan file from [template.yaml](template.yaml) (see `Plan file`), or open the plan to adjust.
-2. Draft each key of `overview` and `specification` in the order of template.yaml, as `Sections` says.
-   Draft it from the request, the docs, the code, the answers so far and the cases of Step 3 tagged to it.
-3. List what the drafts lack: each fact, value or choice that the request, the docs, the code and a rule do not settle.
-4. Ask those gaps together, in rounds, the ones that change the most first (see `Questions`).
-   Each question names its key; without gaps, go on without asking.
-5. Write the keys with the answers into the plan file, and the decisions on the outcome into `decisions`.
+2. Draft each key in the order of template.yaml, as `Sections` says, from the request, the docs and the code.
+   Draft it also from the answers so far and the cases of Step 3 tagged to it.
+3. Map the tree from what the drafts lack, each decision under the decisions it depends on:
+   - The problem, when unclear enough to change the outcome, and the split hang off nothing: they go first.
+   - Every decision of `approach` and `tasks` hangs off the decisions of `overview` and `specification`.
+     So the approach is never asked while the outcome has an open decision.
+   - The choice among the approaches of Step 3 hangs off the outcome, and the other decisions of `approach` off it.
+4. Pick the decision of the frontier that unblocks the most branches; on a tie, the one hardest to change later.
+   Ask it alone (see `Questions`), with how many decisions the tree holds so far, as `n of m`, and wait for its answer.
+5. Write the answer into its key, and the decision into `decisions` with its `on` (see `Request`).
+   The chosen approach goes with `on: approach`, and the ones not chosen go to its `discarded`.
    An answer that changes a key already written: edit that key too before going on.
+   An answer that changes the outcome edits `specification` too, with its journeys and criteria.
+6. Recompute the frontier: a settled decision unblocks those that hang off it, and an answer may add or prune branches.
+   An answer that picks none of the alternatives is valid: record it as given, and ask about it only when ambiguous.
+7. A fact a decision needs that Step 2 did not find is an unsettled prerequisite of that decision.
+   Find it yourself, as Step 2 says, before asking that decision; never ask the user a fact the code answers.
+8. A decision the user defers goes to `Pending` and blocks only its branch.
+   Once the rest of the frontier is empty, ask each deferred decision again, alone.
+   One still deferred stays in `Pending`, and Step 7 never sets `status: approved` while it is open.
+9. Repeat items 4 to 8 until the frontier is empty; when nothing is open, go on without asking and say so.
 
-### Step 6: Write `approach` and `tasks`, asking the approach first and what they lack in rounds
+When the change is too big for one review, the split is the first decision.
+Propose splitting it into plans, each with its outcome and dependencies, as the alternatives.
+Split by function, never by layer (data, API, UI) or into preparatory steps.
+Once the user confirms, plan only the part they pick and list the others in the `out` of `scope`.
 
-Do as Step 5 with `approach` and `tasks`, on the plan file Step 5 left.
-
-1. With more than one approach from Step 3, ask it in the first round.
-   It goes to `decisions` with `on: approach`, and the ones not chosen go to its `discarded`.
-2. An answer that changes the outcome: edit `specification` too, with its journeys and criteria, before going on.
-
-### Step 7: Self-review the plan file and fix every gap
+### Step 5: Self-review the plan file and fix every gap
 
 Fix each gap with a targeted edit of the plan file at its path, never by writing it again whole or elsewhere.
 
@@ -164,7 +169,7 @@ Fix each gap with a targeted edit of the plan file at its path, never by writing
    Every answer of the interview and every case of Step 3 has its place.
    No criterion asks for what the user did not.
    Every decision comes from the request, the docs, the code, a rule or an answer or delegation of the user.
-   A choice of yours found here is a question: go back to Step 5 or 6 for the key it belongs to.
+   A choice of yours found here is a decision of the tree: go back to Step 4 for it.
 2. **Placeholders**: none of the patterns of `Plan file`, no `<...>` and no comment of template.yaml left.
    `iterations` is `[]`, never the item of the template.
 3. **References**: every `LIT-NN`, `CUJ-NN`, `AC-NN`, `CON-NN`, `DEC-NN` and `TN` the plan names exists.
@@ -186,32 +191,35 @@ Fix each gap with a targeted edit of the plan file at its path, never by writing
     Each task's `summary` reads alone, without its data.
     Every `requirement` reads alone, and every `verify` names the test or case that proves its criterion.
 
-### Step 8: Have `polix:critic` review the plan, and fix or ask what it finds, up to three rounds
+### Step 6: Have `polix:critic` review the plan, and fix or ask what it finds, up to three rounds
 
 The critic reads only the plan, in a context of its own, and judges whether an executor could build it without deciding.
 
 1. Launch the subagent `polix:critic` with the prompt of `Critic prompt`, and wait for its report.
 2. Sort each finding of the report:
    - Mechanical: the plan, the request, the code, a rule or an answer of the user already settles its fix.
-     Fix it with a targeted edit of the plan file, as Step 7 does, `minor` ones too.
+     Fix it with a targeted edit of the plan file, as Step 5 does, `minor` ones too.
    - Decision: its fix is a choice no source settles, as a fix `decision` says.
-     Ask the user every one of the round together (see `Questions`), then write the answers into their keys.
-3. Run Step 7 again on the keys you edited, so a fix breaks nothing else.
+     Ask the user each one alone (see `Questions`), as `n of m` of the round, and write each answer into its key.
+3. Run Step 5 again on the keys you edited, so a fix breaks nothing else.
 4. Launch the critic again, with the next round and the findings so far in `Previous`.
 5. Stop when the verdict has no `blocking` nor `major` finding, or after the third round.
    What the last report leaves open goes to `Pending`, each finding with its severity and its first words.
 
 When the subagent `polix:critic` is not available, stop and tell the user: never review the plan in its place.
 
-### Step 9: Show the user the outcome of the plan and ask for approval
+### Step 7: Show the user the outcome of the plan and ask for approval
 
-- Show, in the language of the session, the final result the plan builds, with the path of the plan.
+- Write as text, in the language of the session, the final result the plan builds, with the path of the plan.
   It is the `summary` of `overview`, the `interface` and the journeys, `scope` and the titles of the criteria.
   Then the model and effort of each agent of `agents`, which the user may change.
 - Then the critique in a few lines: the rounds, the findings fixed, those asked to the user and those left open.
-- Ask the user to approve it, with `AskUserQuestion` or in free text: approve, or adjust with comments.
+- Then ask with `AskUserQuestion` whether to approve the plan or adjust it, approve first.
+  The question says the result is just above it, since the dialog may hide it.
+  Without `AskUserQuestion`, ask for the approval in the text after the result.
+- With a deferred decision still open, ask it again alone first; while it stays open, never offer to approve.
 - Approved: set `status: approved`, and nothing else.
-- Adjust: go back to Step 5 or 6 with the comments, keeping `status: planned`, for the keys they touch.
+- Adjust: the comments reopen the decisions they touch; go back to Step 4 for them, keeping `status: planned`.
   Then show the result again.
 - Without an answer, leave `status: planned` and say in `Pending` that the plan waits for approval.
 
@@ -239,14 +247,14 @@ When the subagent `polix:critic` is not available, stop and tell the user: never
   It takes `on: approach` when it shapes how the outcome is built.
 - The literals quote verbatim the strings, messages, commands and data of the request.
 - Never add a requirement the user did not ask for.
-- Never make a choice yourself: what the request, the docs, the code or a rule do not settle, ask (see Steps 5 and 6).
+- Never make a choice yourself: what the request, the docs, the code or a rule do not settle, ask (see Step 4).
   Never leave a choice out of the interview because it looks minor, obvious or not decisive.
 - A limit on how the solution is built is a constraint, and a measurable property of the result is a criterion.
   A choice among options is a decision.
 
 ### Sections
 
-Walk the keys in the order of template.yaml; each one says where it comes from and what to ask when it lacks something.
+Draft the keys in the order of template.yaml; each says where it comes from and the decisions it adds to the tree.
 
 - `problem`: from the request; ask who suffers what, its cost and why now, and never invent them.
   Give the cost as a figure only when the request or an answer gives one.
@@ -265,7 +273,7 @@ Walk the keys in the order of template.yaml; each one says where it comes from a
 - `design`: ask the components, data model and error handling the code does not settle.
   It names what other modules use, never a private helper: the builder chooses those.
   Ask the cross-cutting concerns of the cases of Step 3 tagged to it: state, operation and security.
-- `decisions` with `on: approach`: ask the approach among those of Step 3, first (see Step 6).
+- `decisions` with `on: approach`: ask the approach among those of Step 3, once the outcome is settled (see Step 4).
   Then code location, names and task order when they have more than one option.
 - `risks`: from the pre-mortem of Step 3; ask a mitigation only when it is a choice of the user.
 - `verification` and `tasks`: from the code and the earlier keys; never asked.
@@ -421,7 +429,7 @@ Return, with paths and symbols, never whole files nor what Known already says:
 
 ### Critic prompt
 
-What to send `polix:critic` at each round of Step 8, in the language of the session:
+What to send `polix:critic` at each round of Step 6, in the language of the session:
 
 ```text
 Plan: <the path of the plan file>
@@ -435,17 +443,70 @@ Previous: <each finding of the earlier rounds, with fixed, answered by the user 
   That is the question, its header, the label, description and preview of each option, and the text before the call.
   Only the names of the code, commands and literals keep their spelling.
   The plan file is in English: never let it carry the interview into English.
-- With more open points than one call takes, ask in rounds, the ones that change the most first.
-- Each question stands on its own: it names the feature, file or case it is about, never "this" or "the above".
-  It says in a clause what you found that leaves it open, since the dialog may hide the text written before it.
-- Each option says in one or two sentences how the change behaves with it and its effort, risk and tests.
-- The recommended option goes first, with why.
-  On single-select questions, the previews show the behaviour side by side.
-- Write a longer comparison as text before the call, and keep the questions answerable without it.
+- Ask one decision per call of `AskUserQuestion`, one question per call, and wait for its answer.
+  Without `AskUserQuestion`, as in Codex, write it as text, one decision per message (see `Question as text`).
+- Never put a decision with fewer than two alternatives or more than four, nor an alternative without its pros and cons.
+  With more than four, drop or merge the weakest: `Other` still takes any alternative the user writes.
+- A fact only the user knows is a decision too: who suffers the problem, a threshold, the steps of a manual check.
+  Its alternatives are two to four hypotheses drawn from the request, the docs and the code, each with what it implies.
+  A hypothesis is never a figure or a cause no source gives: `Other` takes the answer the user writes.
 - Never ask what the request, the docs or the code already answer.
-- Use `AskUserQuestion`, or grouped free text without it.
+- Write a longer comparison as text before the call, and keep the question answerable without it.
 - Ask an unanswered question again; never fill it with a default.
+  A decision the user defers follows Step 4.
   Only when the user leaves it to you explicitly, take the recommended option with `source: delegated` in its decision.
+
+#### Question
+
+Ask each decision with `AskUserQuestion`, every field in the language of the session:
+
+- **header**: the number of the decision and the progress, at most 12 characters.
+- **question**: the title of the decision and why it matters for the plan.
+  It stands on its own: it names the key and the feature, file or case it is about, never "this" or "the above".
+  It says in a clause what you found that leaves it open, since the dialog may hide the text before it.
+- **options**: two to four alternatives, each description with its pros and cons in one or two sentences.
+  They say how the change behaves with it and its effort, risk and tests.
+  On single-select questions, the previews may show the behaviour side by side.
+- **recommended**: the first option, its label ending in `(Recommended)` and its description saying why.
+
+```json
+{
+  "header": "Q3 (3 of 7)",
+  "question": "Attempts of the webhook sender (interface): the request asks for retries but not how many, and the sender has no limit today. How many attempts does a delivery get?",
+  "multiSelect": false,
+  "options": [
+    {"label": "3 attempts with backoff (Recommended)", "description": "The queue already retries with backoff for the mailer. Pros: reuses that code; a failed delivery ends in under a minute. Cons: an outage longer than a minute loses the event."},
+    {"label": "Retries for 24 hours", "description": "Pros: survives a long outage of the receiver. Cons: the queue must persist pending deliveries, which adds a task and a high risk."},
+    {"label": "Configurable, 3 by default", "description": "Pros: each operator picks its limit. Cons: a new option in interface, with its validation errors and a journey for them."}
+  ]
+}
+```
+
+#### Question as text
+
+Without `AskUserQuestion`, give the decision a number and a title and say why it matters.
+Then list its alternatives with their pros and cons.
+End with your recommended alternative and the reason, worded so that "yes" accepts it:
+
+```markdown
+**Q3 (3 of 7) - Attempts of the webhook sender (interface)**
+
+The request asks for retries but not how many, and the sender has no limit today.
+
+**A. 3 attempts with backoff**
+- Pros: reuses the backoff of the mailer's queue; a failed delivery ends in under a minute.
+- Cons: an outage longer than a minute loses the event.
+
+**B. Retries for 24 hours**
+- Pros: survives a long outage of the receiver.
+- Cons: the queue must persist pending deliveries, which adds a task and a high risk.
+
+**C. Configurable, 3 by default**
+- Pros: each operator picks its limit.
+- Cons: a new option in `interface`, with its validation errors and a journey for them.
+
+Recommended: A, 3 attempts with backoff, since the queue already does it for the mailer. Reply yes, or pick another option.
+```
 
 ### Readability
 
@@ -500,21 +561,21 @@ YAML, so that every program and agent reads the plan the same:
 - An empty list is `[]`, and a missing value is `none`: never delete a key of the template.
   The only optional key is the `literal` of a step, present when the step shows exact data.
 
-Create the file at Step 5 from [template.yaml](template.yaml), with its keys in its order.
-Write `status: planned` and `created` first, and fill each key as Step 5 or 6 writes it.
-At Step 7, every `<...>` is replaced and every comment of the template is deleted.
+Create the file at Step 4 from [template.yaml](template.yaml), with its keys in its order.
+Write `status: planned` and `created` first, and fill each key as Step 4 writes it.
+At Step 5, every `<...>` is replaced and every comment of the template is deleted.
 
 The top-level keys, beyond what their placeholders say:
 
 - `version`: `1`, the version of the format of the plan.
-- `status`: `planned` when you write the plan, and `approved` once the user approves it (see Step 9).
+- `status`: `planned` when you write the plan, and `approved` once the user approves it (see Step 7).
   The build moves it to `in-progress`, then to `done` or `blocked`.
 - `risk`: its `level` and the `reason` for it, in one line.
   `level` is `high` when a task touches an item of `High risk`.
   `medium` when one changes an internal contract or code that several callers share; `low` otherwise.
 - `agents`: one item per subagent of the build, `polix:builder`, `polix:verifier` and `polix:reviewer`, in that order.
   Each has its `name` and the `model` and `effort` the build launches it with.
-  Propose them from `risk.level`, and show them at Step 9 so the user may change them:
+  Propose them from `risk.level`, and show them at Step 7 so the user may change them:
   - `low`: builder `sonnet` and `high`, verifier `sonnet` and `medium`, reviewer `sonnet` and `high`.
   - `medium`: builder `opus` and `medium`, verifier `sonnet` and `high`, reviewer `opus` and `high`.
   - `high`: builder `opus` and `medium`, verifier `sonnet` and `xhigh`, reviewer `fable` and `medium`.
@@ -544,7 +605,7 @@ Never write placeholders:
 ### Adjusting a plan
 
 Revise the file in place with targeted edits, never writing it again whole nor elsewhere.
-At Steps 5 and 6, walk only the keys the adjustment touches and the ones that depend on them.
+At Step 4, map only the decisions of the keys the adjustment touches and the ones that depend on them.
 Read first `iterations`, the last one first.
 Their departures and open findings are what the adjustment usually answers.
 Bring the new requirements of the user into `outcome`.
@@ -553,7 +614,7 @@ Set back to `status: pending` and `evidence: none` a criterion that changes, or 
 Never rewrite a task with `status: done`: it is built, so what changes it goes in a new task.
 Rewrite in place a task `pending`, `departed` or `blocked`, and set it `pending` with `evidence: none`.
 Add a new task after the last one; never renumber the tasks, since `iterations` names them.
-With a task not `done`, set `status` back to `planned` until the user approves the adjustment (see Step 9).
+With a task not `done`, set `status` back to `planned` until the user approves the adjustment (see Step 7).
 Recompute `risk`, never `created`, `branch`, `iterations` nor `stats`.
 When `risk.level` changes, propose `agents` again from it; otherwise keep it, since the user may have chosen it.
 A plan without `agents` gets it proposed from `risk.level`.

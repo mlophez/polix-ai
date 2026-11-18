@@ -1474,7 +1474,8 @@ also prints that Codex support is not implemented in this release and the setup 
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
   the folder of rules, `risk` calibrates `risk.weights` and the thresholds of the measures on the history of commits,
   `doctor` fixes the setup, `task` adds a task to the backlog `tasks/` below `path` from a template with a frontmatter, ready
-  for `plan`, `plan` writes a plan in the folder of plans, driven by its outcome (`Overview`, then
+  for `plan`, `plan` writes a plan in the folder of plans, interviewing the user one decision at a time as `grill-me`
+  does, driven by its outcome (`Overview`, then
   `Specification` with the outcome, its design and examples, the scope and the acceptance criteria, then `Approach`
   with the tasks, and the user approves its outcome before it is built; its frontmatter records in `branch` the branch
   it was written on; before the approval the read-only agent `critic` reviews the plan alone for undefined facts,

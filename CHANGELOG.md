@@ -24,12 +24,23 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
-- `/polix:plan` has a new Step 8 between its self-review and the approval: it launches `polix:critic`, fixes with
-  targeted edits what the plan, the request, the code, a rule or an answer already settles, asks the user in one round
-  the findings that need a decision, and launches it again, until no `blocking` nor `major` finding is left or after
+- `/polix:plan` interviews the user as `/polix:grill-me` does: one design tree for the whole plan, where every
+  decision of the approach and the tasks hangs off the outcome, and one decision per call of `AskUserQuestion` (its
+  number and `n of m` in the header, two to four alternatives with their pros and cons, the recommended one first),
+  or per message as text without it, as in Codex, instead of rounds of questions grouped by key. A fact only the user
+  knows, such as the problem or a threshold, is asked with two to four hypotheses drawn from the request and the
+  code. Steps 4 to 6 become one Step 4 that maps the tree, asks the decision of the frontier that unblocks the most
+  and writes each answer into its key, so the self-review, the critique, the approval and the report become Steps 5
+  to 8. A deferred decision blocks only its branch and is asked again once the frontier is empty; while it stays
+  open, the plan is never approved. The findings of `polix:critic` that need a decision are asked one at a time, and
+  the approval asks to approve first, saying the result is just above the dialog; an adjustment reopens the
+  decisions it touches. The skill still explores the code itself, with at most two `Explore` subagents.
+- `/polix:plan` has a new step between its self-review and the approval: it launches `polix:critic`, fixes with
+  targeted edits what the plan, the request, the code, a rule or an answer already settles, asks the user the findings
+  that need a decision, and launches it again, until no `blocking` nor `major` finding is left or after
   three rounds; what stays open goes to `Pending`, and the approval shows the rounds, the findings fixed, asked and
   left open. Every time the plan goes back to its interview, the self-review and the critique run again. Without the
-  agent, the skill stops. The approval and the report become Steps 9 and 10, and nothing of the review is saved.
+  agent, the skill stops, and nothing of the review is saved.
 - `/polix:plan` never runs in plan mode: started in it, it stops and asks the user to leave it and run the skill
   again; the section `Plan mode`, which wrote the plan as a draft for `ExitPlanMode`, is gone.
 
