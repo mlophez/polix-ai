@@ -56,8 +56,10 @@ type Port interface {
 	// UpdatePlugin tells the agents that use the plugin of s that it changed, so they copy the new version.
 	UpdatePlugin(ctx context.Context, s setup.Setup)
 	// RegisterHooks writes hooks, the hooks of polix of an agent by event, in a hooks file in place of the ones of
-	// polix it had, keeping every other setting and hook.
-	RegisterHooks(ctx context.Context, file string, hooks map[string][]setup.HookGroup) ([]setup.Change, error)
+	// polix it had, and sets there each of settings to its value, in the same write, keeping every other setting
+	// and hook.
+	RegisterHooks(ctx context.Context, file string, hooks map[string][]setup.HookGroup,
+		settings []setup.Setting) ([]setup.Change, error)
 }
 
 // Command is the hidden command `polix __refresh`, the entry of the use case RefreshSetup, which the
@@ -83,7 +85,8 @@ func Command() *cobra.Command {
 // run is the shell, from request to response: it reads through the port the home, with --hooks the
 // repository, the plugin of the binary and what tells what polix installed (the manifest of the plugin and the
 // hooks files that register polix), calls the logic once and carries out its output: the files of the marketplace
-// of the plugin, written, telling the agents when it changed, and the hooks. Every error of writing is joined.
+// of the plugin, written, telling the agents when it changed, and the hooks with the settings of their agent
+// (setup.Setup.Settings). Every error of writing is joined.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	res := Response{Quiet: req.Quiet}
 	home, err := port.Home(ctx)
@@ -121,7 +124,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		}
 	}
 	for _, a := range out.Hooks {
-		ch, err := port.RegisterHooks(ctx, s.HooksFile(a), s.Hooks(a))
+		ch, err := port.RegisterHooks(ctx, s.HooksFile(a), s.Hooks(a), s.Settings(a))
 		res.Changes, errs = append(res.Changes, ch...), append(errs, err)
 	}
 	return res, errors.Join(errs...)

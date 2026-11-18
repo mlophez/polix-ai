@@ -205,16 +205,25 @@ Only releases update themselves: a development build (`just install`, or `go ins
 the machines that try polix install it with `install.sh` or `install.ps1`.
 After the binary, `update` refreshes the plugin: when it replaced the binary, the new one does it, since the plugin
 is embedded in it. A person who runs `polix update` also gets the plugin of the user installed when it is missing,
-and the hooks of polix rewritten in the repository of the working directory when it registers them. The session
-start hook only refreshes the plugin already installed: it never installs anything new nor touches the files of
-the repository.
+and the hooks of polix rewritten in the repository of the working directory when it registers them, with the auto
+memory of Claude Code turned off in the same `.claude/settings.json` (`"autoMemoryEnabled": false`, as `polix
+install` writes it), so the repositories polix already governs get it without a new install; settings that do not
+register polix are not touched. The session start hook only refreshes the plugin already installed: it never
+installs anything new nor touches the files of the repository.
 
 `polix doctor` checks the version against the latest release, that the `PATH` the hooks use runs this binary, git,
 `polix.yaml`, the programs of its `requirements` (a warning per missing one, see [Requirements](#requirements)),
 the rules and that their checks exist and are executable (on Windows, that their interpreter is found;
 a check that a runner of `rules.run` runs skips both, since its runner runs it), the hooks of Claude Code (project,
 local and user settings: every event, every governed tool in the matchers, a timeout above the run budget, and never
-twice), the plugin of the user (its version against the binary and, except in `--hook`, that Claude Code has it
+twice), the auto memory of Claude Code (area `memory`, only in a repository whose settings of Claude Code register
+polix and can all be read: `auto memory of Claude Code is off`, or a warning naming what turns it on, decided as
+Claude Code does, the first that sets it wins: the variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `1` off and `0` on,
+any other value nothing, then `autoMemoryEnabled` of `.claude/settings.local.json`, of `.claude/settings.json` and
+of the settings of the user, a value that is not a boolean setting nothing; on without any of them. The warning
+asks to unset the variable, to remove the key from the local settings, or to run `polix install`, and never fails
+the doctor; the managed settings of Claude Code are not read), the plugin of the user (its version against the
+binary and, except in `--hook`, that Claude Code has it
 installed and enabled), the hooks and the plugin of Codex only when polix is registered for it (a Codex hooks file
 of the project or the user that runs polix, or the plugin enabled in `~/.codex/config.toml`, as
 `polix install --agent codex` leaves them; its OK line says Codex support is not implemented and untested, and a
@@ -1556,6 +1565,18 @@ also prints that Codex support is not implemented in this release and the setup 
   event, of polix or not, is written on one line, and the rest of the file is indented with two spaces. A
   symlinked file is written through the link, to its target, and an existing file keeps its permissions. Codex skips new or changed hooks until the
   user trusts them with `/hooks`. The plugin brings no hooks.
+
+  With the hooks of Claude Code, install also turns its auto memory off in the same `.claude/settings.json`, in
+  the same write: `"autoMemoryEnabled": false`. The auto memory lets the agent save notes in one session and load
+  them in the next ones, outside the repository and outside polix, so they could steer a session away from the
+  workflow and the rules polix enforces. Install writes `false` whatever value the key had, in its place when the
+  file has it and as the last key otherwise, and a file that already holds it and the current hooks is not
+  changed; there is no flag to keep the auto memory on. The summary to confirm names the file as `the hooks of
+  <file>, with auto memory off`, and the report adds `Auto memory of Claude Code is off in <file>, so every session
+  follows the rules of polix.` right after the hooks registered. Only the project settings get it, committed so the
+  whole team does: never `.claude/settings.local.json`, the settings of the user nor `.codex/hooks.json`.
+  `polix uninstall` removes the hooks and leaves the setting, since it cannot tell whether install or the team
+  wrote it, so a file left with only that key stays.
 - The hooks of git, for the same repository, whatever the agents and also without `githooks` in `polix.yaml`:
   `hook.polix-pre-commit` and `hook.polix-commit-msg` in its local git configuration, each with one `event` and the
   `command` `polix githook <event>`, in place of the values they had, every other key kept (see
@@ -1569,8 +1590,9 @@ user (`--skills`), the hooks of the agents of the repository (`--hooks`) and its
 flags combine, so `polix install --hooks --githooks` registers both kinds of hooks without touching the plugin.
 
 Before writing, install asks to confirm a summary of what it writes: as the parts ask, the plugin and the hooks file
-of each agent and, in a repository, the hooks of git `hook.polix-pre-commit` and `hook.polix-commit-msg` in its local git
-configuration. `polix uninstall` asks the same for what it removes.
+of each agent, the one of Claude Code with its auto memory off, and, in a repository, the hooks of git
+`hook.polix-pre-commit` and `hook.polix-commit-msg` in its local git configuration. `polix uninstall` asks the same
+for what it removes, without the auto memory, which it leaves.
 
 `polix install --githooks` writes only the two hooks of git of the repository: no plugin, no hooks of the agents
 and no marketplace. It never asks for confirmation (`--yes` and `--quiet` are accepted and change nothing) and
@@ -1585,7 +1607,7 @@ only when polix is registered for it, so a Codex user who never passed `--agent 
 `polix uninstall` removes the same parts, with the same flags, and without `--agent` those of both agents, so it
 also removes a Codex setup: with the plugin it unregisters it from each agent and, for both, removes
 `~/.polix/marketplace/`; with the hooks it removes the hooks of polix of the repository, and a hooks file when
-nothing else is left in it; and with the hooks of git the two of its local git configuration, without flags only
+nothing else is left in it, leaving `"autoMemoryEnabled": false` and so the file that holds it; and with the hooks of git the two of its local git configuration, without flags only
 for both agents, since install writes them for any agent.
 
 The plugin only arrives with `polix install`: the repository serves no marketplace of its own. The

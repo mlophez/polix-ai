@@ -133,8 +133,9 @@ func (s Setup) Duplicates(registered map[string]bool) []string {
 }
 
 // Summary tells what install (verb write) or uninstall (verb remove) is about to do with the parts p, for the person
-// to confirm: for each agent, with Skills, its plugin and, with Hooks in a repository, its hooks file; and, with
-// GitHooks in a repository, the hooks of git (GitHooks) in its local git configuration.
+// to confirm: for each agent, with Skills, its plugin and, with Hooks in a repository, its hooks file, which install
+// also writes the settings of the agent to (Settings); and, with GitHooks in a repository, the hooks of git
+// (GitHooks) in its local git configuration.
 func (s Setup) Summary(verb string, p Parts) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "polix %s will %s:\n", s.Version, verb)
@@ -160,7 +161,7 @@ func (s Setup) Summary(verb string, p Parts) string {
 			if p.Skills {
 				indent = strings.Repeat(" ", len(indent))
 			}
-			fmt.Fprintf(&b, "%sthe hooks of %s\n", indent, s.HooksFile(a))
+			fmt.Fprintf(&b, "%sthe hooks of %s%s\n", indent, s.HooksFile(a), s.settingsNote(verb, a))
 		}
 	}
 	if p.GitHooks && s.Root != "" {
@@ -171,4 +172,13 @@ func (s Setup) Summary(verb string, p Parts) string {
 		fmt.Fprintf(&b, "\n  git: the hooks %s, in the local git configuration of %s\n", strings.Join(names, ", "), s.Root)
 	}
 	return b.String()
+}
+
+// settingsNote tells, after the hooks file of agent in the summary, the settings install writes there with the
+// hooks (Settings): the auto memory of Claude Code off. Uninstall (verb remove) leaves them, so it tells none.
+func (s Setup) settingsNote(verb, agent string) string {
+	if verb != "write" || len(s.Settings(agent)) == 0 {
+		return ""
+	}
+	return ", with auto memory off"
 }

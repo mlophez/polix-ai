@@ -40,10 +40,13 @@ type Response struct {
 	Skills       []string       // the skills of the plugin
 	PluginAgents []string       // the agents of the plugin
 	HooksFiles   []string       // the hooks files registered, one per agent; none outside a repository
-	Parts        setup.Parts    // the parts written: those asked, else every one
-	Quiet        bool           // only print what changed
-	NotOnPath    bool           // polix is not on the PATH, which the hooks run
-	Duplicates   []string       // other settings of Claude Code that also register the hooks of polix
+	// AutoMemoryOff is the settings file of Claude Code where the hooks were registered with its auto memory off
+	// (setup.Setup.Settings); empty when the hooks of Claude Code were not registered.
+	AutoMemoryOff string
+	Parts         setup.Parts // the parts written: those asked, else every one
+	Quiet         bool        // only print what changed
+	NotOnPath     bool        // polix is not on the PATH, which the hooks run
+	Duplicates    []string    // other settings of Claude Code that also register the hooks of polix
 	// Unlisted are the hooks of git written that git does not list for their events: a git older than 2.54 does
 	// not run the hooks of its configuration.
 	Unlisted []setup.GitHook
@@ -73,8 +76,10 @@ type Port interface {
 	// RegisterPlugin registers the local marketplace and its plugin with an agent, for the user.
 	RegisterPlugin(ctx context.Context, s setup.Setup, agent string) ([]setup.Change, error)
 	// RegisterHooks writes hooks, the hooks of polix of an agent by event, in a hooks file in place of the ones of
-	// polix it had, keeping every other setting and hook.
-	RegisterHooks(ctx context.Context, file string, hooks map[string][]setup.HookGroup) ([]setup.Change, error)
+	// polix it had, and sets there each of settings to its value, in the same write, keeping every other setting
+	// and hook.
+	RegisterHooks(ctx context.Context, file string, hooks map[string][]setup.HookGroup,
+		settings []setup.Setting) ([]setup.Change, error)
 	// Registered reports, by path, whether each of the files of paths exists, can be read and registers a hook of
 	// polix.
 	Registered(ctx context.Context, paths []string) map[string]bool
@@ -243,7 +248,8 @@ func registerGitHooks(ctx context.Context, port Port, out Output) ([]setup.Chang
 
 // installParts carries out the output of the parts other than only the hooks of git: with the plugin it asks the
 // port for the files of the marketplace; it asks for confirmation; it writes the plugin, then for each agent its
-// registration and its hooks in the repository, as the parts ask, then the hooks of git of the output and which of
+// registration and its hooks in the repository with its settings (setup.Setup.Settings), as the parts ask, then the
+// hooks of git of the output and which of
 // them git does not list or lists as disabled; then it asks whether polix is on the PATH and, with the hooks of the
 // agents, which other settings register them too.
 func installParts(ctx context.Context, port Port, out Output, res Response) (Response, error) {
@@ -273,8 +279,12 @@ func installParts(ctx context.Context, port Port, out Output, res Response) (Res
 			res.Changes, errs = append(res.Changes, ch...), append(errs, err)
 		}
 		if len(out.HooksFiles) != 0 {
-			ch, err := port.RegisterHooks(ctx, out.Setup.HooksFile(a), out.Setup.Hooks(a))
+			settings := out.Setup.Settings(a)
+			ch, err := port.RegisterHooks(ctx, out.Setup.HooksFile(a), out.Setup.Hooks(a), settings)
 			res.Changes, errs = append(res.Changes, ch...), append(errs, err)
+			if len(settings) != 0 {
+				res.AutoMemoryOff = out.Setup.HooksFile(a)
+			}
 		}
 	}
 	ch, err := registerGitHooks(ctx, port, out)

@@ -132,8 +132,9 @@ polix install --skills    # the polix plugin for your user
 polix install    # Claude Code hooks in .claude/settings.json and git hooks in .git/config
 ```
 
-Commit `.claude/settings.json` so the whole team gets the hooks. Each part has its own flag (`--skills`, `--hooks`,
-`--githooks`).
+Commit `.claude/settings.json` so the whole team gets the hooks. With them, install turns off the auto memory of
+Claude Code there (`"autoMemoryEnabled": false`), so every session follows the rules of polix. Each part has its own
+flag (`--skills`, `--hooks`, `--githooks`).
 
 **3. Write your workflow and check it**
 

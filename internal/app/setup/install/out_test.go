@@ -95,7 +95,7 @@ func TestAdapterKeepsLinkAndMode(t *testing.T) {
 	}
 	ctx := context.Background()
 	hooks := (setup.Setup{}).Hooks(setup.Claude)
-	if _, err := (Adapter{}).RegisterHooks(ctx, settings, hooks); err != nil {
+	if _, err := (Adapter{}).RegisterHooks(ctx, settings, hooks, nil); err != nil {
 		t.Fatal(err)
 	}
 	if info, err := os.Lstat(settings); err != nil || info.Mode()&os.ModeSymlink == 0 {
@@ -106,7 +106,7 @@ func TestAdapterKeepsLinkAndMode(t *testing.T) {
 		t.Fatal("the target is written with its mode")
 	}
 	testenv.Write(t, settings, "[]")
-	if _, err := (Adapter{}).RegisterHooks(ctx, settings, hooks); err == nil ||
+	if _, err := (Adapter{}).RegisterHooks(ctx, settings, hooks, nil); err == nil ||
 		!strings.HasPrefix(err.Error(), settings+": ") {
 		t.Fatalf("the error names the file: %v", err)
 	}
@@ -118,14 +118,18 @@ func TestAdapterHooksExamples(t *testing.T) {
 	ctx := context.Background()
 	for agent, example := range map[string]string{setup.Claude: "claude-settings.json", setup.Codex: "codex-hooks.json"} {
 		path := filepath.Join(t.TempDir(), "hooks.json")
-		ch, err := (Adapter{}).RegisterHooks(ctx, path, (setup.Setup{}).Hooks(agent))
+		s := setup.Setup{}
+		ch, err := (Adapter{}).RegisterHooks(ctx, path, s.Hooks(agent), s.Settings(agent))
 		if err != nil || len(ch) != 1 || ch[0].Action != "created" {
 			t.Fatal(ch, err)
 		}
 		if want := testenv.Read(t, filepath.Join("..", "..", "..", "..", "examples", example)); want != testenv.Read(t, path) {
 			t.Errorf("examples/%s differs from what install writes:\n%s", example, testenv.Read(t, path))
 		}
-		if ch, err := (Adapter{}).RegisterHooks(ctx, path, (setup.Setup{}).Hooks(agent)); err != nil || ch != nil {
+		if agent == setup.Codex && strings.Contains(testenv.Read(t, path), setup.AutoMemoryKey) {
+			t.Errorf("the hooks file of Codex never gets %s", setup.AutoMemoryKey)
+		}
+		if ch, err := (Adapter{}).RegisterHooks(ctx, path, s.Hooks(agent), s.Settings(agent)); err != nil || ch != nil {
 			t.Fatalf("a second registration changes nothing: %v %v", ch, err)
 		}
 	}
@@ -140,7 +144,7 @@ func TestAdapterRegisterHooksReplacesALegacyCommand(t *testing.T) {
   {"hooks": [{"type": "command", "command": "polix hook claude", "timeout": 900}]},
   {"matcher": "startup", "hooks": [{"type": "command", "command": "polix update --hook; polix doctor --hook", "timeout": 180}]}
 ], "Stop": [{"hooks": [{"type": "command", "command": "notify-send done"}]}]}}`)
-	if _, err := (Adapter{}).RegisterHooks(ctx, path, (setup.Setup{}).Hooks(setup.Claude)); err != nil {
+	if _, err := (Adapter{}).RegisterHooks(ctx, path, (setup.Setup{}).Hooks(setup.Claude), nil); err != nil {
 		t.Fatal(err)
 	}
 	got := testenv.Read(t, path)
@@ -153,6 +157,54 @@ func TestAdapterRegisterHooksReplacesALegacyCommand(t *testing.T) {
 	registered := (Adapter{}).Registered(ctx, []string{path, other, filepath.Join(t.TempDir(), "none.json")})
 	if !registered[path] || registered[other] || len(registered) != 2 {
 		t.Fatalf("registered: %v", registered)
+	}
+}
+
+// CUJ-02, CUJ-03: the settings of Claude Code turn a true auto memory into false in its place, with one change, and
+// leave a file that already has it off, before the hooks of this release, as it is.
+func TestAdapterAutoMemory(t *testing.T) {
+	ctx := context.Background()
+	s := setup.Setup{}
+	path := filepath.Join(t.TempDir(), ".claude", "settings.json")
+	testenv.Write(t, path, `{"permissions": {"allow": ["Bash(go test:*)"]}, "autoMemoryEnabled": true}`)
+	if _, err := (Adapter{}).RegisterHooks(ctx, path, s.Hooks(setup.Claude), nil); err != nil {
+		t.Fatal(err)
+	}
+	on := testenv.Read(t, path)
+	ch, err := (Adapter{}).RegisterHooks(ctx, path, s.Hooks(setup.Claude), s.Settings(setup.Claude))
+	if err != nil || !slices.Equal(ch, []setup.Change{{Path: path, Action: "updated"}}) {
+		t.Fatal(ch, err)
+	}
+	if got := testenv.Read(t, path); got != strings.Replace(on, `"autoMemoryEnabled": true`, `"autoMemoryEnabled": false`, 1) ||
+		strings.Index(got, `"permissions"`) > strings.Index(got, `"autoMemoryEnabled"`) ||
+		strings.Index(got, `"autoMemoryEnabled"`) > strings.Index(got, `"hooks"`) {
+		t.Fatalf("false in its place, the rest kept:\n%s", got)
+	}
+	off := filepath.Join(t.TempDir(), ".claude", "settings.json")
+	testenv.Write(t, off, `{"autoMemoryEnabled": false}`)
+	if _, err := (Adapter{}).RegisterHooks(ctx, off, s.Hooks(setup.Claude), nil); err != nil {
+		t.Fatal(err)
+	}
+	before := testenv.Read(t, off)
+	if ch, err := (Adapter{}).RegisterHooks(ctx, off, s.Hooks(setup.Claude), s.Settings(setup.Claude)); err != nil || ch != nil {
+		t.Fatalf("a file already set up is no change: %v %v", ch, err)
+	}
+	if got := testenv.Read(t, off); got != before || !strings.HasPrefix(got, "{\n  \"autoMemoryEnabled\": false,\n  \"hooks\"") {
+		t.Fatalf("the file keeps its bytes:\n%s", got)
+	}
+}
+
+// CUJ-05: settings that are not a JSON object are an error that names the file, which keeps its bytes.
+func TestAdapterAutoMemoryBrokenFile(t *testing.T) {
+	s := setup.Setup{}
+	path := filepath.Join(t.TempDir(), ".claude", "settings.json")
+	testenv.Write(t, path, "[1, 2]")
+	ch, err := (Adapter{}).RegisterHooks(context.Background(), path, s.Hooks(setup.Claude), s.Settings(setup.Claude))
+	if err == nil || ch != nil || !strings.HasPrefix(err.Error(), path+": ") {
+		t.Fatalf("the error names the file: %v %v", ch, err)
+	}
+	if got := testenv.Read(t, path); got != "[1, 2]" {
+		t.Fatalf("the file keeps its bytes: %q", got)
 	}
 }
 

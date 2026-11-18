@@ -85,6 +85,33 @@ func TestInstall(t *testing.T) {
 	if _, stdout, _ := runSetup("uninstall", "--yes", "--skills"); !strings.Contains(stdout, "nothing to remove") {
 		t.Fatalf("second uninstall: %s", stdout)
 	}
+	installAutoMemory(t)
+}
+
+// installAutoMemory checks CUJ-01 and CUJ-06 end to end: install --hooks in a repository without settings creates
+// them with the auto memory of Claude Code off as the last key and says so; uninstall --hooks takes the hooks back and
+// leaves the setting, in a file it does not remove.
+func installAutoMemory(t *testing.T) {
+	t.Helper()
+	r := testenv.GitRepo(t)
+	path := filepath.Join(r, ".claude", "settings.json")
+	code, stdout, stderr := runSetup("install", "--hooks", "--yes", "--dir", r)
+	line := ", so every session follows the rules of polix.\n"
+	if code != 0 || strings.Count(stdout, "created") != 1 || strings.Count(stdout, line) != 1 ||
+		!strings.Contains(stdout, "\n  Auto memory of Claude Code is off in ") ||
+		!strings.Contains(stdout, filepath.Join(".claude", "settings.json")+line) {
+		t.Fatalf("install --hooks: %d\n%s%s", code, stdout, stderr)
+	}
+	if got := testenv.Read(t, path); !strings.HasSuffix(got, "    ]\n  },\n  \"autoMemoryEnabled\": false\n}\n") {
+		t.Fatalf("the settings end with the auto memory off:\n%s", got)
+	}
+	code, stdout, stderr = runSetup("uninstall", "--hooks", "--yes", "--dir", r)
+	if code != 0 || strings.Count(stdout, "updated") != 1 || strings.Contains(stdout, "removed") {
+		t.Fatalf("uninstall --hooks: %d\n%s%s", code, stdout, stderr)
+	}
+	if got := testenv.Read(t, path); got != "{\n  \"autoMemoryEnabled\": false\n}\n" {
+		t.Fatalf("uninstall leaves the setting:\n%s", got)
+	}
 }
 
 // doctor end to end: in a repository after install, doctor finds the hooks; with the hooks of the user too, they
@@ -98,9 +125,20 @@ func TestDoctor(t *testing.T) {
 	}
 	code, stdout, _ := runSetup("doctor", "--offline", "--dir", r)
 	if !strings.Contains(stdout, "hooks     registered in") || !strings.Contains(stdout, "polix.yaml is valid") ||
-		code != 1 || !strings.Contains(stdout, "polix is not on the PATH") {
+		code != 1 || !strings.Contains(stdout, "polix is not on the PATH") ||
+		!strings.Contains(stdout, " memory    auto memory of Claude Code is off\n") {
 		t.Fatalf("doctor after install: %d\n%s", code, stdout)
 	}
+	// CUJ-08: the variable unset by the test, a warning of the area memory keeps the exit code.
+	t.Setenv(setup.AutoMemoryVariable, "0")
+	if code, stdout, _ := runSetup("doctor", "--offline", "--dir", r); code != 1 ||
+		!strings.Contains(stdout, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=0 turns auto memory of Claude Code on: unset it") {
+		t.Fatalf("a warning of the auto memory: %d\n%s", code, stdout)
+	}
+	if code, _, _ := runSetup("doctor", "--hook", "--dir", r); code != 0 {
+		t.Fatalf("the hook never fails: %d", code)
+	}
+	t.Setenv(setup.AutoMemoryVariable, "")
 	data := testenv.Read(t, filepath.Join(r, ".claude", "settings.json"))
 	testenv.Write(t, filepath.Join(os.Getenv("HOME"), ".claude", "settings.json"), data)
 	if _, stdout, _ := runSetup("doctor", "--offline", "--dir", r); !strings.Contains(stdout, "runs polix twice") {

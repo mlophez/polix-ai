@@ -1,7 +1,8 @@
 # DiagnoseSetup
 
 Checks that the machine and the repository are ready for polix: the binary and its version, the PATH the hooks
-use, git, the workflow, the rules and their checks, the hooks of Claude Code, the hooks of git, the plugin, Codex
+use, git, the workflow, the rules and their checks, the hooks of Claude Code and its auto memory, the hooks of git,
+the plugin, Codex
 only when polix is registered for it (Codex support is not implemented and untested) and the state.
 
 ## Trigger
@@ -34,7 +35,16 @@ or are not JSON, every event of `setup.ClaudeHookEvents`, the matchers, the time
 the session start update, with `setup.HookHandler.Polix`, `Update` and `Legacy`; an event that does not run polix
 fails, but `PostToolUseFailure` and `SubagentStart`, which settings written by an older polix lack, only warn and
 ask to run `polix install`, since only the feedback of failed commands or the context at the start of subagents is
-lost), the hooks of git (`logic_githooks.go`, area `githooks`: one `ok` line, `git runs polix githook on
+lost), the auto memory of Claude Code (`logic_memory.go`, area `memory`: only when the settings of Claude Code
+register polix and none of them fails to read or is not JSON, as the hooks report it; decided as Claude Code
+does, the first that sets it wins: `AutoMemoryEnv` of the inspection, the variable `setup.AutoMemoryVariable`
+(`1` off, `0` on, any other value nothing), then `AutoMemory` of the local settings, of the project ones and of the
+ones of the user (`true` or `false`; empty sets nothing); on without any of them. One `ok` line, `auto memory of
+Claude Code is off`, or one `warn` naming what turns it on: `CLAUDE_CODE_DISABLE_AUTO_MEMORY=0 turns auto memory
+of Claude Code on: unset it`, `<root>/.claude/settings.local.json turns auto memory of Claude Code on: remove
+autoMemoryEnabled from it`, or `auto memory of Claude Code is on: run polix install to turn it off in
+<root>/.claude/settings.json`; never a failure), the hooks of git (`logic_githooks.go`, area `githooks`: one `ok`
+line, `git runs polix githook on
 pre-commit, commit-msg (githooks need git 2.54 or later)`, when `GitHooks` of the inspection names `polix-<event>` for each event of
 `setup.GitHooks`; a `warn` per event without it, `git does not run polix githook on <event>: run polix install`, or,
 when `DisabledGitHooks` names it (git lists it as disabled, `hook.<name>.enabled=false`), `git does not run polix
@@ -75,7 +85,10 @@ and of polix.yaml (`internal/app/workflow/load`) that `cmd/polix` builds once an
 - `HooksFiles`: the hooks files of an agent that exist, the settings of Claude Code or the hooks files of Codex,
   decoded (`agentconf.ParseHooks`, for which an empty file is not JSON, and `agentconf.ReadHooks`, for which it has
   no hooks) into `setup.HooksFile`: the groups of hooks that run a command, or why the file cannot be read or is
-  not JSON.
+  not JSON; for the settings of Claude Code, also `AutoMemory`, the boolean they set for `setup.AutoMemoryKey`
+  (`agentconf.BoolKey`: `true` or `false`, empty for no key, a value that is not a JSON boolean or a content that
+  is not a JSON object).
+- `AutoMemoryEnv`: the value of the variable `setup.AutoMemoryVariable`, empty when unset.
 - `CodexEnabled`: whether `~/.codex/config.toml` enables the plugin (`agentconf.CodexEnabled`).
 - `Plugin`: the plugin embedded in the binary, with the version of the manifest of the plugin in the marketplace
   and whether it is the plugin polix (`agentconf.ReadManifest`).
@@ -100,6 +113,6 @@ Every problem is a finding; only a broken embedded plugin is an error of the she
    which on Windows tries the extensions of `PATHEXT`, and keeps by program why it is not found; and `GitHooks`
    asks git for the hooks of git of polix), the
    hooks files of both agents and `~/.codex/config.toml`, decoded (from which the logic decides whether polix is
-   registered for Codex), the plugin (`readPlugin`) and Claude Code (`askClaude`), into a `setup.Inspection`.
+   registered for Codex), the variable of the auto memory (`AutoMemoryEnv`), the plugin (`readPlugin`) and Claude Code (`askClaude`), into a `setup.Inspection`.
 3. `Decide` decides the findings.
 4. The command prints the response and sets the exit code.

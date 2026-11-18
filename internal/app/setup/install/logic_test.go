@@ -63,6 +63,24 @@ func TestDecideSummaryGitHooks(t *testing.T) {
 	}
 }
 
+// CUJ-01: the summary to confirm names the hooks file of Claude Code with its auto memory off, and the line of Codex
+// only its hooks file.
+func TestDecideSummaryAutoMemory(t *testing.T) {
+	s := setup.Setup{Home: "/h", Root: "/r", Agents: []string{setup.Claude, setup.Codex}, Version: "1.2.3"}
+	for _, p := range []setup.Parts{{}, {Hooks: true}} {
+		out := Decide(s, logicPlugin, p)
+		claude := "the hooks of " + s.HooksFile(setup.Claude) + ", with auto memory off\n"
+		codex := "the hooks of " + s.HooksFile(setup.Codex) + "\n"
+		if !strings.Contains(out.Summary, claude) || !strings.Contains(out.Summary, codex) ||
+			strings.Count(out.Summary, "auto memory") != 1 {
+			t.Fatalf("%+v:\n%s", p, out.Summary)
+		}
+	}
+	if out := Decide(s, logicPlugin, setup.Parts{Skills: true}); strings.Contains(out.Summary, "auto memory") {
+		t.Fatalf("no hooks, no setting:\n%s", out.Summary)
+	}
+}
+
 // AC18, AC20: only the hooks of git inside a repository: the two of setup.GitHooks, without plugin, hooks files
 // nor summary to confirm, and without the plugin of the binary; outside a repository a failure.
 func TestDecideGitHooksOnly(t *testing.T) {

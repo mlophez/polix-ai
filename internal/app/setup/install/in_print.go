@@ -91,6 +91,9 @@ func (res Response) summary(u *cli.UI) {
 	case len(res.HooksFiles) > 0:
 		u.Line("  Hooks registered in %s: commit them with the polix.yaml so the team gets them.",
 			strings.Join(res.HooksFiles, ", "))
+		if res.AutoMemoryOff != "" {
+			u.Line("  Auto memory of Claude Code is off in %s, so every session follows the rules of polix.", res.AutoMemoryOff)
+		}
 		if slices.Contains(res.Agents, setup.Codex) {
 			u.Line("  Codex runs new or changed hooks once trusted with %s.", cli.Code("/hooks"))
 		}

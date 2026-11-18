@@ -42,6 +42,18 @@ func TestDecideSummaryGitHooks(t *testing.T) {
 	}
 }
 
+// CUJ-06: uninstall leaves the auto memory of Claude Code as it is, so its summary to confirm does not name it.
+func TestDecideSummaryKeepsAutoMemory(t *testing.T) {
+	s := setup.Setup{Home: "/h", Root: "/r", Agents: []string{setup.Claude}, Version: "1.2.3"}
+	for _, p := range []setup.Parts{{}, {Hooks: true}} {
+		out := Decide(s, p)
+		if !strings.Contains(out.Summary, "the hooks of "+s.HooksFile(setup.Claude)+"\n") ||
+			strings.Contains(out.Summary, "with auto memory off") {
+			t.Fatalf("%+v:\n%s", p, out.Summary)
+		}
+	}
+}
+
 // An explicit --githooks removes the hooks of git also when an agent stays; --skills removes the marketplace only
 // with both agents, and the parts of a repository outside one are a failure.
 func TestDecideParts(t *testing.T) {

@@ -22,6 +22,13 @@ type Handler struct {
 	Status  string
 }
 
+// Setting is a top-level key of a settings file with the value to write there: a string, a number, a boolean, nil,
+// or a map or a slice of them, which always encode to JSON.
+type Setting struct {
+	Key   string
+	Value any
+}
+
 // hookGroup and hookHandler are the JSON format of the hooks of Claude Code and Codex: by event, groups with a
 // matcher, each with its handlers. They decode the hooks a file holds and write the ones the caller registers.
 type hookGroup struct {
@@ -126,6 +133,87 @@ func MergeHooks(old []byte, existed bool, want map[string][]Group, events []stri
 		return data, "updated", nil
 	}
 	return data, "created", nil
+}
+
+// SetKeys returns the content of a settings file (old, which existed or not) with each key of settings set to its
+// value, in its place when the file has it and appended as the last key otherwise, and what that does to the file:
+// "" when nothing changes, else created or updated. Every other key keeps its value and its order, and the file is
+// written as MergeHooks writes it. The errors name the part of the file that is broken; the caller adds the file.
+func SetKeys(old []byte, existed bool, settings []Setting) ([]byte, string, error) {
+	if !existed && len(settings) == 0 {
+		return nil, "", nil
+	}
+	top, err := decodeObject(old)
+	if err != nil {
+		return nil, "", err
+	}
+	next := slices.Clone(top)
+	for _, s := range settings {
+		val, found := marshal(s.Value), false
+		for i := range next {
+			if next[i].key == s.Key { // every time a file repeats it, since a reader may keep any of them
+				next[i].val, found = val, true
+			}
+		}
+		if !found {
+			next = append(next, member{s.Key, val})
+		}
+	}
+	data := settingsJSON(next)
+	switch {
+	case existed && bytes.Equal(data, settingsJSON(top)):
+		return nil, "", nil
+	case existed:
+		return data, "updated", nil
+	}
+	return data, "created", nil
+}
+
+// MergeHooksAndKeys returns the content of a settings file (old, which existed or not) with want in place of the
+// hooks of ours (MergeHooks) and then each key of settings set to its value (SetKeys), and what both do to the file
+// as one action: "" when nothing changes, removed when the file is left with nothing, else created or updated.
+// The errors name the part of the file that is broken; the caller adds the file.
+func MergeHooksAndKeys(old []byte, existed bool, want map[string][]Group, events []string,
+	ours func(command string) bool, settings []Setting) ([]byte, string, error) {
+	merged, action, err := MergeHooks(old, existed, want, events, ours)
+	if err != nil {
+		return nil, "", err
+	}
+	if action != "" {
+		old = merged
+	}
+	set, setAction, err := SetKeys(old, existed, settings)
+	switch {
+	case err != nil:
+		return nil, "", err
+	case setAction != "":
+		return set, setAction, nil
+	}
+	return merged, action, nil
+}
+
+// BoolKey reads the top-level key of a settings file as a boolean: its value, and whether the file sets one. A key
+// the file repeats is read from its last occurrence, as a JSON parser keeps it; a key that is not a JSON boolean, a
+// missing key and a content that is not a JSON object set none.
+func BoolKey(data []byte, key string) (value, set bool) {
+	top, err := decodeObject(data)
+	if err != nil {
+		return false, false
+	}
+	for _, m := range top {
+		if m.key != key {
+			continue
+		}
+		switch string(bytes.TrimSpace(m.val)) {
+		case "true":
+			value, set = true, true
+		case "false":
+			value, set = false, true
+		default:
+			value, set = false, false
+		}
+	}
+	return value, set
 }
 
 // hooksOf returns the index of the key hooks in the members of a file, -1 without it, and its events.

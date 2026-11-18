@@ -21,8 +21,28 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   case studied. It walks the tasks as the executor would, never edits a file and returns a verdict with findings
   `blocking`, `major` or `minor`, runs on `fable` with effort `high`, and joins the agents `polix install --skills`
   lists.
+- `polix install` turns the auto memory of Claude Code off with its hooks: whenever it writes the hooks of Claude
+  Code into a repository, it also sets `"autoMemoryEnabled": false` in the same `.claude/settings.json`, in the same
+  write, so the notes the agent saves by itself in one session never steer the next ones away from the workflow and
+  the rules of polix. It writes `false` whatever value the key had, in its place when the file has it and as the last
+  key otherwise, and leaves a file that already holds it and the current hooks as it is; there is no flag to keep the
+  auto memory on. The summary to confirm names the file `with auto memory off`, and the report adds `Auto memory of
+  Claude Code is off in <file>, so every session follows the rules of polix.` after the hooks registered. Only the
+  committed project settings get it: never the local settings, the settings of the user nor the hooks file of
+  Codex. `examples/claude-settings.json` ends with the key.
+- `polix doctor` has a new area `memory`, in a repository whose settings of Claude Code register polix: `auto memory
+  of Claude Code is off`, or a warning naming what turns it on, decided as Claude Code does, the first that sets it
+  wins: the variable `CLAUDE_CODE_DISABLE_AUTO_MEMORY` (`1` off, `0` on), then the local settings, the project ones
+  and the ones of the user. The warning never fails the doctor, so `polix doctor --hook` still exits 0.
 
 ### Changed
+
+- A `polix update` run by a person, whose refresh rewrites the hooks of polix in the repository of the working
+  directory when its settings register them, also sets `"autoMemoryEnabled": false` there, so the repositories polix
+  already governs get it without a new install; settings that do not register polix are not touched, and the session
+  start hook still writes no file of a repository.
+- `polix uninstall` leaves `"autoMemoryEnabled"` when it removes the hooks of polix, since it cannot tell whether
+  install or the team wrote it, so a settings file left with only that key stays.
 
 - `/polix:plan` interviews the user as `/polix:grill-me` does: one design tree for the whole plan, where every
   decision of the approach and the tasks hangs off the outcome, and one decision per call of `AskUserQuestion` (its

@@ -17,6 +17,7 @@ type fakePort struct {
 	filesErr   error           // of MarketplaceFiles
 	changed    bool
 	calls      []string
+	settings   map[string][]setup.Setting // the settings RegisterHooks wrote with the hooks, by hooks file
 }
 
 // TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
@@ -51,8 +52,13 @@ func (f *fakePort) WritePlugin(_ context.Context, dir string, _ map[string][]byt
 func (f *fakePort) UpdatePlugin(_ context.Context, _ setup.Setup) {
 	f.calls = append(f.calls, "UpdatePlugin")
 }
-func (f *fakePort) RegisterHooks(_ context.Context, _ string, hooks map[string][]setup.HookGroup) ([]setup.Change, error) {
+func (f *fakePort) RegisterHooks(_ context.Context, file string, hooks map[string][]setup.HookGroup,
+	settings []setup.Setting) ([]setup.Change, error) {
 	f.calls = append(f.calls, "RegisterHooks "+hooks["Stop"][0].Handlers[0].Command)
+	if f.settings == nil {
+		f.settings = map[string][]setup.Setting{}
+	}
+	f.settings[file] = settings
 	return nil, nil
 }
 
@@ -73,5 +79,27 @@ func TestShell(t *testing.T) {
 	port = &fakePort{written: true, registered: registered, filesErr: errors.New("no version")}
 	if _, err := run(context.Background(), port, Request{Version: "1", Hooks: true}); err == nil || len(port.calls) != 0 {
 		t.Fatalf("%v %v", err, port.calls)
+	}
+}
+
+// CUJ-07: the shell writes the settings of Claude Code with its hooks only in the settings that register polix,
+// none with the hooks of Codex, and nothing without --hooks.
+func TestShellAutoMemory(t *testing.T) {
+	s := setup.Setup{Home: "/h", Root: "/r", Agents: []string{setup.Claude, setup.Codex}, Version: "1"}
+	claude, codex := s.HooksFile(setup.Claude), s.HooksFile(setup.Codex)
+	port := &fakePort{written: true, registered: map[string]bool{claude: true, codex: true}}
+	if _, err := run(context.Background(), port, Request{Version: "1", Hooks: true}); err != nil ||
+		len(port.settings) != 2 || len(port.settings[claude]) != 1 || port.settings[claude][0] != s.Settings(setup.Claude)[0] ||
+		port.settings[codex] != nil {
+		t.Fatalf("the settings of each agent registered: %v %v", port.settings, err)
+	}
+	port = &fakePort{written: true, registered: map[string]bool{codex: true}}
+	if _, err := run(context.Background(), port, Request{Version: "1", Hooks: true}); err != nil ||
+		len(port.settings) != 1 || port.settings[claude] != nil {
+		t.Fatalf("settings that do not register polix get nothing: %v %v", port.settings, err)
+	}
+	port = &fakePort{written: true, registered: map[string]bool{claude: true}}
+	if _, err := run(context.Background(), port, Request{Version: "1"}); err != nil || port.settings != nil {
+		t.Fatalf("nothing without --hooks: %v %v", port.settings, err)
 	}
 }

@@ -162,6 +162,44 @@ func TestAdapterHooks(t *testing.T) {
 	}
 }
 
+// CUJ-09: the settings of Claude Code are read with the boolean they set for the auto memory, and the hooks files of
+// Codex without it; the variable is read as it is, empty when unset.
+func TestAdapterAutoMemory(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	paths := map[string]string{"true": `{"autoMemoryEnabled": true}`, "false": `{"autoMemoryEnabled": false, "hooks": {}}`,
+		"": `{"autoMemoryEnabled": "no"}`}
+	var files []string
+	for want, data := range paths {
+		path := filepath.Join(dir, "settings-"+want+".json")
+		testenv.Write(t, path, data)
+		files = append(files, path)
+		if got := (Adapter{}).HooksFiles(ctx, setup.Claude, []string{path})[path]; got.AutoMemory != want || got.Err != nil {
+			t.Errorf("%s: %+v", data, got)
+		}
+	}
+	broken := filepath.Join(dir, "broken.json")
+	testenv.Write(t, broken, "[1, 2]")
+	if got := (Adapter{}).HooksFiles(ctx, setup.Claude, []string{broken})[broken]; got.AutoMemory != "" || got.Err == nil {
+		t.Errorf("not a JSON object: %+v", got)
+	}
+	for path, f := range (Adapter{}).HooksFiles(ctx, setup.Codex, files) {
+		if f.AutoMemory != "" {
+			t.Errorf("Codex has no auto memory: %s %+v", path, f)
+		}
+	}
+	t.Setenv(setup.AutoMemoryVariable, "0")
+	if got := (Adapter{}).AutoMemoryEnv(ctx); got != "0" {
+		t.Fatalf("the variable: %q", got)
+	}
+	if err := os.Unsetenv(setup.AutoMemoryVariable); err != nil {
+		t.Fatal(err)
+	}
+	if got := (Adapter{}).AutoMemoryEnv(ctx); got != "" {
+		t.Fatalf("unset: %q", got)
+	}
+}
+
 // The configuration of Codex enables the plugin, and the manifest of the marketplace is the plugin polix.
 func TestAdapterCodexAndManifest(t *testing.T) {
 	ctx := context.Background()

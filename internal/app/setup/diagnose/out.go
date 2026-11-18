@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/rule"
@@ -225,12 +226,18 @@ func (a Adapter) WriteState(_ context.Context, gitDir string) (string, error) {
 
 // HooksFiles reads the hooks files of agent of paths that exist: the hooks files of Codex with
 // agentconf.ReadHooks, for which an empty one has no hooks, and else the settings of Claude Code with
-// agentconf.ParseHooks, for which an empty one is not JSON.
+// agentconf.ParseHooks, for which an empty one is not JSON, with the boolean they set for setup.AutoMemoryKey
+// (agentconf.BoolKey).
 func (a Adapter) HooksFiles(_ context.Context, agent string, paths []string) map[string]setup.HooksFile {
 	if agent == setup.Codex {
-		return a.hooksFiles(paths, agentconf.ReadHooks)
+		return a.hooksFiles(paths, agentconf.ReadHooks, false)
 	}
-	return a.hooksFiles(paths, agentconf.ParseHooks)
+	return a.hooksFiles(paths, agentconf.ParseHooks, true)
+}
+
+// AutoMemoryEnv returns the value of the variable setup.AutoMemoryVariable; empty when unset.
+func (a Adapter) AutoMemoryEnv(_ context.Context) string {
+	return os.Getenv(setup.AutoMemoryVariable)
 }
 
 // CodexEnabled reads the configuration of Codex at path (agentconf.CodexEnabled); one that cannot be read enables
@@ -293,8 +300,10 @@ func (a Adapter) claudePlugin(list []byte) (bool, bool, string, error) {
 }
 
 // hooksFiles reads the hooks files of paths that exist and decodes them with decode: the groups of hooks that run
-// a command, or why the file cannot be read or decoded.
-func (a Adapter) hooksFiles(paths []string, decode func([]byte) (map[string][]agentconf.Group, error)) map[string]setup.HooksFile {
+// a command, or why the file cannot be read or decoded; with memory, also the boolean each one sets for
+// setup.AutoMemoryKey, as "true" or "false", empty when it sets none.
+func (a Adapter) hooksFiles(paths []string, decode func([]byte) (map[string][]agentconf.Group, error),
+	memory bool) map[string]setup.HooksFile {
 	out := map[string]setup.HooksFile{}
 	for _, p := range paths {
 		data, existed, readErr := file.Read(p)
@@ -303,12 +312,16 @@ func (a Adapter) hooksFiles(paths []string, decode func([]byte) (map[string][]ag
 		}
 		var hooks map[string][]setup.HookGroup
 		var err error
+		var autoMemory string
 		if readErr == nil {
 			var groups map[string][]agentconf.Group
 			groups, err = decode(data)
 			hooks = a.hookGroups(groups)
+			if value, set := agentconf.BoolKey(data, setup.AutoMemoryKey); memory && set {
+				autoMemory = strconv.FormatBool(value)
+			}
 		}
-		f := setup.HooksFile{Hooks: hooks, ReadErr: readErr, Err: err}
+		f := setup.HooksFile{Hooks: hooks, ReadErr: readErr, Err: err, AutoMemory: autoMemory}
 		if f.Valid() == nil {
 			out[p] = f
 		}

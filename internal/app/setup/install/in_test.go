@@ -28,6 +28,8 @@ type fakePort struct {
 	disabled   bool
 	// methods records the name of every method of the port called, in order.
 	methods []string
+	// settings records the settings RegisterHooks wrote with the hooks, by hooks file.
+	settings map[string][]setup.Setting
 }
 
 // TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
@@ -95,9 +97,14 @@ func (f *fakePort) RegisterPlugin(_ context.Context, _ setup.Setup, agent string
 	f.calls = append(f.calls, "RegisterPlugin "+agent)
 	return nil, f.pluginErr
 }
-func (f *fakePort) RegisterHooks(_ context.Context, file string, _ map[string][]setup.HookGroup) ([]setup.Change, error) {
+func (f *fakePort) RegisterHooks(_ context.Context, file string, _ map[string][]setup.HookGroup,
+	settings []setup.Setting) ([]setup.Change, error) {
 	f.methods = append(f.methods, "RegisterHooks")
 	f.calls = append(f.calls, "RegisterHooks "+file)
+	if f.settings == nil {
+		f.settings = map[string][]setup.Setting{}
+	}
+	f.settings[file] = settings
 	return nil, nil
 }
 func (f *fakePort) Registered(_ context.Context, _ []string) map[string]bool {
@@ -325,6 +332,43 @@ func TestParseAgents(t *testing.T) {
 	req = Request{Version: "1"}
 	if err := req.parseAgents([]string{"cursor"}); err == nil || err.Error() != `unknown agent "cursor" (claude, codex)` {
 		t.Fatalf("unknown agent: %v", err)
+	}
+}
+
+// CUJ-01, CUJ-04: the shell writes the settings of Claude Code with its hooks and none with the hooks of Codex, and
+// the report says the auto memory is off right after the hooks registered, only when the hooks of Claude Code were
+// written and the report is not quiet.
+func TestShellAutoMemory(t *testing.T) {
+	ctx := context.Background()
+	s := setup.Setup{Root: "/r"}
+	claude, codex := s.HooksFile(setup.Claude), s.HooksFile(setup.Codex)
+	line := "  Auto memory of Claude Code is off in " + claude + ", so every session follows the rules of polix.\n"
+	port := &fakePort{}
+	res, err := run(ctx, port, Request{Version: "1.2.3", Agents: []string{setup.Claude, setup.Codex}, Parts: setup.Parts{Hooks: true}})
+	if err != nil || !slices.Equal(port.settings[claude], s.Settings(setup.Claude)) || len(port.settings[claude]) != 1 ||
+		port.settings[codex] != nil || len(port.settings) != 2 {
+		t.Fatalf("the settings of each agent: %v %v", port.settings, err)
+	}
+	var stdout, stderr bytes.Buffer
+	res.print(&stdout, &stderr)
+	if out := stdout.String(); strings.Count(out, line) != 1 || !strings.Contains(out, ": commit them with the polix.yaml so the team gets them.\n"+line) {
+		t.Fatalf("the report after the hooks registered:\n%s", out)
+	}
+	res.Quiet = true
+	stdout.Reset()
+	res.print(&stdout, &stderr)
+	if strings.Contains(stdout.String(), "Auto memory") {
+		t.Fatalf("quiet:\n%s", stdout.String())
+	}
+	for _, req := range []Request{{Version: "1.2.3", Agents: []string{setup.Codex}, Parts: setup.Parts{Hooks: true}},
+		{Version: "1.2.3", Parts: setup.Parts{Skills: true}}, {Version: "1.2.3", Parts: setup.Parts{GitHooks: true}}} {
+		port := &fakePort{}
+		res, err := run(ctx, port, req)
+		stdout.Reset()
+		res.print(&stdout, &stderr)
+		if err != nil || port.settings[claude] != nil || strings.Contains(stdout.String(), "Auto memory") {
+			t.Fatalf("%+v writes no setting: %v %v\n%s", req, port.settings, err, stdout.String())
+		}
 	}
 }
 

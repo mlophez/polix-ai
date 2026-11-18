@@ -78,6 +78,7 @@ func (f *fakePort) WriteState(_ context.Context, gitDir string) (string, error) 
 func (f *fakePort) HooksFiles(_ context.Context, _ string, _ []string) map[string]setup.HooksFile {
 	return nil
 }
+func (f *fakePort) AutoMemoryEnv(_ context.Context) string        { return "" }
 func (f *fakePort) CodexEnabled(_ context.Context, _ string) bool { return false }
 func (f *fakePort) Plugin(_ context.Context, _ string) (map[string][]byte, string, bool, error) {
 	return nil, "0.2.0", true, nil

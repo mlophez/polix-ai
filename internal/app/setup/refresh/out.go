@@ -93,14 +93,17 @@ func (a Adapter) UpdatePlugin(ctx context.Context, s setup.Setup) {
 	}
 }
 
-// RegisterHooks rewrites hooks in place of the hooks of polix of path (agentconf.MergeHooks), adding the events the
-// file lacks in the order of setup.HookEvents.
-func (a Adapter) RegisterHooks(_ context.Context, path string, hooks map[string][]setup.HookGroup) ([]setup.Change, error) {
+// RegisterHooks rewrites hooks in place of the hooks of polix of path, adding the events the file lacks in the order
+// of setup.HookEvents, and sets each of settings to its value, in one write (agentconf.MergeHooksAndKeys): updated
+// when its content changes, and no change otherwise.
+func (a Adapter) RegisterHooks(_ context.Context, path string, hooks map[string][]setup.HookGroup,
+	settings []setup.Setting) ([]setup.Change, error) {
 	old, existed, err := file.Read(path)
 	if err != nil {
 		return nil, err
 	}
-	data, action, err := agentconf.MergeHooks(old, existed, a.groups(hooks), setup.HookEvents, a.polix)
+	data, action, err := agentconf.MergeHooksAndKeys(old, existed, a.groups(hooks), setup.HookEvents, a.polix,
+		a.keys(settings))
 	switch {
 	case err != nil:
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -125,6 +128,15 @@ func (a Adapter) groups(hooks map[string][]setup.HookGroup) map[string][]agentco
 			}
 			out[ev] = append(out[ev], group)
 		}
+	}
+	return out
+}
+
+// keys returns the settings of an agent as the top-level keys of its hooks file, in their order.
+func (a Adapter) keys(settings []setup.Setting) []agentconf.Setting {
+	out := make([]agentconf.Setting, len(settings))
+	for i, s := range settings {
+		out[i] = agentconf.Setting{Key: s.Key, Value: s.Value}
 	}
 	return out
 }

@@ -85,7 +85,7 @@ func marshal(v any) json.RawMessage {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
-	_ = enc.Encode(v) //nolint:errchkjson // v is a string or a struct of strings, lists and raw JSON, which always encode
+	_ = enc.Encode(v) //nolint:errchkjson // v is a string, a value of a Setting or a struct of strings, lists and raw JSON, which always encode
 	return bytes.TrimSpace(b.Bytes())
 }
 

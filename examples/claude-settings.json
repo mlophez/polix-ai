@@ -25,5 +25,6 @@
     "Stop": [
       { "hooks": [{ "type": "command", "command": "polix hook claude", "timeout": 900, "statusMessage": "polix" }] }
     ]
-  }
+  },
+  "autoMemoryEnabled": false
 }

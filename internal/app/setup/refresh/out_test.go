@@ -30,7 +30,7 @@ func TestAdapter(t *testing.T) {
 		t.Fatalf("calls: %v", testenv.Calls(st))
 	}
 	testenv.Write(t, s.HooksFile(setup.Claude), `{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "polix hook claude"}]}]}}`)
-	if ch, err := a.RegisterHooks(ctx, s.HooksFile(setup.Claude), s.Hooks(setup.Claude)); err != nil || len(ch) != 1 || ch[0].Action != "updated" {
+	if ch, err := a.RegisterHooks(ctx, s.HooksFile(setup.Claude), s.Hooks(setup.Claude), nil); err != nil || len(ch) != 1 || ch[0].Action != "updated" {
 		t.Fatal(ch, err)
 	}
 	if got := a.Registered(ctx, []string{s.HooksFile(setup.Claude), s.HooksFile(setup.Codex)}); len(got) != 1 ||
@@ -51,5 +51,31 @@ func TestAdapter(t *testing.T) {
 	testenv.Write(t, s.PluginManifest(), string(files["polix/.claude-plugin/plugin.json"]))
 	if v, ok := a.ReadManifest(ctx, s.PluginManifest()); !ok || v != "1.2.3" {
 		t.Fatal(v, ok)
+	}
+}
+
+// CUJ-07: the settings of Claude Code that register polix get the hooks of the release and the auto memory off as
+// their last key, in one updated change; a second refresh changes nothing.
+func TestAdapterAutoMemory(t *testing.T) {
+	ctx := context.Background()
+	s := setup.Setup{Root: t.TempDir()}
+	path := s.HooksFile(setup.Claude)
+	testenv.Write(t, path, `{"model": "opus", "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "polix hook claude"}]}]}}`)
+	ch, err := (Adapter{}).RegisterHooks(ctx, path, s.Hooks(setup.Claude), s.Settings(setup.Claude))
+	if err != nil || !slices.Equal(ch, []setup.Change{{Path: path, Action: "updated"}}) {
+		t.Fatal(ch, err)
+	}
+	got := testenv.Read(t, path)
+	if !strings.HasPrefix(got, "{\n  \"model\": \"opus\",\n  \"hooks\": {") ||
+		!strings.HasSuffix(got, "    ]\n  },\n  \"autoMemoryEnabled\": false\n}\n") || !strings.Contains(got, setup.UpdateCommand) {
+		t.Fatalf("the hooks of the release, then the auto memory off:\n%s", got)
+	}
+	if ch, err := (Adapter{}).RegisterHooks(ctx, path, s.Hooks(setup.Claude), s.Settings(setup.Claude)); err != nil || ch != nil {
+		t.Fatalf("a second refresh changes nothing: %v %v", ch, err)
+	}
+	testenv.Write(t, path, "[1, 2]")
+	if _, err := (Adapter{}).RegisterHooks(ctx, path, s.Hooks(setup.Claude), s.Settings(setup.Claude)); err == nil ||
+		!strings.HasPrefix(err.Error(), path+": ") || testenv.Read(t, path) != "[1, 2]" {
+		t.Fatalf("a broken file is an error that names it and keeps its bytes: %v", err)
 	}
 }

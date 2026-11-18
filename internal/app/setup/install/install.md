@@ -42,7 +42,8 @@ asked, else Claude Code alone, `Setup.Defaulted`: Codex is never added by itself
 (`Plugin.Skills`, `Plugin.Agents`); with `Hooks`, inside a repository, the hooks files; with `GitHooks`, inside a
 repository, `GitHooks`: the hooks of git polix registers (`setup.GitHooks`, `pre-commit` and `commit-msg`), for any
 agent and whether or not polix.yaml has `githooks`. The `Summary` to confirm (`setup.Setup.Summary`) names, as the
-parts ask, the plugin and the hooks file of each agent and the hooks of git in the local git configuration of the
+parts ask, the plugin and the hooks file of each agent, the one of Claude Code followed by `, with auto memory off`
+(the settings it gets, `setup.Setup.Settings`), and the hooks of git in the local git configuration of the
 repository (`hook.polix-pre-commit`, `hook.polix-commit-msg`). A refusal is its `Failure`.
 
 A part of the repository (`--hooks`, `--githooks`) asked outside one is the `Failure` `not inside a git
@@ -51,12 +52,15 @@ only `GitHooks`, without plugin (the shell reads none), hooks files nor summary.
 
 ## Response
 
-`Response`: `Changes`, `Version`, `Agents`, `Skills`, `PluginAgents`, `HooksFiles`, `Parts`, the parts written,
-`Quiet`, `NotOnPath`, `Duplicates`, `Unlisted`, the hooks of git written that git does not list, and `Disabled`, the
-hooks of git written that git lists as disabled (`hook.<name>.enabled=false`). The command prints each change (a
-todo as `run by hand: <command>`, a hook of git as `git config hook.polix-pre-commit`); on an error it stops there
-with the error. Unless `--quiet` it then tells what was installed and what to do next: the skills and agents with
-the plugin, the hooks files with the hooks, and with the hooks outside a repository that it is not inside one; with
+`Response`: `Changes`, `Version`, `Agents`, `Skills`, `PluginAgents`, `HooksFiles`, `AutoMemoryOff`, the settings
+file of Claude Code registered with its auto memory off (empty when the hooks of Claude Code were not registered),
+`Parts`, the parts written, `Quiet`, `NotOnPath`, `Duplicates`, `Unlisted`, the hooks of git written that git does
+not list, and `Disabled`, the hooks of git written that git lists as disabled (`hook.<name>.enabled=false`). The
+command prints each change (a todo as `run by hand: <command>`, a hook of git as `git config hook.polix-pre-commit`);
+on an error it stops there with the error. Unless `--quiet` it then tells what was installed and what to do next:
+the skills and agents with the plugin, the hooks files with the hooks, right after them, with `AutoMemoryOff`,
+`Auto memory of Claude Code is off in <file>, so every session follows the rules of polix.`, whether or not the
+file changed, and with the hooks outside a repository that it is not inside one; with
 one more line when the agents include Codex, saying its support is not implemented in this release and the setup is
 untested. It warns on stderr about the other settings of Claude Code that also register the hooks and, with
 `Unlisted`, that git does not run hooks from its configuration (it needs git 2.54 or later): the hooks are kept, but
@@ -85,8 +89,13 @@ installing again does not turn them on. With other parts the install exits 0 als
   differs, their answers read by `agentconf.ClaudeAnswer`), or for Codex `codex plugin marketplace add` and the
   plugin enabled in `~/.codex/config.toml` (`agentconf.CodexPlugin`); a CLI that is missing leaves a todo.
 - `RegisterHooks`: writes the hooks of polix of an agent (`setup.Setup.Hooks`, given by the shell) into its hooks
-  file in place of the ones of polix it had (`setup.HookHandler.Polix`), keeping every other setting and hook
-  (`agentconf.MergeHooks`); a file that is not a JSON object is an error that names it. Every handler of polix,
+  file in place of the ones of polix it had (`setup.HookHandler.Polix`), keeping every other setting and hook; in
+  the same write it sets each setting of the agent (`setup.Setup.Settings`, given by the shell) to its value
+  (`agentconf.MergeHooksAndKeys`): for Claude Code `"autoMemoryEnabled": false`, whatever value the
+  key had, in its place when the file has it and as its last key otherwise, so the auto memory of Claude Code
+  (`setup.AutoMemoryKey`) is off for the whole team; Codex gets none. The file is `created` when it did not exist,
+  `updated` when its content changes and no change otherwise, one change per file; a file that is not a JSON
+  object is an error that names it and keeps its bytes. Every handler of polix,
   the update one included, carries the status `setup.StatusMessage`, written as `"statusMessage": "polix"`, so both
   agents show `polix` next to their spinner while the hook runs; a file written without it gets it on the next
   install. Both agents get `SubagentStart`, right after `UserPromptSubmit` in `setup.HookEvents` and without
@@ -124,8 +133,10 @@ write nothing; with only `--githooks` the errors of the two hooks of git are joi
    disabled (`Unlisted`), and stops there (`installGitHooks`). Otherwise (`installParts`) it asks the port for the
    files of the marketplace with the plugin, then for confirmation.
 4. The shell writes the plugin and registers it with each agent with `Skills`, registers the hooks of each agent
-   with `Hooks`, writes the hooks of git of the output (`RegisterGitHook`) and asks which of them git does not list
+   with `Hooks`, with its settings, and keeps in `AutoMemoryOff` the hooks file of the agent that got them,
+   writes the hooks of git of the output (`RegisterGitHook`) and asks which of them git does not list
    or lists as disabled (`Unlisted`), then asks the PATH and, with the hooks of the agents, the duplicates
    (`setup.Setup.Duplicates` of the settings `Registered`).
-5. The command prints the response (`in_print.go`), with the line on Codex not implemented when Codex is among the
+5. The command prints the response (`in_print.go`), with the line on the auto memory after the hooks registered,
+   the line on Codex not implemented when Codex is among the
    agents; with only the hooks of git, only the changes and the warnings, and exits 1 when git does not list them.

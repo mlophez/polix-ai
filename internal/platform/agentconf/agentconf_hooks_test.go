@@ -235,3 +235,107 @@ func TestReadHooksAndRegisters(t *testing.T) {
 		t.Fatal("a file that is not JSON")
 	}
 }
+
+// A top-level key read as a boolean: true and false set it, any other value, a missing key and a content that is not
+// a JSON object set nothing.
+func TestBoolKey(t *testing.T) {
+	for data, want := range map[string][2]bool{
+		`{"autoMemoryEnabled": true}`:                   {true, true},
+		`{"model": "opus", "autoMemoryEnabled": false}`: {false, true},
+		`{"autoMemoryEnabled": "false"}`:                {false, false},
+		`{"autoMemoryEnabled": null}`:                   {false, false},
+		`{"hooks": {"autoMemoryEnabled": true}}`:        {false, false},
+		`{"model": "opus"}`:                             {false, false},
+		``:                                              {false, false},
+		`{`:                                             {false, false},
+		`[1, 2]`:                                        {false, false},
+		`{"autoMemoryEnabled": true, "autoMemoryEnabled": 1}`: {false, false},
+	} {
+		if value, set := BoolKey([]byte(data), "autoMemoryEnabled"); value != want[0] || set != want[1] {
+			t.Errorf("%s: %v %v", data, value, set)
+		}
+	}
+}
+
+// A missing key is appended as the last key, one there of any value is replaced in its place, an equal one is no
+// change, and every other key keeps its bytes; a file that does not exist is created.
+func TestSetKeys(t *testing.T) {
+	off := []Setting{{Key: "autoMemoryEnabled", Value: false}}
+	created, action, err := SetKeys(nil, false, off)
+	if err != nil || action != "created" || string(created) != "{\n  \"autoMemoryEnabled\": false\n}\n" {
+		t.Fatalf("a new file: %q %q %v", created, action, err)
+	}
+	hooks, _, _ := MergeHooks(nil, false, want, events, ours)
+	got, action, err := SetKeys(hooks, true, off)
+	if err != nil || action != "updated" ||
+		!strings.HasSuffix(string(got), "    ]\n  },\n  \"autoMemoryEnabled\": false\n}\n") ||
+		!strings.HasPrefix(string(got), strings.TrimSuffix(string(hooks), "\n}\n")) {
+		t.Fatalf("appended last, the hooks kept:\n%s", got)
+	}
+	for _, value := range []string{"true", `"no"`, "null", "{}"} {
+		mine := "{\n  \"permissions\": {\n    \"allow\": []\n  },\n  \"autoMemoryEnabled\": " + value + ",\n  \"model\": \"opus\"\n}\n"
+		got, action, err := SetKeys([]byte(mine), true, off)
+		if err != nil || action != "updated" ||
+			string(got) != strings.Replace(mine, `"autoMemoryEnabled": `+value, `"autoMemoryEnabled": false`, 1) {
+			t.Errorf("%s is replaced in its place:\n%s", value, got)
+		}
+	}
+	same := "{\n  \"autoMemoryEnabled\": false,\n  \"model\": \"opus\"\n}\n"
+	if got, action, err := SetKeys([]byte(same), true, off); err != nil || action != "" || got != nil {
+		t.Fatalf("an equal key is no change: %q %q %v", got, action, err)
+	}
+	if got, action, err := SetKeys([]byte(same), true, nil); err != nil || action != "" || got != nil {
+		t.Fatalf("no keys is no change: %q %q %v", got, action, err)
+	}
+	if got, action, err := SetKeys(nil, false, nil); err != nil || action != "" || got != nil {
+		t.Fatalf("no keys creates no file: %q %q %v", got, action, err)
+	}
+	for _, bad := range []string{"[1, 2]", "{", `{} x`} {
+		if _, _, err := SetKeys([]byte(bad), true, off); err == nil {
+			t.Errorf("%s is not a settings file", bad)
+		}
+	}
+}
+
+func TestMergeHooksAndKeys(t *testing.T) {
+	off := []Setting{{Key: "autoMemoryEnabled", Value: false}}
+	created, action, err := MergeHooksAndKeys(nil, false, want, events, ours, off)
+	if err != nil || action != "created" || !Registers(created, ours) ||
+		!strings.HasSuffix(string(created), "    ]\n  },\n  \"autoMemoryEnabled\": false\n}\n") {
+		t.Fatalf("a new file gets the hooks and the key last: %q %v\n%s", action, err, created)
+	}
+	if got, action, err := MergeHooksAndKeys(created, true, want, events, ours, off); err != nil || action != "" ||
+		got != nil {
+		t.Fatalf("a file with both is no change: %q %q %v", got, action, err)
+	}
+	hooks, _, _ := MergeHooks(nil, false, want, events, ours)
+	if got, action, err := MergeHooksAndKeys(hooks, true, want, events, ours, off); err != nil ||
+		action != "updated" || string(got) != string(created) {
+		t.Fatalf("only the key changes: %q %v\n%s", action, err, got)
+	}
+	first := "{\n  \"autoMemoryEnabled\": false,\n  \"hooks\": {\n    \"Stop\": [\n      {\"hooks\": [{\"type\": \"command\", \"command\": \"polix old\"}]}\n    ]\n  }\n}\n"
+	got, action, err := MergeHooksAndKeys([]byte(first), true, want, events, ours, off)
+	if err != nil || action != "updated" ||
+		!strings.HasPrefix(string(got), "{\n  \"autoMemoryEnabled\": false,\n  \"hooks\": {") ||
+		strings.Count(string(got), "autoMemoryEnabled") != 1 || strings.Contains(string(got), "polix old") {
+		t.Fatalf("only the hooks change, the key in its place: %q %v\n%s", action, err, got)
+	}
+	only, _, _ := MergeHooks(nil, false, want, events, ours)
+	if data, action, err := MergeHooksAndKeys(only, true, nil, events, ours, nil); err != nil ||
+		action != "removed" || data != nil {
+		t.Fatalf("without hooks nor keys the file goes: %q %q %v", data, action, err)
+	}
+	if data, action, err := MergeHooksAndKeys(created, true, nil, events, ours, nil); err != nil ||
+		action != "updated" || string(data) != "{\n  \"autoMemoryEnabled\": false\n}\n" {
+		t.Fatalf("removing the hooks keeps the key: %q %v\n%s", action, err, data)
+	}
+	if data, action, err := MergeHooksAndKeys(nil, false, nil, events, ours, nil); err != nil || action != "" ||
+		data != nil {
+		t.Fatalf("nothing to write creates no file: %q %q %v", data, action, err)
+	}
+	for _, bad := range []string{"[1, 2]", "{", `{"hooks": 1}`} {
+		if _, _, err := MergeHooksAndKeys([]byte(bad), true, want, events, ours, off); err == nil {
+			t.Errorf("%s is not a settings file", bad)
+		}
+	}
+}

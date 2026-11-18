@@ -73,8 +73,12 @@ type Port interface {
 	WriteState(ctx context.Context, gitDir string) (string, error)
 	// HooksFiles returns the hooks files of agent (setup.Claude or setup.Codex) of paths that exist, decoded: their
 	// hooks, or why they cannot be read or are not JSON. An empty file is not JSON for Claude Code, whose settings
-	// they are, and has no hooks for Codex.
+	// they are, and has no hooks for Codex. The settings of Claude Code also give the boolean they set for its auto
+	// memory (setup.AutoMemoryKey).
 	HooksFiles(ctx context.Context, agent string, paths []string) map[string]setup.HooksFile
+	// AutoMemoryEnv returns the value of the environment variable that turns the auto memory of Claude Code on or
+	// off (setup.AutoMemoryVariable); empty when unset.
+	AutoMemoryEnv(ctx context.Context) string
 	// CodexEnabled reports whether the configuration of Codex at path enables the plugin polix.
 	CodexEnabled(ctx context.Context, path string) bool
 	// Plugin returns the files of the plugin embedded in the binary, by path below polix/, and the plugin written
@@ -144,7 +148,7 @@ func Command(rules rule.Load, cache version.Load, loadWorkflow workflow.Load) *c
 // run is the shell, from request to response: it reads through the port everything doctor looks at (the
 // latest release only for a release build without --hook nor --offline, saving what it saw; inside a repository
 // its workflow, the programs it requires, rules, checks, base and state; the hooks files and the configuration of
-// the agents, decoded; the plugin; Claude Code only without --hook and with the plugin of this binary), calls the
+// the agents, decoded, and the variable of the auto memory of Claude Code; the plugin; Claude Code only without --hook and with the plugin of this binary), calls the
 // logic once and builds the response.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
 	home := port.Home(ctx)
@@ -174,7 +178,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		Workflow: repo.wf, Found: repo.found, WorkflowErr: repo.wfErr, Requirements: repo.requirements,
 		Rules: repo.rules, Invalid: repo.invalid, RulesErr: repo.rulesErr, Missing: repo.missing,
 		Runnable: repo.runnable, BaseErr: repo.baseErr,
-		ClaudeHooks: claudeHooks, CodexHooks: codexHooks, CodexEnabled: codexEnabled, Plugin: plugin,
+		ClaudeHooks: claudeHooks, AutoMemoryEnv: port.AutoMemoryEnv(ctx), CodexHooks: codexHooks, CodexEnabled: codexEnabled, Plugin: plugin,
 		ClaudeInstalled: installed, ClaudeEnabled: enabled, ClaudeFolder: folder, ClaudeErr: claudeErr,
 		SameFolder: port.SameFile(ctx, folder, s.PluginDir()), StateDir: repo.stateDir, StateErr: repo.stateErr,
 		GitHooks: repo.gitHooks, DisabledGitHooks: repo.disabled, ListsHooks: repo.listsHooks}

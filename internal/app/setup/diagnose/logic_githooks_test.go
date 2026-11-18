@@ -18,10 +18,10 @@ func githookLines(out Output) string {
 	return b.String()
 }
 
-// AC15: git listing both hooks of polix is one ok line, right after the hooks of Claude Code; one missing is a
-// warning naming its event and polix install; one git lists as disabled is a warning that it is disabled in the git
-// configuration, without polix install, which does not enable it; a git that cannot list hooks is a warning that it
-// does not run hooks from its configuration; none of them fails the report.
+// AC15: git listing both hooks of polix is one ok line, right after the hooks of Claude Code and its auto memory;
+// one missing is a warning naming its event and polix install; one git lists as disabled is a warning that it is
+// disabled in the git configuration, without polix install, which does not enable it; a git that cannot list hooks
+// is a warning that it does not run hooks from its configuration; none of them fails the report.
 func TestDecideGitHooks(t *testing.T) {
 	i := healthy(t)
 	i.ListsHooks = true
@@ -31,7 +31,8 @@ func TestDecideGitHooks(t *testing.T) {
 		"later)\n" || out.Failed {
 		t.Fatalf("both listed:\n%s", text(out))
 	}
-	if got := text(out); !strings.Contains(got, "ok hooks registered in "+filepath.FromSlash("/r/.claude/settings.json")+"\nok githooks ") {
+	if got := text(out); !strings.Contains(got, "ok hooks registered in "+filepath.FromSlash("/r/.claude/settings.json")+
+		"\nok memory auto memory of Claude Code is off\nok githooks ") {
 		t.Fatalf("after the hooks of Claude Code:\n%s", got)
 	}
 

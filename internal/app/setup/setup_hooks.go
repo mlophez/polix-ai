@@ -34,6 +34,16 @@ type HooksFile struct {
 	Hooks   map[string][]HookGroup // the groups of hooks of each event
 	ReadErr error                  // why the file cannot be read
 	Err     error                  // why its content is not a hooks file: not JSON, or its hooks not an object
+	// AutoMemory is the boolean a settings file of Claude Code sets for AutoMemoryKey, "true" or "false"; empty
+	// when it sets none: no key, a value that is not a JSON boolean, or a content that is not a JSON object.
+	AutoMemory string
+}
+
+// Setting is a top-level key polix writes in the hooks file of an agent next to its hooks, with its boolean value.
+// It is built with a literal followed by Valid.
+type Setting struct {
+	Key   string
+	Value bool
 }
 
 const (
@@ -55,6 +65,15 @@ const UpdateCommand = "polix update --hook"
 // StatusMessage is the text both agents show next to their spinner while a hook of polix runs, the same on every
 // handler polix registers, so the user knows who the wait is on.
 const StatusMessage = "polix"
+
+// AutoMemoryKey is the setting of Claude Code that turns its auto memory on or off: the notes the agent saves by
+// itself in one session and loads in the next ones, outside the repository and the rules of polix. polix writes it
+// false in the settings of the project with the hooks.
+const AutoMemoryKey = "autoMemoryEnabled"
+
+// AutoMemoryVariable is the environment variable of Claude Code that turns its auto memory off with 1 and on with
+// 0, above every settings file.
+const AutoMemoryVariable = "CLAUDE_CODE_DISABLE_AUTO_MEMORY"
 
 // legacyCommands are the commands earlier builds registered, recognized so install replaces them.
 var legacyCommands = []string{"polix update --hook; polix doctor --hook"}
@@ -101,10 +120,16 @@ func (h HookHandler) Valid() error {
 }
 
 // Valid reports why f is not a hooks file as read: one that cannot be read or is not a hooks file holds no hooks,
-// and every group it holds is valid.
+// one that cannot be read sets no auto memory, which is empty, "true" or "false", and every group it holds is
+// valid.
 func (f HooksFile) Valid() error {
-	if (f.ReadErr != nil || f.Err != nil) && len(f.Hooks) > 0 {
+	switch {
+	case (f.ReadErr != nil || f.Err != nil) && len(f.Hooks) > 0:
 		return errors.New("a hooks file that cannot be read holds no hooks")
+	case f.ReadErr != nil && f.AutoMemory != "":
+		return errors.New("a hooks file that cannot be read sets no auto memory")
+	case f.AutoMemory != "" && f.AutoMemory != "true" && f.AutoMemory != "false":
+		return errors.New(`the auto memory of a hooks file is "true", "false" or empty`)
 	}
 	for _, groups := range f.Hooks {
 		for _, g := range groups {
@@ -143,6 +168,28 @@ func (s Setup) Hooks(agent string) map[string][]HookGroup {
 		out["PostToolUseFailure"] = call.Alone(tools)
 	}
 	return out
+}
+
+// Settings returns the settings polix writes for agent in its hooks file with the hooks: for Claude Code its auto
+// memory off (AutoMemoryKey false), so no note of an earlier session steers a session away from the rules of
+// polix; none for Codex.
+func (s Setup) Settings(agent string) []Setting {
+	if agent != Claude {
+		return nil
+	}
+	off := Setting{Key: AutoMemoryKey, Value: false}
+	if off.Valid() != nil {
+		return nil
+	}
+	return []Setting{off}
+}
+
+// Valid reports why s is not a setting: it needs a key.
+func (s Setting) Valid() error {
+	if strings.TrimSpace(s.Key) == "" {
+		return errors.New("a setting needs a key")
+	}
+	return nil
 }
 
 // Alone returns the group of hooks that runs h alone on the tools of matcher.

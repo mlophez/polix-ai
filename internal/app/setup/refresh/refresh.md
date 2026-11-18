@@ -41,7 +41,11 @@ manifest of the plugin polix is in the marketplace (`setup.Plugin.Written`), wit
 - `UpdatePlugin`: `claude plugin update` and `codex plugin marketplace upgrade`, when their CLIs are here and, for
   Codex, its configuration enables the plugin (`agentconf.CodexEnabled`); their failures are ignored.
 - `RegisterHooks`: rewrites the hooks of polix of an agent (`setup.Setup.Hooks`, given by the shell) in its hooks
-  file (`agentconf.MergeHooks`).
+  file and, in the same write, sets each setting of the agent (`setup.Setup.Settings`, given by the shell) to its
+  value (`agentconf.MergeHooksAndKeys`), as `polix install` does: the settings of Claude Code
+  that register polix get `"autoMemoryEnabled": false`, in its place when they have it and as their last key
+  otherwise; the hooks file of Codex gets none. One change per file, `updated` when its content changes; a file
+  that is not a JSON object is an error that names it.
 
 ## Errors
 
@@ -55,5 +59,5 @@ plugin and the hooks are joined and returned after printing what changed; the co
    hooks files that register polix.
 3. `Decide` decides.
 4. The shell asks the files of the marketplace, writes the plugin, tells the agents when it changed, and rewrites
-   the hooks.
+   the hooks of the agents of `Hooks` with their settings.
 5. The command prints the response.

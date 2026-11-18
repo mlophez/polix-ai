@@ -31,9 +31,9 @@ and `GitHooks`, the hooks of git of polix (`setup.GitHooks`) of a repository: wi
 parts asked only when both agents leave it, since install writes them for any agent, so they stay while one is still
 installed; outside a repository there are none. A part of the repository (`--hooks`, `--githooks`) asked outside one
 is its `Failure`, `not inside a git repository`; without parts asked, outside a repository only the plugin goes. The
-`Summary` (`setup.Setup.Summary`) names, as the parts ask, the plugin and the hooks file of each agent and the hooks
-of git it removes from the local git configuration of the repository (`hook.polix-pre-commit`,
-`hook.polix-commit-msg`).
+`Summary` (`setup.Setup.Summary`) names, as the parts ask, the plugin and the hooks file of each agent, without the
+settings install writes there (`, with auto memory off`), which uninstall leaves, and the hooks of git it removes
+from the local git configuration of the repository (`hook.polix-pre-commit`, `hook.polix-commit-msg`).
 
 ## Response
 
@@ -53,7 +53,10 @@ did not fail, `nothing to remove` unless `--quiet`.
   (`agentconf.CodexPlugin`).
 - `UnregisterHooks`: the hooks of polix (`setup.HookHandler.Polix`) removed from a hooks file
   (`agentconf.MergeHooks` with none to write), and the file when they were all it held; a file that is not a JSON
-  object is an error that names it.
+  object is an error that names it. The settings install writes with the hooks (`setup.Setup.Settings`, the
+  `"autoMemoryEnabled": false` of Claude Code) stay, since uninstall cannot tell whether install or the team wrote
+  them: a file whose hooks of polix were all it held besides them is `updated` and left as `{"autoMemoryEnabled":
+  false}`, not removed.
 - `RemovePlugin`: removes the marketplace, and `~/.polix` when it is left empty.
 - `UnregisterGitHook`: removes the section of a hook of git (`hook.polix-pre-commit`, `hook.polix-commit-msg`) from
   the local configuration of the repository (`git.Repo.RemoveHook`), reported as `removed` with its key

@@ -13,8 +13,8 @@ import (
 // built with a literal followed by Valid.
 type Finding struct {
 	Level string // LevelOK, LevelWarn or LevelFail
-	// Area is binary, version, path, git, repo, workflow, requirements, rules, hooks, githooks, plugin, codex or
-	// state.
+	// Area is binary, version, path, git, repo, workflow, requirements, rules, hooks, memory, githooks, plugin, codex
+	// or state.
 	Area    string
 	Message string
 }
@@ -44,6 +44,7 @@ type Inspection struct {
 	Runnable        map[string]error     // by check: why it cannot run as a program (not executable, no interpreter)
 	BaseErr         error                // why no base branch of the workflow exists
 	ClaudeHooks     map[string]HooksFile // the settings of Claude Code that exist (ClaudeSettingsFiles), by path
+	AutoMemoryEnv   string               // the value of AutoMemoryVariable; empty when unset
 	CodexHooks      map[string]HooksFile // the hooks files of Codex that exist (CodexHooksFiles), by path
 	CodexEnabled    bool                 // whether the configuration of Codex enables the plugin polix
 	Plugin          Plugin               // the plugin written in the local marketplace and the one of the binary

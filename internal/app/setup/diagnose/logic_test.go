@@ -20,7 +20,7 @@ var logicPlugin = map[string][]byte{
 }
 
 // hooksOf is a hooks file with the content data, as the adapter reads it: the handlers that run a command, in
-// the groups that keep one; a content that is not JSON is its error.
+// the groups that keep one, and the boolean it sets for the auto memory; a content that is not JSON is its error.
 func hooksOf(data []byte) setup.HooksFile {
 	var doc struct {
 		Hooks map[string][]struct {
@@ -30,6 +30,7 @@ func hooksOf(data []byte) setup.HooksFile {
 				Timeout float64 `json:"timeout"`
 			} `json:"hooks"`
 		} `json:"hooks"`
+		AutoMemory json.RawMessage `json:"autoMemoryEnabled"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return setup.HooksFile{Err: err}
@@ -48,7 +49,11 @@ func hooksOf(data []byte) setup.HooksFile {
 			}
 		}
 	}
-	return setup.HooksFile{Hooks: hooks}
+	f := setup.HooksFile{Hooks: hooks}
+	if s := string(doc.AutoMemory); s == "true" || s == "false" {
+		f.AutoMemory = s
+	}
+	return f
 }
 
 // exampleSettings is the example settings of Claude Code of the repository, what install writes.
@@ -83,20 +88,22 @@ func text(out Output) string {
 
 func TestDecideHealthy(t *testing.T) {
 	out := Decide(healthy(t), false)
-	if out.Failed || strings.Contains(text(out), "warn") || len(out.Findings) != 8 {
+	if out.Failed || strings.Contains(text(out), "warn") || len(out.Findings) != 9 {
 		t.Fatalf("healthy:\n%s", text(out))
 	}
 }
 
 func TestDecideFindsProblems(t *testing.T) {
 	i := healthy(t)
-	var settings map[string]map[string][]map[string]any
+	var settings struct {
+		Hooks map[string][]map[string]any `json:"hooks"`
+	}
 	if err := json.Unmarshal(exampleSettings(t), &settings); err != nil {
 		t.Fatal(err)
 	}
-	delete(settings["hooks"], "Stop")
-	settings["hooks"]["PreToolUse"][0]["matcher"] = "Edit|Write"
-	settings["hooks"]["PostToolUse"][0]["hooks"] = []map[string]any{{"type": "command", "command": "polix hook claude"}}
+	delete(settings.Hooks, "Stop")
+	settings.Hooks["PreToolUse"][0]["matcher"] = "Edit|Write"
+	settings.Hooks["PostToolUse"][0]["hooks"] = []map[string]any{{"type": "command", "command": "polix hook claude"}}
 	data, err := json.Marshal(settings)
 	if err != nil {
 		t.Fatal(err)
