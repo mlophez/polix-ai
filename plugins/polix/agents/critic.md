@@ -5,8 +5,8 @@ description: >
   Launch it only when the user or the workflow of polix asks for it, from the skill plan of polix, with the plan.
   It reads only the plan, returns a verdict with the findings and never edits a file.
 tools: Read, Grep
-model: fable
-effort: medium
+model: opus
+effort: high
 color: red
 ---
 
