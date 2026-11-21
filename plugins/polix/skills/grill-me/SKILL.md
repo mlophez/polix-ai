@@ -18,6 +18,7 @@ Map the subject as a design tree: each decision branches into the decisions that
 The frontier is every open decision whose prerequisites are settled: what you can ask now without guessing answers.
 The what comes first: every decision of the how hangs off the decisions of the what.
 The brief it returns feeds the skill `spec`, or the agent that edits the code directly in the flow without a plan.
+Run on its own, it then asks the user which of the two comes next.
 The folder of rules is the one the project names in `AGENTS.md`, `CLAUDE.md` or the session, `ai/rules/` by default.
 
 ## Input
@@ -33,10 +34,12 @@ The folder of rules is the one the project names in `AGENTS.md`, `CLAUDE.md` or 
 
 - **Brief**: the sections of `Brief`, in its order, written in the language of the session.
 - **Pending**: the decisions the user left open or deferred, or "none".
+- **Next step**: `plan`, `implement` or `stop`, as the user chose it at Step 10; only when no skill invoked this one.
 
 ## Limits
 
-- Never write, edit nor commit a file, and never act on the subject before the user confirms the brief.
+- Never write, edit nor commit a file, nor act on the subject, until the user confirms the brief and chooses at
+  Step 10 to implement it.
 - Never ask the user a fact you can find in the files, git, the tools or the docs.
 - Never settle a decision yourself: put each one to the user, even when you recommend its answer.
 - Ask one decision per call of `AskUserQuestion`, or per message without it, and wait for its answer.
@@ -60,6 +63,7 @@ Grilling progress:
 - [ ] Step 7: Record the answer and the facts reported, and recompute the frontier (see Step 7).
 - [ ] Step 8: Repeat Steps 5 to 7 until the frontier is empty, then ask each deferred decision again, alone.
 - [ ] Step 9: Give the `Brief` and ask the user to confirm it (see Step 9).
+- [ ] Step 10: When no skill invoked this one, ask the user the next step and follow it (see Step 10).
 ```
 
 ### Step 2: Explore the project and the code the subject touches
@@ -107,6 +111,33 @@ A report is a lead, never a fact: read yourself each file a fact of `Facts` name
   Without `AskUserQuestion`, ask for the confirmation in the text after the `Brief`.
 - An adjustment reopens the decisions it touches: go back to Step 6 for them.
 - When a skill invoked this one, return the confirmed `Brief` to it and go on with that skill's checklist.
+  Skip Step 10: that skill decides what comes next.
+
+### Step 10: Ask the user the next step and follow it
+
+Ask it always once the `Brief` is confirmed, even when the conversation already names the next step.
+Ask it as one decision (see `Question`, or `Question as text` without `AskUserQuestion`), with three options:
+
+- **Write a plan**: the skill `spec` turns the confirmed `Brief` into a plan, without interviewing again.
+- **Implement directly**: this session changes the code from the `Brief`, in the flow without a plan.
+  With `Pending` not empty, its description lists those decisions and says only what does not hang off them is built.
+- **Stop**: end with the `Brief` and `Pending`, doing nothing more.
+
+Recommend one option, first in the list:
+
+- The next step the user already named in the conversation, when they named one.
+- Otherwise **Write a plan** when Step 3 found the change does not fit one review or a reason of the pre-mortem
+  with a high impact, and **Implement directly** for every other change.
+
+Then follow the answer:
+
+- **Write a plan**: never start `spec` yourself; tell the user to run it in this session, with the prefix of its
+  plugin, so it takes the confirmed `Brief`.
+  When the subject is a file of the folder of tasks, give its path as the argument, so `spec` marks the task planned.
+- **Implement directly**: change the code from the `Brief`, under the rules and the workflow of the project.
+  Write no plan file and leave the status of a task file as it is.
+  With `Pending` not empty, build only what does not hang off its decisions, and list them when you end.
+- **Stop**: end with the `Output`.
 
 ## References
 

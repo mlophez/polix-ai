@@ -9,6 +9,10 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- `/polix:grill-me`, run on its own, asks the next step once you confirm the brief: write a plan (it tells you to
+  run `/polix:spec` in the same session, which takes the brief without interviewing again), implement the change
+  in the session without a plan, or stop. It recommends a plan when the change does not fit one review or has a
+  high-impact risk, or the step you already named. Invoked by `/polix:spec`, it asks nothing and returns the brief.
 - `polix doctor` prints a report easier to scan: a header with the version, the checks grouped into Machine,
   Repository (with the root) and Agents, the area column aligned, the fix of a warning or failure on its own `→`
   line, and a count line `<n> ok · <n> warn · <n> fail`. In a color terminal the levels are colored symbols and long

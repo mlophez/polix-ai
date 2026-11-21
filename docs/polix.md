@@ -1499,7 +1499,9 @@ also prints that Codex support is not implemented in this release and the setup 
   `doctor` fixes the setup, `task` adds a task to the backlog `tasks/` below `path` from a template with a frontmatter, ready
   for `spec`, `grill-me` interviews the user one decision at a time on what they want of a change, the what and
   the how only the user should decide, exploring the code itself, and returns a brief without editing anything, which
-  feeds `spec` or the agent that edits the code directly in the flow without a plan; polix enforces neither flow,
+  feeds `spec` or the agent that edits the code directly in the flow without a plan; run on its own, once the user
+  confirms the brief it asks the next step: write a plan, which it never starts but tells the user to run `spec` in
+  the same session, implement the change in the session without a plan, or stop; polix enforces neither flow,
   each repository injects the one it wants from its `polix.yaml`, `spec` takes the brief from `grill-me`, which it
   invokes, and writes a plan in the folder of plans on a new branch named as the plan, driven by its outcome
   (`Overview`, then
