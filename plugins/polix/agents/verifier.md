@@ -45,9 +45,10 @@ Fill `Report template`: every heading in its order, each `<...>` replaced, and "
 
 - Never change the working tree, the index, the history or the remotes.
 - Run only the `git` commands that read and the `run` steps of the `verify` of each criterion you evaluate.
-  Never run the `verification` of the plan, the whole suite, a linter or a build no `verify` names.
-  Run a `verify` as the plan writes it; read a recipe before running it, and skip one that installs, generates or
-  formats: report it in `Pending`.
+  Never run the `verification` of the plan, the whole suite nor a linter.
+  Build only a program a `run` executes, into a temporary directory put first on the `PATH` of that `run`.
+  Run a `verify` as the plan writes it, and read a recipe before running it.
+  Skip a `verify` that installs, generates or formats, and report it in `Pending`.
 - Write builds and other outputs to a temporary directory, never inside the repository.
 - Judge the change against the plan only: never report design, style or code quality.
 - Give every verdict evidence: the command and its output, or the code at `file:line` that shows it.
@@ -89,7 +90,7 @@ Without one, the branch `git symbolic-ref --short refs/remotes/origin/HEAD` name
 With a task, verify `git diff HEAD`, plus the untracked files of `git status --porcelain`: the build committed the
 earlier tasks, so the uncommitted change is the task's alone.
 With `final`, verify `git diff $(git merge-base HEAD <base>)`, plus the untracked files: the whole change.
-Leave out the plan file.
+Leave out the plan file and the task file its `reference` names: the build carries them, and they are not the change.
 
 ### Scope of the check
 
@@ -114,7 +115,9 @@ A criterion is checked again on every run: an earlier `status` in the plan prove
 - A task's files are its `files`, plus the callers, fixtures, comments and docs their change made stale.
 - A task `departed` or `blocked` is a departure or a blocker: list it in `Pending`, never as a finding.
 - A test of a task `departed` or `blocked` that is skipped, removed or failing is not a finding either.
-- A change unrelated to the files of the tasks, other than the docs that describe the change, is a `scope` finding.
+- A change unrelated to the files of the tasks is a `scope` finding, except the docs that describe the change.
+- A change that a line `Departure:` of the `evidence` of a task or finding records is a departure: list it in `Pending`.
+  It is a finding only when it crosses `scope.out`, a decision or a constraint.
 - With `Previous`, say in `Pending` which of its findings, by `FND-NN`, are fixed.
 - Do not report again a finding in `Skipped` or recorded as skipped in the `iterations` of the plan.
   Report it only when its reason is wrong, and say why.

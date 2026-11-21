@@ -91,6 +91,7 @@ Plan progress:
 
 Never reach Step 7 before Step 6 is done: the critique is what the approval relies on.
 Every time `grill-me` reopens the spec, update the keys it changes, then run Step 6 again whole.
+When adjusting a plan, follow `Adjusting a plan` at every step.
 
 ### Step 2: Get the confirmed spec from `grill-me`
 
@@ -124,15 +125,16 @@ Every time `grill-me` reopens the spec, update the keys it changes, then run Ste
 
 ### Step 5: Write the plan file from the spec and the code
 
-1. Create the plan file from [template.yaml](template.yaml) (see `Plan file`), or open the plan to adjust.
+1. Create the plan file from [template.yaml](template.yaml) (see `Plan file`).
+   Or open the plan to adjust and edit it as `Adjusting a plan` says.
 2. Write each key in the order of template.yaml, from the section of the spec `Spec to keys` names for it.
    Follow `Request`, `Outcome`, `Acceptance criteria`, `Tasks`, `High risk` and `Tests` for its form.
 3. A key that needs a decision the spec does not settle is a reopened spec: invoke `grill-me` with `Adjust`.
 
 ### Step 6: Have `critic` review the plan, and fix what it finds, up to three rounds
 
-The critic reads the plan in a context of its own, with the spec, the template, the rules and three sections of this
-skill (`High risk`, `Tests` and `Readability`), never the code.
+The critic reads the plan in a context of its own, with the spec, the template and the rules, never the code.
+Of this skill it reads only `Acceptance criteria`, `High risk`, `Tests`, `Readability` and `Plan file`.
 It judges whether an executor could build it without deciding, and whether it follows the spec, the rules and the form.
 
 1. Launch the subagent `critic` with the prompt of `Critic prompt`, and wait for its report.
@@ -355,7 +357,7 @@ What to send `critic` at each round of Step 6, in the language of the session:
 Plan: <the path of the plan file>
 Spec: <the spec the user confirmed, whole, with the answers of every reopening>
 Template: <the path of the template.yaml next to this skill>
-Skill: <the path of this SKILL.md, whose sections High risk, Tests and Readability the plan follows>
+Skill: <the path of this SKILL.md, for its sections Acceptance criteria, High risk, Tests, Readability and Plan file>
 Rules: <the path of the folder of rules, or "none" when it does not exist>
 Round: <the round, as 1 of 3>
 Previous: <each finding of the earlier rounds, with fixed, answered by the user or left open, or "none">
@@ -458,8 +460,8 @@ Never write placeholders:
 
 Revise the file in place with targeted edits, never writing it again whole nor elsewhere.
 At Step 2, `grill-me` reopens only the decisions the adjustment touches and the ones that depend on them.
-Read first `iterations`, the last one first.
-Their departures and open findings are what the adjustment usually answers.
+Read first `iterations`, the last one first, and the lines `Departure:` of the `evidence` of the tasks and findings.
+The departures and the open findings are what the adjustment usually answers.
 Bring the new requirements of the user into `outcome`.
 Keep the ids of the literals, journeys, criteria and tasks, and add new ones after the last.
 Set back to `status: pending` and `evidence: none` a criterion that changes, or that a task to do covers.

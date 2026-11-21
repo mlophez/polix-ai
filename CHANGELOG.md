@@ -21,10 +21,10 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   more than the plan. It receives the spec, the template and the folder of rules, and checks that every item of the
   spec has its place, that every rule a task names exists, is not retired and none that applies is missing, that the
   keys follow the template with no placeholder, comment nor code left, and that the plan parses. It also receives the
-  path of the skill and checks the tasks, tests and text against its sections `High risk`, `Tests` and
-  `Readability`. Its new categories are `coverage`, `rules`, `format` and `form`, and it gets `Bash`, used only for
-  the parse. The steps of `/polix:plan` after
-  the plan file are now 6 (critique), 7 (approval) and 8 (report).
+  path of the skill and checks the criteria, tasks, tests, text and YAML against its sections `Acceptance criteria`,
+  `High risk`, `Tests`, `Readability` and `Plan file`. Its new categories are `coverage`, `rules`, `format` and
+  `form`, and it gets `Bash`, used only for the parse. The steps of `/polix:plan` after the plan file are now 6
+  (critique), 7 (approval) and 8 (report).
 - `/polix:build` builds a plan one task at a time: for each task `polix:builder` builds it, `polix:verifier` and
   `polix:reviewer` check only that task (the uncommitted change against `HEAD`), its findings go back to the builder
   in iterations of the task, up to five, and once the checks close it the build commits it as `T<N>: <title>`, with
@@ -105,6 +105,16 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   examples of `journeys.md` that ran a whole suite or named the differential as a command, the category of the
   example finding of `/polix:build`, and the templates of `writing-skills` and `writing-agents`, which used the
   phrases the tests of the plugin forbid.
+- `/polix:build` writes the departures of `polix:builder` and the failures of its baseline in the `evidence` of the
+  plan, as lines `Departure:` and `Baseline:`. `polix:verifier` and `polix:reviewer` no longer report a departure
+  the plan records as a finding, and the builder of an iteration, which takes no baseline, no longer counts a
+  failure that was already there as its own.
+- `polix:verifier` and `polix:reviewer` leave out the task file of the plan, which `/polix:build` commits with the
+  first task, instead of reporting it as part of the change. `polix:verifier` builds the program a `verify` runs
+  into a temporary folder, which its limits forbade while they asked for builds outside the repository.
+- `polix:critic` no longer asks a plan already built for an empty `iterations`, and reports nothing on its tasks
+  `done`, which `/polix:plan` never rewrites. `/polix:plan` points its steps to `Adjusting a plan`.
+- `/polix:risk` measures the sample into a folder of `mktemp -d`: `$TMPDIR`, often unset on Linux, wrote to `/`.
 
 ## [0.12.1] - 2026-11-20
 

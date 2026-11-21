@@ -235,7 +235,8 @@ When git ignores the plan file (`git check-ignore -q <plan>`), the commits leave
 
 How to commit:
 
-1. List the changed and untracked paths with `git status --porcelain`: the tree was clean, so all are the run's.
+1. List the changed and untracked paths with `git status --porcelain`.
+   The tree held at most the plan file and its task file when the run started, so all are the run's.
    Stage them by path with `git add <paths>`, never `git add -A`, `-a` nor a path after `git commit`.
 2. Commit with `git commit -m "<subject>" -m "<body>"`, run by its name and ending the line.
    The message holds only those lines: no trailer, no attribution.
@@ -327,6 +328,11 @@ The builder never edits the plan: it reports what it built, and you write it in 
 - **Task**: set the task's `status` and `evidence` as the builder reports them.
   `done`, `departed` or `blocked`; a task `not started` keeps its `status`.
 - **Findings**: for each finding of its `Findings`, set its `status` (`fixed` or `skipped`) and `evidence`.
+- **Departures**: add each item of its `Departures` to the `evidence` of the task or finding it names.
+  Write it as a line `Departure: <what the builder did and why>`, so the checks and later builders read it.
+- **Baseline**: when the builder ran the baseline, add to the task's `evidence` a line `Baseline: <its failures>`.
+  Take the failures its `Verification` reports apart, or write `Baseline: none`; its iterations rely on that line.
+- Keep the lines `Baseline:` and `Departure:` of an earlier `evidence` of the task when a new one replaces it.
 - Write each `evidence` as a literal block `|`, one sentence per line, with the builder's words.
 - A task or finding of the prompt that the report leaves out keeps its `status`: say so in `Pending`.
 

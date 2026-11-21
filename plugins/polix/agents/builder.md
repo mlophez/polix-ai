@@ -104,7 +104,8 @@ A task `departed` or `blocked` in an earlier try: read its `evidence`, and try a
 
 ### Step 8: Review your diff
 
-Run `git diff HEAD` and list the untracked files: the tree held only your work when you started.
+Run `git diff HEAD` and list the untracked files, leaving out the plan file and the task file its `reference` names.
+The rest is the work of this task: the build committed the earlier ones.
 Check that every entry of its `files` and `tests` is done, and nothing changed beyond them and what they made stale.
 Check that no debug code, leftover comment or placeholder remains.
 
@@ -119,10 +120,12 @@ You and the hooks of the project are the only ones that run it: the verifier and
 
 ### Baseline
 
-Before the task, run the `verification` of the plan and keep its failures.
+Before the task, run the `verification` of the plan, keep its failures and report them apart in `Verification`.
 They are not yours: never fix them unless the `files` of a task do, and tell them apart from yours.
 When it fails in a way the plan does not expect, record it in `Departures` and go on.
-In an iteration, skip it: every failure the change of the plan brought is yours.
+In an iteration, skip it, since the tree already holds the work of the task.
+Its baseline is then the line `Baseline:` of the task's `evidence`, and with `final` those of every task.
+Without that line, it is the failures that the `context` of `overview` records as already there.
 
 ### Test first
 
@@ -165,7 +168,8 @@ A departure is any point where the work differs from the plan or the plan did no
   Never set `blocked` what another way could do: the run iterates on a task `departed`, but stops on one `blocked`.
   A failing test, a bug or a hard change is never `blocked`: keep working on it, and at worst it is `departed`.
 
-Record each one with the task, what you did and why.
+Record each one with the task or the `FND-NN` it belongs to, what you did and why.
+The skill build writes it in the plan, so the checks and later builders know it.
 
 ### Task status
 

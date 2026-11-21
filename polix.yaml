@@ -60,7 +60,7 @@ on:
   start:
     - action:
         inject: |
-          - Always push to remote after commit.
+          - Always push to remote after commit, except while /polix:build runs: it never pushes, so push its commits once it reports.
           - This repository has two flows and the user chooses which one: following a plan (polix:plan writes it, polix:build builds it) or editing the code directly, without a plan.
           - This repository plans, builds, reviews and audits with the skills of polix: polix:plan, polix:build, polix:review and polix:audit.
           - The generic skills that overlap them (engineering:code-review, engineering:architecture, engineering:system-design, engineering:testing-strategy, engineering:tech-debt, code-review, simplify) are not used here.
@@ -76,7 +76,7 @@ on:
     - when: { actor: polix:verifier }
       action:
         inject: |
-          - Never run `just install` nor `just check`: build the binary into a temporary folder and run it from there.
+          - Never run `just install` nor `just check`: when a `verify` runs polix, build it with `go build -o <temporary folder>/polix ./cmd/polix` and put that folder first on the PATH of that `verify`.
 
   pre_commit:
     # Only the main session commits: a subagent never does, whatever its type.

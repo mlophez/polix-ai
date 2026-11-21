@@ -1552,7 +1552,9 @@ also prints that Codex support is not implemented in this release and the setup 
     `CUJ-NN`, `AC-NN`, `TN`); a plan in Markdown, written before, is no longer adjusted nor built. A task is one
     behaviour that its own tests show, with no size in lines. `build` coordinates the run and is the only one that
     edits the plan and commits: for each task the builder builds it and reports its `status` and `evidence`, `build`
-    writes them in the plan, then the verifier and the reviewer check the uncommitted change of that task against
+    writes them in the plan, with the builder's departures and the failures of its baseline as lines `Departure:`
+    and `Baseline:` of the `evidence`, which the checks and the builders of its iterations read, then the verifier
+    and the reviewer check the uncommitted change of that task against
     `HEAD`, the verifier only the criteria whose last covering task it is, running only their `verify`, and the
     reviewer only reading the diff, running nothing but `git`; the plan's `verification` is run by the builder alone,
     once after its baseline, and by the hooks of the project; when they leave something to fix, it adds

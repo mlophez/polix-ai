@@ -98,15 +98,17 @@ Give their subject and measures.
 `polix risk --commit` prints the commit, the three totals and one row per file (added, deleted, weight, score, path).
 It uses the weights of the current `polix.yaml`.
 Measure the sample into one file per gate, with the `--changed` of its scope.
+Create one temporary folder for them with `mktemp -d`, and write the path it prints in each later command.
+Each command may run in a new shell, and `TMPDIR` is often unset on Linux.
 The commands below take `main` as the base branch: write the one of Step 2 instead.
 
 ```sh
 for c in $(git log --no-merges --format=%h -n 200 main); do
   polix risk --commit "$c" --changed '*.go' --changed go.mod
-done > "$TMPDIR/risk-go.txt"
+done > "<the folder of mktemp -d>/risk-go.txt"
 ```
 
-On Windows without a POSIX shell, write the same loop with `foreach` in PowerShell.
+On Windows without a POSIX shell, write the same loop with `foreach` in PowerShell, in a new folder of `$env:TEMP`.
 Find the evidence of risk by path with the files of the fix and revert commits of the sample.
 Filter the sample itself, since `-n` with `--grep` counts the commits that match; never use `\b`, which `-E` lacks:
 

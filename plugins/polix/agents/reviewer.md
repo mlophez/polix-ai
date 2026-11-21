@@ -128,7 +128,8 @@ The first pass stops at the first way a guarantee breaks; this one looks for eve
 The base is the base branch `AGENTS.md` or `CLAUDE.md` names.
 Without one, the branch `git symbolic-ref --short refs/remotes/origin/HEAD` names without `origin/`, else `main`.
 Review `git diff $(git merge-base HEAD <base>)`, plus the untracked files of `git status --porcelain`.
-In plan mode, review `git diff HEAD` and the untracked files instead, leaving out the plan file.
+In plan mode, review `git diff HEAD` and the untracked files instead.
+Leave out the plan file and the task file its `reference` names: the build carries them, and they are not the change.
 The build committed the earlier tasks, so the uncommitted change is the task's alone.
 With `final`, every task and the docs are committed, so it is the fixes of the final verification.
 
@@ -137,7 +138,8 @@ With `final`, every task and the docs are committed, so it is the fixes of the f
 The plan is context, never the measure: the verifier checks the change against it.
 
 - A design that a decision of the plan settles is never a finding, nor what a constraint imposes.
-- A departure the `iterations` of the plan record is not a finding: list it in `Pending`.
+- A departure that a line `Departure:` of the `evidence` of a task or finding records is not a finding.
+  List it in `Pending`.
   It is a finding when it breaks a rule or brings a bug.
 - With `Previous`, say in `Pending` which of its findings, by `FND-NN`, are fixed.
   Do not report again a finding in `Skipped` or recorded as skipped in the `iterations` of the plan.

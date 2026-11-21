@@ -181,7 +181,7 @@ tasks:
         why: <what for>
     differential: []  # for a high-risk task, the steps of its differential check against the base version
     status: pending  # the build sets done, departed or blocked, as the builder reports it
-    evidence: none  # the build sets the evidence of done, or why it departed or is blocked, from the builder's report
+    evidence: none  # the build sets it from the builder's report, with its lines Baseline: and Departure:
 
 iterations:  # the plan writes []; the build adds one item per pass of the builder on what the checks left open
   - id: ITER-01  # ITER-01, ITER-02... in the order they run
@@ -199,4 +199,4 @@ iterations:  # the plan writes []; the build adds one item per pass of the build
           <What to change, as the report says it.>
         repeats: none  # or the FND-NN of an earlier iteration the checks report again
         status: open  # the build sets fixed or skipped, as the builder reports it
-        evidence: none  # the build sets the evidence of the fix, or why it was skipped, from the builder's report
+        evidence: none  # the build sets it from the builder's report, with its lines Departure:
