@@ -17,6 +17,7 @@ type Finding struct {
 	// or state.
 	Area    string
 	Message string
+	Fix     string // what to do about the finding; empty when the message tells no action
 }
 
 // Inspection is what polix doctor observed on the machine and in the repository, read and decoded through the
@@ -91,6 +92,14 @@ func (i Inspection) Valid() error {
 		return errors.New("an inspection where git lists hooks needs the hooks it listed")
 	}
 	return i.Setup.Valid()
+}
+
+// Text returns the message of the finding, followed by `: ` and its fix when it has one.
+func (f Finding) Text() string {
+	if f.Fix == "" {
+		return f.Message
+	}
+	return f.Message + ": " + f.Fix
 }
 
 // Problem reports whether the finding is a warning or a failure.

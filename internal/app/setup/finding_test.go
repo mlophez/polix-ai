@@ -30,3 +30,18 @@ func TestInspectionGitHooks(t *testing.T) {
 		t.Fatal("a git that lists hooks without the hooks it listed")
 	}
 }
+
+// The text of a finding is its message, followed by `: ` and its fix when it has one.
+func TestFindingText(t *testing.T) {
+	plain := Finding{Level: LevelOK, Area: "git", Message: "repository at /r"}
+	fixed := Finding{Level: LevelWarn, Area: "hooks", Message: "Stop does not run polix hook claude", Fix: "run polix install"}
+	if plain.Text() != "repository at /r" {
+		t.Fatal(plain.Text())
+	}
+	if fixed.Text() != "Stop does not run polix hook claude: run polix install" {
+		t.Fatal(fixed.Text())
+	}
+	if fixed.Valid() != nil {
+		t.Fatal("a fix is valid")
+	}
+}

@@ -179,3 +179,19 @@ func TestPrint(t *testing.T) {
 		t.Fatal("a healthy hook says nothing")
 	}
 }
+
+// With the hook, a finding with a fix prints its message and its fix joined, as the base version printed it.
+func TestPrintHook(t *testing.T) {
+	res := Response{Hook: true, Findings: []setup.Finding{
+		{Level: setup.LevelOK, Area: "git", Message: "repository at /work/repo"},
+		{Level: setup.LevelWarn, Area: "version", Message: "polix dev is a development build",
+			Fix: "install a release with polix update --version <version>"}}}
+	var b strings.Builder
+	res.print(&b)
+	want := "polix doctor found problems on this machine or repository; tell the user about them and that they can fix " +
+		"them by running /polix:doctor (polix doctor gives the detail):\n" +
+		"- [warn] version: polix dev is a development build: install a release with polix update --version <version>\n"
+	if b.String() != want {
+		t.Fatalf("%q", b.String())
+	}
+}

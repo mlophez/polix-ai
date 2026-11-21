@@ -57,6 +57,15 @@ func found(level, area, format string, args ...any) []setup.Finding {
 	return []setup.Finding{f}
 }
 
+// foundFix is found for a finding with a fix: what to do about it, apart from its message.
+func foundFix(level, area, message, fix string) []setup.Finding {
+	f := setup.Finding{Level: level, Area: area, Message: message, Fix: fix}
+	if err := f.Valid(); err != nil {
+		return nil
+	}
+	return []setup.Finding{f}
+}
+
 // binary checks the version against the latest release and that the PATH, which the hooks use, runs
 // this binary.
 func binary(i setup.Inspection) []setup.Finding {
@@ -70,17 +79,20 @@ func binary(i setup.Inspection) []setup.Finding {
 	running := i.Setup.Version
 	switch {
 	case !semver.IsRelease(running):
-		f = append(f, found(setup.LevelWarn, "version", "polix %s is a development build: install a release with polix update --version <version>", running)...)
+		f = append(f, foundFix(setup.LevelWarn, "version", fmt.Sprintf("polix %s is a development build", running),
+			"install a release with polix update --version <version>")...)
 	case i.Latest == "":
 		f = append(f, found(setup.LevelOK, "version", "polix %s (latest release unknown)", running)...)
 	case semver.Compare(running, i.Latest) < 0:
-		f = append(f, found(setup.LevelWarn, "version", "polix %s, the latest release is %s: run polix update", running, i.Latest)...)
+		f = append(f, foundFix(setup.LevelWarn, "version", fmt.Sprintf("polix %s, the latest release is %s", running, i.Latest),
+			"run polix update")...)
 	default:
 		f = append(f, found(setup.LevelOK, "version", "polix %s, the latest release", running)...)
 	}
 	switch {
 	case i.PathErr != nil:
-		f = append(f, found(setup.LevelFail, "path", "polix is not on the PATH, so the hooks cannot run it: add %s to the PATH", filepath.Dir(i.Exe))...)
+		f = append(f, foundFix(setup.LevelFail, "path", "polix is not on the PATH, so the hooks cannot run it",
+			fmt.Sprintf("add %s to the PATH", filepath.Dir(i.Exe)))...)
 	case !i.SamePath:
 		f = append(f, found(setup.LevelWarn, "path", "the PATH runs another polix (%s), not this one (%s)", i.Path, i.Exe)...)
 	default:
@@ -111,7 +123,9 @@ func workflowFile(i setup.Inspection) []setup.Finding {
 		f = append(f, found(setup.LevelOK, "workflow", "%s is valid", workflow.File)...)
 		base()
 	case newer:
-		f = append(f, found(setup.LevelWarn, "workflow", "%s", i.NewerHint())...)
+		hint := i.NewerHint()
+		at := strings.LastIndex(hint, ": ")
+		f = append(f, foundFix(setup.LevelWarn, "workflow", hint[:at], hint[at+2:])...)
 	}
 	return f
 }
@@ -183,9 +197,10 @@ func plugin(i setup.Inspection, hook bool) []setup.Finding {
 	}
 	switch {
 	case !p.Written:
-		return found(setup.LevelWarn, "plugin", "the plugin polix (skills and agents) is not installed: run polix install --skills")
+		return foundFix(setup.LevelWarn, "plugin", "the plugin polix (skills and agents) is not installed", "run polix install --skills")
 	case p.Manifest != p.ManifestVersion():
-		return found(setup.LevelWarn, "plugin", "%s is from polix %s, this binary is %s: run polix install --skills", s.PluginDir(), p.Manifest, p.Version)
+		return foundFix(setup.LevelWarn, "plugin", fmt.Sprintf("%s is from polix %s, this binary is %s", s.PluginDir(), p.Manifest, p.Version),
+			"run polix install --skills")
 	}
 	if !hook {
 		if f := claude(i); f != nil {
@@ -205,12 +220,14 @@ func claude(i setup.Inspection) []setup.Finding {
 	case i.ClaudeErr != nil:
 		return found(setup.LevelWarn, "plugin", "cannot ask Claude Code for its plugins: %v", i.ClaudeErr)
 	case !i.ClaudeInstalled:
-		return found(setup.LevelWarn, "plugin", "Claude Code does not have %s installed: run polix install --skills", setup.PluginID)
+		return foundFix(setup.LevelWarn, "plugin", fmt.Sprintf("Claude Code does not have %s installed", setup.PluginID),
+			"run polix install --skills")
 	case !i.ClaudeEnabled:
-		return found(setup.LevelWarn, "plugin", "%s is disabled in Claude Code: run claude plugin enable %s", setup.PluginID, setup.PluginID)
+		return foundFix(setup.LevelWarn, "plugin", setup.PluginID+" is disabled in Claude Code",
+			"run claude plugin enable "+setup.PluginID)
 	case i.ClaudeFolder != "" && !i.SameFolder:
-		return found(setup.LevelWarn, "plugin", "Claude Code loads %s from %s, not from %s: run polix install --skills",
-			setup.PluginID, i.ClaudeFolder, i.Setup.PluginDir())
+		return foundFix(setup.LevelWarn, "plugin", fmt.Sprintf("Claude Code loads %s from %s, not from %s",
+			setup.PluginID, i.ClaudeFolder, i.Setup.PluginDir()), "run polix install --skills")
 	}
 	return nil
 }

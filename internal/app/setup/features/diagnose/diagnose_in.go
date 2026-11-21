@@ -262,7 +262,7 @@ func (res Response) print(stdout io.Writer) {
 		var lines []string
 		for _, f := range res.Findings {
 			if f.Problem() {
-				lines = append(lines, fmt.Sprintf("- [%s] %s: %s", f.Level, f.Area, f.Message))
+				lines = append(lines, fmt.Sprintf("- [%s] %s: %s", f.Level, f.Area, f.Text()))
 			}
 		}
 		if len(lines) > 0 {
@@ -273,6 +273,6 @@ func (res Response) print(stdout io.Writer) {
 	}
 	u := cli.NewUI(stdout)
 	for _, f := range res.Findings {
-		u.Status(f.Level, f.Area, f.Message)
+		u.Status(f.Level, f.Area, f.Text())
 	}
 }

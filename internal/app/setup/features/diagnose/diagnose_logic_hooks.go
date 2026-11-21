@@ -2,6 +2,7 @@ package diagnose
 
 import (
 	"cmp"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -16,7 +17,7 @@ import (
 func hooks(i setup.Inspection) []setup.Finding {
 	f, merged, sources := claudeSettings(i)
 	if len(sources) == 0 {
-		return append(f, found(setup.LevelFail, "hooks", "Claude Code does not run polix in this repository: run polix install")...)
+		return append(f, foundFix(setup.LevelFail, "hooks", "Claude Code does not run polix in this repository", "run polix install")...)
 	}
 	f = append(f, twice(merged, sources)...)
 	f = append(f, sessionStart(merged)...)
@@ -66,8 +67,8 @@ func twice(merged map[string][]setup.HookGroup, sources []string) []setup.Findin
 	if len(dup) == 0 {
 		return nil
 	}
-	return found(setup.LevelFail, "hooks", "Claude Code runs polix twice on %s: keep the hooks of polix in one of %s",
-		strings.Join(dup, ", "), strings.Join(sources, ", "))
+	return foundFix(setup.LevelFail, "hooks", "Claude Code runs polix twice on "+strings.Join(dup, ", "),
+		"keep the hooks of polix in one of "+strings.Join(sources, ", "))
 }
 
 // sessionStart checks that SessionStart runs the session start command of polix, and not one of an earlier build.
@@ -81,9 +82,10 @@ func sessionStart(merged map[string][]setup.HookGroup) []setup.Finding {
 	}
 	switch {
 	case legacy:
-		return found(setup.LevelWarn, "hooks", "SessionStart runs a command of an earlier polix: run polix install to refresh the hooks")
+		return foundFix(setup.LevelWarn, "hooks", "SessionStart runs a command of an earlier polix", "run polix install to refresh the hooks")
 	case !updates:
-		return found(setup.LevelWarn, "hooks", "SessionStart does not run %s, so polix does not update itself: run polix install", setup.UpdateCommand)
+		return foundFix(setup.LevelWarn, "hooks", fmt.Sprintf("SessionStart does not run %s, so polix does not update itself", setup.UpdateCommand),
+			"run polix install")
 	}
 	return nil
 }
@@ -98,7 +100,7 @@ func event(name string, tools []string, groups []setup.HookGroup) []setup.Findin
 		if name == "PostToolUseFailure" || name == "SubagentStart" {
 			level = setup.LevelWarn
 		}
-		return found(level, "hooks", "%s does not run polix hook claude: run polix install", name)
+		return foundFix(level, "hooks", name+" does not run polix hook claude", "run polix install")
 	}
 	var f []setup.Finding
 	var missing []string
@@ -108,7 +110,8 @@ func event(name string, tools []string, groups []setup.HookGroup) []setup.Findin
 		}
 	}
 	if len(missing) > 0 {
-		f = append(f, found(setup.LevelFail, "hooks", "the matcher of %s does not cover %s: run polix install", name, strings.Join(missing, ", "))...)
+		f = append(f, foundFix(setup.LevelFail, "hooks", fmt.Sprintf("the matcher of %s does not cover %s", name, strings.Join(missing, ", ")),
+			"run polix install")...)
 	}
 	if short {
 		f = append(f, found(setup.LevelWarn, "hooks", "%s: the timeout of polix hook claude must be above %.0f seconds, the run budget, "+
@@ -158,10 +161,11 @@ func codex(i setup.Inspection) []setup.Finding {
 		return nil
 	}
 	if !i.CodexEnabled {
-		f = append(f, found(setup.LevelWarn, "codex", "the plugin %s is not enabled in Codex: run polix install --skills --agent codex", setup.PluginID)...)
+		f = append(f, foundFix(setup.LevelWarn, "codex", fmt.Sprintf("the plugin %s is not enabled in Codex", setup.PluginID),
+			"run polix install --skills --agent codex")...)
 	}
 	if !registered {
-		return append(f, found(setup.LevelWarn, "codex", "Codex does not run polix in this repository: run polix install --agent codex")...)
+		return append(f, foundFix(setup.LevelWarn, "codex", "Codex does not run polix in this repository", "run polix install --agent codex")...)
 	}
 	return append(f, found(setup.LevelOK, "codex", "hooks registered (Codex runs them once trusted with /hooks); "+
 		"Codex support is not implemented and untested")...)

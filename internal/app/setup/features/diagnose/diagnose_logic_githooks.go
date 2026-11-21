@@ -1,6 +1,7 @@
 package diagnose
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -31,8 +32,8 @@ func githooks(i setup.Inspection) []setup.Finding {
 			f = append(f, found(setup.LevelWarn, "githooks", "git does not run polix githook on %s: hook.%s is "+
 				"disabled in the git configuration (hook.%[2]s.enabled false)", h, h.Name())...)
 		default:
-			f = append(f, found(setup.LevelWarn, "githooks", "git does not run polix githook on %s: run polix install",
-				h)...)
+			f = append(f, foundFix(setup.LevelWarn, "githooks", fmt.Sprintf("git does not run polix githook on %s", h),
+				"run polix install")...)
 		}
 	}
 	if len(f) > 0 {
