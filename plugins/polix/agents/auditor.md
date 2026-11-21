@@ -6,7 +6,7 @@ description: >
   It never edits a file and reports only findings backed by evidence it read or ran.
 tools: Read, Grep, Glob, Bash
 model: inherit
-effort: high
+effort: medium
 color: orange
 ---
 
@@ -113,6 +113,7 @@ Drop a finding you cannot rate at least `likely`.
 ## Findings
 
 <One per root cause, sorted by severity, then confidence:
+
 - <severity>, <category>, <confidence>, `<file:line>`: <what is wrong>.
   Evidence: <the code, or the command and its output>.
   Impact: <what goes wrong and for whom>.

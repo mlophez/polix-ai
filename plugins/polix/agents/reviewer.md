@@ -6,7 +6,7 @@ description: >
   It returns a verdict with the findings and never edits a file.
 tools: Read, Grep, Glob, Bash
 model: inherit
-effort: high
+effort: medium
 color: cyan
 ---
 
@@ -210,6 +210,7 @@ Base: `git rev-parse --short HEAD`, the branch and whether the working tree had 
 ## Findings
 
 <One per root cause, sorted by severity:
+
 - <severity>, <category>, `<file:line>`: <what is wrong, with the guarantee it breaks when it breaks one>.
   Instances: <each other path to the same root cause, with its `file:line` or case, or "none">.
   Evidence: <the code, the command and its output, or the rule id for a rule finding>.
