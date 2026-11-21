@@ -1,9 +1,9 @@
 ---
 name: add-rule
 description: >
-  Adds rules on how to write the code to the folder of rules the start context names, which polix injects and checks.
-  It runs only when the user or the workflow of polix asks for it.
-  It never changes the code nor polix.yaml.
+  Adds rules on how to write the code to the folder of rules of the project, one YAML file per topic.
+  It runs only when the user or the workflow of the project asks for it.
+  It never changes the code nor the configuration of the tools that enforce the rules.
 effort: medium
 model: inherit
 user-invocable: true
@@ -15,13 +15,13 @@ argument-hint: "[the rule or the document to migrate, e.g. docs/conventions.md; 
 # Adding rules
 
 Turn each requested or migrated rule into an item of `rules:` of a file of the folder of rules.
-The folder of rules is the one the start context of polix names, below the root.
-Polix reads `id`, `description`, `scope`, `deterministic` and `check`; any other key is kept for people and skills.
+The folder of rules is the one the project names in `AGENTS.md`, `CLAUDE.md` or the session, `ai/rules/` by default.
+A rule has the keys of `Rule format`; any other key is kept for people and skills.
 
 ## Requirements
 
-- `polix` on the `PATH`.
-  Without it, stop and point to the skill `doctor` of polix.
+- A parser of YAML: the first of `yq`, `python3` with `yaml` or `ruby -ryaml` that runs.
+  Without one, skip the parse of Step 7 and report it in `Pending`.
 
 ## Input
 
@@ -32,16 +32,16 @@ Polix reads `id`, `description`, `scope`, `deterministic` and `check`; any other
 - **Rules**: each rule added, with its id and file.
 - **Duplicates**: the rules skipped and the existing ids they repeat, or "none".
 - **Contradictions**: the pairs of ids left to the user, or "none".
-- **Pending**: the deterministic rules left without `check`, or "none".
+- **Pending**: the deterministic rules left without `check`, the checks that failed and the files not parsed, or "none".
 
 ## Limits
 
 - Never add a rule that repeats an existing one: report the existing id.
 - Show a rule that contradicts another of the same scope with both ids, and let the user decide.
-- Set `check` only to a command that already exists; leave a deterministic rule without one as pending.
+- Set `check` only to a file that already exists; leave a deterministic rule without one as pending.
 - Never write a `scope` or `check` the user did not confirm.
 - Only write the folder of rules and the migrated sources.
-- When the request is about when rules are injected or checked, point to the skill `workflow` of polix.
+- Never configure when the rules are injected or checked: that belongs to the tools of the project.
 - Talk to the user in the language of the session.
 
 ## How to operate
@@ -56,7 +56,7 @@ Rules progress:
 - [ ] Step 4: Show the rules to write, the duplicates and the contradictions, and confirm once before writing.
 - [ ] Step 5: Write the rules, creating the missing files with a `rules:` list ordered by id.
 - [ ] Step 6: Remove each migrated rule from its source.
-- [ ] Step 7: Run `polix config check` until it reports no problem, and `polix rules check` when a rule has a `check`.
+- [ ] Step 7: Parse each file written until it parses, and run each new `check` once (see `Rule format`).
 ```
 
 ## References
@@ -77,10 +77,10 @@ rules:
 - Word each rule with its trigger, exact names and the alternative of every prohibition; no vague words.
 - One file per topic: `architecture.yaml` (ARCH), `code-style.yaml` (STYLE), `testing.yaml` (TEST).
   Also `security.yaml` (SEC), `design.yaml` (DESIGN), or the files the project already has.
-- `retired.yaml` keeps retired rules with their `id`, `description` and `reason`; polix ignores it.
+- `retired.yaml` keeps retired rules with their `id`, `description` and `reason`; no rule of it applies.
   Its ids stay taken.
 - Globs use `/` and are relative to the root: `*` stays in a segment, `**` crosses segments, `*.md` matches anywhere.
-- `check` names any file, relative to the root: a script, a Go test, any file a command can run.
-  The first runner of `rules.run` in `polix.yaml` whose glob matches it runs it, from the root and without a shell.
-  A glob matches the base name of the file, or its path when the glob has a `/`.
-  With no runner it runs as a program, on Windows with `bash` or `python` by its extension.
+- `check` names any file, relative to the root: a script, a test, any file a command can run.
+  Run it as the command of `AGENTS.md` that runs the checks of the rules does, from the root.
+  Without one, run it as a program, on Windows with `bash` or `python` by its extension.
+  A check that fails goes to `Pending` with its output: the code may not follow the rule yet.

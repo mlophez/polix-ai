@@ -2,7 +2,7 @@
 name: writing-skills
 description: >
   Writes or rewrites a skill of Claude Code in a fixed format: frontmatter, fixed sections and a short, imperative body.
-  It runs only when the user or the workflow of polix asks for it.
+  It runs only when the user or the workflow of the project asks for it.
   It never writes a subagent: that is the skill writing-agents.
 effort: medium
 model: inherit

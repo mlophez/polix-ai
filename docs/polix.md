@@ -732,7 +732,7 @@ reviews, and `tasks/`, the backlog the skill `task` writes. It is cleaned (slash
 trailing slash). `polix config check` reports an absolute path, the root itself, a path out of the root (`..`) or a
 glob, as `path "../x" must be below the root`. polix reads only `<path>/rules`, its `*.yaml` but `retired.yaml` and
 not its subfolders, and moves or creates no folder; the four reach the agent in the start context on every `start`,
-so the skills write where the repository says, and the agents of the plugin read `path` of `polix.yaml`.
+so the skills write where the repository says and pass the folder of rules to the agents of the plugin.
 The keys `rules.path`, `plans`, `reports` and `guidance` are removed: `polix config check` reports each one with a
 hint that tells how to migrate it (`rules.path` becomes the top-level `path`, the folder that holds `rules/`; `plans`,
 `reports` and `guidance` are removed), and never suggests a newer polix for them.
@@ -837,7 +837,7 @@ Conditions:
 - `writes`: a command of the line writes files and names a path that matches a glob (or a list), with the same
   heuristic as `protected_files` (see [Protections](#protections)); reading does not count. Only on `pre_command`, `post_command` and `pre_commit`.
 - `actor`: who acts, `session` or the subagent type. An agent of a plugin is named with its prefix, as
-  `polix:rules-reviewer`; an agent of `.claude/agents/` by its bare name.
+  `polix:reviewer`; an agent of `.claude/agents/` by its bare name.
 - `finished`: a subagent type, or a list of them (all must hold), ended in this session, on this branch or on
   another one with the same HEAD commit, and the files of the scope of the entry did not change since. See
   [What polix observes](#what-polix-observes-and-finished).
@@ -1505,10 +1505,10 @@ also prints that Codex support is not implemented in this release and the setup 
   the report
   in the folder of reports, `audit` audits the repository with several `auditor` agents in parallel and saves the
   report in the folder of reports, `writing-skills` and `writing-agents` write a skill or a subagent in one format,
-  whose `Limits` hold only what applies across its steps) and, for Claude Code, agents (`workflow-author`, `rules-author`, `builder`, which
+  whose `Limits` hold only what applies across its steps) and, for Claude Code, agents (`builder`, which
   implements one task of a plan test first, or fixes the findings of its checks, without committing, and
   the read-only `critic`, which reviews a plan for internal coherence before its approval, `verifier`, which
-  checks a change against its plan, `reviewer`, which reviews the quality of the code by reading it, `rules-reviewer` and
+  checks a change against its plan, `reviewer`, which reviews the quality of the code by reading it, and
   `auditor`). Install writes it,
   with the version of the binary in its manifests, to the local marketplace
   `~/.polix/marketplace/` and registers it. A development build, whose version is always `dev`, writes
@@ -1519,13 +1519,18 @@ also prints that Codex support is not implemented in this release and the setup 
     `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
     skills are `/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`, `/polix:task`,
     `/polix:grill-me`, `/polix:plan`, `/polix:build`, `/polix:review`, `/polix:audit`, `/polix:writing-skills` and
-    `/polix:writing-agents`, its agents `polix:workflow-author`,
-    `polix:rules-author`, `polix:builder`, `polix:verifier`, `polix:reviewer`, `polix:critic`,
-    `polix:rules-reviewer` and `polix:auditor`. The skills `plan`, `build`, `review` and `audit` launch the agents; Codex, which has no agents of
+    `/polix:writing-agents`, its agents `polix:builder`, `polix:verifier`, `polix:reviewer`, `polix:critic` and
+    `polix:auditor`. The skills `plan`, `build`, `review` and `audit` launch the agents; Codex, which has no agents of
     plugins and whose support is not
     implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
-    or the workflow of polix asks for it, as its description says, and the frontmatter enforces it.
+    or the workflow of the project asks for it, as its description says, and the frontmatter enforces it.
+    Only `doctor`, `risk` and `workflow` set up polix and name it: the other skills and every agent work in any
+    project, governed by polix or not. They take the folders of plans, rules, reports and tasks from `AGENTS.md`,
+    `CLAUDE.md` or the session, where the start context of polix names them, `ai/` by default, and the base branch
+    from `AGENTS.md`, `CLAUDE.md` or the default branch of `origin`, else `main`. They name each other without the
+    prefix of the plugin, and the skills pass the folder of rules to the agents in their prompt (`Rules:`).
+    `add-rule` checks what it writes by parsing it and running each new `check` as `AGENTS.md` runs the checks.
     `init`, `doctor`, `risk`, `task`, `plan`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
     user runs them, typing the command; when a message of polix asks for one, as the session start does for
     `/polix:doctor` or a gate without a plan for `/polix:plan`, the model tells the user to run it. So the flow of
@@ -1538,8 +1543,7 @@ also prints that Codex support is not implemented in this release and the setup 
     skill and agent names the invariants of its whole task `## Limits`, never `## Rules`, which in polix are the
     rules of the folder of rules. The agents stay
     open to the model, so a rule that asks for `polix:reviewer` still works.
-    The read-only agents (`critic`, `verifier`, `reviewer`,
-    `rules-reviewer`, `auditor`) fill the report template inside their own file. The skills `audit` and `review`
+    The read-only agents (`critic`, `verifier`, `reviewer`, `auditor`) fill the report template inside their own file. The skills `audit` and `review`
     save their report in the folder of reports from the `template.md` next to them; a `polix:reviewer` launched
     without a skill answers in the chat and saves no file. `plan` writes the plan as a YAML file from the
     `template.yaml` next to it, where each fact lives in one place and the others name it by its id (`LIT-NN`,

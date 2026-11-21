@@ -48,6 +48,24 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   `verify` to run only the tests of its criterion, never the whole suite, a linter nor a build. No agent runs
   `polix rules check --changed` any more: a repository that wants it puts it in its hooks.
 
+- The skills and agents of the plugin work in any project: only `/polix:doctor`, `/polix:risk` and
+  `/polix:workflow` name polix, which a new test of the package `plugins` enforces. The others take the folders of
+  plans, rules, reports and tasks from `AGENTS.md`, `CLAUDE.md` or the session, `ai/` by default, and the base
+  branch from `AGENTS.md`, `CLAUDE.md` or the default branch of `origin`, else `main`, instead of `polix.yaml`.
+  They name each other without the prefix of the plugin, so the `agents` of a new plan name `builder`, `verifier`
+  and `reviewer`; `/polix:build` takes both forms. The skills pass the folder of rules to `polix:builder`,
+  `polix:reviewer` and `polix:auditor` in a new `Rules:` line of their prompt. Their descriptions say they run
+  when the user or the workflow of the project asks for them.
+- `/polix:add-rule` no longer needs polix: it parses the files it writes and runs each new `check` as `AGENTS.md`
+  runs the checks of the rules. `/polix:init` keeps the sections of the current `AGENTS.md` outside its template that
+  the user confirms, not only `## polix`, and no longer lists `polix.yaml` as a fixed item of `Layout`.
+- Fixed inconsistencies of the plugin: the plan skill no longer forbids naming the subagents of its own `agents`;
+  `polix:builder` reads `branch` from the plan, not from a frontmatter it no longer has, and the instances of a
+  finding from its `problem`, which `/polix:build` now fills with them; the report of `/polix:review` keeps the
+  `Instances` of `polix:reviewer` and the one of `/polix:audit` the `Impact` of `polix:auditor`; `/polix:build`
+  never edits the folder of tasks when it updates the docs; `/polix:workflow` no longer names the removed
+  `polix:rules-reviewer`.
+
 ### Removed
 
 - Plans in Markdown: `/polix:build` and `/polix:plan` no longer build nor adjust them and offer to write a new YAML

@@ -1,9 +1,9 @@
 ---
 name: review
 description: >
-  Reviews a change without a plan (files, a range or the current change) with polix:reviewer in change mode.
+  Reviews a change without a plan (files, a range or the current change) with the subagent reviewer in change mode.
   It relays the verdict on the code's quality: design, rules, bugs and tests; saves the report and fixes nothing.
-  It runs only when the user or the workflow of polix asks for it.
+  It runs only when the user or the workflow of the project asks for it.
 effort: low
 model: sonnet
 user-invocable: true
@@ -13,14 +13,15 @@ argument-hint: "[range or files, e.g. HEAD~3..HEAD or internal/app/setup; empty 
 
 # Reviewing
 
-Review the change with one `polix:reviewer` subagent, relay its report and save it in the folder of reports.
-The folder of reports is the one the start context of polix names, below the root.
+Review the change with one `reviewer` subagent, relay its report and save it in the folder of reports.
+The folders of reports and rules are those the project names in `AGENTS.md`, `CLAUDE.md` or the session.
+Without one, they are `ai/reports/` and `ai/rules/` below the root.
 Without a plan there is nothing to verify the change against: the subagent judges only the code's quality.
 A change built from a plan is verified and reviewed by the skill build.
 
 ## Requirements
 
-- The subagent `polix:reviewer`.
+- The subagent `reviewer`, as `<plugin>:reviewer` when a plugin provides it.
   Without it, as in Codex, read `../../agents/reviewer.md` next to this skill and follow it yourself in this session.
 - The template of the report, `template.md` next to this skill.
   Without it, stop and tell the user.
@@ -50,7 +51,7 @@ Copy this checklist and track your progress:
 ```text
 Review progress:
 - [ ] Step 1: Resolve the change (see `Input`); when `git status` and the diff show nothing, tell the user and stop.
-- [ ] Step 2: Launch `polix:reviewer` with the prompt (see `Prompt`) and wait for its report.
+- [ ] Step 2: Launch `reviewer` with the prompt (see `Prompt`) and wait for its report.
 - [ ] Step 3: Relay the report (see `Output`).
 - [ ] Step 4: Write the report to its file from `template.md` (see `Report file`).
 - [ ] Step 5: Stop and return control to the user.
@@ -64,12 +65,13 @@ Send the subagent this block, in the language of the session:
 
 ```text
 Change: <range or files, or "the current change">
+Rules: <the path of the folder of rules, or "none" when it does not exist>
 ```
 
 ### Report file
 
 Path: a file of the folder of reports, `<reports>`.
-Name it as the project names its reports: the convention of `AGENTS.md`, of `polix.yaml` or of the reports there.
+Name it as the project names its reports: the convention of `AGENTS.md`, of `CLAUDE.md` or of the reports there.
 Without one, name it `<reports>/<date>-review-<name>.md`, where `<date>` is today as `YYYY-MM-DD`.
 `<name>` is the current branch in kebab-case.
 On the base branch, `<name>` is short kebab-case English from what the change does.

@@ -2,7 +2,7 @@
 name: workflow
 description: >
   Writes or changes polix.yaml, the workflow polix applies to the sessions of the agents on every event.
-  It runs only when the user or the workflow of polix asks for it.
+  It runs only when the user or the workflow of the project asks for it.
   It never writes the rules (the folder rules/ below path): that is the skill add-rule.
 effort: medium
 model: inherit
@@ -94,7 +94,7 @@ Workflow progress:
   The verb is `block`, `run` or `inject`.
 - The entries of `on` skip edits outside the repository; edits of files git ignores fire them like any other.
 - Conditions are facts of the repository, the event and what polix observed by itself.
-- A reviewer subagent, such as `polix:reviewer` or `polix:rules-reviewer`, judges the code.
+- A reviewer subagent, such as `polix:reviewer`, judges the code.
   The workflow requires its end with `finished`.
 
 ### Writing entries

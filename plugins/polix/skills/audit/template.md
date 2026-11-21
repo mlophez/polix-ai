@@ -13,6 +13,7 @@ The areas and their auditors, and what was out of scope.>
 <One per root cause, sorted by severity, then confidence (`confirmed` before `likely`):
 - <severity>, <category>, <confidence>, `<file:line>` (every place it shows): <what is wrong>.
   Evidence: <the code, or the command and its output>.
+  Impact: <what goes wrong and for whom>.
   Fix: <the direction of the fix>.>
 
 ## Checks

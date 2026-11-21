@@ -3,7 +3,7 @@ name: grill-me
 description: >
   Interviews the user one decision at a time until both share what they want of a change.
   It covers the what and the how only the user should decide, explores the code and returns a spec, editing nothing.
-  It runs only when the user or the workflow of polix asks for it.
+  It runs only when the user or the workflow of the project asks for it.
 effort: high
 model: inherit
 user-invocable: true
@@ -17,7 +17,8 @@ Interview the user until you both share one understanding of a change, with noth
 Map the subject as a design tree: each decision branches into the decisions that hang off it.
 The frontier is every open decision whose prerequisites are settled: what you can ask now without guessing answers.
 The what comes first: every decision of the how hangs off the decisions of the what.
-The spec it returns feeds `/polix:plan`, or the agent that edits the code directly in the flow without a plan.
+The spec it returns feeds the skill `plan`, or the agent that edits the code directly in the flow without a plan.
+The folder of rules is the one the project names in `AGENTS.md`, `CLAUDE.md` or the session, `ai/rules/` by default.
 
 ## Input
 
@@ -25,7 +26,7 @@ The spec it returns feeds `/polix:plan`, or the agent that edits the code direct
   A single decision is a tree with one root: the same steps, and the sections of `Spec` it leaves empty say "none".
 - **Known**: the facts and decisions already settled, from the conversation or from the skill that invokes this one.
   Never search them again nor ask them.
-- **Adjust**: a spec confirmed earlier and what reopens it, such as the findings of `polix:critic` on a plan.
+- **Adjust**: a spec confirmed earlier and what reopens it, such as the findings of the subagent `critic` on a plan.
   Then map only the decisions it reopens and those that hang off them.
 
 ## Output
@@ -194,7 +195,7 @@ Ask each decision with `AskUserQuestion`, one question per call, every field in 
 ```json
 {
   "header": "Q3 (3 of 5)",
-  "question": "Storage of the sessions: where polix writes each session decides how the folder grows and what deleting one costs. Where does it write them?",
+  "question": "Storage of the sessions: where the service writes each session decides how the folder grows and what deleting one costs. Where does it write them?",
   "multiSelect": false,
   "options": [
     {"label": "One JSONL file per day (Recommended)", "description": "No command deletes a single session. Pros: the folder stays small; a day reads in one open. Cons: deleting one session rewrites the whole file."},
@@ -212,7 +213,7 @@ End with your recommended alternative and the reason, worded so that "yes" accep
 ```markdown
 **Q3 (3 of 5) - Storage of the sessions**
 
-Where polix writes each session decides how the folder grows and what deleting a session costs.
+Where the service writes each session decides how the folder grows and what deleting a session costs.
 
 **A. One JSONL file per day**
 - Pros: the folder stays small; a day reads in one open.

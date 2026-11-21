@@ -2,7 +2,7 @@
 name: writing-agents
 description: >
   Writes or rewrites a subagent of Claude Code in the format of writing-skills plus what a clean context needs.
-  It runs only when the user or the workflow of polix asks for it.
+  It runs only when the user or the workflow of the project asks for it.
   It never writes a skill: that is the skill writing-skills.
 effort: medium
 model: inherit

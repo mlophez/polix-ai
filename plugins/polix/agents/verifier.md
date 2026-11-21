@@ -2,7 +2,7 @@
 name: verifier
 description: >
   Verifies one built task of a plan, or the whole plan once every task is built: its outcome, tasks, criteria and scope.
-  Launch it only when the user or the workflow of polix asks for it, from the skill build of polix, with the plan.
+  Launch it only when the user or the workflow of the project asks for it, from the skill build, with the plan.
   It runs the verify of each criterion it evaluates, returns a verdict with its evidence, and never edits a file.
 tools: Read, Grep, Glob, Bash
 model: inherit
@@ -83,8 +83,8 @@ Verify progress:
 
 ### Change
 
-The base is the `base_branch` of `polix.yaml`, else `main`.
-When `base_branch` is a list, take the closest one, as `polix rules check --changed` resolves it.
+The base is the base branch `AGENTS.md` or `CLAUDE.md` names.
+Without one, the branch `git symbolic-ref --short refs/remotes/origin/HEAD` names without `origin/`, else `main`.
 With a task, verify `git diff HEAD`, plus the untracked files of `git status --porcelain`: the build committed the
 earlier tasks, so the uncommitted change is the task's alone.
 With `final`, verify `git diff $(git merge-base HEAD <base>)`, plus the untracked files: the whole change.

@@ -1,9 +1,9 @@
 ---
 name: plan
 description: >
-  Writes an outcome-driven plan, on a new branch, in the folder of plans from the spec polix:grill-me confirms.
-  It writes the tasks that build it, has polix:critic review it, and never runs in plan mode, writes code nor commits.
-  It runs only when the user or the workflow of polix asks for it.
+  Writes an outcome-driven plan, on a new branch, in the folder of plans from the spec the skill grill-me confirms.
+  It writes the tasks that build it, has the subagent critic review it, and never runs in plan mode, codes nor commits.
+  It runs only when the user or the workflow of the project asks for it.
 effort: high
 model: inherit
 user-invocable: true
@@ -16,26 +16,28 @@ argument-hint: "[what to plan, e.g. add retries to the webhook sender, and where
 Turn a request into a plan file that an executor builds task by task in order, knowing only the plan and the code.
 The plan goes from the outcome expected to the criteria that prove it and the tasks that build it, and holds no code.
 The plan is a YAML file: each fact lives in one place, and the others name it by its id.
-The skill `polix:grill-me` interviews the user; this skill turns its spec into the plan and never interviews.
-The folders of plans, of rules and of tasks are those the start context of polix names, below the root.
+The skill `grill-me` interviews the user; this skill turns its spec into the plan and never interviews.
+The folders of plans, of rules and of tasks are those the project names in `AGENTS.md`, `CLAUDE.md` or the session.
+Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
 
 ## Requirements
 
 - [template.yaml](template.yaml) next to this file.
   Without it, stop and tell the user.
-- The skill `polix:grill-me`, which interviews the user each time the spec opens or reopens.
+- The skill `grill-me`, which interviews the user each time the spec opens or reopens.
+  From a plugin, it and the subagent below carry its prefix, as `<plugin>:grill-me` and `<plugin>:critic`.
   Without the Skill tool, as in Codex, read `../grill-me/SKILL.md` next to this skill and follow it in this session.
-- The subagent `polix:critic`, which reviews the plan at Step 6.
+- The subagent `critic`, which reviews the plan at Step 6.
   Without it, stop and tell the user.
 
 ## Input
 
 - **Request**: what to plan, from the arguments or the conversation.
   Without either, ask the user.
-  It may be a file of the folder of tasks, as `/polix:task` writes it.
+  It may be a file of the folder of tasks, as the skill `task` writes it.
   Then plan from its sections, and give its path as the `reference` of the plan.
   Once the plan file exists, set the task's `status: planned` and `plan: <path of the plan>`, and nothing else of it.
-- **Spec**: a spec that `polix:grill-me` returned and the user confirmed in this session for this request, if any.
+- **Spec**: a spec that `grill-me` returned and the user confirmed in this session for this request, if any.
 - **Plan**: the plan file, from the arguments or the conversation.
   A file that already exists is the plan to adjust.
   A plan in Markdown (`.md`) is no longer supported: stop, and offer to write a new YAML plan from its content.
@@ -49,22 +51,23 @@ The folders of plans, of rules and of tasks are those the start context of polix
 
 - **Plan**: the path of the plan file, its `status` and its `branch`; Step 7 already showed its outcome.
 - **Decisions**: every decision of the plan with `source: delegated`, or "none".
-- **Next steps**: adjust the plan, or implement, review and check it with `/polix:build <plan>`.
-- **Pending**: open blockers and stale or missing docs, with `/polix:add-rule` when rules are missing.
-  Also the decisions the user left deferred and the findings of `polix:critic` its last round left open; or "none".
+- **Next steps**: adjust the plan, or build, verify and review it with the skill `build`.
+- **Pending**: open blockers and stale or missing docs, with the skill `add-rule` when rules are missing.
+  Also the decisions the user left deferred and the findings of `critic` its last round left open; or "none".
 
 ## Limits
 
 - Never plan in plan mode, nor call `EnterPlanMode`, since the skill writes the plan file and creates its branch.
   Started in plan mode, stop and tell the user to leave it and run the skill again.
 - Approval never starts the build: Step 8 still applies.
-- Never ask the user a decision of the plan yourself: `polix:grill-me` asks them (see Steps 2 and 6).
+- Never ask the user a decision of the plan yourself: `grill-me` asks them (see Steps 2 and 6).
   The only questions of this skill are the existing branch of Step 4 and the approval of Step 7.
 - Write only the plan file and its task's frontmatter, create only the branch of Step 4, run only the project's tests.
 - Define tasks, never code: no snippets, implementations or signatures (see `Plan file`).
 - One plan is one change, delivered whole: never phases or follow-up plans.
 - Reference the rules of the folder of rules by id in the `rules` of each task, never restate them.
-- Name no executor, agent, skill or tool of the agent in the plan file; the commands of the project are fine.
+- Name no executor, agent, skill or tool of the agent in the plan file but the subagents of `agents`.
+  The commands of the project are fine.
 
 ## How to operate
 
@@ -73,22 +76,22 @@ Copy this checklist and track your progress:
 ```text
 Plan progress:
 - [ ] Step 1: Resolve the request, the spec and the plan to adjust, if any (see `Input`).
-- [ ] Step 2: Get the confirmed spec from `polix:grill-me` (see Step 2).
+- [ ] Step 2: Get the confirmed spec from `grill-me` (see Step 2).
 - [ ] Step 3: Read the project context and the code the tasks will change (see Step 3).
 - [ ] Step 4: Create the branch of a new plan (see Step 4).
 - [ ] Step 5: Write the plan file from the spec and the code (see Step 5).
-- [ ] Step 6: Have `polix:critic` review the plan, and fix what it finds, up to three rounds (see Step 6).
+- [ ] Step 6: Have `critic` review the plan, and fix what it finds, up to three rounds (see Step 6).
 - [ ] Step 7: Show the user the outcome of the plan and ask for approval (see Step 7).
 - [ ] Step 8: Report (see `Output`), stop and return control to the user.
 ```
 
 Never reach Step 7 before Step 6 is done: the critique is what the approval relies on.
-Every time `polix:grill-me` reopens the spec, update the keys it changes, then run Step 6 again whole.
+Every time `grill-me` reopens the spec, update the keys it changes, then run Step 6 again whole.
 
-### Step 2: Get the confirmed spec from `polix:grill-me`
+### Step 2: Get the confirmed spec from `grill-me`
 
 1. With a `Spec` of `Input`, take it as it is and skip the rest of this step.
-2. Otherwise invoke the skill `polix:grill-me` with the request as its subject.
+2. Otherwise invoke the skill `grill-me` with the request as its subject.
    Give as its `Known` the facts and decisions the conversation or the task file already settle.
    When adjusting a plan, give the plan's current keys as its `Adjust`, with what the adjustment changes.
 3. Wait for the spec the user confirms, then go on with Step 3 of this checklist.
@@ -103,13 +106,13 @@ Every time `polix:grill-me` reopens the spec, update the keys it changes, then r
 3. Take the `Facts` of the spec as leads, never as facts of the plan.
 4. Read each file a task will change and each symbol the plan will name: never name one from a search hit alone.
 5. The code wins over the docs and the spec when they disagree.
-   A gap that changes a decision of the spec reopens it with `polix:grill-me`; any other gap goes to `Pending`.
+   A gap that changes a decision of the spec reopens it with `grill-me`; any other gap goes to `Pending`.
 
 ### Step 4: Create the branch of a new plan
 
 1. When adjusting a plan, skip this step: the plan keeps its `branch`.
 2. Choose the plan file's path (see `Plan file`) before writing it.
-3. Name the branch as the plan file without its extension, unless the start context or `polix.yaml` names a rule.
+3. Name the branch as the plan file without its extension, unless `AGENTS.md` or `CLAUDE.md` names a convention.
 4. When the branch exists locally (`git branch --list <name>`) or on a remote (`git branch -r --list '*/<name>'`),
    stop and ask the user whether to switch to it or take another name, which the plan file takes too.
 5. Create it from the current branch with `git switch -c <name>`, so the uncommitted changes go with it.
@@ -120,28 +123,28 @@ Every time `polix:grill-me` reopens the spec, update the keys it changes, then r
 1. Create the plan file from [template.yaml](template.yaml) (see `Plan file`), or open the plan to adjust.
 2. Write each key in the order of template.yaml, from the section of the spec `Spec to keys` names for it.
    Follow `Request`, `Outcome`, `Acceptance criteria`, `Tasks`, `High risk` and `Tests` for its form.
-3. A key that needs a decision the spec does not settle is a reopened spec: invoke `polix:grill-me` with `Adjust`.
+3. A key that needs a decision the spec does not settle is a reopened spec: invoke `grill-me` with `Adjust`.
 
-### Step 6: Have `polix:critic` review the plan, and fix what it finds, up to three rounds
+### Step 6: Have `critic` review the plan, and fix what it finds, up to three rounds
 
 The critic reads the plan in a context of its own, with the spec, the template, the rules and three sections of this
 skill (`High risk`, `Tests` and `Readability`), never the code.
 It judges whether an executor could build it without deciding, and whether it follows the spec, the rules and the form.
 
-1. Launch the subagent `polix:critic` with the prompt of `Critic prompt`, and wait for its report.
+1. Launch the subagent `critic` with the prompt of `Critic prompt`, and wait for its report.
 2. Sort each finding of the report:
    - Mechanical: the plan, the request, the code, a rule or an answer of the user already settles its fix.
      Fix it with a targeted edit of the plan file at its path, `minor` ones too.
      Never write the plan again whole nor elsewhere.
    - Decision: its fix is a choice no source settles, as a fix `decision` says.
-     Invoke `polix:grill-me` once for all of them, with the findings and the plan's current keys as its `Adjust`.
+     Invoke `grill-me` once for all of them, with the findings and the plan's current keys as its `Adjust`.
      Write each answer of its spec into its key.
 3. Launch the critic again, with the next round and the findings so far in `Previous`.
    It checks the whole plan again, so a fix that breaks another key is a finding of the next round.
 4. Stop when the verdict has no `blocking` nor `major` finding, or after the third round.
    What the last report leaves open goes to `Pending`, each finding with its severity and its first words.
 
-When the subagent `polix:critic` is not available, stop and tell the user: never review the plan in its place.
+When the subagent `critic` is not available, stop and tell the user: never review the plan in its place.
 
 ### Step 7: Show the user the outcome of the plan and ask for approval
 
@@ -152,9 +155,9 @@ When the subagent `polix:critic` is not available, stop and tell the user: never
 - Then ask with `AskUserQuestion` whether to approve the plan or adjust it, approve first.
   The question says the result is just above it, since the dialog may hide it.
   Without `AskUserQuestion`, ask for the approval in the text after the result.
-- With a deferred decision open, reopen it with `polix:grill-me` first; while it stays open, never offer to approve.
+- With a deferred decision open, reopen it with `grill-me` first; while it stays open, never offer to approve.
 - Approved: set `status: approved`, and nothing else.
-- Adjust: invoke `polix:grill-me` with the comments as its `Adjust`, keeping `status: planned`.
+- Adjust: invoke `grill-me` with the comments as its `Adjust`, keeping `status: planned`.
   Then update the keys, run Step 6 and show the result again.
 - Without an answer, leave `status: planned` and say in `Pending` that the plan waits for approval.
 
@@ -169,7 +172,8 @@ When the subagent `polix:critic` is not available, stop and tell the user: never
   Without `scope`, it applies to the whole project.
 - A task never breaks a rule that applies: when the design needs it, stop and tell the user.
 - Two rules that contradict each other on a file a task touches: stop and report both ids, never choose one.
-- The commands of `AGENTS.md` feed `verification`, and so does `polix rules check` when a rule of a task has a `check`.
+- The commands of `AGENTS.md` feed `verification`, with the one that runs the checks of the rules when a task's rule
+  has a `check`.
   A `check` is the file that decides the rule, never a command to run.
 - Without facts in `AGENTS.md` or without the folder of rules, follow the conventions of the surrounding code.
   Say what is missing in `Pending`, never in the plan.
@@ -182,13 +186,13 @@ When the subagent `polix:critic` is not available, stop and tell the user: never
 - The literals quote verbatim the strings, messages, commands and data of the request.
 - Never add a requirement the user did not ask for.
 - Never make a choice yourself: what the request, the spec, the docs, the code or a rule do not settle reopens the
-  spec with `polix:grill-me`, even when it looks minor, obvious or not decisive.
+  spec with `grill-me`, even when it looks minor, obvious or not decisive.
 - A limit on how the solution is built is a constraint, and a measurable property of the result is a criterion.
   A choice among options is a decision.
 
 ### Spec to keys
 
-Each key of template.yaml comes from a section of the spec of `polix:grill-me`, or from the code when never asked.
+Each key of template.yaml comes from a section of the spec of `grill-me`, or from the code when never asked.
 
 - `overview`: `summary`, `changes`, `not_changes` and `risk_and_size` from `Outcome`, `Scope` and `Risks`.
   `problem` from `Problem`, `affected` from `Affected`, `terms` from `Terms` and `context` from the code.
@@ -260,7 +264,7 @@ Each key of template.yaml comes from a section of the spec of `polix:grill-me`, 
 - A guarantee the change gives is a criterion of its own, never only a sentence of `cross_cutting` or a comment.
   That covers security or platforms, such as "never reads outside the root" or "a link is never followed".
   It has one journey per way it could break, from the cases of the spec: each input, platform and path that reaches it.
-  For example, a walk of folders has a journey for `..`, a link in any segment, a Windows junction and the case of names.
+  For example, a walk of folders has a journey for `..`, a link in any segment, a Windows junction and name case.
 - `requirement` reads alone: it never points to another key, such as "as `outcome` says".
 - `verify` lists commands with their expected result, or `manual` steps that show the criterion on the finished change.
   It names the tests or cases that prove this criterion, so two criteria never share a vague `verify`.
@@ -340,14 +344,14 @@ Label each test `new`, which fails before the change, or `kept`, which passes be
 
 ### Critic prompt
 
-What to send `polix:critic` at each round of Step 6, in the language of the session:
+What to send `critic` at each round of Step 6, in the language of the session:
 
 ```text
 Plan: <the path of the plan file>
 Spec: <the spec the user confirmed, whole, with the answers of every reopening>
 Template: <the path of the template.yaml next to this skill>
 Skill: <the path of this SKILL.md, whose sections High risk, Tests and Readability the plan follows>
-Rules: <the path of the folder of rules the start context names, or "none">
+Rules: <the path of the folder of rules, or "none" when it does not exist>
 Round: <the round, as 1 of 3>
 Previous: <each finding of the earlier rounds, with fixed, answered by the user or left open, or "none">
 ```
@@ -377,8 +381,8 @@ A reviewer reads `overview` and `specification` to approve the plan; the executo
 ### Plan file
 
 Path: the `Plan` of `Input` when the request gives one.
-Otherwise `<plans>/<name>.yaml`, where `<plans>` is the folder of plans the start context names; report the path.
-Name it as the project names its plans: the convention of `AGENTS.md`, of `polix.yaml` or of the plans already there.
+Otherwise `<plans>/<name>.yaml`, where `<plans>` is the folder of plans; report the path.
+Name it as the project names its plans: the convention of `AGENTS.md`, of `CLAUDE.md` or of the plans already there.
 When the plans already there mix conventions, follow the one last added in the git history.
 Without one, `<name>` is short kebab-case English from the request.
 When another plan already has the name, choose a different one; this applies only to a new plan.
@@ -417,8 +421,8 @@ The top-level keys, beyond what their placeholders say:
 - `risk`: its `level` and the `reason` for it, in one line.
   `level` is `high` when a task touches an item of `High risk`.
   `medium` when one changes an internal contract or code that several callers share; `low` otherwise.
-- `agents`: one item per subagent of the build, `polix:builder`, `polix:verifier` and `polix:reviewer`, in that order.
-  Each has its `name` and the `model` and `effort` the build launches it with.
+- `agents`: one item per subagent of the build, `builder`, `verifier` and `reviewer`, in that order.
+  Each has its `name`, without the prefix of a plugin, and the `model` and `effort` the build launches it with.
   Propose them from `risk.level`, and show them at Step 7 so the user may change them:
   - `low`: builder `sonnet` and `high`, verifier `sonnet` and `medium`, reviewer `sonnet` and `high`.
   - `medium`: builder `opus` and `medium`, verifier `sonnet` and `high`, reviewer `opus` and `high`.
@@ -448,7 +452,7 @@ Never write placeholders:
 ### Adjusting a plan
 
 Revise the file in place with targeted edits, never writing it again whole nor elsewhere.
-At Step 2, `polix:grill-me` reopens only the decisions the adjustment touches and the ones that depend on them.
+At Step 2, `grill-me` reopens only the decisions the adjustment touches and the ones that depend on them.
 Read first `iterations`, the last one first.
 Their departures and open findings are what the adjustment usually answers.
 Bring the new requirements of the user into `outcome`.

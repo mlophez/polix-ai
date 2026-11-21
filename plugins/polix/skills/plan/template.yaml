@@ -30,13 +30,13 @@ stats:  # the build sets every field; the plan writes none
     lines: none  # the lines added plus removed
 
 agents:  # the model and effort the build launches each subagent with, proposed from risk.level
-  - name: polix:builder
+  - name: builder
     model: <sonnet | opus | haiku | fable | inherit>
     effort: <low | medium | high | xhigh | max | inherit>
-  - name: polix:verifier
+  - name: verifier
     model: <sonnet | opus | haiku | fable | inherit>
     effort: <low | medium | high | xhigh | max | inherit>
-  - name: polix:reviewer
+  - name: reviewer
     model: <sonnet | opus | haiku | fable | inherit>
     effort: <low | medium | high | xhigh | max | inherit>
 

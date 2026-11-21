@@ -106,8 +106,8 @@ func TestFrontmatterNames(t *testing.T) {
 	}
 }
 
-// Every skill and every agent runs only when the user or the workflow of polix asks for it: its description says so
-// with a fixed sentence and invites the model to run it by itself with no other.
+// Every skill and every agent runs only when the user or the workflow of the project asks for it: its description
+// says so with a fixed sentence and invites the model to run it by itself with no other.
 func TestInvocation(t *testing.T) {
 	check := func(c component, want, banned string) {
 		d, _ := c.field("description")
@@ -115,14 +115,41 @@ func TestInvocation(t *testing.T) {
 			t.Errorf("%s: the description needs the sentence %q", c.path, want)
 		}
 		if strings.Contains(d, banned) {
-			t.Errorf("%s: the description must not say %q: only the user or the workflow of polix runs it", c.path, banned)
+			t.Errorf("%s: the description must not say %q: only the user or the workflow of the project runs it",
+				c.path, banned)
 		}
 	}
 	for _, c := range components(t, "skills") {
-		check(c, "It runs only when the user or the workflow of polix asks for it.", "Use it")
+		check(c, "It runs only when the user or the workflow of the project asks for it.", "Use it")
 	}
 	for _, c := range components(t, "agents") {
-		check(c, "Launch it only when the user or the workflow of polix asks for it", "Launched by")
+		check(c, "Launch it only when the user or the workflow of the project asks for it", "Launched by")
+	}
+}
+
+// The skills and agents of the plugin work in any project, governed by polix or not: only the skills that set up
+// polix itself name it, and no other file of a skill nor any agent does.
+func TestGenericComponents(t *testing.T) {
+	own := map[string]bool{"doctor": true, "risk": true, "workflow": true}
+	err := fs.WalkDir(FS, "polix", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		parts := strings.Split(p, "/")
+		if parts[1] != "skills" && parts[1] != "agents" || parts[1] == "skills" && own[parts[2]] {
+			return nil
+		}
+		data, err := FS.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(strings.ToLower(string(data)), "polix") {
+			t.Errorf("%s: names polix, which only the skills doctor, risk and workflow may name", p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -136,8 +163,8 @@ func TestLimitsSection(t *testing.T) {
 	}
 }
 
-// Every agent that cannot write a file reports, and its report follows a template inside its own file, since an
-// agent launched by polix cannot read files next to it.
+// Every agent that cannot write a file reports, and its report follows a template inside its own file, since a
+// subagent cannot read files next to it.
 func TestAgentReportTemplates(t *testing.T) {
 	for _, c := range components(t, "agents") {
 		tools, ok := c.field("tools")

@@ -12,6 +12,7 @@ The files or the range reviewed.>
 
 <One per root cause, sorted by severity:
 - <severity>, <category>, `<file:line>`: <what is wrong>.
+  Instances: <each other path to the same root cause, with its `file:line` or case, or "none">.
   Evidence: <the code at `file:line`, or the rule id for a rule finding>.
   Fix: <the direction of the fix>.>
 

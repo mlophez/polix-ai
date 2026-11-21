@@ -3,7 +3,7 @@ name: risk
 description: >
   Calibrates risk.weights and the thresholds changed_lines, changed_files and risk_score of polix.yaml.
   It measures past commits with polix risk --commit, so each gate catches the share of changes the team will review.
-  It runs only when the user or the workflow of polix asks for it.
+  It runs only when the user or the workflow of the project asks for it.
 effort: medium
 model: inherit
 user-invocable: true

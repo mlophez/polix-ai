@@ -1,9 +1,9 @@
 ---
 name: audit
 description: >
-  Audits the repository, or part of it, for bugs, flaws and inconsistencies with polix:auditor subagents in parallel.
+  Audits the repository, or part of it, for bugs, flaws and inconsistencies with auditor subagents in parallel.
   It merges their reports into one ranked by severity, saves it in the folder of reports and fixes nothing.
-  It runs only when the user or the workflow of polix asks for it.
+  It runs only when the user or the workflow of the project asks for it.
 effort: medium
 model: sonnet
 user-invocable: true
@@ -13,12 +13,14 @@ argument-hint: "[paths and an optional focus, e.g. internal/app/setup security; 
 
 # Auditing
 
-Split the scope into areas, audit each with its own `polix:auditor` subagent in parallel and merge their reports.
-Save the merged report in the folder of reports, the one the start context of polix names, below the root.
+Split the scope into areas, audit each with its own `auditor` subagent in parallel and merge their reports.
+Save the merged report in the folder of reports.
+The folders of reports and rules are those the project names in `AGENTS.md`, `CLAUDE.md` or the session.
+Without one, they are `ai/reports/` and `ai/rules/` below the root.
 
 ## Requirements
 
-- The subagent `polix:auditor`.
+- The subagent `auditor`, as `<plugin>:auditor` when a plugin provides it.
   Without it, as in Codex, read `../../agents/auditor.md` next to this skill and follow it yourself for each area.
 - The template of the report, `template.md` next to this skill.
   Without it, stop and tell the user.
@@ -34,7 +36,8 @@ Save the merged report in the folder of reports, the one the start context of po
 
 - **Report**: the path of the report file.
 - **Summary**: the scope, the areas and their auditors, the findings per severity and the three that matter most.
-- **Findings**: each as severity, category, confidence, `file:line`, what is wrong, the evidence and the fix direction.
+- **Findings**: each as severity, category, confidence, `file:line`, what is wrong, the evidence, the impact and the
+  fix direction.
 - **Checks**: the checks run and their result.
 - **Coverage**: what was read whole, and what was only skimmed or skipped.
 - **Pending**: what could not be audited and why, and the question of which findings to fix.
@@ -53,7 +56,7 @@ Copy this checklist and track your progress:
 Audit progress:
 - [ ] Step 1: Resolve the scope and the focus (see `Input`).
 - [ ] Step 2: Split the scope into areas (see `Areas`) and show them to the user in one line each.
-- [ ] Step 3: Launch one `polix:auditor` per area in a single message (see `Prompt`) and wait for every report.
+- [ ] Step 3: Launch one `auditor` per area in a single message (see `Prompt`) and wait for every report.
 - [ ] Step 4: Relaunch once each auditor that failed or returned no report; report it in `Pending` if it fails again.
 - [ ] Step 5: Merge the reports (see `Merge`).
 - [ ] Step 6: Write the merged report to its file from `template.md` (see `Report file`).
@@ -80,6 +83,7 @@ Send each auditor this block, in the language of the session:
 Scope: <the paths of its area>
 Focus: <the focus, or "all">
 Checks: <run for the first auditor, skip for the others>
+Rules: <the path of the folder of rules, or "none" when it does not exist>
 ```
 
 ### Merge
@@ -92,7 +96,7 @@ Checks: <run for the first auditor, skip for the others>
 ### Report file
 
 Path: a file of the folder of reports, `<reports>`.
-Name it as the project names its reports: the convention of `AGENTS.md`, of `polix.yaml` or of the reports there.
+Name it as the project names its reports: the convention of `AGENTS.md`, of `CLAUDE.md` or of the reports there.
 Without one, name it `<reports>/<date>-audit-<name>.md`, where `<date>` is today as `YYYY-MM-DD`.
 `<name>` is short kebab-case English from the scope and the focus (`repository` for the whole one).
 When the file exists, add a numeric suffix (`-2`) instead of overwriting it.

@@ -1,10 +1,10 @@
 ---
 name: build
 description: >
-  Implements a plan task by task: for each task, polix:builder builds it, polix:verifier and polix:reviewer check it,
-  and the build commits it once they close it. Then it updates the docs and polix:verifier checks the whole plan.
+  Implements a plan task by task: for each task, the subagent builder builds it, verifier and reviewer check it,
+  and the build commits it once they close it. Then it updates the docs and verifier checks the whole plan.
   It runs unattended, records each iteration in the plan, never pushes, and returns the stats of the build.
-  It runs only when the user or the workflow of polix asks for it.
+  It runs only when the user or the workflow of the project asks for it.
 effort: low
 model: sonnet
 user-invocable: true
@@ -22,17 +22,18 @@ When the checks leave something to fix, you add an iteration of that task to the
 When the checks close the task, you commit it, and the next task starts from that commit.
 Once every task is closed, you update the docs, and the verifier checks the whole plan.
 You are the only one that edits the plan and commits: the subagents read it and report.
-The folder of plans is the one the start context of polix names, below the root.
+The folders of plans, rules, reports and tasks are those the project names in `AGENTS.md`, `CLAUDE.md` or the session.
+Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` below the root.
 
 ## Requirements
 
 - A plan file of the folder of plans, in YAML with a list `tasks` of ids `T1`, `T2`..., as the skill plan writes it.
-  A plan in Markdown (`.md`) is no longer built: stop and offer `/polix:plan` to write it again as YAML.
-  Without a plan, stop and offer `/polix:plan`: never build without a plan nor write one yourself.
-- The subagents `polix:builder`, `polix:verifier` and `polix:reviewer`.
-  `polix:verifier` checks that the change meets the plan, and `polix:reviewer` that its code is well written.
+  A plan in Markdown (`.md`) is no longer built: stop and offer the skill `plan` to write it again as YAML.
+  Without a plan, stop and offer the skill `plan`: never build without a plan nor write one yourself.
+- The subagents `builder`, `verifier` and `reviewer`, as `<plugin>:builder` when a plugin provides them.
+  `verifier` checks that the change meets the plan, and `reviewer` that its code is well written.
   Without them, as in Codex, read `builder.md`, `verifier.md` and `reviewer.md` in `../../agents/`, next to this skill.
-  Follow each yourself when its turn comes, with the `subagent_start` injects of `polix.yaml` for it.
+  Follow each yourself when its turn comes.
   The rules of this skill win over theirs, and the checks are not independent: say so in the report.
 
 ## Input
@@ -51,7 +52,7 @@ The folder of plans is the one the start context of polix names, below the root.
   When the branch exists neither locally nor on a remote, stop and tell the user; never create it.
   A plan without `branch` builds on the current branch.
 - **Approval**: a plan with `status: planned` is not approved.
-  Stop and ask the user to approve it with `/polix:plan <plan>`; never approve it yourself.
+  Stop and ask the user to approve it with the skill `plan`; never approve it yourself.
 - **Resume**: a plan `in-progress` was interrupted: resume it where it stopped (see `Resume`).
   When every task is `done` and the plan is `done`, tell the user and stop.
   A plan `approved` or `blocked` builds from `From`; its earlier iterations stay.
@@ -168,7 +169,8 @@ An iteration is one pass of the builder on what the checks left open, appended t
   - `kind`: the area of a finding of the verification, the severity and category of one of the review, or the check
     that failed the commit.
   - `where`: the `file:line` or the id of the plan it is about.
-  - `problem` and `fix`: what is wrong and what to change, from the report, as literal blocks.
+  - `problem` and `fix`: what is wrong, with its instances and evidence, and what to change, from the report.
+    Both are literal blocks.
   - `repeats`: the `FND-NN` of an earlier iteration the checks report again, or `none`.
     So is one whose report breaks the same guarantee by another path, such as a second way to read outside the root.
   - `status: open` and `evidence: none`: you set `fixed` or `skipped`, with why, from the builder's report.
@@ -229,7 +231,7 @@ How to commit:
 2. Commit with `git commit -m "<subject>" -m "<body>"`, run by its name and ending the line.
    The message holds only those lines: no trailer, no attribution.
    Never pass `--no-verify`: the hooks of the project are part of the checks.
-3. When polix blocks the commit with a reminder that it gives only once, such as updating the docs, commit again once.
+3. When a hook blocks the commit with a reminder that it gives only once, such as updating the docs, commit again once.
    The docs are Step 5's, so a task's commit never stops for them.
 4. When a hook or a check fails the commit, the failure is a finding with `source: commit`.
    Add it to an iteration of the task, or of `final`, and go on with its loop: it counts toward its limit.
@@ -245,7 +247,8 @@ A plan `in-progress` was interrupted; the commits of the branch say which tasks 
   `git log --format=%s $(git merge-base HEAD <base>)..HEAD`, or to `final` when every task has one.
   Run the checks of that task, or of the final verification, on them; their findings start its iterations.
 - Otherwise, run the cycle from the first task not `done`, or the docs and the final verification when all are.
-- The base is the `base_branch` of `polix.yaml`, else `main`.
+- The base is the base branch `AGENTS.md` or `CLAUDE.md` names.
+  Without one, the branch `git symbolic-ref --short refs/remotes/origin/HEAD` names without `origin/`, else `main`.
 
 ### Plan stats
 
@@ -285,7 +288,8 @@ stats:
 ### Models
 
 Launch each subagent with the `model` and `effort` of its item in `agents` of the plan.
-Its item is the one whose `name` is its type, and both go as options of the launch.
+Its item is the one whose `name` is its name, with or without the prefix of its plugin (`builder`, `<plugin>:builder`).
+Both values go as options of the launch.
 
 - Leave out an option whose value is `inherit`, and both for an agent without an item.
   So does a plan without `agents`: the frontmatter of the agent then decides.
@@ -302,6 +306,7 @@ Plan: <path of the plan file>
 Branch: <the branch of Step 1, or "current" for a plan without `branch`>
 Task: <id and title of the one task to build, or "none" when it works on an iteration>
 Iteration: <the `ITER-NN` of the plan to work on, its task and findings, or "none">
+Rules: <the path of the folder of rules, or "none" when it does not exist>
 ```
 
 ### Builder report
@@ -334,6 +339,7 @@ Task: <the id of the task whose cycle runs>
 Previous: <the `ITER-NN` of the plan the builder just worked on, or "none">
 Skipped: <the `FND-NN` of that iteration the builder skipped, with why, or "none">
 Repeats: <the `FND-NN` that a later finding of the plan `repeats`, with the guarantee they break, or "none">
+Rules: <the path of the folder of rules, or "none" when it does not exist>
 ```
 
 ### Status
@@ -355,11 +361,11 @@ Once every task is closed, bring the docs in line with the whole change, in one 
    That is behaviour, commands, flags, configuration, contracts, files and folders, install or setup steps.
 2. Find the Markdown files that describe it with `rg`: `README.md`, the folder of docs and `CHANGELOG.md`.
    The folder of docs is `docs/` or what `AGENTS.md` names.
-   Include any other `.md` of the project, except the folders of plans, reports and rules.
+   Include any other `.md` of the project, except the folders of plans, rules, reports and tasks.
 3. Update each passage that the change made stale or incomplete.
    Add an entry to the unreleased section of the changelog when the project keeps one.
    Follow the style, language and line format of each file; write nothing the change does not support.
-4. Never edit `AGENTS.md`, `CLAUDE.md` nor a file protected by `polix.yaml`: the instructions belong to a person.
+4. Never edit `AGENTS.md`, `CLAUDE.md` nor a file the project protects: the instructions belong to a person.
    Write the change they need in `Pending`.
 
 Leave the docs alone when the change alters nothing a reader sees, and say so in `Docs` of `Output`.

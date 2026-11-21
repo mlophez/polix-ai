@@ -2,7 +2,7 @@
 name: init
 description: >
   Writes the general context of the project in AGENTS.md, imported by CLAUDE.md, and the README.md from its templates.
-  It runs only when the user or the workflow of polix asks for it.
+  It runs only when the user or the workflow of the project asks for it.
 effort: high
 model: inherit
 user-invocable: true
@@ -24,8 +24,9 @@ Write `README.md` from [readme.md](readme.md) for human readers.
 - **Project**: the current `AGENTS.md` when present, `README.md`, the folder tree and `Justfile`/`Makefile`.
   Also the manifests (`package.json`, `pyproject.toml`, `go.mod`, `pom.xml`...) and test configurations.
   Also the CI pipelines (`.github/workflows/`, `.gitlab-ci.yml`, `bitbucket-pipelines.yml`...).
-  Also `polix.yaml` and the folders of the AI when present: `rules/`, `plans/`, `reports/` and `tasks/`.
-  They sit below `path` of `polix.yaml`, `ai` without it, as the start context of polix names them.
+  Also the folder of the AI when present, with its `rules/`, `plans/`, `reports/` and `tasks/`.
+  It is the one the project names in `AGENTS.md`, `CLAUDE.md` or the session, `ai/` below the root by default.
+  Also the files at the root that configure the agents, such as their hooks or their workflow.
 
 ## Output
 
@@ -60,6 +61,7 @@ State the origin of each proposal (e.g. "inferred from pyproject.toml") so the u
 
 - Show the proposals and ask for what the project does not answer, never one question at a time.
   Use `AskUserQuestion` for closed questions, at most 4 per call, and grouped free text for open ones.
+- List the sections of the current `AGENTS.md` that [context.md](context.md) lacks, and ask which ones to keep.
 - Apply the corrections of the user.
 - Confirm once before writing, listing the existing files that will be overwritten.
 
@@ -69,8 +71,8 @@ State the origin of each proposal (e.g. "inferred from pyproject.toml") so the u
 - Replace every `<...>` with what it describes.
 - Replace every `<!-- ... -->` guidance comment with its content, following the conditions it states.
 - Keep the first comment of [context.md](context.md) as is in `AGENTS.md`: it says only this skill or a human edits it.
-- Keep the section `## polix` of the current `AGENTS.md` verbatim, as the last section.
-  It tells the agent how to install polix, and it is the only section outside [context.md](context.md).
+- Keep verbatim, after the last section, the sections of the current `AGENTS.md` the user kept at Step 2.
+  A tool may have added one, such as how to install it; they are the only sections outside [context.md](context.md).
 - Write in English, concise and brief: cut every word that adds no fact.
 - Write every list item of `AGENTS.md` and `README.md` as a short summary on one line of at most 120 characters.
   Never wrap it; the detail belongs in `docs/`.
