@@ -2,8 +2,8 @@
 name: build
 description: >
   Implements a plan task by task: the subagent builder builds each task, verifier and reviewer check it, and the
-  build commits it once they close it. Then it updates the docs and checks the whole plan, unattended, recording
-  each iteration in the plan and never pushing. It runs only when the user asks for it.
+  build commits it once they close it. Then it checks the whole plan, unattended, recording each iteration in the
+  plan and never pushing. It runs only when the user asks for it.
 effort: low
 model: sonnet
 user-invocable: true
@@ -19,7 +19,8 @@ In the cycle of a task, the builder builds it and reports, you write the report 
 the reviewer check that task alone, in parallel.
 When the checks leave something to fix, you add an iteration of that task to the plan and launch the builder on it.
 When the checks close the task, you commit it, and the next task starts from that commit.
-Once every task is closed, you update the docs, and the verifier checks the whole plan.
+Once every task is closed, the verifier checks the whole plan.
+You never update the docs of the project: they are not part of building.
 You are the only one that edits the plan and commits: the subagents read it and report.
 The folders of plans, rules, reports and tasks are those the project names in `AGENTS.md`, `CLAUDE.md` or the session.
 Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` below the root.
@@ -64,7 +65,6 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
 - **Tasks**: each task with its `status`: `done` with its evidence and commit, `departed` or `blocked` and why.
 - **Commits**: each commit of the run, its short hash and subject; none is pushed.
 - **Changes**: the files changed, by task and by finding.
-- **Docs**: each Markdown file updated and what changed in it, or why none needed it.
 - **Acceptance**: each AC with `met`, `not met`, `not verified` or `pending` and its evidence.
 - **Stats**: the build in figures (see `Stats`).
 - **Blockers**: when the plan ends `blocked`, each reason and what a person must do to clear it; or "none".
@@ -77,10 +77,10 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
 
 - Ask only in `Input`, before Step 3: from then on, never ask the user nor wait for an answer.
   Decide what is open from the plan, the code and the rules, and record it in `Pending`.
-- Never end your turn before Step 9: a subagent that returns, a failed check or a long run is never the end.
+- Never end your turn before Step 8: a subagent that returns, a failed check or a long run is never the end.
   The run ends only when the plan is done or a loop stops (see `Task cycle` and `Final verification`).
 - Never edit the code yourself: only the builder changes it, except in the fallback of `Requirements`.
-  You edit only the Markdown docs of the project (see `Docs`) and five parts of the plan.
+  You edit only five parts of the plan, and never a doc of the project.
   Those are its `status`, the `status` and `evidence` of each task and of each criterion.
   Also the iterations you add, and the fields of `stats` (see `Plan stats`).
   Of the iterations, you set their `status` and the `status` and `evidence` of their findings.
@@ -103,15 +103,15 @@ Build progress:
   Read the plan whole.
 - [ ] Step 2: Show the user the tasks to build, in order, and go on without waiting.
 - [ ] Step 3: Set the plan `in-progress` (see `Status`), its `stats.start` and `stats.iterations` (see `Plan stats`).
+  Take the start of this run and say it to the user (see `Timeline`).
 - [ ] Step 4: Run the cycle of each task from `From`, in order (see `Task cycle`).
-  When a cycle stops, go to Step 7.
-- [ ] Step 5: Update the docs and commit them (see `Docs` and `Commits`).
-- [ ] Step 6: Verify the whole plan and fix until nothing is open or the loop stops (see `Final verification`).
-- [ ] Step 7: Set the plan `done` or `blocked` (see `Status`).
-  Set its `stats.end`, `stats.duration`, `stats.tokens` and `stats.code` (see `Plan stats`).
+  When a cycle stops, go to Step 6.
+- [ ] Step 5: Verify the whole plan and fix until nothing is open or the loop stops (see `Final verification`).
+- [ ] Step 6: Set the plan `done` or `blocked` (see `Status`).
+  Set its `stats.end`, `stats.duration`, the open entry of `stats.timeline` and `stats.code` (see `Plan stats`).
   When `done`, commit the plan and what the final verification fixed (see `Commits`).
-- [ ] Step 8: Gather the stats of the build (see `Stats`).
-- [ ] Step 9: Report (see `Output`), stop and return control to the user.
+- [ ] Step 7: Gather the stats of the build (see `Stats`).
+- [ ] Step 8: Report (see `Output`), stop and return control to the user.
 ```
 
 ## References
@@ -147,7 +147,7 @@ A criterion covered by several tasks is evaluated at the last task that covers i
 
 ### Final verification
 
-Once every task is closed and the docs committed, check the whole plan, and repeat until nothing is open:
+Once every task is closed, check the whole plan, and repeat until nothing is open:
 
 1. **Check**: launch the verifier with `Task: final` (see `Verifier prompt`).
    After an iteration of `final`, launch the reviewer with `Task: final` in the same message, so they run in
@@ -183,7 +183,6 @@ An iteration is one pass of the builder on what the checks left open, appended t
 
 Copy each finding from its report as it is, its `repeats` included: never merge, reword nor judge it.
 The criteria go to `acceptance`, never to the iteration, and the rest of the reports goes to `Output`.
-An iteration of a plan built before this format has `tasks` instead of `task`: keep it as it is, as history.
 
 Two checks of a task, the first leaving a finding of each kind, and the iteration that fixed them:
 
@@ -227,26 +226,27 @@ When git ignores the plan file (`git check-ignore -q <plan>`), the commits leave
 
 - **Task**: once its checks close it.
   Subject `T<N>: <title of the task>`, then a body with its `summary` and the line `Plan: <path of the plan>`.
-- **Docs**: at Step 5, when a doc changed: subject `Docs: <title of the plan>`, and the line `Plan: <path>`.
-- **Final**: at Step 7 when `done`: subject `Final: <title of the plan>`, a body with the `FND-NN` the final
+- **Final**: at Step 6 when `done`: subject `Final: <title of the plan>`, a body with the `FND-NN` the final
   verification fixed, or "Nothing to fix.", and the line `Plan: <path>`.
   When `git status --porcelain` shows nothing, as with an ignored plan and nothing fixed, make no final commit and
   say so in `Commits` of `Output`.
 
 How to commit:
 
-1. List the changed and untracked paths with `git status --porcelain`.
+1. Write the entry of the task, or of `final`, in `stats.timeline` (see `Timeline`), so the commit holds it.
+2. List the changed and untracked paths with `git status --porcelain`.
    The tree held at most the plan file and its task file when the run started, so all are the run's.
    Stage them by path with `git add <paths>`, never `git add -A`, `-a` nor a path after `git commit`.
-2. Commit with `git commit -m "<subject>" -m "<body>"`, run by its name and ending the line.
+3. Commit with `git commit -m "<subject>" -m "<body>"`, run by its name and ending the line.
    The message holds only those lines: no trailer, no attribution.
    Never pass `--no-verify`: the hooks of the project are part of the checks.
-3. When a hook blocks the commit with a reminder that it gives only once, such as updating the docs, commit again once.
-   The docs are Step 5's, so a task's commit never stops for them.
-4. When a hook or a check fails the commit, the failure is a finding with `source: commit`.
+4. When a hook blocks the commit with a reminder that it gives only once, such as updating the docs, commit again once.
+   You never update the docs, so a commit never stops for them.
+5. When a hook or a check fails the commit, the failure is a finding with `source: commit`.
    Add it to an iteration of the task, or of `final`, and go on with its loop: it counts toward its limit.
-5. When a block asks for what only a person can do, stop the loop as `Task cycle` does.
-6. Take the short hash with `git rev-parse --short HEAD` for `Output`; never push.
+   The entry of step 1 stays: the next commit of the task, or of `final`, writes its `end` and `duration` again.
+6. When a block asks for what only a person can do, stop the loop as `Task cycle` does.
+7. Take the short hash with `git rev-parse --short HEAD` for `Output`; never push.
 
 ### Resume
 
@@ -256,7 +256,7 @@ A plan `in-progress` was interrupted, and one `blocked` stopped; the commits of 
 - Otherwise, with uncommitted changes, they belong to the first task without its commit `T<N>: ` in
   `git log --format=%s $(git merge-base HEAD <base>)..HEAD`, or to `final` when every task has one.
   Run the checks of that task, or of the final verification, on them; their findings start its iterations.
-- Otherwise, run the cycle from `From`, or the docs and the final verification when every task is `done`.
+- Otherwise, run the cycle from `From`, or the final verification when every task is `done`.
 - A task `blocked` in an earlier run was cleared by a person: stop on it only when a builder of this run reports it
   `blocked` again.
 - The base is the base branch `AGENTS.md` or `CLAUDE.md` names.
@@ -265,21 +265,16 @@ A plan `in-progress` was interrupted, and one `blocked` stopped; the commits of 
 ### Plan stats
 
 The fields of `stats`, at the root of the plan, record the build as a whole across every run, a resumed one too.
-A plan written before `stats` holds `start`, `end`, `duration` and `tokens` at its root.
-Move them under `stats`, keeping their values, and add the fields it lacks.
 
 - `start`: at Step 3, the current time from the shell, as `YYYY-MM-DDTHH:MM:SS+HH:MM` with the local offset.
   Take it from a command, such as `date -Iseconds` or `Get-Date -Format "yyyy-MM-ddTHH:mm:sszzz"`; never guess it.
   Set it only when it is `none`: a resumed plan keeps the `start` of its first run.
-- `end`: at Step 7, the current time the same way; a later run of the plan writes it again.
+- `end`: at Step 6, the current time the same way; a later run of the plan writes it again.
 - `duration`: `end` minus `start`, as `1h 05m 12s`; it includes the time the plan stood interrupted.
-- `tokens`: the `totalTokens` of the usage each subagent reports when it returns, added to `stats.tokens`.
-  Start from `0` when it is `none`, and add each subagent as it returns, never estimated.
-  They leave out your own tokens, which no report gives: say so in `Stats`.
-  When a subagent reports no usage, as in the fallback of `Requirements`, set it `unknown` and add no more.
 - `iterations`: at Step 3, the runs of the build on the plan: `1` when it is `none`, else one more.
   Every run counts, a resumed one too; it is not the number of items of the key `iterations` of the plan.
-- `code`: at Step 7, the `files` changed and the `lines` added plus removed on the branch, leaving out the plan.
+- `timeline`: the time each task and the final verification took in each run (see `Timeline`).
+- `code`: at Step 6, the `files` changed and the `lines` added plus removed on the branch, leaving out the plan.
   The commits of the build moved `HEAD`, so measure against the base of `Resume`.
   Take them from `git diff --shortstat $(git merge-base HEAD <base>) -- . ':(exclude)<plan>'`.
   Add the untracked files of `git ls-files --others --exclude-standard`, each line of one as added.
@@ -290,12 +285,50 @@ stats:
   start: 2026-11-14T21:05:40+01:00
   end: 2026-11-14T21:48:02+01:00
   duration: 42m 22s
-  tokens: 491603
   iterations: 2
+  timeline:
+    - id: T1
+      start: 2026-11-14T21:05:40+01:00
+      end: 2026-11-14T21:12:03+01:00
+      duration: 6m 23s
+    - id: T2
+      start: 2026-11-14T21:12:03+01:00
+      end: 2026-11-14T21:20:15+01:00
+      duration: 8m 12s
+    - id: T2
+      start: 2026-11-14T21:31:40+01:00
+      end: 2026-11-14T21:44:10+01:00
+      duration: 12m 30s
+    - id: final
+      start: 2026-11-14T21:44:10+01:00
+      end: 2026-11-14T21:48:02+01:00
+      duration: 3m 52s
   code:
     files: 7
     lines: 360
 ```
+
+The first run stopped `blocked` on T2, and the second one closed it and ran the final verification.
+
+### Timeline
+
+`stats.timeline` holds one entry per stretch of work of a run on a task or on the final verification, in order.
+Never edit nor remove an entry of an earlier run: it is the history of the plan.
+
+- `id`: the id of the task, as `T3`, or `final`.
+  A task worked on in several runs has one entry per run, all with its id.
+- `start`: when the run began the work, from a command as `stats.start`.
+  It is the `end` of the previous entry of this run, or the start of this run for its first entry.
+  The start of this run is the current time at Step 3; say it to the user then, so a summary of the context keeps it.
+  The time a plan stood interrupted counts in no entry.
+- `end`: the current time from a command, taken right before the commit that holds the entry.
+  - A task: at step 1 of `How to commit` of its commit `T<N>: `.
+  - The final verification: `stats.end`, written at Step 6, also when there is no final commit.
+  - The task or the final verification the run stops on, when the plan ends `blocked`: `stats.end`, at Step 6.
+- `duration`: `end` minus `start`, as `stats.duration`.
+
+A run interrupted before Step 6 leaves no entry for the task it was on: the next run measures it from its start.
+A plan without `timeline` gets it as `[]`.
 
 ### Models
 
@@ -371,24 +404,6 @@ Edit only the top-level `status` of the plan:
   The only exceptions are those a builder skipped twice for the same reason.
 - `blocked` at the end otherwise.
 
-### Docs
-
-Once every task is closed, bring the docs in line with the whole change, in one pass:
-
-1. Read the diff of the branch against the base of `Resume`, and list what a reader of the docs would see differently.
-   That is behaviour, commands, flags, configuration, contracts, files and folders, install or setup steps.
-2. Find the Markdown files that describe it with `rg`: `README.md`, the folder of docs and `CHANGELOG.md`.
-   The folder of docs is `docs/` or what `AGENTS.md` names.
-   Include any other `.md` of the project, except the folders of plans, rules, reports and tasks.
-3. Update each passage that the change made stale or incomplete.
-   Add an entry to the unreleased section of the changelog when the project keeps one.
-   Follow the style, language and line format of each file; write nothing the change does not support.
-4. Never edit `AGENTS.md`, `CLAUDE.md` nor a file the project protects: the instructions belong to a person.
-   Write the change they need in `Pending`.
-
-Leave the docs alone when the change alters nothing a reader sees, and say so in `Docs` of `Output`.
-The final verification checks them, and its fixes to the docs go in the final commit.
-
 ### Acceptance criteria
 
 After each verification, take the criteria it evaluated as they are:
@@ -403,12 +418,24 @@ After each verification, take the criteria it evaluated as they are:
 
 Gather the figures of this run from the plan and from git, and give them as a short list:
 
-- **Iterations**: those of this run, by task and `final`, and the plan's total, the items of `iterations`.
+- **Iterations**: those of this run, and the plan's total, the items of `iterations`.
 - **Tasks**: done, departed and blocked, of the total, and the commits of the run.
 - **Criteria**: met, not met, not verified and pending, of the total.
 - **Findings**: of the iterations, found, fixed and skipped, by `source`, and the reviewer's `minor` ones apart.
 - **Agents**: how many times the builder, the verifier and the reviewer ran, and the model and effort of each.
 - **Time**: the `start`, `end` and `duration` of `stats` of the plan, and its `iterations`, the runs of the build.
-- **Tokens**: the tokens of this run by agent, and the `tokens` of `stats` of the plan.
-  Say that they count the subagents only, not this skill's own.
+  Below it, one line per task and `final` with an entry in `timeline`, in the order of the plan.
+  Each line has its time, the sum of its entries, and that time as a share of the sum of every entry, rounded to a
+  whole percent.
+  It also has its iterations, the items of `iterations` of the plan with its id, across every run.
+  Say that the shares are rounded.
+
+```text
+- Time: 2026-11-21 16:57 to 17:44, 47m 31s, 2 runs
+  - T1: 5m 01s (11%), 1 iteration
+  - T2: 12m 20s (26%), 2 iterations
+  - T3: 22m 20s (48%), 3 iterations
+  - T4: 6m 15s (13%), 1 iteration
+  - final: 1m 04s (2%), 0 iterations
+```
 - **Code**: the `files` and `lines` of `code` of `stats` of the plan, and the lines added and removed apart.

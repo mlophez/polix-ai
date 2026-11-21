@@ -131,7 +131,7 @@ Review `git diff $(git merge-base HEAD <base>)`, plus the untracked files of `gi
 In plan mode, review `git diff HEAD` and the untracked files instead.
 Leave out the plan file and the task file its `reference` names: the build carries them, and they are not the change.
 The build committed the earlier tasks, so the uncommitted change is the task's alone.
-With `final`, every task and the docs are committed, so it is the fixes of the final verification.
+With `final`, every task is committed, so it is the fixes of the final verification.
 
 ### Plan mode
 

@@ -23,8 +23,8 @@ stats:  # the build sets every field; the plan writes none
   start: none  # when it first set the plan in-progress, as YYYY-MM-DDTHH:MM:SS+HH:MM
   end: none  # when the plan ended done or blocked, in the same format
   duration: none  # end minus start, as 1h 05m 12s
-  tokens: none  # the sum of the totalTokens its subagents reported, across every run, or unknown
   iterations: none  # the runs of the build on the plan, a resumed one included
+  timeline: []  # one entry per run on a task or the final verification: id (T<N> or final), start, end, duration
   code:  # as the build last measured it, against the base branch and without the plan
     files: none  # the files changed, the untracked ones included
     lines: none  # the lines added plus removed
@@ -165,7 +165,7 @@ tasks:
     covers: [<AC-01>]  # [] for a supporting task
     files:
       create: [<path>]  # the files the behaviour of the task lives in
-      modify: [<path>]  # never the callers, comments and docs that only follow: the build finds them
+      modify: [<path>]  # never the callers, fixtures and comments that only follow: the build finds them
     tests:  # only kept tests, or [], for a refactor or a change no test can observe; its summary says why
       - file: <test file>
         new:

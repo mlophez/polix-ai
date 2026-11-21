@@ -25,6 +25,14 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   (undefined facts, contradictions, edge cases, traceability, the executor walk) and parses it; it no longer checks
   the coverage of the brief, the rules of the tasks, the keys of the template nor the form of the skill.
   `/polix:spec` launches it once instead of up to three rounds, and what it leaves open goes to `Pending`.
+- `/polix:build` no longer updates the docs of the project: it has no docs step nor `Docs:` commit,
+  `polix:builder` no longer edits the docs a task makes stale, and `polix:verifier` no longer reports stale docs.
+  Update the docs yourself, or with a reminder of your `polix.yaml`, after the build.
+- `/polix:build` no longer writes `stats.tokens`, which added the context size of each subagent at its end and left
+  out the main session. It writes `stats.timeline` instead: one entry per run on a task or on the final
+  verification, with its `start`, `end` and `duration`, written right before its commit; the time a plan stood
+  interrupted counts in no entry. Its stats list each task and `final` with its time, its share and its iterations.
+  `/polix:build` no longer moves the fields of a plan written before `stats` nor keeps iterations with `tasks`.
 - `polix:builder` no longer receives `Rules` from `/polix:build`: it reads the rules of its task in the folder of
   rules `AGENTS.md` or `CLAUDE.md` names, else `ai/rules/`.
 - `/polix:plan` proposes `effort: medium` for the builder, the verifier and the reviewer at every risk level;

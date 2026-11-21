@@ -1515,9 +1515,10 @@ also prints that Codex support is not implemented in this release and the setup 
   the builder in iterations of the task, up to five, and once the checks close it `build` commits it as
   `T<N>: <title>` with the plan, unless git ignores the plan; a task that does not close leaves the plan `blocked`,
   with its changes uncommitted and no later task built, and `build` resumes it with them once a person clears it.
-  After the last task it updates the Markdown docs of the project in a `Docs:` commit, has the `verifier` check the
+  After the last task it has the `verifier` check the
   whole plan, fixes what it finds in up to five iterations, which the `reviewer` also reviews, commits them as
-  `Final:`, never pushes, and reports the stats of the build, `review` reviews the code of a change without a plan with the agent `reviewer` and saves
+  `Final:`, never pushes nor updates the docs of the project, and reports the stats of the build, with the time and
+  iterations of each task, `review` reviews the code of a change without a plan with the agent `reviewer` and saves
   the report
   in the folder of reports, `audit` audits the repository with several `auditor` agents in parallel and saves the
   report in the folder of reports, `writing-skills` and `writing-agents` write a skill or a subagent in one format,
@@ -1577,7 +1578,8 @@ also prints that Codex support is not implemented in this release and the setup 
     once after its baseline, and by the hooks of the project; when they leave something to fix, it adds
     an iteration (`ITER-NN`) of that task, or of `final`, to `iterations` with the findings to fix
     (`FND-NN`) and launches the builder on it; it sets in `stats` at the root of the plan its `start`, `end`, `duration`,
-    the `tokens` the subagents report, the `iterations`, its runs, and the `code` it changed; it launches the builder, the verifier and the reviewer each with the `model`
+    the `iterations`, its runs, the `timeline`, the start, end and duration of each run on a task or on `final`,
+    written right before its commit, and the `code` it changed; it launches the builder, the verifier and the reviewer each with the `model`
     and `effort` of its item of `agents` of the plan, which `spec` proposes (effort `medium`, the models from the risk) and the user may change,
     `inherit` or a missing item leaving it to the frontmatter of the agent; a run that did not end resumes
     where its last iteration stopped, or at the first task without its commit.

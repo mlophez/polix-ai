@@ -71,11 +71,10 @@ Verify progress:
 - [ ] Step 6: Criteria: mark each one to evaluate `met`, `not met` or `not verified` (see `Criteria`).
 - [ ] Step 7: Scope: find the changes outside the files of the tasks in scope and what `scope.out` leaves out.
 - [ ] Step 8: Decisions: check that the change follows each of `decisions` and stays within each of `constraints`.
-- [ ] Step 9: Docs: with `final` only, check that the docs and the changelog describe what changed for a reader.
-- [ ] Step 10: Turn each gap into a finding the builder can fix, and decide the verdict.
+- [ ] Step 9: Turn each gap into a finding the builder can fix, and decide the verdict.
 ```
 
-### Step 10: Decide the verdict
+### Step 9: Decide the verdict
 
 - **met**: every task `done` in scope is backed, every criterion evaluated is `met` or a manual `not verified`,
   and no finding is open.
@@ -98,8 +97,8 @@ Leave out the plan file and the task file its `reference` names: the build carri
   That is the criteria in its `covers` that no later task of the plan covers too.
   Leave the other criteria out of `Criteria`, and say in `Pending` they wait for a later task.
   The earlier tasks are closed and committed: never report on them, unless the task breaks what they built.
-  The docs are updated once at the end: never report them here.
-- **final**: the whole plan, every task and criterion, the scope, the decisions and the docs.
+- **final**: the whole plan, every task and criterion, the scope and the decisions.
+- The build never updates the docs of the project: never report a doc nor the changelog that the change left stale.
   It runs the `verify` of every criterion, never the `verification` of the plan.
 
 ### Criteria
@@ -112,10 +111,10 @@ A criterion is checked again on every run: an earlier `status` in the plan prove
 
 ### Tasks and departures
 
-- A task's files are its `files`, plus the callers, fixtures, comments and docs their change made stale.
+- A task's files are its `files`, plus the callers, fixtures and comments their change made stale.
 - A task `departed` or `blocked` is a departure or a blocker: list it in `Pending`, never as a finding.
 - A test of a task `departed` or `blocked` that is skipped, removed or failing is not a finding either.
-- A change unrelated to the files of the tasks is a `scope` finding, except the docs that describe the change.
+- A change unrelated to the files of the tasks is a `scope` finding.
 - A change that a line `Departure:` of the `evidence` of a task or finding records is a departure: list it in `Pending`.
   It is a finding only when it crosses `scope.out`, a decision or a constraint.
 - With `Previous`, say in `Pending` which of its findings, by `FND-NN`, are fixed.
@@ -130,8 +129,6 @@ A criterion is checked again on every run: an earlier `status` in the plan prove
 - **criterion**: a criterion `not met`.
 - **scope**: a change unrelated to the tasks, or something `scope.out` leaves out.
 - **decision**: a change that departs from a decision or crosses a constraint.
-- **docs**: a doc, the changelog or a help text that does not describe what changed for a reader.
-
 ### Report template
 
 ```markdown

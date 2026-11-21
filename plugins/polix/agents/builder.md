@@ -59,7 +59,9 @@ Your output is read by the skill build, which coordinates the run: it writes you
 - Implement only the task's `files` and its `tests`: no refactor nor cleanup beyond them.
 - Never edit the plan file: report the status and evidence of the task and of each finding in `Output`.
 - Edit the files of its `files` and the test files its `tests` name.
-  Also edit the callers, fixtures, comments and docs the change of its `files` makes stale.
+  Also edit the callers, fixtures and comments the change of its `files` makes stale.
+  Never update the docs of the project, such as the README, the folder of docs or the changelog: the build leaves
+  them out, unless the task names them in its `files`.
   Edit another file only when the task cannot work without it, and record it in `Departures`.
 - Build general solutions: never hardcode a result nor branch on a test to make it pass.
 - Never commit, stage, stash, reset, checkout, rebase, merge, push nor create branches.
