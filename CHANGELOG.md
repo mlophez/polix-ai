@@ -16,7 +16,6 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   `fail`, without color nor wrapping. `polix doctor --hook` and the exit codes do not change.
 - `polix config check` groups its problems into Workflow and Rules, with the hint of a newer polix as the fix of the
   last problem of Workflow and a count line; a valid repository still prints its single `ok:` line.
-
 - `/polix:plan` is now `/polix:spec`, so it no longer clashes with `/plan`, the plan mode of Claude Code; it writes
   the same plan in the folder of plans. `polix install` and `polix update` remove `/polix:plan`: search your
   `polix.yaml` for `/polix:plan` and replace it with `/polix:spec`.
