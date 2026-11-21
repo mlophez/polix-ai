@@ -9,6 +9,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- `/polix:plan` proposes `effort: medium` for the builder, the verifier and the reviewer at every risk level;
+  `risk.level` only picks their models, and the reviewer of a `high` risk runs on `opus` instead of `fable`.
 - `/polix:grill-me` is the one interview of polix: it asks the what of a change and the how only the user should
   decide, explores the code, drafts the approaches, the cases and a pre-mortem, and returns a spec with fixed
   sections, editing nothing. It takes `Known` facts and an `Adjust` mode, and the model may invoke it.

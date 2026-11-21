@@ -432,10 +432,11 @@ The top-level keys, beyond what their placeholders say:
   Each has its `name`, without the prefix of a plugin, and the `model` and `effort` the build launches it with.
   Each name appears once, and only these three.
   A value the user gives wins, and `inherit` leaves it to the frontmatter of the agent.
-  Propose them from `risk.level`, and show them at Step 7 so the user may change them:
-  - `low`: builder `sonnet` and `high`, verifier `sonnet` and `medium`, reviewer `sonnet` and `high`.
-  - `medium`: builder `opus` and `medium`, verifier `sonnet` and `high`, reviewer `opus` and `high`.
-  - `high`: builder `opus` and `medium`, verifier `sonnet` and `xhigh`, reviewer `fable` and `medium`.
+  Propose `effort: medium` for all three and the models from `risk.level`.
+  Show them at Step 7 so the user may change them:
+  - `low`: builder `sonnet`, verifier `sonnet`, reviewer `sonnet`.
+  - `medium`: builder `opus`, verifier `sonnet`, reviewer `opus`.
+  - `high`: builder `opus`, verifier `sonnet`, reviewer `opus`.
 - `reference`: the ticket, issue or link of the request or the conversation, or `none`; never invent one.
 - `branch`: the branch Step 4 created or switched to for the plan; the build switches to it first.
 - `artifacts`: the external resources of the change the user gives or the conversation names, or `[]`.
@@ -470,7 +471,8 @@ Rewrite in place a task `pending`, `departed` or `blocked`, and set it `pending`
 Add a new task after the last one; never renumber the tasks, since `iterations` names them.
 With a task not `done`, set `status` back to `planned` until the user approves the adjustment (see Step 7).
 Recompute `risk`, never `created`, `branch`, `iterations` nor `stats`.
-When `risk.level` changes, propose `agents` again from it; otherwise keep it, since the user may have chosen it.
+When `risk.level` changes, propose the models of `agents` again from it.
+Otherwise keep them, since the user may have chosen them.
 A plan without `agents` gets it proposed from `risk.level`.
 A plan with `risk` and `risk_reason` as two keys gets them as `risk.level` and `risk.reason`.
 Add the new `artifacts`.

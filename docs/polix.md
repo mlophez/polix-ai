@@ -1561,7 +1561,7 @@ also prints that Codex support is not implemented in this release and the setup 
     an iteration (`ITER-NN`) of that task, or of `final`, to `iterations` with the findings to fix
     (`FND-NN`) and launches the builder on it; it sets in `stats` at the root of the plan its `start`, `end`, `duration`,
     the `tokens` the subagents report, the `iterations`, its runs, and the `code` it changed; it launches the builder, the verifier and the reviewer each with the `model`
-    and `effort` of its item of `agents` of the plan, which `plan` proposes from the risk and the user may change,
+    and `effort` of its item of `agents` of the plan, which `plan` proposes (effort `medium`, the models from the risk) and the user may change,
     `inherit` or a missing item leaving it to the frontmatter of the agent; a run that did not end resumes
     where its last iteration stopped, or at the first task without its commit.
   - Codex, only with `--agent codex` (not implemented): `codex plugin marketplace add ~/.polix/marketplace` and
