@@ -1,4 +1,4 @@
-// Package order: this file is neither domain nor a file of a use case (GOARCH-1).
+// Package order: helpers.go is a domain file named after its topic, which GOARCH-1 admits.
 package order
 
 func helper() {}

@@ -24,9 +24,9 @@ type Rule struct {
 	File          string // file it was read from, relative to the root
 }
 
-// Load loads the rules of the folder of rules dir (relative to root, with slashes) of the repository at root. It is
-// the loader of the use case LoadRule (internal/app/rule/load), which cmd/polix builds once and passes to every use
-// case that reads the rules. It never fails: what stops the reading is data of its result.
+// Load loads the rules of the folder of rules dir (relative to root, with slashes) of the repository at root. It is the
+// method Load of ruleadapters.Folder (internal/app/rule/adapters), which cmd/polix builds once and passes to every use case
+// that reads the rules. It never fails: what stops the reading is data of its result.
 type Load func(ctx context.Context, root, dir string) Loaded
 
 // Loaded is what Load read from a folder of rules: the yaml files of the folder but RetiredFile, in the order of

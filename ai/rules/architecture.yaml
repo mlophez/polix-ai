@@ -1,24 +1,34 @@
-# Architecture rules of the Go code of polix, described in docs/architecture.md. The depth of a folder gives the
-# kind of its code: internal/app/<noun>/ is a domain, internal/app/<noun>/<verb>/ one of its use cases,
-# internal/app/<noun>/<verb>/<helper>/ a part of that use case, and internal/platform/<lib>/ a library without
-# domain; the width of a folder is the growth of the system. A deterministic rule is decided by its test in
+# Architecture rules of the Go code of polix, described in docs/architecture.md. The depth of a folder gives the kind of
+# its code: internal/app/<noun>/ is a domain, internal/app/<noun>/features/<verb>/ one of its use cases,
+# internal/app/<noun>/features/<verb>/<helper>/ a part of that use case, internal/app/<noun>/adapters/ the loaders of
+# the files of the noun, and internal/platform/<lib>/ a library without domain. The files of a use case start with its
+# verb (<verb>_in.go, <verb>_logic.go, <verb>_out.go) and the files of a domain are named after their topic (<noun>.go,
+# <topic>.go); the width of a folder is the growth of the system. A deterministic rule is decided by its test in
 # tests/architecture/goarchNN_test.go (TestGOARCH<N>), on the Go AST of internal/ and cmd/, or, for a fixed list of
-# imports, by the list of depguard in .golangci.yml named after the rule, which its test runs; the part of a rule
-# that no test can decide is a separate rule left to the review. The tests type check the module tolerantly: a
-# name whose type they cannot resolve is accepted, so a rule on types is only as strong as what compiles.
+# imports, by the list of depguard in .golangci.yml named after the rule, which its test runs; the part of a rule that
+# no test can decide is a separate rule left to the review. The tests type check the module tolerantly: a name whose
+# type they cannot resolve is accepted, so a rule on types is only as strong as what compiles.
 rules:
   - id: GOARCH-1
     description: >-
       The depth of a folder gives the kind of its code, and growth is new sibling folders, never deeper ones.
       internal/ holds app/ and platform/. internal/app/ holds domain folders. A domain folder
-      internal/app/<noun>/ holds <noun>.go, <noun>_*.go, their tests and use case folders. A use case folder
-      internal/app/<noun>/<verb>/ holds in.go, logic.go, out.go, their siblings in_<topic>.go, logic_<topic>.go
-      and out_<topic>.go (GOARCH-3), its document <verb>.md, their tests and helper folders. A helper folder
-      internal/app/<noun>/<verb>/<helper>/ holds <helper>.go, <helper>_*.go and their tests, and no folder.
-      internal/platform/ holds library folders, and a library folder
-      internal/platform/<lib>/ holds Go files and their tests, and no folder. A folder named testdata is admitted
-      at any level and left out. A file or a folder that fits none fails, and so does a Markdown file that is not
-      the document of a use case (GOARCH-14). Every package clause equals the name of its folder.
+      internal/app/<noun>/ holds Go files, the entity <noun>.go (GOARCH-2) and one <topic>.go per part of the
+      domain, named after its topic without the noun (cache.go, not version_cache.go), their tests and the folders
+      features/ and adapters/, and no other folder: use case folders go in features/. features/ holds use case
+      folders, at least one, and no Go file, so a noun without commands has no features/; a use case folder is a
+      folder of features/ with a Go file. A use case folder internal/app/<noun>/features/<verb>/ holds its files,
+      each named after its verb and its kind: <verb>_in.go, <verb>_logic.go, <verb>_out.go, their siblings
+      <verb>_in_<topic>.go, <verb>_logic_<topic>.go and <verb>_out_<topic>.go (GOARCH-3), its document <verb>.md,
+      their tests and helper folders; a Go file without the verb and a kind (in.go, <verb>_input.go) fails. A
+      helper folder internal/app/<noun>/features/<verb>/<helper>/ holds <helper>.go, <helper>_*.go and their tests,
+      and no folder. adapters/, optional, is the package adapters, imported as <noun>adapters, and holds
+      <concept>.go, <concept>_*.go and their tests, where <concept> is the lower case name of an exported struct of
+      the package (GOARCH-46), and no folder. internal/platform/ holds
+      library folders, and a library folder internal/platform/<lib>/ holds Go files and their tests, and no
+      folder. A folder named testdata is admitted at any level and left out. A file or a folder that fits none
+      fails, and so does a Markdown file that is not the document of a use case (GOARCH-14). Every package clause
+      equals the name of its folder.
     scope: ["internal/**"]
     deterministic: true
     check: tests/architecture/goarch01_test.go
@@ -26,48 +36,47 @@ rules:
   - id: GOARCH-2
     description: >-
       Each domain package has its entity file <noun>.go, which declares the entity <Noun>, a struct
-      (internal/app/rule/rule.go declares Rule); the domain may be split into <noun>_*.go (rule_run.go). Use
-      cases, helpers and libraries have no entity.
+      (internal/app/rule/rule.go declares Rule); the rest of the domain is split into a <topic>.go per part, named
+      after its topic (internal/app/rule/run.go). Use cases, helpers and libraries have no entity.
     scope: ["internal/app/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch02_test.go
 
   - id: GOARCH-3
     description: >-
-      A use case is three files in its folder, as a pure core and an imperative shell: in.go (the entry, a cobra
-      command or the loader of a load use case (GOARCH-11), the shell and the port it needs from the outside),
-      logic.go (the pure logic) and out.go (the
-      adapter that implements the port). Each may grow into siblings of its kind, in_<topic>.go, logic_<topic>.go
-      and out_<topic>.go, with their tests: the in files, the logic files and the out files. A sibling never
-      stands for its main file, and is checked by the rules of its kind as its main file is: the in files by
-      GOARCH-12, 15, 20, 22, 32 and 37, the logic files by GOARCH-4, 23 and 41, the out files by GOARCH-5 and 24.
-      Command, Request, Response and Port stay in in.go, Decide and Output in logic.go and Adapter in out.go
-      (GOARCH-11); a sibling exports no name, but the methods of Adapter may be declared in any out file.
+      A use case is three files in its folder, as a pure core and an imperative shell: <verb>_in.go (the entry, a cobra
+      command, the shell and the port it needs from the outside), <verb>_logic.go (the pure logic) and <verb>_out.go
+      (the adapter that implements the port). Each may grow into siblings of its kind, <verb>_in_<topic>.go,
+      <verb>_logic_<topic>.go and <verb>_out_<topic>.go, with their tests: the in files, the logic files and the out
+      files. A sibling never stands for its main file, and is checked by the rules of its kind as its main file is: the
+      in files by GOARCH-12, 15, 20, 22, 32 and 37, the logic files by GOARCH-4, 23 and 41, the out files by GOARCH-5
+      and 24. Command, Request, Response and Port stay in <verb>_in.go, Decide and Output in <verb>_logic.go and Adapter
+      in <verb>_out.go (GOARCH-11); a sibling exports no name, but the methods of Adapter may be declared in any out
+      file.
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch03_test.go
 
   - id: GOARCH-4
     description: >-
-      The domain and the logic of a use case are pure, and what they import is GOARCH-41. They never read the
-      clock (time.Now, Since, Until, Sleep, After, Tick, NewTimer, NewTicker, AfterFunc), write to the console
-      (fmt.Print*, print, println), start goroutines nor panic, and hold no state: a variable of the package is a
-      table, built once in its declaration from literals, regexp.MustCompile or other tables, and never assigned,
-      indexed-assigned nor appended to afterwards; a blank one; or a sentinel error (Err* or err* = errors.New or
-      fmt.Errorf). The logic uses no name declared in in.go nor out.go: never the port, the request nor the
-      adapter of its use case. A helper of its use case that the logic imports is as pure as the logic: its files
-      pass the same checks and import only what the list GOARCH-41-logic of depguard in .golangci.yml allows,
-      which the test reads.
+      The domain and the logic of a use case are pure, and what they import is GOARCH-41. They never read the clock
+      (time.Now, Since, Until, Sleep, After, Tick, NewTimer, NewTicker, AfterFunc), write to the console (fmt.Print*,
+      print, println), start goroutines nor panic, and hold no state: a variable of the package is a table, built once
+      in its declaration from literals, regexp.MustCompile or other tables, and never assigned, indexed-assigned nor
+      appended to afterwards; a blank one; or a sentinel error (Err* or err* = errors.New or fmt.Errorf). The logic uses
+      no name declared in <verb>_in.go nor <verb>_out.go: never the port, the request nor the adapter of its use case. A
+      helper of its use case that the logic imports is as pure as the logic: its files pass the same checks and import
+      only what the list GOARCH-41-logic of depguard in .golangci.yml allows, which the test reads.
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch04_test.go
 
   - id: GOARCH-5
     description: >-
-      The adapter implements the port of its own use case: Adapter of out.go has every method of Port of in.go,
-      declared or promoted from an embedded field. The compiler checks it too, where the entry passes the adapter
-      as the port.
-    scope: ["internal/app/*/*/in.go", "internal/app/*/*/out.go", "internal/app/*/*/out_*.go"]
+      The adapter implements the port of its own use case: Adapter of <verb>_out.go has every method of Port of
+      <verb>_in.go, declared or promoted from an embedded field. The compiler checks it too, where the entry passes the
+      adapter as the port.
+    scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_out.go", "internal/app/*/features/*/*_out_*.go"]
     deterministic: true
     check: tests/architecture/goarch05_test.go
 
@@ -75,8 +84,8 @@ rules:
     description: >-
       cmd/ only wires the root command and the entries of each use case: its files declare nothing but func main,
       and it has no tests (the commands are tested through their entries in internal/app/, and the end-to-end
-      tests that compose several live in tests/). main builds the loader of each load use case once, calling its
-      Command once (ruleload.Command()), and passes it to the Command of every use case that reads its file.
+      tests that compose several live in tests/). main builds each struct of an adapters package once, with a literal
+      (&ruleadapters.Folder{}), and passes its method Load to the Command of every use case that reads its file.
     scope: ["cmd/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch06_test.go
@@ -98,14 +107,15 @@ rules:
 
   - id: GOARCH-9
     description: >-
-      The direction of every import follows from the depth. A use case imports the domains of any noun (up and
-      across) and its own helpers (the only way down), and never another use case, of its noun or of another. A
-      domain imports only other domains of internal/app/, never a use case nor a helper. A helper is imported only
-      by the files of its use case package, tests included: no other helper, use case, domain nor cmd/ imports
-      it. Only cmd/ and tests/ import a use case, but the _test.go files of a use case may import load use cases
-      (internal/app/<noun>/load, GOARCH-11), and only them, to build their loaders as main does, so the tests that
-      run a command on real files read them as polix does. The test files count as their package otherwise. That
-      internal/platform/ never imports internal/app/ is GOARCH-42.
+      The direction of every import follows from the depth. A use case imports the domains of any noun (up and across)
+      and its own helpers (the only way down), and never another use case, of its noun or of another. A domain imports
+      only other domains of internal/app/, never a use case nor a helper. A helper is imported only by the files of its
+      use case package, tests included: no other helper, use case, domain nor cmd/ imports it. Only cmd/ and tests/
+      import a use case. Only cmd/, tests/ and the _test.go files of internal/app/ import an adapters package
+      (internal/app/<noun>/adapters, GOARCH-46), the last so the tests that run a command on real files read them as
+      polix does; an adapters package imports the domains and internal/platform/, never a use case nor another adapters
+      package. The test files count as their package otherwise. That internal/platform/ never imports internal/app/ is
+      GOARCH-42.
     scope: ["internal/app/**/*.go", "cmd/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch09_test.go
@@ -120,24 +130,21 @@ rules:
 
   - id: GOARCH-11
     description: >-
-      The names of a use case are fixed, the same in every use case package: logic.go declares the logic Decide
-      and its Output; in.go declares the entry Command, Request, Response and Port; out.go declares Adapter.
-      Outside its package a use case reads with the alias <noun><verb> that importas enforces (rulecheck.Command
-      for internal/app/rule/check). A load use case, internal/app/<noun>/load, loads a file that several use cases
-      read: its domain declares its loader Load, a named function type, and the result of the loader Loaded, a
-      struct (rule.Load and rule.Loaded), and its Command returns that loader instead of a cobra command
-      (GOARCH-15).
-    scope: ["internal/app/*/*/*.go"]
+      The names of a use case are fixed, the same in every use case package: <verb>_logic.go declares the logic Decide
+      and its Output; <verb>_in.go declares the entry Command, Request, Response and Port; <verb>_out.go declares
+      Adapter. Outside its package a use case reads with the alias <noun><verb> that importas enforces
+      (rulecheck.Command for internal/app/rule/features/check).
+    scope: ["internal/app/*/features/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch11_test.go
 
   - id: GOARCH-12
     description: >-
-      A port is one interface, never a struct, declared where it is used: in.go declares the interface Port.
-      Besides it, the in files (in.go and its siblings) declare at most one interface, unexported and named: the
+      A port is one interface, never a struct, declared where it is used: <verb>_in.go declares the interface Port.
+      Besides it, the in files (<verb>_in.go and its siblings) declare at most one interface, unexported and named: the
       transport formats the entry reads (format, with one unexported type of the in files per format that
       implements it). No other interface, named or anonymous.
-    scope: ["internal/app/*/*/in.go", "internal/app/*/*/in_*.go"]
+    scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: true
     check: tests/architecture/goarch12_test.go
 
@@ -151,31 +158,29 @@ rules:
 
   - id: GOARCH-14
     description: >-
-      Each use case has its document <verb>.md in its folder (internal/app/rule/check/check.md), starting with
+      Each use case has its document <verb>.md in its folder (internal/app/rule/features/check/check.md), starting with
       # <Verb><Noun> built from its path (# CheckRule) and with the sections, each once and in this order:
       Trigger, Request, Logic, Response, Port, Errors and Flow. A heading inside a fenced code block is not a
-      section. The Trigger of a load use case, whose entry is no command, names main of cmd/, which builds its
-      loader, and the use cases it passes the loader to.
+      section.
     scope: ["internal/app/**"]
     deterministic: true
     check: tests/architecture/goarch14_test.go
 
   - id: GOARCH-15
     description: >-
-      The entry of a use case is the only exported function of its in files, named Command and declared in in.go;
-      the shell and the other helpers of the in files are unexported, and a sibling in_<topic>.go exports no name.
-      Command returns a *cobra.Command, but the Command of a load use case (GOARCH-11), which returns the loader of
-      its domain (<noun>.Load); any other result is a fault.
-    scope: ["internal/app/*/*/in.go", "internal/app/*/*/in_*.go"]
+      The entry of a use case is the only exported function of its in files, named Command and declared in <verb>_in.go;
+      the shell and the other helpers of the in files are unexported, and a sibling <verb>_in_<topic>.go exports no
+      name. Command returns a *cobra.Command; any other result is a fault.
+    scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: true
     check: tests/architecture/goarch15_test.go
 
   - id: GOARCH-16
     description: >-
-      Every use case declares Request and Response in in.go (GOARCH-11), and neither the types of its logic nor
+      Every use case declares Request and Response in <verb>_in.go (GOARCH-11), and neither the types of its logic nor
       the exported types of the domain carry field tags, the shape of a transport, on named or embedded fields. An
-      unexported type that decodes a format, such as the decoding types of the out files of a load use case
-      (workflowYAML of internal/app/workflow/load), may.
+      unexported type that decodes a format, such as the decoding types of an adapters package
+      (workflowYAML of internal/app/workflow/adapters), may.
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch16_test.go
@@ -207,7 +212,7 @@ rules:
 
   - id: GOARCH-20
     description: >-
-      in.go of a use case is its imperative shell, always with the same shape: it reads through the port what the
+      <verb>_in.go of a use case is its imperative shell, always with the same shape: it reads through the port what the
       logic needs, branching on the request to know what to read; calls the logic from one call site (once, or in
       a loop in the step shape); carries out its output through the port, step by step; and builds the response.
       What the result of a step means (go on, stop, failed) is asked to the domain (rule.Result.Tail,
@@ -217,7 +222,7 @@ rules:
       logic again with its result, from one call site in a loop, until the logic answers with no step; only such
       use cases take this shape. Its signature and its calls are GOARCH-32; what its conditions may mention is
       GOARCH-37.
-    scope: ["internal/app/*/*/in.go", "internal/app/*/*/in_*.go"]
+    scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: false
 
   - id: GOARCH-21
@@ -233,32 +238,32 @@ rules:
       runs (a flag that needs another, allowed values); the shell turns the Request into the Response, built from
       the Output and what the port returned while carrying it out; and the entry serializes the Response to the
       console and sets the exit code. Only the Request and the Response carry the shape of the transport.
-    scope: ["internal/app/*/*/in.go", "internal/app/*/*/in_*.go", "internal/app/*/*/logic.go", "internal/app/*/*/logic_*.go"]
+    scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go", "internal/app/*/features/*/*_logic.go", "internal/app/*/features/*/*_logic_*.go"]
     deterministic: false
 
   - id: GOARCH-23
     description: >-
       Every use case has the same shape: the logic is one function, Decide, that takes domain values (types of the
-      domain of any noun, or predeclared types) and returns its decision, Output, and nothing else: a refusal is
-      data of the output, never an error. logic.go exports only those two names, its siblings logic_<topic>.go
-      export none, and the in files use only them of the logic files. The names reserved to the use cases
-      (Command, Request, Response, Port, Adapter, Decide, Output, and any *Output, *Request, *Response, *Port or
-      *Adapter) are never declared by a domain nor a helper, and are never a domain type, whatever their package.
+      domain of any noun, or predeclared types) and returns its decision, Output, and nothing else: a refusal is data of
+      the output, never an error. <verb>_logic.go exports only those two names, its siblings <verb>_logic_<topic>.go
+      export none, and the in files use only them of the logic files. The names reserved to the use cases (Command,
+      Request, Response, Port, Adapter, Decide, Output, and any *Output, *Request, *Response, *Port or *Adapter) are
+      never declared by a domain nor a helper, and are never a domain type, whatever their package.
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch23_test.go
 
   - id: GOARCH-24
     description: >-
-      The out files, out.go and its siblings out_<topic>.go, hold only the adapter of their use case, an object
-      that implements the port: the public struct Adapter, declared in out.go, its methods, in any out file,
-      unexported constants, and unexported types that decode or encode a format the adapter reads or writes
-      (fileYAML), with their methods; no other type, no function (no constructor: the entry fills the fields of
-      the adapter and passes it as the port) and no variable. The exported methods of the adapter are the methods
-      of the port and no other; what they need goes in unexported methods of the adapter, in a decoding type, in a
-      helper of the use case, or in internal/platform/ when it is shared (GOARCH-19). That an unexported type of
-      the out files decodes or encodes a format is left to the review.
-    scope: ["internal/app/*/*/out.go", "internal/app/*/*/out_*.go"]
+      The out files, <verb>_out.go and its siblings <verb>_out_<topic>.go, hold only the adapter of their use case, an
+      object that implements the port: the public struct Adapter, declared in <verb>_out.go, its methods, in any out
+      file, unexported constants, and unexported types that decode or encode a format the adapter reads or writes
+      (fileYAML), with their methods; no other type, no function (no constructor: the entry fills the fields of the
+      adapter and passes it as the port) and no variable. The exported methods of the adapter are the methods of the
+      port and no other; what they need goes in unexported methods of the adapter, in a decoding type, in a helper of
+      the use case, or in internal/platform/ when it is shared (GOARCH-19). That an unexported type of the out files
+      decodes or encodes a format is left to the review.
+    scope: ["internal/app/*/features/*/*_out.go", "internal/app/*/features/*/*_out_*.go"]
     deterministic: true
     check: tests/architecture/goarch24_test.go
 
@@ -266,7 +271,8 @@ rules:
     description: >-
       An exported struct of internal/app/ has only exported fields: the structs that go from one part to another
       (domain, Request, Response, Output, Adapter) are open to read. A struct that is a detail of one file, such
-      as the shape of a yaml it decodes, stays unexported.
+      as the shape of a yaml it decodes, stays unexported. The structs of an adapters package are left out: they keep
+      their cache and its mutex unexported.
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch25_test.go
@@ -321,13 +327,13 @@ rules:
 
   - id: GOARCH-32
     description: >-
-      in.go declares the shell run, of type func(context.Context, Port, Request) (Response, error). Outside the
+      <verb>_in.go declares the shell run, of type func(context.Context, Port, Request) (Response, error). Outside the
       tests, the shell is the only function or method of its use case package that calls the logic Decide, from
       one call site, in a function declaration or in the value of a package variable. The methods of the port and
-      of the adapter, declared or promoted, are called only from the functions and methods of the in files (in.go
+      of the adapter, declared or promoted, are called only from the functions and methods of the in files (<verb>_in.go
       and its siblings) other than the entry Command, such as the shell and the unexported functions that carry
       out its steps, and from the methods of the adapter itself, which never call the logic.
-    scope: ["internal/app/*/*/*.go"]
+    scope: ["internal/app/*/features/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch32_test.go
 
@@ -337,19 +343,19 @@ rules:
       parameters and its results are domain types of any noun or predeclared types (error among them), so the
       types of the infrastructure, of a library or of another use case never leave the adapter. A port embeds no
       interface: it lists its own methods.
-    scope: ["internal/app/*/*/in.go"]
+    scope: ["internal/app/*/features/*/*_in.go"]
     deterministic: true
     check: tests/architecture/goarch33_test.go
 
   - id: GOARCH-34
     description: >-
-      Every use case has its two tests: logic_test.go calls the logic Decide, does not mention Port nor Adapter
-      and uses no name declared in in_test.go, where the fake of the port lives; in_test.go calls the shell run
-      and does not mention Adapter. Port and Adapter count only as unqualified identifiers, so a field such as
-      x.Port is no match. It may have out_test.go, which tests the adapter against a temporary repository. That
-      the logic is tested with domain values, without fakes, and the shell with a fake of the port is left to the
-      review (GOARCH-20).
-    scope: ["internal/app/*/*/*.go"]
+      Every use case has its two tests: <verb>_logic_test.go calls the logic Decide, does not mention Port nor Adapter
+      and uses no name declared in <verb>_in_test.go, where the fake of the port lives; <verb>_in_test.go calls the
+      shell run and does not mention Adapter. Port and Adapter count only as unqualified identifiers, so a field such as
+      x.Port is no match. It may have <verb>_out_test.go, which tests the adapter against a temporary repository. That
+      the logic is tested with domain values, without fakes, and the shell with a fake of the port is left to the review
+      (GOARCH-20).
+    scope: ["internal/app/*/features/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch34_test.go
 
@@ -364,22 +370,21 @@ rules:
   - id: GOARCH-36
     description: >-
       The document of a use case names, between backquotes, every field of Request in ## Request, every field of
-      Response and of the structs of in.go it holds in ## Response, and every method of Port in ## Port, so a
+      Response and of the structs of <verb>_in.go it holds in ## Response, and every method of Port in ## Port, so a
       field or a method added to the code without its documentation fails. A heading inside a fenced code block
       is not a section.
-    scope: ["internal/app/*/*/*.md", "internal/app/*/*/in.go"]
+    scope: ["internal/app/*/features/*/*.md", "internal/app/*/features/*/*_in.go"]
     deterministic: true
     check: tests/architecture/goarch36_test.go
 
   - id: GOARCH-37
     description: >-
       The shell decides nothing: every condition of an if, for or switch in the shell run and in the unexported
-      functions of the in files (in.go and its in_<topic>.go siblings) is made of fields of the request, errors
-      (err != nil, errors.Is, errors.As), fields or methods of values of the domain or of the output, and len of
-      them, compared only with nil or a zero literal ("", 0, false) and combined with !, && and ||: no other
-      literal, no arithmetic, no ordering (<, >) and no other call. The entry Command and the methods of the files
-      are left out.
-    scope: ["internal/app/*/*/in.go", "internal/app/*/*/in_*.go"]
+      functions of the in files (<verb>_in.go and its <verb>_in_<topic>.go siblings) is made of fields of the request,
+      errors (err != nil, errors.Is, errors.As), fields or methods of values of the domain or of the output, and len of
+      them, compared only with nil or a zero literal ("", 0, false) and combined with !, && and ||: no other literal, no
+      arithmetic, no ordering (<, >) and no other call. The entry Command and the methods of the files are left out.
+    scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: true
     check: tests/architecture/goarch37_test.go
 
@@ -402,17 +407,16 @@ rules:
   - id: GOARCH-41
     description: >-
       The domain files (internal/app/<noun>/*.go) and the logic files of every use case
-      (internal/app/<noun>/<verb>/logic.go and its siblings logic_<topic>.go) import only the standard library
-      but what touches the outside (os, os/exec, os/signal, net, net/http, io/fs, runtime, syscall), the
-      randomness (math/rand, math/rand/v2, crypto/rand), the logs (log, log/slog) and the formats (encoding/json,
-      encoding/xml); internal/app/ (GOARCH-9
-      decides which of its packages); the pure libraries glob, semver, shell, text and yamlfmt of
-      internal/platform/; and templates. They know no format: never encoding/json, encoding/xml nor a yaml
-      library, whose translation belongs to the in and out files of a use case (GOARCH-44). The logic never
-      imports context either. An allowlist: a
-      new library of internal/platform/ is forbidden to them until it is added on purpose. The lists
-      GOARCH-41-domain and GOARCH-41-logic of depguard in .golangci.yml hold it, and the test files are left out.
-    scope: ["internal/app/*/*.go", "internal/app/*/*/logic.go", "internal/app/*/*/logic_*.go", ".golangci.yml"]
+      (internal/app/<noun>/features/<verb>/<verb>_logic.go and its siblings <verb>_logic_<topic>.go) import only the
+      standard library but what touches the outside (os, os/exec, os/signal, net, net/http, io/fs, runtime, syscall),
+      the randomness (math/rand, math/rand/v2, crypto/rand), the logs (log, log/slog) and the formats (encoding/json,
+      encoding/xml); internal/app/ (GOARCH-9 decides which of its packages); the pure libraries glob, semver, shell,
+      text and yamlfmt of internal/platform/; and templates. They know no format: never encoding/json, encoding/xml nor
+      a yaml library, whose translation belongs to the in and out files of a use case or to an adapters package
+      (GOARCH-44). The logic never imports context either. An allowlist: a new library of internal/platform/ is
+      forbidden to them until it is added on purpose. The lists GOARCH-41-domain and GOARCH-41-logic of depguard in
+      .golangci.yml hold it, and the test files are left out.
+    scope: ["internal/app/*/*.go", "internal/app/*/features/*/*_logic.go", "internal/app/*/features/*/*_logic_*.go", ".golangci.yml"]
     deterministic: true
     check: tests/architecture/goarch41_test.go
 
@@ -440,10 +444,10 @@ rules:
       declares no function that is not a method, no init, and no package variable whose value is a function (a
       function literal, a function or a variable of a function type). Each function that is not a method goes
       where it belongs: the translation of a format (decoding YAML or JSON, parsing the input of an agent) goes to
-      the in or out files of the use case that reads or writes it, or to a load use case when several use cases
-      read the file (GOARCH-11); logic that several use cases share, or that a shell asks (GOARCH-20, GOARCH-37),
-      becomes a method of the domain type it works on; logic of only one use case goes to its logic.go or a
-      logic_<topic>.go. The domain keeps the validation of its values (Valid, Workflow.Problems), never the
+      the in or out files of the use case that reads or writes it, or to an adapters package when several use cases
+      read the file (GOARCH-46); logic that several use cases share, or that a shell asks (GOARCH-20, GOARCH-37),
+      becomes a method of the domain type it works on; logic of only one use case goes to its <verb>_logic.go or a
+      <verb>_logic_<topic>.go. The domain keeps the validation of its values (Valid, Workflow.Problems), never the
       decoding of a format.
     scope: ["internal/app/*/*.go"]
     deterministic: true
@@ -455,6 +459,26 @@ rules:
       does not fit is grouped into a value of the domain, built and validated by the shell (GOARCH-29) and named
       after what it is (version.Update, rule.Selection), never a bag of the parameters of one function; several
       flags become one such value, or the method of a domain value that tells them apart.
-    scope: ["internal/app/*/*/logic.go"]
+    scope: ["internal/app/*/features/*/*_logic.go"]
     deterministic: true
     check: tests/architecture/goarch45_test.go
+
+  - id: GOARCH-46
+    description: >-
+      An adapters package, internal/app/<noun>/adapters/, package adapters, declares only exported structs, with their
+      methods, and unexported types, constants and helpers. It declares no exported function, constant, variable,
+      interface nor function type, no exported method of an exported type that is not a struct, and no name reserved to
+      the use cases by GOARCH-23 (Command, Request, Response, Port, Adapter, Decide, Output and any name ending in
+      Output, Request, Response, Port or Adapter), as a type or as a method. The exported methods of an unexported type,
+      such as UnmarshalYAML of a type that decodes a format, are admitted.
+    scope: ["internal/app/*/adapters/*.go"]
+    deterministic: true
+    check: tests/architecture/goarch46_test.go
+
+  - id: GOARCH-47
+    description: >-
+      An adapters package only reads, decodes, caches and writes, and decides nothing: what to do with what it read,
+      such as the validation of a value, the choice between two outcomes or the meaning of a missing file, belongs to
+      the domain or to the use case, which the package calls or returns to.
+    scope: ["internal/app/*/adapters/*.go"]
+    deterministic: false

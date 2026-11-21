@@ -9,14 +9,18 @@ import (
 
 // GOARCH-25: an exported struct of internal/app/ has only exported fields: the structs that go from one part to
 // another (domain, Request, Response, Output, Adapter) are open to read. Unexported structs, details of one file,
-// are free.
+// are free, and so are the structs of an adapters package, which keep their cache and its mutex unexported.
 func TestGOARCH25(t *testing.T) {
-	checkRule(t, checkExportedFields, "internal/app/order/order_line.go:6: Line has the unexported field price")
+	checkRule(t, checkExportedFields, "internal/app/order/line.go:6: Line has the unexported field price")
+	checkAccepts(t, checkExportedFields, "internal/app/order/adapters/", "internal/app/stock/adapters/")
 }
 
 func checkExportedFields(m *module) []string {
 	var out []string
 	for _, f := range m.sources() {
+		if f.place.level == levelAdapters {
+			continue
+		}
 		for _, d := range f.ast.Decls {
 			g, ok := d.(*ast.GenDecl)
 			if !ok || g.Tok != token.TYPE {

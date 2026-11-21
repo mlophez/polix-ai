@@ -272,7 +272,7 @@ func TestDepguardMatch(t *testing.T) {
 	l := depguardList{Allow: []string{"$gostd", "example.com/app/internal/app", "example.com/app/lib$"},
 		Deny: []depguardDeny{{Pkg: "os$"}}}
 	for p, want := range map[string]bool{
-		"strings": true, "os": false, "os/exec": true, "example.com/app/internal/app/rule/check": true,
+		"strings": true, "os": false, "os/exec": true, "example.com/app/internal/app/rule/features/check": true,
 		"example.com/app/lib": true, "example.com/app/lib/sub": false, "example.com/other": false,
 	} {
 		if got := l.allows(p); got != want {

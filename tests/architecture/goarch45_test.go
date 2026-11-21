@@ -12,9 +12,9 @@ const maxDecideParams = 4
 // what does not fit is grouped into a value of the domain.
 func TestGOARCH45(t *testing.T) {
 	checkRule(t, checkDecideParams,
-		"internal/app/stock/drop/logic.go:6: Decide takes 5 parameters, more than 4: group them into a value of the "+
+		"internal/app/stock/features/drop/drop_logic.go:6: Decide takes 5 parameters, more than 4: group them into a value of the "+
 			"domain")
-	checkAccepts(t, checkDecideParams, "internal/app/stock/take/", "internal/app/stock/load/")
+	checkAccepts(t, checkDecideParams, "internal/app/stock/features/take/")
 }
 
 func checkDecideParams(m *module) []string {

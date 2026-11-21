@@ -38,9 +38,9 @@ type place struct {
 // goFile is one parsed Go file of the module.
 type goFile struct {
 	rel   string // path relative to the root, with slashes
-	dir   string // folder relative to the root, with slashes (internal/app/rule/check)
+	dir   string // folder relative to the root, with slashes (internal/app/rule/features/check)
 	pkg   string // name of the folder of the package (check)
-	name  string // base name (in.go)
+	name  string // base name (check_in.go)
 	place place  // place of its folder
 	kind  kind
 	ast   *ast.File
@@ -76,10 +76,10 @@ type sourceImporter struct {
 	busy map[string]bool
 }
 
-// useCase holds the files of one use case folder, internal/app/<noun>/<verb>/, by kind.
+// useCase holds the files of one use case folder, internal/app/<noun>/features/<verb>/, by kind.
 type useCase struct {
 	dir, noun, verb string
-	files           map[kind]*goFile   // the main file of each kind: in.go, logic.go and out.go
+	files           map[kind]*goFile   // the main file of each kind: <verb>_in.go, <verb>_logic.go, <verb>_out.go
 	all             map[kind][]*goFile // every file of each kind: its main file first, then its siblings by name
 }
 
@@ -99,22 +99,25 @@ const (
 	levelApp                   // internal/app/: only domain folders
 	levelPlatform              // internal/platform/: only library folders
 	levelDomain                // internal/app/<noun>/
-	levelUseCase               // internal/app/<noun>/<verb>/
-	levelHelper                // internal/app/<noun>/<verb>/<helper>/
+	levelFeatures              // internal/app/<noun>/features/: only use case folders
+	levelAdapters              // internal/app/<noun>/adapters/: the shared code that reads files of its noun
+	levelUseCase               // internal/app/<noun>/features/<verb>/
+	levelHelper                // internal/app/<noun>/features/<verb>/<helper>/
 	levelLibrary               // internal/platform/<lib>/
 	levelCmd                   // cmd/ and its folders
 )
 
 const (
-	kindUnknown kind = iota // a file its folder does not admit
-	kindDomain              // <noun>.go or <noun>_*.go of a domain
-	kindIn                  // in.go of a use case, or a sibling in_<topic>.go
-	kindLogic               // logic.go of a use case, or a sibling logic_<topic>.go
-	kindOut                 // out.go of a use case, or a sibling out_<topic>.go
-	kindHelper              // <helper>.go or <helper>_*.go of a helper
-	kindLibrary             // any Go file of a library
-	kindCmd                 // any Go file of cmd/
-	kindTest                // any *_test.go
+	kindUnknown  kind = iota // a file its folder does not admit
+	kindDomain               // any Go file of a domain: <noun>.go, the entity, or a <topic>.go
+	kindIn                   // <verb>_in.go of a use case, or a sibling <verb>_in_<topic>.go
+	kindLogic                // <verb>_logic.go of a use case, or a sibling <verb>_logic_<topic>.go
+	kindOut                  // <verb>_out.go of a use case, or a sibling <verb>_out_<topic>.go
+	kindHelper               // <helper>.go or <helper>_*.go of a helper
+	kindAdapters             // any Go file of an adapters package, whose name checkLayout judges against its structs
+	kindLibrary              // any Go file of a library
+	kindCmd                  // any Go file of cmd/
+	kindTest                 // any *_test.go
 )
 
 // root is the module under check; by default the root of the repository, two folders up.
@@ -123,12 +126,13 @@ var root = flag.String("root", "../..", "root of the module whose architecture i
 // loaded caches the parsed modules by root, shared by the tests of every rule.
 var loaded sync.Map
 
-// useCaseFiles are the main files of a use case, from input to output (GOARCH-1, GOARCH-3); each may have
-// siblings of its kind, <stem>_<topic>.go.
+// useCaseFiles are the kinds of the main files of a use case, from input to output (GOARCH-1, GOARCH-3): the
+// main file of kind k of the use case verb is <verb>_<k>.go (check_in.go), and each may have siblings of its kind,
+// <verb>_<k>_<topic>.go (answer_in_claude.go).
 var useCaseFiles = []struct {
-	name string
-	kind kind
-}{{"in.go", kindIn}, {"logic.go", kindLogic}, {"out.go", kindOut}}
+	kind string
+	of   kind
+}{{"in", kindIn}, {"logic", kindLogic}, {"out", kindOut}}
 
 // versionSuffix is the major version at the end of an import path, which is not the name of the package.
 var versionSuffix = regexp.MustCompile(`[./]v[0-9]+$`)
@@ -299,18 +303,7 @@ func placeOf(dir string) place {
 	}
 	switch parts[1] {
 	case "app":
-		switch len(parts) {
-		case 2:
-			return place{level: levelApp}
-		case 3:
-			return place{level: levelDomain, noun: parts[2]}
-		case 4:
-			return place{level: levelUseCase, noun: parts[2], verb: parts[3]}
-		case 5:
-			return place{level: levelHelper, noun: parts[2], verb: parts[3], helper: parts[4]}
-		}
-		return place{why: fmt.Sprintf("a folder below the helper %s, which holds no folder but testdata/",
-			strings.Join(parts[:5], "/"))}
+		return placeOfApp(parts)
 	case "platform":
 		switch len(parts) {
 		case 2:
@@ -324,30 +317,69 @@ func placeOf(dir string) place {
 	return place{why: "internal/ holds only app/ and platform/"}
 }
 
-// classify tells what the file name of a folder at is (GOARCH-1): a test at any level; a domain file <noun>.go or
-// <noun>_*.go; in.go, logic.go or out.go of a use case, or one of their siblings in_<topic>.go, logic_<topic>.go
-// and out_<topic>.go, of the kind of its main file; a helper file <helper>.go or <helper>_*.go; any file of a
-// library or of cmd/. Anything else is unknown.
+// placeOfApp tells where the folder of internal/app/ whose path is parts sits in the layout: a domain
+// internal/app/<noun>/, its folders features/ and adapters/, a use case internal/app/<noun>/features/<verb>/ and its
+// helper below it. Any other folder of a domain is out of the layout.
+func placeOfApp(parts []string) place {
+	switch len(parts) {
+	case 2:
+		return place{level: levelApp}
+	case 3:
+		return place{level: levelDomain, noun: parts[2]}
+	}
+	noun := parts[2]
+	switch parts[3] {
+	case "adapters":
+		if len(parts) == 4 {
+			return place{level: levelAdapters, noun: noun}
+		}
+		return place{why: fmt.Sprintf("a folder below the adapters package %s, which holds no folder but testdata/",
+			strings.Join(parts[:4], "/"))}
+	case "features":
+	default:
+		return place{why: fmt.Sprintf("a domain folder holds only its domain files, their tests, features/ and "+
+			"adapters/: use case folders go in features/, as internal/app/%s/features/%s", noun, parts[3])}
+	}
+	switch len(parts) {
+	case 4:
+		return place{level: levelFeatures, noun: noun}
+	case 5:
+		return place{level: levelUseCase, noun: noun, verb: parts[4]}
+	case 6:
+		return place{level: levelHelper, noun: noun, verb: parts[4], helper: parts[5]}
+	}
+	return place{why: fmt.Sprintf("a folder below the helper %s, which holds no folder but testdata/",
+		strings.Join(parts[:6], "/"))}
+}
+
+// classify tells what the file name of a folder at is (GOARCH-1): a test at any level but features/; any Go file
+// of a domain, the entity <noun>.go or a <topic>.go, but a <noun>_<topic>.go; <verb>_in.go, <verb>_logic.go or <verb>_out.go of a use case,
+// or one of their siblings <verb>_in_<topic>.go, <verb>_logic_<topic>.go and <verb>_out_<topic>.go, of the kind of
+// its main file; a helper file <helper>.go or <helper>_*.go; any file of an adapters package, whose name
+// checkLayout judges against the structs of the package; any file of a library or of cmd/. Anything else is
+// unknown.
 func classify(at place, name string) kind {
-	if strings.HasSuffix(name, "_test.go") {
+	if strings.HasSuffix(name, "_test.go") && at.level != levelFeatures {
 		return kindTest
 	}
 	stem := strings.TrimSuffix(name, ".go")
 	switch at.level {
 	case levelDomain:
-		if stem == at.noun || strings.HasPrefix(stem, at.noun+"_") {
+		if !strings.HasPrefix(stem, at.noun+"_") {
 			return kindDomain
 		}
 	case levelUseCase:
 		for _, f := range useCaseFiles {
-			if name == f.name || siblingOf(stem, f.name) {
-				return f.kind
+			if main := mainFile(at.verb, f.kind); name == main || siblingOf(stem, main) {
+				return f.of
 			}
 		}
 	case levelHelper:
 		if stem == at.helper || strings.HasPrefix(stem, at.helper+"_") {
 			return kindHelper
 		}
+	case levelAdapters:
+		return kindAdapters
 	case levelLibrary:
 		return kindLibrary
 	case levelCmd:
@@ -357,20 +389,25 @@ func classify(at place, name string) kind {
 	return kindUnknown
 }
 
+// mainFile is the name of the main file of kind k (in, logic or out) of the use case verb: <verb>_<k>.go.
+func mainFile(verb, k string) string {
+	return verb + "_" + k + ".go"
+}
+
 // siblingOf reports whether stem, a file name without .go, is a sibling <main>_<topic> of the main file of a use
-// case main (in.go), with a topic that is not empty.
+// case main (check_in.go), with a topic that is not empty.
 func siblingOf(stem, main string) bool {
 	topic, ok := strings.CutPrefix(stem, strings.TrimSuffix(main, ".go")+"_")
 	return ok && topic != ""
 }
 
-// sibling reports whether f is a sibling of a main file of its use case: in_<topic>.go, logic_<topic>.go or
-// out_<topic>.go.
+// sibling reports whether f is a sibling of a main file of its use case: <verb>_in_<topic>.go,
+// <verb>_logic_<topic>.go or <verb>_out_<topic>.go.
 func (f *goFile) sibling() bool {
 	switch f.kind {
 	case kindIn, kindLogic, kindOut:
 		for _, u := range useCaseFiles {
-			if f.name == u.name {
+			if f.name == mainFile(f.place.verb, u.kind) {
 				return false
 			}
 		}
@@ -378,6 +415,11 @@ func (f *goFile) sibling() bool {
 	default:
 		return false
 	}
+}
+
+// file is the name of the main file of kind k (in, logic or out) of the use case: <verb>_<k>.go (check_in.go).
+func (uc *useCase) file(k string) string {
+	return mainFile(uc.verb, k)
 }
 
 // name is the name of the use case, <Verb><Noun> (CheckRule), the title of its document.
@@ -390,7 +432,7 @@ func (m *module) pos(f *goFile, n ast.Node) string {
 	return fmt.Sprintf("%s:%d", f.rel, m.fset.Position(n.Pos()).Line)
 }
 
-// sources returns the files of internal/app/ that are not tests: domains, use cases and helpers.
+// sources returns the files of internal/app/ that are not tests: domains, use cases, helpers and adapters packages.
 func (m *module) sources() []*goFile {
 	var out []*goFile
 	for _, f := range m.files {
@@ -421,8 +463,8 @@ func (m *module) compiled() map[string][]*goFile {
 	return out
 }
 
-// useCases returns the use cases of the module, one per folder internal/app/<noun>/<verb>/, with their files: the
-// main file of each kind, and every file of each kind, the main one first and then its siblings by name.
+// useCases returns the use cases of the module, one per folder internal/app/<noun>/features/<verb>/, with their files:
+// the main file of each kind, and every file of each kind, the main one first and then its siblings by name.
 func (m *module) useCases() []*useCase {
 	byDir := map[string]*useCase{}
 	var out []*useCase
@@ -434,7 +476,8 @@ func (m *module) useCases() []*useCase {
 			out = append(out, uc)
 		}
 	}
-	// The files come in the lexical order of the walk, where in.go sorts before in_<topic>.go ('.' < '_').
+	// The files come in the lexical order of the walk, where <verb>_in.go sorts before
+	// <verb>_in_<topic>.go ('.' < '_').
 	for _, f := range m.sources() {
 		uc, ok := byDir[f.dir]
 		if !ok || f.kind == kindUnknown {

@@ -8,27 +8,27 @@ import (
 	"testing"
 )
 
-// GOARCH-5: the adapter implements the port of its own use case: Adapter of out.go has every method of Port of
-// in.go, declared in any out file (out.go or a sibling out_<topic>.go) or promoted from an embedded field. The
-// checker decides it when the adapter and the port resolve; else the methods declared in the out files are
-// compared by name.
+// GOARCH-5: the adapter implements the port of its own use case: Adapter of <verb>_out.go has every method of Port of
+// <verb>_in.go, declared in any out file (<verb>_out.go or a sibling <verb>_out_<topic>.go) or promoted from an
+// embedded field. The checker decides it when the adapter and the port resolve; else the methods declared in the out
+// files are compared by name.
 func TestGOARCH5(t *testing.T) {
 	checkRule(t, checkAdapter,
-		"internal/app/order/cancel/out.go: Adapter does not implement Cancel of Port, declared nor promoted")
-	checkAccepts(t, checkAdapter, "internal/app/stock/take/")
+		"internal/app/order/features/cancel/cancel_out.go: Adapter does not implement Cancel of Port, declared nor promoted")
+	checkAccepts(t, checkAdapter, "internal/app/stock/features/take/")
 	t.Run("by name", func(t *testing.T) {
 		m := mustLoad(t, badRoot)
 		var take *useCase
 		for _, uc := range m.useCases() {
-			if uc.dir == "internal/app/stock/take" {
+			if uc.dir == "internal/app/stock/features/take" {
 				take = uc
 			}
 		}
 		if take == nil {
-			t.Fatal("testdata/bad has no use case internal/app/stock/take")
+			t.Fatal("testdata/bad has no use case internal/app/stock/features/take")
 		}
 		if have := adapterMethods(take); !have["Load"] {
-			t.Errorf("the method Load of a sibling of out.go is not found by name: %v", have)
+			t.Errorf("the method Load of a sibling of <verb>_out.go is not found by name: %v", have)
 		}
 	})
 }

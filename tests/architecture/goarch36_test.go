@@ -8,15 +8,15 @@ import (
 )
 
 // GOARCH-36, the part of GOARCH-21 a check can decide: the document of a use case names, between backquotes, every
-// field of Request in ## Request, every field of Response and of the structs of in.go it holds in ## Response, and
-// every method of Port in ## Port, so a field or a method added to the code without its documentation fails. A
+// field of Request in ## Request, every field of Response and of the structs of <verb>_in.go it holds in ## Response,
+// and every method of Port in ## Port, so a field or a method added to the code without its documentation fails. A
 // heading inside a fenced code block is not a section.
 func TestGOARCH36(t *testing.T) {
 	checkRule(t, checkDocumentNamesCode,
-		"internal/app/stock/count/count.md: ## Request does not name `Shop` of Request",
-		"internal/app/stock/count/count.md: ## Response does not name `Count` of Response",
-		"internal/app/stock/count/count.md: ## Response does not name `Aisle` of Shelf",
-		"internal/app/stock/count/count.md: ## Port does not name `Load` of Port")
+		"internal/app/stock/features/count/count.md: ## Request does not name `Shop` of Request",
+		"internal/app/stock/features/count/count.md: ## Response does not name `Count` of Response",
+		"internal/app/stock/features/count/count.md: ## Response does not name `Aisle` of Shelf",
+		"internal/app/stock/features/count/count.md: ## Port does not name `Load` of Port")
 }
 
 func checkDocumentNamesCode(m *module) []string {

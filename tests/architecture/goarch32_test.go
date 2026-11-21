@@ -13,26 +13,26 @@ import (
 const portCallers = "only the functions of the in files but the entry Command, and the methods of the adapter, " +
 	"use the port and the adapter"
 
-// GOARCH-32, the part of GOARCH-20 a check can decide: in.go declares the shell run, of type
-// func(context.Context, Port, Request) (Response, error); outside the tests, the shell is the only function or
-// method of its use case package that calls the logic Decide, from one call site, in a function declaration or in
-// the value of a package variable. The methods of the port or of the adapter, declared or promoted, are called
-// only from the functions and methods of the in files (in.go and its siblings in_<topic>.go) other than the entry
+// GOARCH-32, the part of GOARCH-20 a check can decide: <verb>_in.go declares the shell run, of type
+// func(context.Context, Port, Request) (Response, error); outside the tests, the shell is the only function or method
+// of its use case package that calls the logic Decide, from one call site, in a function declaration or in the value of
+// a package variable. The methods of the port or of the adapter, declared or promoted, are called only from the
+// functions and methods of the in files (<verb>_in.go and its siblings <verb>_in_<topic>.go) other than the entry
 // Command, and from the methods of the adapter itself, which never call the logic.
 func TestGOARCH32(t *testing.T) {
 	checkRule(t, checkShellShape,
-		"internal/app/order/place/in.go:17: the shell run is not func(ctx context.Context, port Port, req Request) "+
+		"internal/app/order/features/place/place_in.go:17: the shell run is not func(ctx context.Context, port Port, req Request) "+
 			"(Response, error)",
-		"internal/app/order/cancel/in.go: declares no shell func run",
-		"place/in.go:13: Helper calls the logic Decide: only the shell run calls it",
-		"place/logic.go:62: twice calls the logic Decide: only the shell run calls it",
-		"cancel/out.go:16: Adapter.Refund calls the logic Decide: only the shell run calls it",
-		"cancel/in.go:41: again calls the logic Decide: only the shell run calls it",
-		"cancel/in.go:26: Command calls Adapter.Refund: "+portCallers,
-		"cancel/out_receipt.go:10: receipt.refund calls Adapter.Refund: "+portCallers,
-		"count/logic_audit.go:11: audit calls Port.Close: "+portCallers,
-		"count/in.go:36: the shell run calls the logic Decide 2 times, not once")
-	checkAccepts(t, checkShellShape, "internal/app/stock/take/", "count/in.go:51:", "count/in.go:54:")
+		"internal/app/order/features/cancel/cancel_in.go: declares no shell func run",
+		"place/place_in.go:13: Helper calls the logic Decide: only the shell run calls it",
+		"place/place_logic.go:62: twice calls the logic Decide: only the shell run calls it",
+		"cancel/cancel_out.go:16: Adapter.Refund calls the logic Decide: only the shell run calls it",
+		"cancel/cancel_in.go:41: again calls the logic Decide: only the shell run calls it",
+		"cancel/cancel_in.go:26: Command calls Adapter.Refund: "+portCallers,
+		"cancel/cancel_out_receipt.go:10: receipt.refund calls Adapter.Refund: "+portCallers,
+		"count/count_logic_audit.go:11: audit calls Port.Close: "+portCallers,
+		"count/count_in.go:36: the shell run calls the logic Decide 2 times, not once")
+	checkAccepts(t, checkShellShape, "internal/app/stock/features/take/", "count/count_in.go:51:", "count/count_in.go:54:")
 }
 
 func checkShellShape(m *module) []string {

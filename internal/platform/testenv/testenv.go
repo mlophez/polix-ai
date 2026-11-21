@@ -71,8 +71,9 @@ func Write(t *testing.T, p, data string) {
 	}
 }
 
-// Machine gives a test a home, a cache and a PATH of its own: git, and the fake CLIs of the agents asked, which
-// record their calls; and the variable of the auto memory of Claude Code empty. It returns the folder of their state, and skips the test when git or the go tool is missing.
+// Machine gives a test a home, a cache and a PATH of its own: git, and the fake CLIs of the agents asked, which record
+// their calls; and the variable of the auto memory of Claude Code empty. It returns the folder of their state, and
+// skips the test when git or the go tool is missing.
 func Machine(t *testing.T, claude, codex bool) string {
 	t.Helper()
 	git, err := exec.LookPath("git")

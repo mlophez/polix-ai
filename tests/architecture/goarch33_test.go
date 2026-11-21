@@ -13,12 +13,12 @@ import (
 // (GOARCH-23) is never domain, whatever its package.
 func TestGOARCH33(t *testing.T) {
 	checkRule(t, checkPortInDomain,
-		"internal/app/order/cancel/in.go:16: Port.Cancel does not take context.Context first",
-		"internal/app/stock/count/in.go:27: Port.Load takes io.Reader, which is not a domain type",
-		"internal/app/stock/count/in.go:27: Port.Load returns chan int, which is not a domain type",
-		"internal/app/stock/count/in.go:28: Port.Plan returns place.Output, which is not a domain type",
-		"internal/app/stock/count/in.go:29: Port.Open takes stock.StockPort, which is not a domain type",
-		"internal/app/stock/count/in.go:26: Port embeds io.Closer: a port lists its own methods")
+		"internal/app/order/features/cancel/cancel_in.go:16: Port.Cancel does not take context.Context first",
+		"internal/app/stock/features/count/count_in.go:27: Port.Load takes io.Reader, which is not a domain type",
+		"internal/app/stock/features/count/count_in.go:27: Port.Load returns chan int, which is not a domain type",
+		"internal/app/stock/features/count/count_in.go:28: Port.Plan returns place.Output, which is not a domain type",
+		"internal/app/stock/features/count/count_in.go:29: Port.Open takes stock.StockPort, which is not a domain type",
+		"internal/app/stock/features/count/count_in.go:26: Port embeds io.Closer: a port lists its own methods")
 }
 
 func checkPortInDomain(m *module) []string {

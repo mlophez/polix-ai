@@ -45,14 +45,18 @@ linters:
     - nestif
   settings:
     importas:
-      # A use case is imported as <noun><verb> (internal/app/rule/check as rulecheck): one pattern covers every use
-      # case, and an import without the alias fails. Only the use cases have a pattern: with no-unaliased, one for
-      # the domains or the libraries would demand an alias on every import of them (platformgit for
-      # internal/platform/git), so they are imported without alias.
+      # A use case is imported as <noun><verb> (internal/app/rule/features/check as rulecheck) and an adapters
+      # package as <noun>adapters (internal/app/rule/adapters as ruleadapters): one pattern covers every use case and
+      # one every adapters package, and
+      # an import without the alias fails. Only they have a pattern: with no-unaliased, one for the domains or the
+      # libraries would demand an alias on every import of them (platformgit for internal/platform/git), so they
+      # are imported without alias.
       no-unaliased: true
       alias:
-        - pkg: ^github\.com/mlophez/polix-ai/internal/app/(\w+)/(\w+)$
+        - pkg: ^github\.com/mlophez/polix-ai/internal/app/(\w+)/features/(\w+)$
           alias: $1$2
+        - pkg: ^github\.com/mlophez/polix-ai/internal/app/(\w+)/adapters$
+          alias: ${1}adapters
     depguard:
       # The import lists of the architecture rules of ai/rules/architecture.yaml, each named after its rule so a
       # finding names it (golangci-lint prints the name in lower case); tests/architecture runs depguard alone to
@@ -98,12 +102,12 @@ linters:
             - { pkg: log/slog$, desc: *logs }
             - pkg: encoding/json$
               desc: &formats >-
-                GOARCH-41: the domain and the logic know no format; the in and out files of a use case translate it
+                GOARCH-41: the domain and the logic know no format; the in and out files or an adapters package translate it
             - { pkg: encoding/xml$, desc: *formats }
-        # GOARCH-41: the logic files of a use case, logic.go and its siblings logic_<topic>.go, import what the domain
-        # does, and never context. GOARCH-4 reads this list to check the helpers that the logic imports.
+        # GOARCH-41: the logic files of a use case, <verb>_logic.go and its siblings <verb>_logic_<topic>.go, import
+        # what the domain does, and never context. GOARCH-4 reads this list to check the helpers that the logic imports.
         GOARCH-41-logic:
-          files: ["**/internal/app/*/*/logic.go", "**/internal/app/*/*/logic_*.go", "!$test"]
+          files: ["**/internal/app/*/features/*/*_logic.go", "**/internal/app/*/features/*/*_logic_*.go", "!$test"]
           allow: *goarch41-allow
           deny:
             - pkg: context$

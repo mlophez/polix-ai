@@ -1,6 +1,6 @@
 // Package version is the domain of the versions of polix and of its update: a version as polix writes it and the
-// cache of the checks of the latest release. Its use cases are ShowVersion (internal/app/version/show, polix
-// version) and UpdateVersion (internal/app/version/update, polix update).
+// cache of the checks of the latest release. Its use cases are ShowVersion (internal/app/version/features/show, polix
+// version) and UpdateVersion (internal/app/version/features/update, polix update).
 package version
 
 import (

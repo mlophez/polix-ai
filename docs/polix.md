@@ -246,7 +246,7 @@ The Justfile recipes use `sh`: on Windows, run them from Git Bash.
 
 ## How a hook call is answered
 
-The use case `AnswerHook`, `internal/app/hook/answer` (layout in `docs/architecture.md`) answers it:
+The use case `AnswerHook`, `internal/app/hook/features/answer` (layout in `docs/architecture.md`) answers it:
 
 1. The entry of the use case turns the JSON of stdin into neutral events (`internal/app/agent`) through the format
    of the agent, `claude` (Claude Code) or `codex` (Codex support is not implemented, see
@@ -260,7 +260,7 @@ The use case `AnswerHook`, `internal/app/hook/answer` (layout in `docs/architect
    command (`PostToolUseFailure`) or `git commit -m x; echo done` gives none. The `SubagentStart`
    of either agent becomes `subagent_start`, with the type of the subagent as
    actor.
-2. The logic of AnswerHook (`internal/app/hook/answer`) applies the [protections](#protections): the built-in protection of the
+2. The logic of AnswerHook (`internal/app/hook/features/answer`) applies the [protections](#protections): the built-in protection of the
    state, then `guardrails.protected_files` and `guardrails.forbidden_commands`; then the entries of the event in
    order. Around a command, when the workflow watches the edits, it records the content before it runs and, after
    it, puts back the protected files it changed and evaluates the others as edits in the same call (see
@@ -607,7 +607,7 @@ files git ignores, to every actor and without exceptions (see [Protections](#pro
   pattern; the reason is the `reason` of the first matching item, or `This command is forbidden by polix.yaml: a person
   must run it.`, followed by the line.
 
-The other six are only sugar: the loading of polix.yaml (`internal/app/workflow/load`, through
+The other six are only sugar: the loading of polix.yaml (`internal/app/workflow/adapters`, through
 `workflow.Guardrails.Expand` and `workflow.Guardrails.Githooks`) expands each one into entries of `on`, or of
 `githooks` for `check_on_save`, so the hook, `polix graph`, the repeat rules and the loop guard see them as any
 entry.
@@ -772,7 +772,7 @@ its name, never through a git alias, a variable, a script or a wrapper such as `
 recognise as a commit; end the line with the `git commit`, or follow it only with `&&`, since after `;` or `|` polix
 cannot tell whether it succeeded and gives no `post_commit`; and pass the message with `-m`, `-F` or a heredoc inside
 `-m`, so git never opens an editor. A commit chained with `&&` or wrapped in `bash -c` is recognised, and the rules
-allow it. `TestStartRulesForms` of `internal/app/hook/answer` pins every form against the recognition of commands.
+allow it. `TestStartRulesForms` of `internal/app/hook/features/answer` pins every form against the recognition of commands.
 Then it names the root of the working tree, with forward slashes on every
 system, and the four folders below `path` (`rules/`, `plans/`, `reports/` and `tasks/`), each with its purpose, so
 the agent and the skills use them instead of assuming `ai/`. The text is the template

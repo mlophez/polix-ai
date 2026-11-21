@@ -1,0 +1,74 @@
+package state
+
+import (
+	"errors"
+	"testing"
+)
+
+func TestLoadedValid(t *testing.T) {
+	boom := errors.New("boom")
+	entries := []Entry{{Kind: KindDecision}}
+	for _, tc := range []struct {
+		name   string
+		loaded Loaded
+		valid  bool
+	}{
+		{"no log", Loaded{}, true},
+		{"a log", Loaded{State: State{Entries: entries, Skipped: 1}}, true},
+		{"a log that cannot be read", Loaded{Err: boom}, true},
+		{"entries with the error", Loaded{State: State{Entries: entries}, Err: boom}, false},
+		{"skipped lines with the error", Loaded{State: State{Skipped: 1}, Err: boom}, false},
+		{"a state that is not valid", Loaded{State: State{Skipped: -1}}, false},
+	} {
+		if err := tc.loaded.Valid(); (err == nil) != tc.valid {
+			t.Errorf("%s: Valid() = %v, want valid %v", tc.name, err, tc.valid)
+		}
+	}
+}
+
+// Fail empties the state and keeps why, on a copy.
+func TestLoadedFail(t *testing.T) {
+	boom := errors.New("boom")
+	l := Loaded{State: State{Entries: []Entry{{Kind: KindDecision}}, Skipped: 2}}
+	failed := l.Fail(boom)
+	if len(failed.State.Entries) != 0 || failed.State.Skipped != 0 || !errors.Is(failed.Err, boom) ||
+		failed.Valid() != nil {
+		t.Fatalf("Fail = %+v", failed)
+	}
+	if len(l.State.Entries) != 1 || l.Err != nil {
+		t.Fatal("Fail returns a copy")
+	}
+}
+
+// TestStateLoaded tests the state a log loads: its entries and the count of skipped lines, kept as read; an empty
+// state with why for a log that cannot be read or a state that is not valid.
+func TestStateLoaded(t *testing.T) {
+	// The entries and the count of skipped lines make the state, kept as read.
+	t.Run("the state as read", func(t *testing.T) {
+		s := State{Entries: []Entry{{Kind: "fact", Fact: "reviewed"}, {Key: "x"}}, Skipped: 1}
+		got := s.Loaded(nil)
+		if len(got.State.Entries) != 2 || got.State.Entries[1].Key != "x" || got.State.Skipped != 1 || got.Err != nil {
+			t.Fatalf("got %+v", got)
+		}
+		if got := (State{}).Loaded(nil); len(got.State.Entries) != 0 || got.Err != nil {
+			t.Fatalf("an empty log: %+v", got)
+		}
+	})
+
+	// A log that cannot be read loads an empty state with why.
+	t.Run("unreadable", func(t *testing.T) {
+		boom := errors.New("boom")
+		got := State{Entries: []Entry{{Kind: KindDecision}}, Skipped: 1}.Loaded(boom)
+		if len(got.State.Entries) != 0 || got.State.Skipped != 0 || !errors.Is(got.Err, boom) {
+			t.Fatalf("got %+v", got)
+		}
+	})
+
+	// A state that is not valid loads an empty state with why.
+	t.Run("invalid", func(t *testing.T) {
+		got := State{Entries: []Entry{{Kind: KindDecision}}, Skipped: -1}.Loaded(nil)
+		if len(got.State.Entries) != 0 || got.Err == nil {
+			t.Fatalf("got %+v", got)
+		}
+	})
+}

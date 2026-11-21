@@ -9,22 +9,22 @@ import (
 	"testing"
 )
 
-// GOARCH-37: the shell decides nothing: every condition of an if, for or switch in the shell run and in the
-// unexported functions of the in files (in.go and its siblings in_<topic>.go) is made of fields of the request,
-// errors (err != nil, errors.Is, errors.As), fields or methods of values of the domain or of the output, and len
-// of them, compared only with nil or a zero literal and combined with !, && and ||; the arguments of an accepted
-// call are operands too. The entry Command and the methods are left out. An operand whose type the checker could
-// not resolve is accepted.
+// GOARCH-37: the shell decides nothing: every condition of an if, for or switch in the shell run and in the unexported
+// functions of the in files (<verb>_in.go and its siblings <verb>_in_<topic>.go) is made of fields of the request,
+// errors (err != nil, errors.Is, errors.As), fields or methods of values of the domain or of the output, and len of
+// them, compared only with nil or a zero literal and combined with !, && and ||; the arguments of an accepted call are
+// operands too. The entry Command and the methods are left out. An operand whose type the checker could not resolve is
+// accepted.
 func TestGOARCH37(t *testing.T) {
 	checkRule(t, checkShellDecidesNothing,
-		"count/in.go:37: run decides: the condition `len(req.Shop) > 3` uses `len(req.Shop) > 3`",
-		"count/in.go:40: run decides: the condition `req.Shop == \"main\"` uses `\"main\"`",
-		"count/in.go:58: pick decides: the condition `n % 2 == 0` uses `n % 2`",
-		"count/in.go:61: pick decides: the condition `stock.Limit` uses `stock.Limit`",
-		"count/in.go:64: pick decides: a type switch",
-		"count/in.go:44: run decides: the condition `l.Rename(\"x\").Valid() != nil` uses `\"x\"`",
-		"count/in_scan.go:14: sum decides: the condition `n > 1` uses `n > 1`")
-	checkAccepts(t, checkShellDecidesNothing, "internal/app/stock/take/")
+		"count/count_in.go:37: run decides: the condition `len(req.Shop) > 3` uses `len(req.Shop) > 3`",
+		"count/count_in.go:40: run decides: the condition `req.Shop == \"main\"` uses `\"main\"`",
+		"count/count_in.go:58: pick decides: the condition `n % 2 == 0` uses `n % 2`",
+		"count/count_in.go:61: pick decides: the condition `stock.Limit` uses `stock.Limit`",
+		"count/count_in.go:64: pick decides: a type switch",
+		"count/count_in.go:44: run decides: the condition `l.Rename(\"x\").Valid() != nil` uses `\"x\"`",
+		"count/count_in_scan.go:14: sum decides: the condition `n > 1` uses `n > 1`")
+	checkAccepts(t, checkShellDecidesNothing, "internal/app/stock/features/take/")
 }
 
 func checkShellDecidesNothing(m *module) []string {

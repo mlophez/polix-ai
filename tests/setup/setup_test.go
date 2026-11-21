@@ -11,14 +11,14 @@ import (
 	"strings"
 	"testing"
 
-	ruleload "github.com/mlophez/polix-ai/internal/app/rule/load"
+	ruleadapters "github.com/mlophez/polix-ai/internal/app/rule/adapters"
 	"github.com/mlophez/polix-ai/internal/app/setup"
-	setupdiagnose "github.com/mlophez/polix-ai/internal/app/setup/diagnose"
-	setupinstall "github.com/mlophez/polix-ai/internal/app/setup/install"
-	setuprefresh "github.com/mlophez/polix-ai/internal/app/setup/refresh"
-	setupuninstall "github.com/mlophez/polix-ai/internal/app/setup/uninstall"
-	versionload "github.com/mlophez/polix-ai/internal/app/version/load"
-	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
+	setupdiagnose "github.com/mlophez/polix-ai/internal/app/setup/features/diagnose"
+	setupinstall "github.com/mlophez/polix-ai/internal/app/setup/features/install"
+	setuprefresh "github.com/mlophez/polix-ai/internal/app/setup/features/refresh"
+	setupuninstall "github.com/mlophez/polix-ai/internal/app/setup/features/uninstall"
+	versionadapters "github.com/mlophez/polix-ai/internal/app/version/adapters"
+	workflowadapters "github.com/mlophez/polix-ai/internal/app/workflow/adapters"
 	"github.com/mlophez/polix-ai/internal/platform/agentconf"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
 	"github.com/mlophez/polix-ai/internal/platform/testenv"
@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 func runSetup(args ...string) (int, string, string) {
 	root := cli.Root("polix", "short", "long", "")
 	root.AddCommand(setupinstall.Command(), setupuninstall.Command(), setuprefresh.Command(),
-		setupdiagnose.Command(ruleload.Command(), versionload.Command(), workflowload.Command()))
+		setupdiagnose.Command((&ruleadapters.Folder{}).Load, (&versionadapters.CacheFile{}).Load, (&workflowadapters.File{}).Load))
 	var out, errb bytes.Buffer
 	code := cli.Run(root, args, bytes.NewReader(nil), &out, &errb)
 	return code, out.String(), errb.String()

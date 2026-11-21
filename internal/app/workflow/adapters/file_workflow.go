@@ -1,0 +1,302 @@
+package adapters
+
+import (
+	"strings"
+
+	"github.com/mlophez/polix-ai/internal/app/workflow"
+)
+
+// workflowYAML is the shape of polix.yaml.
+type workflowYAML struct {
+	Version      int                    `yaml:"version"`
+	Path         string                 `yaml:"path"`
+	Requires     string                 `yaml:"requires"`
+	BaseBranch   stringsYAML            `yaml:"base_branch"`
+	StopRetries  int                    `yaml:"stop_retries"`
+	Requirements requirementsYAML       `yaml:"requirements"`
+	Guardrails   guardrailsYAML         `yaml:"guardrails"`
+	Vars         map[string]varYAML     `yaml:"vars"`
+	On           map[string][]entryYAML `yaml:"on"`
+	Githooks     map[string][]entryYAML `yaml:"githooks"`
+	Rules        rulesYAML              `yaml:"rules"`
+	Risk         riskYAML               `yaml:"risk"`
+}
+
+// riskYAML is the key risk: the options of the risk score.
+type riskYAML struct {
+	Weights weightsYAML `yaml:"weights"`
+}
+
+// weightYAML is one weight of risk.weights: a glob and its factor.
+type weightYAML struct {
+	glob   string
+	factor float64
+}
+
+// weightsYAML is the map of risk.weights, in file order.
+type weightsYAML []weightYAML
+
+// varYAML is a variable of vars.
+type varYAML struct {
+	Branch string `yaml:"branch"`
+	keys   []string
+}
+
+// entryYAML is an entry of an event. The keys of the old vocabulary reach the validator as unknown keys, which
+// reports their new spelling; only the conditions of if are decoded, so their problems come with that hint.
+type entryYAML struct {
+	When   map[string]any `yaml:"when"`
+	Unless map[string]any `yaml:"unless"`
+	If     ifYAML         `yaml:"if"`
+	Action *actionYAML    `yaml:"action"`
+	line   int
+	keys   []string
+}
+
+// ifYAML is the value of the old key if: its conditions when it is a map, else nothing, since the hint of the key
+// already tells how to rewrite it.
+type ifYAML map[string]any
+
+// actionYAML is the action of an entry: a map with one verb.
+type actionYAML struct {
+	Run    *runYAML    `yaml:"run"`
+	Inject *injectYAML `yaml:"inject"`
+	Block  *blockYAML  `yaml:"block"`
+	Notify *notifyYAML `yaml:"notify"`
+	keys   []string
+}
+
+// runYAML is the verb run: a command (a string split on spaces, or a list) or a map.
+type runYAML struct {
+	Command argsYAML `yaml:"command"`
+	Rules   string   `yaml:"rules"`
+	Message string   `yaml:"message"`
+	Always  bool     `yaml:"always"`
+	keys    []string
+}
+
+// injectYAML is the verb inject: a text or a map.
+type injectYAML struct {
+	File   string `yaml:"file"`
+	Text   string `yaml:"text"`
+	Rules  string `yaml:"rules"`
+	Always bool   `yaml:"always"`
+	keys   []string
+}
+
+// blockYAML is the verb block: a message or a map.
+type blockYAML struct {
+	Message string `yaml:"message"`
+	Once    bool   `yaml:"once"`
+	keys    []string
+}
+
+// notifyYAML is the verb notify: a message or a map.
+type notifyYAML struct {
+	Message string `yaml:"message"`
+	Always  bool   `yaml:"always"`
+	keys    []string
+}
+
+// rulesYAML is the key rules. A path in it reaches the validator as an unknown key, which tells how to migrate it.
+type rulesYAML struct {
+	Run  runnersYAML `yaml:"run"`
+	keys []string
+}
+
+// runnerYAML is one runner of rules.run: a glob and its command.
+type runnerYAML struct {
+	glob string
+	argv []string
+	line int
+}
+
+// stringsYAML is one string or a list of strings.
+type stringsYAML []string
+
+// argsYAML is a command as a list of arguments; a string is split on spaces.
+type argsYAML []string
+
+// runnersYAML is the map of rules.run, in file order.
+type runnersYAML []runnerYAML
+
+// names translates the names of the decoding types in the errors of yaml into those of the domain, as the messages
+// always named them.
+func (workflowYAML) names() *strings.Replacer {
+	return strings.NewReplacer(
+		"adapters.workflowYAML", "workflow.Workflow",
+		"adapters.entryYAML", "workflow.Entry",
+		"adapters.varYAML", "workflow.Var",
+		"adapters.actionYAML", "workflow.Action",
+		"adapters.runYAML", "workflow.Run",
+		"adapters.injectYAML", "workflow.Inject",
+		"adapters.blockYAML", "workflow.Block",
+		"adapters.notifyYAML", "workflow.Notify",
+		"adapters.rulesYAML", "workflow.Rules",
+		"adapters.stringsYAML", "[]string",
+		"adapters.argsYAML", "[]string",
+		// The local type each UnmarshalYAML decodes a map into; they check the kind of their node first, so this
+		// only keeps a name of the decoding out of a message that slips through.
+		"adapters.plain", "a map",
+	)
+}
+
+// workflow builds the domain value of the file, with the line of each event of `on` (eventLines) and of githooks
+// (githookLines), the protected files and the forbidden commands of guardrails, and its built-in good practices and
+// other shortcuts applied with the folder of the rules below path (workflow.Workflow.Guard): the entries of githooks
+// after those of guardrails.builtin.check_polix_files and guardrails.check_on_save, and the other shortcuts expanded
+// into entries of on, with first in start the entry that installs the hooks of git when githooks has entries, those
+// of check_polix_files and check_on_save included (workflow.Workflow.ExpandGithooks); and returns it with the section
+// guardrails as written.
+// The problems of each value are reported by Workflow.Valid, which walks them all together with those that depend on
+// the event and the vars, so the errors of the parts are not returned on their own; the problems of the values of
+// the shortcuts, which the workflow does not hold, are left to Guardrails.Problems.
+func (y workflowYAML) workflow(eventLines, githookLines map[string]int) (workflow.Workflow, workflow.Guardrails,
+	error) {
+	guardrails, _ := y.Guardrails.guardrails()
+	rules, _ := y.Rules.rules()
+	w := workflow.Workflow{
+		Weights:           y.Risk.Weights.weights(),
+		Version:           y.Version,
+		Path:              y.Path,
+		Requires:          y.Requires,
+		Base:              []string(y.BaseBranch),
+		StopRetries:       y.StopRetries,
+		Requirements:      []string(y.Requirements),
+		ProtectedFiles:    guardrails.Protected(),
+		ForbiddenCommands: guardrails.Forbidden(),
+		Vars:              y.vars(),
+		On:                y.entries(y.On),
+		Rules:             rules,
+		EventLines:        eventLines,
+		Githooks:          y.entries(y.Githooks),
+		GithookLines:      githookLines,
+	}
+	// The shortcuts and builtin expand with the folder of the rules of path, and the entry of start that installs the
+	// hooks of git goes first, before those of the shortcuts.
+	w = w.Guard(guardrails).ExpandGithooks()
+	return w, guardrails, w.Valid()
+}
+
+// vars builds the variables of vars; nil without the key.
+func (y workflowYAML) vars() map[string]workflow.Var {
+	if y.Vars == nil {
+		return nil
+	}
+	vars := make(map[string]workflow.Var, len(y.Vars))
+	for name, v := range y.Vars {
+		vars[name], _ = v.variable()
+	}
+	return vars
+}
+
+// entries builds the entries written in a section of events, on or githooks, by event; nil without the section.
+func (y workflowYAML) entries(section map[string][]entryYAML) map[string][]workflow.Entry {
+	if section == nil {
+		return nil
+	}
+	out := make(map[string][]workflow.Entry, len(section))
+	for ev, list := range section {
+		entries := make([]workflow.Entry, 0, len(list))
+		for _, e := range list {
+			entry, _ := e.entry()
+			entries = append(entries, entry)
+		}
+		out[ev] = entries
+	}
+	return out
+}
+
+func (y varYAML) variable() (workflow.Var, error) {
+	v := workflow.Var{Branch: y.Branch, Keys: y.keys}
+	return v, v.Valid()
+}
+
+func (y entryYAML) entry() (workflow.Entry, error) {
+	var action workflow.Action
+	if y.Action != nil {
+		action, _ = y.Action.action()
+	}
+	e := workflow.Entry{When: workflow.Cond(y.When), Unless: workflow.Cond(y.Unless), Action: action, Line: y.line,
+		Keys: y.keys, OldIf: workflow.Cond(y.If)}
+	return e, e.Valid()
+}
+
+func (y actionYAML) action() (workflow.Action, error) {
+	var run *workflow.Run
+	if y.Run != nil {
+		r, _ := y.Run.run()
+		run = &r
+	}
+	var inject *workflow.Inject
+	if y.Inject != nil {
+		c, _ := y.Inject.inject()
+		inject = &c
+	}
+	var block *workflow.Block
+	if y.Block != nil {
+		b, _ := y.Block.block()
+		block = &b
+	}
+	var notify *workflow.Notify
+	if y.Notify != nil {
+		n, _ := y.Notify.notify()
+		notify = &n
+	}
+	a := workflow.Action{Run: run, Inject: inject, Block: block, Notify: notify, Keys: y.keys}
+	return a, a.Valid()
+}
+
+func (y runYAML) run() (workflow.Run, error) {
+	r := workflow.Run{Command: []string(y.Command), Rules: y.Rules, Message: y.Message, Always: y.Always, Keys: y.keys}
+	return r, r.Valid()
+}
+
+func (y injectYAML) inject() (workflow.Inject, error) {
+	c := workflow.Inject{File: y.File, Text: y.Text, Rules: y.Rules, Always: y.Always, Keys: y.keys}
+	return c, c.Valid()
+}
+
+func (y blockYAML) block() (workflow.Block, error) {
+	b := workflow.Block{Message: y.Message, Once: y.Once, Keys: y.keys}
+	return b, b.Valid()
+}
+
+func (y notifyYAML) notify() (workflow.Notify, error) {
+	n := workflow.Notify{Message: y.Message, Always: y.Always, Keys: y.keys}
+	return n, n.Valid()
+}
+
+func (y rulesYAML) rules() (workflow.Rules, error) {
+	runners := make([]workflow.Runner, 0, len(y.Run))
+	for _, ry := range y.Run {
+		r, _ := ry.runner()
+		runners = append(runners, r)
+	}
+	r := workflow.Rules{Run: runners, Keys: y.keys}
+	return r, r.Valid()
+}
+
+// weights builds the weights of risk.weights in file order. The problems of each weight are reported by
+// Workflow.Valid.
+func (ws weightsYAML) weights() []workflow.Weight {
+	if len(ws) == 0 {
+		return nil
+	}
+	out := make([]workflow.Weight, 0, len(ws))
+	for _, y := range ws {
+		w, _ := y.weight()
+		out = append(out, w)
+	}
+	return out
+}
+
+func (y weightYAML) weight() (workflow.Weight, error) {
+	w := workflow.Weight{Glob: y.glob, Factor: y.factor}
+	return w, w.Valid()
+}
+
+func (y runnerYAML) runner() (workflow.Runner, error) {
+	r := workflow.Runner{Glob: y.glob, Argv: y.argv, Line: y.line}
+	return r, r.Valid()
+}

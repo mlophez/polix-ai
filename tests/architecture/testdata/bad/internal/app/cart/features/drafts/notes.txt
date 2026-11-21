@@ -1,0 +1,1 @@
+features/ whose only content is a folder without Go files (GOARCH-1)

@@ -15,11 +15,11 @@ var reservedNames = []string{"Command", "Request", "Response", "Port", "Adapter"
 // domain type, whatever their package.
 var reservedSuffixes = []string{"Output", "Request", "Response", "Port", "Adapter"}
 
-// GOARCH-23: every use case has the same shape. Its logic exports only the function Decide and the type Output,
-// in logic.go, and a sibling logic_<topic>.go exports no name; Decide takes domain values (types of the domain of
-// any noun, or predeclared types, also as slices, maps and pointers) and returns Output and nothing else; and the
-// in files use of the logic files only those two names. The names
-// reserved to the use cases (Command, Request, Response, Port, Adapter, Decide, Output, and any *Output,
+// GOARCH-23: every use case has the same shape. Its logic exports only the function Decide and the type Output, in
+// <verb>_logic.go, and a sibling <verb>_logic_<topic>.go exports no name; Decide takes domain values (types of the
+// domain of any noun, or predeclared types, also as slices, maps and pointers) and returns Output and nothing else; and
+// the in files use of the logic files only those two names. The names reserved to the use cases (Command, Request,
+// Response, Port, Adapter, Decide, Output, and any *Output,
 // *Request, *Response, *Port or *Adapter) are never declared by a domain nor a helper, and are never a domain
 // type. A domain package that is not in the module cannot be checked and its types are taken as domain.
 func TestGOARCH23(t *testing.T) {
@@ -28,14 +28,14 @@ func TestGOARCH23(t *testing.T) {
 		"exports Total: the logic exports only Decide and Output",
 		"Decide takes Input, which is not a domain type",
 		"Decide returns (Output, error), not Output: a refusal is data of the output",
-		"internal/app/stock/count/logic.go:7: Decide returns (int), not Output",
+		"internal/app/stock/features/count/count_logic.go:7: Decide returns (int), not Output",
 		"Decide takes stock.StockPort, which is not a domain type",
-		"place/in.go: the entry uses Input of the logic: only Decide and Output",
+		"place/place_in.go: the entry uses Input of the logic: only Decide and Output",
 		"internal/app/stock/stock.go:18: declares StockPort, a name reserved to the use cases",
-		"internal/app/order/place/pricing/pricing.go:12: declares Output, a name reserved to the use cases",
-		"internal/app/stock/count/logic_audit.go:6: exports Threshold: the logic exports only Decide and Output, in "+
-			"logic.go, and a sibling of logic.go exports no name")
-	checkAccepts(t, checkLogicShape, "internal/app/stock/take/")
+		"internal/app/order/features/place/pricing/pricing.go:12: declares Output, a name reserved to the use cases",
+		"internal/app/stock/features/count/count_logic_audit.go:6: exports Threshold: the logic exports only Decide and Output, in "+
+			"<verb>_logic.go, and a sibling of <verb>_logic.go exports no name")
+	checkAccepts(t, checkLogicShape, "internal/app/stock/features/take/")
 }
 
 func checkLogicShape(m *module) []string {
@@ -54,8 +54,8 @@ func checkLogicShape(m *module) []string {
 					switch {
 					case !id.IsExported():
 					case f.sibling():
-						out = append(out, fmt.Sprintf("%s: exports %s: the logic exports %s, in logic.go, and a sibling "+
-							"of logic.go exports no name", m.pos(f, id), id.Name, only))
+						out = append(out, fmt.Sprintf("%s: exports %s: the logic exports %s, in <verb>_logic.go, and a sibling "+
+							"of <verb>_logic.go exports no name", m.pos(f, id), id.Name, only))
 					case !allowed[id.Name]:
 						out = append(out, fmt.Sprintf("%s: exports %s: the logic exports %s", m.pos(f, id), id.Name, only))
 					}

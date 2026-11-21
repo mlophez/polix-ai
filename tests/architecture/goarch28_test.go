@@ -15,8 +15,8 @@ import (
 // the methods of another domain struct that holds a T. The tests are left out.
 func TestGOARCH28(t *testing.T) {
 	checkRule(t, checkChangeThroughMethods,
-		"internal/app/order/order_line.go: Relabel assigns the field SKU of order.Line outside its methods",
-		"internal/app/order/cancel/in.go: Command assigns the field SKU of order.Line outside its methods",
+		"internal/app/order/line.go: Relabel assigns the field SKU of order.Line outside its methods",
+		"internal/app/order/features/cancel/cancel_in.go: Command assigns the field SKU of order.Line outside its methods",
 		"Note.Fix assigns the field SKU of order.Line outside its methods",
 		"Note.Fix assigns the field price of order.Line outside its methods",
 		"Pack.Tag assigns the field Tags of order.Line outside its methods",

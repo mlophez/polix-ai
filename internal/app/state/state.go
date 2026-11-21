@@ -6,12 +6,12 @@
 // serves as evidence of the process each change followed. The repeat of the verbs, the loop guard, the condition
 // finished and the subagents still running (Running) are queries over the observed entries of one session.
 //
-// Only polix writes it, from events it has seen; the agent never declares that something is done, and a command
-// the agent runs is never observed. An entry without a session is never written (see Entry.Valid). Reading and
-// writing the files, and the format of their lines, are the job of the
-// adapters, through internal/platform/jsonl: the use case LoadState (internal/app/state/load) reads and decodes one
-// for every use case that reads it, and AnswerHook, its only writer, encodes its lines. Lines of kinds this polix no
-// longer writes (fact, injected and stop_block) are kept as read and ignored by every query.
+// Only polix writes it, from events it has seen; the agent never declares that something is done, and a command the
+// agent runs is never observed. An entry without a session is never written (see Entry.Valid). Reading and writing the
+// files, and the format of their lines, are the job of the adapters, through internal/platform/jsonl: stateadapters.Log
+// (internal/app/state/adapters) reads and decodes one for every use case that reads it, and AnswerHook, its only writer,
+// encodes its lines. Lines of kinds this polix no longer writes (fact, injected and stop_block) are kept as read and
+// ignored by every query.
 package state
 
 import (

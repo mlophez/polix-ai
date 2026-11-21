@@ -9,8 +9,8 @@ import (
 )
 
 // whereFunctionsGo says where a function that is not a method of a domain goes (GOARCH-44).
-const whereFunctionsGo = "a translation of a format goes to the in or out files of a use case or to a load use " +
-	"case, shared logic to a method of a domain type, the logic of one use case to its logic files"
+const whereFunctionsGo = "a translation of a format goes to the in or out files of a use case or to an adapters " +
+	"package, shared logic to a method of a domain type, the logic of one use case to its logic files"
 
 // GOARCH-44: a domain package (internal/app/<noun>/*.go, tests aside) declares only types, interfaces, constants,
 // variables that are not functions, and methods of its types, structs or named types: no function that is not a
@@ -19,11 +19,11 @@ const whereFunctionsGo = "a translation of a format goes to the in or out files 
 func TestGOARCH44(t *testing.T) {
 	checkRule(t, checkDomainFunctions,
 		"internal/app/order/order.go:11: declares the function Total, which is not a method: "+whereFunctionsGo,
-		"internal/app/order/order_line.go:70: declares the function newLine, which is not a method",
-		"internal/app/order/order_events.go:4: declares init, a function that is not a method",
-		"internal/app/order/order_events.go:7: declares the variable onPlace, whose value is a function")
-	checkAccepts(t, checkDomainFunctions, "internal/app/order/order_line.go:17:",
-		"internal/app/stock/stock_units.go", "internal/app/stock/stock_units_test.go")
+		"internal/app/order/line.go:70: declares the function newLine, which is not a method",
+		"internal/app/order/events.go:4: declares init, a function that is not a method",
+		"internal/app/order/events.go:7: declares the variable onPlace, whose value is a function")
+	checkAccepts(t, checkDomainFunctions, "internal/app/order/line.go:17:",
+		"internal/app/stock/units.go", "internal/app/stock/units_test.go")
 }
 
 func checkDomainFunctions(m *module) []string {

@@ -7,7 +7,7 @@ import (
 )
 
 // The problems of the workflow read from the text of polix.yaml, the example of the repository and the recipes of
-// docs/use-cases.md included, are tested in internal/app/workflow/load, which decodes it; these tests build the
+// docs/use-cases.md included, are tested in internal/app/workflow/adapters, which decodes it; these tests build the
 // workflow.
 
 // The workflow names the subagent types its finished conditions observe, nested ones included, once each.

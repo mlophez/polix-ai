@@ -1,0 +1,146 @@
+package rule
+
+import (
+	"errors"
+	"fmt"
+	"sort"
+
+	"github.com/mlophez/polix-ai/internal/platform/glob"
+)
+
+// Rules are several rules, such as those of a folder of rules, in their order. It is domain, not of a use case:
+// CheckRule, AnswerHook and the setup use cases ask it.
+type Rules []Rule
+
+// Selection is which rules a check is asked for: all of them, or only those whose scope matches the changed files.
+// It is built with a literal followed by Valid.
+type Selection struct {
+	OnlyChanged bool     // only the rules whose scope matches one of Changed
+	Changed     []string // the changed files, read only with OnlyChanged
+}
+
+// Valid tells why s is not a selection: changed files without OnlyChanged select nothing.
+func (s Selection) Valid() error {
+	if !s.OnlyChanged && len(s.Changed) > 0 {
+		return errors.New("a selection of every rule takes no changed files")
+	}
+	return nil
+}
+
+// Narrow returns the rules of rs the selection asks for: every one, or with OnlyChanged those whose scope matches
+// the changed files (Matching).
+func (s Selection) Narrow(rs Rules) Rules {
+	if s.OnlyChanged {
+		return rs.Matching(s.Changed)
+	}
+	return rs
+}
+
+// Matching returns the rules whose scope matches at least one of the paths; a rule without scope applies to
+// the whole project.
+func (rs Rules) Matching(paths []string) Rules {
+	var out Rules
+	for _, r := range rs {
+		if len(r.Scope) == 0 && len(paths) > 0 {
+			out = append(out, r)
+			continue
+		}
+		for _, p := range paths {
+			if glob.AnyPath(r.Scope, p) {
+				out = append(out, r)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// Repeated returns one problem for each rule whose id an earlier rule or a retired rule already has, naming its file
+// and that of the last earlier one, so an id names one rule only, retired ones included. The ids of retired are taken
+// first, with their file; a repeat among the retired rules themselves is never reported.
+func (rs Rules) Repeated(retired Rules) []string {
+	var problems []string
+	seen := map[string]string{}
+	for _, r := range retired {
+		if r.ID != "" {
+			seen[r.ID] = r.File
+		}
+	}
+	for _, r := range rs {
+		if r.ID == "" {
+			continue
+		}
+		if prev, ok := seen[r.ID]; ok {
+			problems = append(problems, fmt.Sprintf("%s %s: id repeated, also in %s", r.File, r.ID, prev))
+		}
+		seen[r.ID] = r.File
+	}
+	return problems
+}
+
+// Loaded validates the rules rs read from a folder of rules, in the order of its files, and finds the ids repeated
+// among them or taken by the retired rules (Repeated). Without err, it keeps every rule, invalid ones included,
+// ordered by id, stably, with the problem of each invalid one in the words of polix config check and then those of
+// the ids repeated; with err, a file that cannot be read or is not yaml, it keeps none. Either way it tells where a
+// reading that admits no invalid rule stops: at the first invalid rule, with its file, else at the first id
+// repeated, else at err. exists tells whether the folder exists.
+func (rs Rules) Loaded(retired Rules, exists bool, err error) Loaded {
+	repeated := rs.Repeated(retired)
+	strict := rs.firstInvalid()
+	if strict == nil && len(repeated) > 0 {
+		strict = errors.New(repeated[0])
+	}
+	if strict == nil {
+		strict = err
+	}
+	if err != nil {
+		loaded := Loaded{Exists: exists, Err: err, Strict: strict}
+		if verr := loaded.Valid(); verr != nil {
+			return loaded.Fail(verr)
+		}
+		return loaded
+	}
+	return rs.read(repeated, exists, strict)
+}
+
+// read is what a folder whose files are all read loads: every rule, ordered by id, with the problems of the invalid
+// ones and then the repeated ids.
+func (rs Rules) read(repeated []string, exists bool, strict error) Loaded {
+	var problems []string
+	for _, r := range rs {
+		if r.Valid() != nil {
+			problems = append(problems, r.problem())
+		}
+	}
+	problems = append(problems, repeated...)
+	all := append([]Rule(nil), rs...)
+	sort.SliceStable(all, func(i, j int) bool { return all[i].ID < all[j].ID })
+	loaded := Loaded{Rules: all, Exists: exists, Problems: problems, Repeated: repeated, Strict: strict}
+	if err := loaded.Valid(); err != nil {
+		return loaded.Fail(err)
+	}
+	return loaded
+}
+
+// firstInvalid is why the first invalid rule of rs is not valid, with its file; nil when every rule is valid.
+func (rs Rules) firstInvalid() error {
+	for _, r := range rs {
+		if err := r.Valid(); err != nil {
+			return fmt.Errorf("%s: %w", r.File, err)
+		}
+	}
+	return nil
+}
+
+// problem is why an invalid rule is not valid, in the words of polix config check: the file, the id and what is wrong.
+func (r Rule) problem() string {
+	switch {
+	case r.ID == "":
+		return r.File + ": a rule has no id"
+	case r.Description == "":
+		return fmt.Sprintf("%s %s: no description", r.File, r.ID)
+	case r.Check != "" && !r.Deterministic:
+		return fmt.Sprintf("%s %s: check %s needs deterministic: true", r.File, r.ID, r.Check)
+	}
+	return fmt.Sprintf("%s %s: check %s is an absolute path, not relative to the root", r.File, r.ID, r.Check)
+}

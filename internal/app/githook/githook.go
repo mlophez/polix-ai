@@ -1,7 +1,8 @@
-// Package githook is the domain of a call of git to polix: one event of githooks of polix.yaml, the gates git runs
-// on every commit, whoever makes it, apart from the events of the AI. A call knows the branch, the files staged for
-// the commit and the outcomes of the runs of its entries carried out so far, so the evaluation, in the use case
-// AnswerGithook (internal/app/githook/answer), takes the step shape: an entry after a run knows whether it passed.
+// Package githook is the domain of a call of git to polix: one event of githooks of polix.yaml, the gates git runs on
+// every commit, whoever makes it, apart from the events of the AI. A call knows the branch, the files staged for the
+// commit and the outcomes of the runs of its entries carried out so far, so the evaluation, in the use case
+// AnswerGithook (internal/app/githook/features/answer), takes the step shape: an entry after a run knows whether it
+// passed.
 //
 //	githooks:
 //	  pre_commit:

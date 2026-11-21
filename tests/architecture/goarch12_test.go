@@ -6,17 +6,17 @@ import (
 	"testing"
 )
 
-// GOARCH-12: a port is one interface, never a struct: in.go declares the interface Port. Besides it, the in files
-// (in.go and its siblings in_<topic>.go) declare at most one interface, unexported and named, of the transport
-// formats the entry reads (format); no other interface, named or anonymous. The first unexported named interface of
-// the in files, in the order of their names, is the one of the formats.
+// GOARCH-12: a port is one interface, never a struct: <verb>_in.go declares the interface Port. Besides it, the in
+// files (<verb>_in.go and its siblings <verb>_in_<topic>.go) declare at most one interface, unexported and named, of
+// the transport formats the entry reads (format); no other interface, named or anonymous. The first unexported named
+// interface of the in files, in the order of their names, is the one of the formats.
 func TestGOARCH12(t *testing.T) {
-	checkRule(t, checkPort, "internal/app/order/place/in.go:4: Port is a struct, not an interface",
-		"internal/app/order/place/in.go:7: declares the interface Notifier: the only interface of in.go is Port",
-		"internal/app/order/cancel/in.go:35: declares an anonymous interface: the only interface of in.go is Port",
-		"internal/app/stock/count/in_scan.go:7: declares the interface source: the only interface of in.go is Port, "+
+	checkRule(t, checkPort, "internal/app/order/features/place/place_in.go:4: Port is a struct, not an interface",
+		"internal/app/order/features/place/place_in.go:7: declares the interface Notifier: the only interface of <verb>_in.go is Port",
+		"internal/app/order/features/cancel/cancel_in.go:35: declares an anonymous interface: the only interface of <verb>_in.go is Port",
+		"internal/app/stock/features/count/count_in_scan.go:7: declares the interface source: the only interface of <verb>_in.go is Port, "+
 			"and the in files declare besides it one unexported interface of the formats the entry reads, here format")
-	checkAccepts(t, checkPort, "internal/app/stock/take/", "internal/app/stock/count/in_scan.go:4")
+	checkAccepts(t, checkPort, "internal/app/stock/features/take/", "internal/app/stock/features/count/count_in_scan.go:4")
 }
 
 func checkPort(m *module) []string {
@@ -34,7 +34,7 @@ func checkPort(m *module) []string {
 					kindOfType(spec.Type)))
 			}
 		}
-		only := fmt.Sprintf("the only interface of in.go is %s, and the in files declare besides it one unexported "+
+		only := fmt.Sprintf("the only interface of <verb>_in.go is %s, and the in files declare besides it one unexported "+
 			"interface of the formats the entry reads", port)
 		format := ""
 		for _, f := range uc.all[kindIn] {

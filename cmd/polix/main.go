@@ -8,25 +8,25 @@ import (
 
 	"github.com/spf13/cobra"
 
-	diffmeasure "github.com/mlophez/polix-ai/internal/app/diff/measure"
-	githookanswer "github.com/mlophez/polix-ai/internal/app/githook/answer"
-	hookanswer "github.com/mlophez/polix-ai/internal/app/hook/answer"
-	rulecheck "github.com/mlophez/polix-ai/internal/app/rule/check"
-	ruleformat "github.com/mlophez/polix-ai/internal/app/rule/format"
-	ruleload "github.com/mlophez/polix-ai/internal/app/rule/load"
-	setupcheck "github.com/mlophez/polix-ai/internal/app/setup/check"
-	setupdiagnose "github.com/mlophez/polix-ai/internal/app/setup/diagnose"
-	setupinstall "github.com/mlophez/polix-ai/internal/app/setup/install"
-	setuprefresh "github.com/mlophez/polix-ai/internal/app/setup/refresh"
-	setupuninstall "github.com/mlophez/polix-ai/internal/app/setup/uninstall"
-	stateload "github.com/mlophez/polix-ai/internal/app/state/load"
-	versionload "github.com/mlophez/polix-ai/internal/app/version/load"
-	versionshow "github.com/mlophez/polix-ai/internal/app/version/show"
-	versionupdate "github.com/mlophez/polix-ai/internal/app/version/update"
-	workflowformat "github.com/mlophez/polix-ai/internal/app/workflow/format"
-	workflowgraph "github.com/mlophez/polix-ai/internal/app/workflow/graph"
-	workflowload "github.com/mlophez/polix-ai/internal/app/workflow/load"
-	workflowlog "github.com/mlophez/polix-ai/internal/app/workflow/log"
+	diffmeasure "github.com/mlophez/polix-ai/internal/app/diff/features/measure"
+	githookanswer "github.com/mlophez/polix-ai/internal/app/githook/features/answer"
+	hookanswer "github.com/mlophez/polix-ai/internal/app/hook/features/answer"
+	ruleadapters "github.com/mlophez/polix-ai/internal/app/rule/adapters"
+	rulecheck "github.com/mlophez/polix-ai/internal/app/rule/features/check"
+	ruleformat "github.com/mlophez/polix-ai/internal/app/rule/features/format"
+	setupcheck "github.com/mlophez/polix-ai/internal/app/setup/features/check"
+	setupdiagnose "github.com/mlophez/polix-ai/internal/app/setup/features/diagnose"
+	setupinstall "github.com/mlophez/polix-ai/internal/app/setup/features/install"
+	setuprefresh "github.com/mlophez/polix-ai/internal/app/setup/features/refresh"
+	setupuninstall "github.com/mlophez/polix-ai/internal/app/setup/features/uninstall"
+	stateadapters "github.com/mlophez/polix-ai/internal/app/state/adapters"
+	versionadapters "github.com/mlophez/polix-ai/internal/app/version/adapters"
+	versionshow "github.com/mlophez/polix-ai/internal/app/version/features/show"
+	versionupdate "github.com/mlophez/polix-ai/internal/app/version/features/update"
+	workflowadapters "github.com/mlophez/polix-ai/internal/app/workflow/adapters"
+	workflowformat "github.com/mlophez/polix-ai/internal/app/workflow/features/format"
+	workflowgraph "github.com/mlophez/polix-ai/internal/app/workflow/features/graph"
+	workflowlog "github.com/mlophez/polix-ai/internal/app/workflow/features/log"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
 )
 
@@ -48,8 +48,8 @@ func main() {
 	root.AddGroup(&cobra.Group{ID: "repo", Title: "Repository"}, &cobra.Group{ID: "machine", Title: "Machine"},
 		&cobra.Group{ID: "agent", Title: "Agents"})
 	// The loaders of the files several use cases read, built once and passed to each of them; they read lazily.
-	loadRules, loadCache, loadWorkflow := ruleload.Command(), versionload.Command(), workflowload.Command()
-	loadState := stateload.Command()
+	loadRules, loadCache, loadWorkflow := (&ruleadapters.Folder{}).Load, (&versionadapters.CacheFile{}).Load, (&workflowadapters.File{}).Load
+	loadState := (&stateadapters.Log{}).Load
 	config := &cobra.Command{Use: "config", Short: "Validate and format polix.yaml", Args: cobra.NoArgs, GroupID: "repo"}
 	config.AddCommand(setupcheck.Command(loadRules, loadWorkflow), workflowformat.Command())
 	root.AddCommand(config)

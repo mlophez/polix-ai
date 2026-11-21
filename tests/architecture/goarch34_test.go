@@ -4,23 +4,24 @@ import (
 	"fmt"
 	"go/ast"
 	"sort"
+	"strings"
 	"testing"
 )
 
-// GOARCH-34: every use case has its two tests. logic_test.go calls the logic Decide, does not mention Port nor
-// Adapter and uses no name declared in in_test.go, where the fake of the port lives; in_test.go calls the shell
-// run and does not mention Adapter. Port and Adapter count only as unqualified identifiers, so a field x.Port is no
-// match. The optional out_test.go is never missing. That the logic is tested with domain values and the shell with
-// a fake is left to the review.
+// GOARCH-34: every use case has its two tests. <verb>_logic_test.go calls the logic Decide, does not mention Port nor
+// Adapter and uses no name declared in <verb>_in_test.go, where the fake of the port lives; <verb>_in_test.go calls the
+// shell run and does not mention Adapter. Port and Adapter count only as unqualified identifiers, so a field x.Port is
+// no match. The optional <verb>_out_test.go is never missing. That the logic is tested with domain values and the shell
+// with a fake is left to the review.
 func TestGOARCH34(t *testing.T) {
 	checkRule(t, checkUseCaseTests,
-		"internal/app/order/place/logic_test.go: uses Port: the logic is tested with domain values, without fakes",
-		"internal/app/order/place: use case PlaceOrder has no in_test.go",
-		"internal/app/stock/count/logic_test.go: does not call the logic Decide",
-		"internal/app/stock/count/logic_test.go: uses fakePort, declared in in_test.go: the logic is tested with "+
+		"internal/app/order/features/place/place_logic_test.go: uses Port: the logic is tested with domain values, without fakes",
+		"internal/app/order/features/place: use case PlaceOrder has no place_in_test.go",
+		"internal/app/stock/features/count/count_logic_test.go: does not call the logic Decide",
+		"internal/app/stock/features/count/count_logic_test.go: uses fakePort, declared in count_in_test.go: the logic is tested with "+
 			"domain values, without fakes",
-		"internal/app/stock/count/in_test.go: does not call the shell run",
-		"internal/app/stock/count/in_test.go: uses Adapter: the shell is tested with a fake of the port")
+		"internal/app/stock/features/count/count_in_test.go: does not call the shell run",
+		"internal/app/stock/features/count/count_in_test.go: uses Adapter: the shell is tested with a fake of the port")
 }
 
 func checkUseCaseTests(m *module) []string {
@@ -35,16 +36,17 @@ func checkUseCaseTests(m *module) []string {
 	var out []string
 	for _, uc := range m.useCases() {
 		for _, want := range []struct {
-			name, calls, what string
+			kind, calls, what string
 			banned            []string
 			why               string
 		}{
-			{"logic_test.go", "Decide", "the logic", []string{"Port", "Adapter"}, logicWhy},
-			{"in_test.go", "run", "the shell", []string{"Adapter"}, shellWhy},
+			{"logic", "Decide", "the logic", []string{"Port", "Adapter"}, logicWhy},
+			{"in", "run", "the shell", []string{"Adapter"}, shellWhy},
 		} {
-			f := tests[uc.dir+"/"+want.name]
+			name := testOf(uc.file(want.kind))
+			f := tests[uc.dir+"/"+name]
 			if f == nil {
-				out = append(out, fmt.Sprintf("%s: use case %s has no %s", uc.dir, uc.name(), want.name))
+				out = append(out, fmt.Sprintf("%s: use case %s has no %s", uc.dir, uc.name(), name))
 				continue
 			}
 			if !callsName(f.ast, want.calls) {
@@ -56,7 +58,7 @@ func checkUseCaseTests(m *module) []string {
 				}
 			}
 		}
-		logic, in := tests[uc.dir+"/logic_test.go"], tests[uc.dir+"/in_test.go"]
+		logic, in := tests[uc.dir+"/"+testOf(uc.file("logic"))], tests[uc.dir+"/"+testOf(uc.file("in"))]
 		if logic == nil || in == nil {
 			continue
 		}
@@ -72,6 +74,11 @@ func checkUseCaseTests(m *module) []string {
 		}
 	}
 	return out
+}
+
+// testOf is the name of the test of the file name: <stem>_test.go.
+func testOf(name string) string {
+	return strings.TrimSuffix(name, ".go") + "_test.go"
 }
 
 // callsName reports whether f calls the function name of its package.

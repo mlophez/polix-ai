@@ -16,8 +16,8 @@
 //
 // The vocabulary is closed: Valid rejects unknown events, conditions, verbs and keys, so a typo never turns into
 // a rule that silently stops applying, and a name of the old vocabulary is reported with its new spelling.
-// Reading and decoding the file is the job of the use case LoadWorkflow (internal/app/workflow/load), whose loader
-// (Load) every use case that reads polix.yaml gets from cmd/polix; the domain validates what it decodes.
+// Reading and decoding the file is the job of workflowadapters.File (internal/app/workflow/adapters), whose method Load (the
+// loader Load) every use case that reads polix.yaml gets from cmd/polix; the domain validates what it decodes.
 package workflow
 
 import (

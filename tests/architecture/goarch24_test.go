@@ -8,25 +8,25 @@ import (
 	"testing"
 )
 
-// GOARCH-24: the out files, out.go and its siblings out_<topic>.go, hold only the adapter of its use case: the
-// public struct Adapter, its methods in any out file, unexported constants, and unexported types that decode or
-// encode a format, with their methods; no function, not even a constructor, and no variable. The exported methods
-// of the adapter are the methods of the port and no other; what they need goes in unexported methods of the
-// adapter, in a decoding type, in a helper of the use case, or in internal/platform/ when it is shared. That an
-// unexported type of the out files decodes or encodes a format is left to the review.
+// GOARCH-24: the out files, <verb>_out.go and its siblings <verb>_out_<topic>.go, hold only the adapter of its use
+// case: the public struct Adapter, its methods in any out file, unexported constants, and unexported types that decode
+// or encode a format, with their methods; no function, not even a constructor, and no variable. The exported methods of
+// the adapter are the methods of the port and no other; what they need goes in unexported methods of the adapter, in a
+// decoding type, in a helper of the use case, or in internal/platform/ when it is shared. That an unexported type of
+// the out files decodes or encodes a format is left to the review.
 func TestGOARCH24(t *testing.T) {
 	checkRule(t, checkOutHoldsAdapter,
-		"internal/app/order/place/out.go:4: Adapter is a map[string]string, not a struct",
-		"internal/app/order/place/out.go:7: declares the function NewAdapter: out.go holds only the struct Adapter",
-		"internal/app/order/cancel/out.go:16: Adapter exports Refund, which is not a method of Port",
-		"internal/app/order/cancel/out.go:19: declares the function connect",
+		"internal/app/order/features/place/place_out.go:4: Adapter is a map[string]string, not a struct",
+		"internal/app/order/features/place/place_out.go:7: declares the function NewAdapter: <verb>_out.go holds only the struct Adapter",
+		"internal/app/order/features/cancel/cancel_out.go:16: Adapter exports Refund, which is not a method of Port",
+		"internal/app/order/features/cancel/cancel_out.go:19: declares the function connect",
 		"declares the exported constant Timeout",
 		"declares the variable cache",
-		"internal/app/order/cancel/out_receipt.go:4: declares the exported type Slip: out.go holds only the struct "+
+		"internal/app/order/features/cancel/cancel_out_receipt.go:4: declares the exported type Slip: <verb>_out.go holds only the struct "+
 			"Adapter")
-	checkAccepts(t, checkOutHoldsAdapter, "internal/app/stock/take/", "internal/app/order/cancel/out.go:7:",
-		"internal/app/order/cancel/out.go:23:", "internal/app/order/cancel/out.go:25:",
-		"internal/app/order/cancel/out_receipt.go:8:", "internal/app/order/cancel/out_receipt.go:10:")
+	checkAccepts(t, checkOutHoldsAdapter, "internal/app/stock/features/take/", "internal/app/order/features/cancel/cancel_out.go:7:",
+		"internal/app/order/features/cancel/cancel_out.go:23:", "internal/app/order/features/cancel/cancel_out.go:25:",
+		"internal/app/order/features/cancel/cancel_out_receipt.go:8:", "internal/app/order/features/cancel/cancel_out_receipt.go:10:")
 }
 
 func checkOutHoldsAdapter(m *module) []string {
@@ -36,7 +36,7 @@ func checkOutHoldsAdapter(m *module) []string {
 			continue // GOARCH-3
 		}
 		const adapter = "Adapter"
-		only := fmt.Sprintf("out.go holds only the struct %s, its methods, unexported constants and unexported "+
+		only := fmt.Sprintf("<verb>_out.go holds only the struct %s, its methods, unexported constants and unexported "+
 			"types that decode or encode a format, without constructor, and so do its siblings", adapter)
 		port := portMethods(uc)
 		decoders := unexportedTypes(uc.all[kindOut])
