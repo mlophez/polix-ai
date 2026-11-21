@@ -12,7 +12,7 @@ func githookLines(out Output) string {
 	var b strings.Builder
 	for _, f := range out.Findings {
 		if f.Area == "githooks" {
-			b.WriteString(f.Level + " " + f.Message + "\n")
+			b.WriteString(f.Level + " " + f.Text() + "\n")
 		}
 	}
 	return b.String()

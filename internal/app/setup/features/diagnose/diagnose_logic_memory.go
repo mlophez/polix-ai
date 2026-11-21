@@ -1,6 +1,7 @@
 package diagnose
 
 import (
+	"fmt"
 	"path/filepath"
 
 	"github.com/mlophez/polix-ai/internal/app/setup"
@@ -21,7 +22,7 @@ func memory(i setup.Inspection) []setup.Finding {
 	case "1":
 		return memoryOff()
 	case "0":
-		return found(setup.LevelWarn, "memory", "%s=0 turns auto memory of Claude Code on: unset it", setup.AutoMemoryVariable)
+		return foundFix(setup.LevelWarn, "memory", setup.AutoMemoryVariable+"=0 turns auto memory of Claude Code on", "unset it")
 	}
 	project := i.Setup.HooksFile(setup.Claude)
 	local := filepath.Join(filepath.Dir(project), "settings.local.json")
@@ -30,8 +31,8 @@ func memory(i setup.Inspection) []setup.Finding {
 	case "false":
 		return memoryOff()
 	case "true":
-		return found(setup.LevelWarn, "memory", "%s turns auto memory of Claude Code on: remove %s from it", local,
-			setup.AutoMemoryKey)
+		return foundFix(setup.LevelWarn, "memory", local+" turns auto memory of Claude Code on",
+			fmt.Sprintf("remove %s from it", setup.AutoMemoryKey))
 	}
 	value := i.ClaudeHooks[project].AutoMemory
 	if value == "" && i.Setup.Home != "" {
@@ -40,7 +41,7 @@ func memory(i setup.Inspection) []setup.Finding {
 	if value == "false" {
 		return memoryOff()
 	}
-	return found(setup.LevelWarn, "memory", "auto memory of Claude Code is on: run polix install to turn it off in %s", project)
+	return foundFix(setup.LevelWarn, "memory", "auto memory of Claude Code is on", "run polix install to turn it off in "+project)
 }
 
 // memoryOff is the finding of the auto memory of Claude Code off.

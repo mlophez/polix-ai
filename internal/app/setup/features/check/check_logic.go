@@ -10,13 +10,16 @@ import (
 // Output is the decision of the logic of CheckSetup: the problems of the workflow and the rules, or the
 // summary of a valid repository.
 type Output struct {
-	File      string   // the workflow file, as the console names it: the argument, or polix.yaml
-	Problems  []string // every problem of the workflow file and of the rules; empty when both are valid
-	Hint      string   // with problems, the hint that they may come from a newer polix; empty for none
-	Warning   string   // without problems, the warning that rules check --changed would fail; empty for none
-	Found     bool     // whether the workflow file exists
-	Rules     int      // how many rules the folder of rules holds
-	RulesPath string   // the folder of the rules, relative to the root
+	File string // the workflow file, as the console names it: the argument, or polix.yaml
+	// WorkflowProblems holds the problems of the workflow file, "<file> not found" included; empty when it is valid
+	WorkflowProblems []string
+	// RuleProblems holds the problems of the rules, the error of reading them included; empty when they are valid
+	RuleProblems []string
+	Hint         string // with problems of the workflow file, the hint that they may come from a newer polix; empty for none
+	Warning      string // without problems, the warning that rules check --changed would fail; empty for none
+	Found        bool   // whether the workflow file exists
+	Rules        int    // how many rules the folder of rules holds
+	RulesPath    string // the folder of the rules, relative to the root
 }
 
 // Decide decides what polix config check reports from the inspection i, the part of it about the workflow and the
@@ -31,23 +34,21 @@ func Decide(i setup.Inspection, file string) Output {
 	if file != "" {
 		out.File = file
 		if !i.Found {
-			out.Problems = []string{file + " not found"}
+			out.WorkflowProblems = []string{file + " not found"}
 			return out
 		}
 	}
 	found, newer := i.WorkflowProblems()
-	problems := make([]string, 0, len(found))
 	for _, p := range found {
-		problems = append(problems, out.prefixed(p))
+		out.WorkflowProblems = append(out.WorkflowProblems, out.prefixed(p))
 	}
 	if i.RulesErr != nil {
-		problems = append(problems, i.RulesErr.Error())
+		out.RuleProblems = []string{i.RulesErr.Error()}
 	} else {
-		problems = append(problems, i.RuleProblems()...)
+		out.RuleProblems = append(out.RuleProblems, i.RuleProblems()...)
 	}
-	if len(problems) > 0 {
-		out.Problems = problems
-		if newer {
+	if len(out.WorkflowProblems) > 0 || len(out.RuleProblems) > 0 {
+		if newer && len(out.WorkflowProblems) > 0 {
 			out.Hint = i.NewerHint()
 		}
 		return out

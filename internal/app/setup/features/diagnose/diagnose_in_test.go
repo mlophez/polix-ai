@@ -122,11 +122,14 @@ func TestShell(t *testing.T) {
 		strings.Join(port.calls, " ") != "Latest LoadWorkflow ClaudePlugin" {
 		t.Fatalf("%+v %v %v %+v", res, err, port.calls, port.saved)
 	}
+	if res.Version != "0.2.0" || res.Root != "/r" {
+		t.Fatalf("version %q, root %q", res.Version, res.Root)
+	}
 	// The hook asks neither the releases nor Claude Code, and outside a repository nothing of one is read.
 	port = &fakePort{repoErr: errors.New("not inside")}
 	res, err = run(context.Background(), port, Request{Version: "0.2.0", Hook: true})
-	if err != nil || len(port.calls) != 0 || !res.Hook {
-		t.Fatalf("%v %v", err, port.calls)
+	if err != nil || len(port.calls) != 0 || !res.Hook || res.Root != "" {
+		t.Fatalf("%v %v %q", err, port.calls, res.Root)
 	}
 	// A plugin of another binary is not asked to Claude Code.
 	port = &fakePort{}
@@ -177,5 +180,115 @@ func TestPrint(t *testing.T) {
 	res.Findings = []setup.Finding{fine}
 	if res.print(&b); b.String() != "" {
 		t.Fatal("a healthy hook says nothing")
+	}
+}
+
+// With the hook, a finding with a fix prints its message and its fix joined, as the base version printed it.
+func TestPrintHook(t *testing.T) {
+	res := Response{Hook: true, Findings: []setup.Finding{
+		{Level: setup.LevelOK, Area: "git", Message: "repository at /work/repo"},
+		{Level: setup.LevelWarn, Area: "version", Message: "polix dev is a development build",
+			Fix: "install a release with polix update --version <version>"}}}
+	var b strings.Builder
+	res.print(&b)
+	want := "polix doctor found problems on this machine or repository; tell the user about them and that they can fix " +
+		"them by running /polix:doctor (polix doctor gives the detail):\n" +
+		"- [warn] version: polix dev is a development build: install a release with polix update --version <version>\n"
+	if b.String() != want {
+		t.Fatalf("%q", b.String())
+	}
+}
+
+// cuj01 is the Response of polix dev of CUJ-01: the version warns and the five others pass.
+func cuj01() Response {
+	return Response{Version: "dev", Root: "/work/repo", Findings: []setup.Finding{
+		{Level: setup.LevelWarn, Area: "version", Message: "polix dev is a development build",
+			Fix: "install a release with polix update --version <version>"},
+		{Level: setup.LevelOK, Area: "path", Message: "the hooks run /usr/local/bin/polix"},
+		{Level: setup.LevelOK, Area: "git", Message: "repository at /work/repo"},
+		{Level: setup.LevelOK, Area: "requirements", Message: "3 programs of requirements on the PATH"},
+		{Level: setup.LevelOK, Area: "hooks", Message: "registered in /work/repo/.claude/settings.json"},
+		{Level: setup.LevelOK, Area: "plugin", Message: "polix@polix 0.0.0-dev"}}}
+}
+
+// CUJ-01: the report in plain output is grouped, aligned and counted (LIT-01).
+func TestPrintReport(t *testing.T) {
+	res := cuj01()
+	var b strings.Builder
+	res.print(&b)
+	want := "polix doctor · polix dev\n\n" +
+		"Machine\n" +
+		"  warn  version       polix dev is a development build\n" +
+		"                      → install a release with polix update --version <version>\n" +
+		"  ok    path          the hooks run /usr/local/bin/polix\n\n" +
+		"Repository  /work/repo\n" +
+		"  ok    git           repository at /work/repo\n" +
+		"  ok    requirements  3 programs of requirements on the PATH\n\n" +
+		"Agents\n" +
+		"  ok    hooks         registered in /work/repo/.claude/settings.json\n" +
+		"  ok    plugin        polix@polix 0.0.0-dev\n\n" +
+		"5 ok · 1 warn · 0 fail\n"
+	if b.String() != want || res.Failed {
+		t.Fatalf("%q", b.String())
+	}
+}
+
+// CUJ-04: outside a repository the Repository section has no root (LIT-04).
+func TestPrintReportOutside(t *testing.T) {
+	res := Response{Version: "1.2.0", Findings: []setup.Finding{
+		{Level: setup.LevelOK, Area: "version", Message: "polix 1.2.0 (latest release unknown)"},
+		{Level: setup.LevelOK, Area: "path", Message: "the hooks run /usr/local/bin/polix"},
+		{Level: setup.LevelOK, Area: "repo", Message: "not inside a git repository: only the checks of this machine apply"},
+		{Level: setup.LevelOK, Area: "plugin", Message: "polix@polix 1.2.0"}}}
+	var b strings.Builder
+	res.print(&b)
+	want := "polix doctor · polix 1.2.0\n\n" +
+		"Machine\n" +
+		"  ok    version  polix 1.2.0 (latest release unknown)\n" +
+		"  ok    path     the hooks run /usr/local/bin/polix\n\n" +
+		"Repository\n" +
+		"  ok    repo     not inside a git repository: only the checks of this machine apply\n\n" +
+		"Agents\n" +
+		"  ok    plugin   polix@polix 1.2.0\n\n" +
+		"4 ok · 0 warn · 0 fail\n"
+	if b.String() != want || res.Failed {
+		t.Fatalf("%q", b.String())
+	}
+}
+
+// CUJ-04: without git the failure of git goes to Machine and Repository is left out (LIT-05).
+func TestPrintReportWithoutGit(t *testing.T) {
+	res := Response{Version: "1.2.0", Failed: true, Findings: []setup.Finding{
+		{Level: setup.LevelOK, Area: "version", Message: "polix 1.2.0 (latest release unknown)"},
+		{Level: setup.LevelOK, Area: "path", Message: "the hooks run /usr/local/bin/polix"},
+		{Level: setup.LevelFail, Area: "git", Message: "git is not on the PATH: polix reads every fact of the repository through it"},
+		{Level: setup.LevelOK, Area: "plugin", Message: "polix@polix 1.2.0"}}}
+	var b strings.Builder
+	res.print(&b)
+	want := "polix doctor · polix 1.2.0\n\n" +
+		"Machine\n" +
+		"  ok    version  polix 1.2.0 (latest release unknown)\n" +
+		"  ok    path     the hooks run /usr/local/bin/polix\n" +
+		"  fail  git      git is not on the PATH: polix reads every fact of the repository through it\n\n" +
+		"Agents\n" +
+		"  ok    plugin   polix@polix 1.2.0\n\n" +
+		"3 ok · 0 warn · 1 fail\n"
+	if b.String() != want || !res.Failed {
+		t.Fatalf("%q", b.String())
+	}
+}
+
+// CUJ-05: a failure shows its fix below it and is counted (LIT-06).
+func TestPrintReportFailure(t *testing.T) {
+	res := cuj01()
+	res.Failed = true
+	res.Findings[1] = setup.Finding{Level: setup.LevelFail, Area: "path",
+		Message: "polix is not on the PATH, so the hooks cannot run it", Fix: "add /usr/local/bin to the PATH"}
+	var b strings.Builder
+	res.print(&b)
+	lit := "  fail  path          polix is not on the PATH, so the hooks cannot run it\n" +
+		"                      → add /usr/local/bin to the PATH\n"
+	if !strings.Contains(b.String(), lit) || !strings.Contains(b.String(), "\n4 ok · 1 warn · 1 fail\n") || !res.Failed {
+		t.Fatalf("%q", b.String())
 	}
 }

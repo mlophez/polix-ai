@@ -42,11 +42,11 @@ func TestDecideAutoMemory(t *testing.T) {
 	local, user := files[1], files[2]
 	off := setup.Finding{Level: setup.LevelOK, Area: "memory", Message: "auto memory of Claude Code is off"}
 	project := setup.Finding{Level: setup.LevelWarn, Area: "memory",
-		Message: "auto memory of Claude Code is on: run polix install to turn it off in " + s.HooksFile(setup.Claude)}
+		Message: "auto memory of Claude Code is on", Fix: "run polix install to turn it off in " + s.HooksFile(setup.Claude)}
 	localOn := setup.Finding{Level: setup.LevelWarn, Area: "memory",
-		Message: local + " turns auto memory of Claude Code on: remove autoMemoryEnabled from it"}
+		Message: local + " turns auto memory of Claude Code on", Fix: "remove autoMemoryEnabled from it"}
 	variable := setup.Finding{Level: setup.LevelWarn, Area: "memory",
-		Message: "CLAUDE_CODE_DISABLE_AUTO_MEMORY=0 turns auto memory of Claude Code on: unset it"}
+		Message: "CLAUDE_CODE_DISABLE_AUTO_MEMORY=0 turns auto memory of Claude Code on", Fix: "unset it"}
 	for name, c := range map[string]struct {
 		project string
 		others  map[string]string

@@ -9,6 +9,13 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- `polix doctor` prints a report easier to scan: a header with the version, the checks grouped into Machine,
+  Repository (with the root) and Agents, the area column aligned, the fix of a warning or failure on its own `→`
+  line, and a count line `<n> ok · <n> warn · <n> fail`. In a color terminal the levels are colored symbols and long
+  lines wrap at the width of the terminal; piped, in CI or with `NO_COLOR` they stay the words `ok`, `warn` and
+  `fail`, without color nor wrapping. `polix doctor --hook` and the exit codes do not change.
+- `polix config check` groups its problems into Workflow and Rules, with the hint of a newer polix as the fix of the
+  last problem of Workflow and a count line; a valid repository still prints its single `ok:` line.
 - `/polix:plan` is now `/polix:spec`, so it no longer clashes with `/plan`, the plan mode of Claude Code; it writes
   the same plan in the folder of plans. `polix install` and `polix update` remove `/polix:plan`: search your
   `polix.yaml` for `/polix:plan` and replace it with `/polix:spec`.

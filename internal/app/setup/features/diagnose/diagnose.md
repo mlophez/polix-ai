@@ -60,8 +60,14 @@ trusted with `/hooks`, and that Codex support is not implemented and untested.
 
 ## Response
 
-`Response`: `Hook`, `Findings` and `Failed`. The command prints one line per finding and exits with 1
-on a failure; with `--hook` it prints only the problems, in a paragraph for the agent, and exits with 0.
+`Response`: `Hook`, `Version` (the running version, for the header), `Root` (the root of the repository, empty outside
+one), `Findings` and `Failed`. The command prints a report and exits with 1 on a failure: the header `polix doctor ·
+polix <version>`, the sections Machine, Repository (with `Root`) and Agents, where `Finding.Section` places each finding
+by its area (git goes to Machine when it fails) and a section without findings is left out, and the count line
+`<n> ok · <n> warn · <n> fail`. Each finding is a line with its level, its area and its message, and its fix, when it
+has one, on a line below with `→ `. In plain output (a pipe, a file, CI, NO_COLOR) the level is the word `ok`, `warn`
+or `fail`; on a terminal with colors it is a colored symbol. `cli.UI.Report` writes it. With `--hook` it prints only the
+problems, in a paragraph for the agent, each as `Finding.Text` (message, `: ` and fix), and exits with 0.
 
 ## Port
 

@@ -30,3 +30,48 @@ func TestInspectionGitHooks(t *testing.T) {
 		t.Fatal("a git that lists hooks without the hooks it listed")
 	}
 }
+
+// Each known area belongs to a section, git to Machine when it fails, and an unknown area is not a finding.
+func TestFindingSection(t *testing.T) {
+	want := map[string]string{
+		"binary": SectionMachine, "version": SectionMachine, "path": SectionMachine,
+		"git": SectionRepository, "repo": SectionRepository, "workflow": SectionRepository,
+		"requirements": SectionRepository, "rules": SectionRepository, "githooks": SectionRepository,
+		"state": SectionRepository, "hooks": SectionAgents, "memory": SectionAgents, "plugin": SectionAgents,
+		"codex": SectionAgents,
+	}
+	if len(want) != 14 {
+		t.Fatal("fourteen known areas")
+	}
+	for area, section := range want {
+		f := Finding{Level: LevelOK, Area: area, Message: "m"}
+		if f.Valid() != nil || f.Section() != section {
+			t.Errorf("%s: section %q, want %q (%v)", area, f.Section(), section, f.Valid())
+		}
+	}
+	if got := (Finding{Level: LevelFail, Area: "git", Message: "m"}).Section(); got != SectionMachine {
+		t.Fatalf("git that fails: %q", got)
+	}
+	if got := (Finding{Level: LevelWarn, Area: "git", Message: "m"}).Section(); got != SectionRepository {
+		t.Fatalf("git that warns: %q", got)
+	}
+	unknown := Finding{Level: LevelOK, Area: "nowhere", Message: "m"}
+	if unknown.Valid() == nil || unknown.Section() != "" {
+		t.Fatal("an unknown area is not valid")
+	}
+}
+
+// The text of a finding is its message, followed by `: ` and its fix when it has one.
+func TestFindingText(t *testing.T) {
+	plain := Finding{Level: LevelOK, Area: "git", Message: "repository at /r"}
+	fixed := Finding{Level: LevelWarn, Area: "hooks", Message: "Stop does not run polix hook claude", Fix: "run polix install"}
+	if plain.Text() != "repository at /r" {
+		t.Fatal(plain.Text())
+	}
+	if fixed.Text() != "Stop does not run polix hook claude: run polix install" {
+		t.Fatal(fixed.Text())
+	}
+	if fixed.Valid() != nil {
+		t.Fatal("a fix is valid")
+	}
+}

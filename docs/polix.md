@@ -231,7 +231,16 @@ Codex never set up for polix gets no line), and that the state can be written. I
 warns when `SessionStart` does not run `polix update --hook`, or runs the command of an earlier build, which `polix
 install` replaces, and when `PostToolUseFailure` or `SubagentStart` does not run polix, as in the settings of an
 earlier build: only the feedback of failed commands, or the context at the start of subagents, is lost, and `polix
-install` adds them. It exits 1 on any failure. `--hook` prints nothing when everything is fine
+install` adds them.
+
+The report starts with the header `polix doctor · polix <version>` and groups the checks into the sections Machine
+(binary, version, path, and git when it fails), Repository (titled with the root of the repository, when there is
+one) and Agents (hooks, memory, plugin and codex), leaving out a section without checks. Each line shows the level,
+the area, padded to the longest, and the message; a warning or failure that tells what to do shows it on its own
+line below, after `→`. A count line, `<n> ok · <n> warn · <n> fail`, ends it. Written to a pipe, a file, CI or with
+`NO_COLOR`, the levels are the words `ok`, `warn` and `fail`, with no color codes and no wrapped lines; in a color
+terminal they are the symbols `✓`, `!` and `✗` in color, and a long message or fix wraps at the width of the
+terminal, indented under its column, when the width is known. It exits 1 on any failure. `--hook` prints nothing when everything is fine
 and never fails; otherwise it prints the problems, which Claude Code adds to the context of the session, so the
 agent tells the user and offers to fix them. It does not use the network: it compares with the latest release the
 last `polix update` or `polix doctor` saw.
@@ -1161,6 +1170,11 @@ not only the first: a rule without id or description, an id repeated (one that a
 `retired.yaml` already has, as `<file> <id>: id repeated, also in <other file>`), a check that does not exist, a `check` on a
 rule that is not `deterministic: true`, and a `check` named by an absolute path instead of one relative to the root.
 It also rejects the problems of the shortcuts of [Guardrails](#guardrails).
+
+With problems, it prints to stderr a report grouped into the section Workflow (titled with the workflow file) and the
+section Rules (titled with the folder of rules and a slash), each problem a `fail` line, and a count line at the end;
+a section without problems is left out. The hint that the problems may come from a newer polix is the `→` line below
+the last problem of Workflow. The exit code is 1. A valid repository prints its single `ok:` line.
 
 ### Names of the old vocabulary
 

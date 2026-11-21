@@ -31,6 +31,8 @@ Copy this checklist and track your progress:
 Doctor progress:
 - [ ] Step 1: Run `polix doctor` from the root of the repository; when polix is missing, propose `Installing polix`.
 - [ ] Step 2: Explain each `warn` and `fail` line in a sentence and propose its fix (see `Fixes`).
+  The report groups its lines into Machine, Repository and Agents, and ends with a count of ok, warn and fail.
+  The line `→` below a `warn` or `fail` line is the fix polix suggests for it.
 - [ ] Step 3: Apply the fixes the user approves.
 - [ ] Step 4: Run `polix doctor` again until it reports no `fail`.
 ```

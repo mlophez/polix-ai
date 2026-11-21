@@ -29,13 +29,14 @@ type Request struct {
 // Response is what the use case CheckSetup gives back to the caller, in the shape of the transport: the
 // command serializes it to the console.
 type Response struct {
-	File      string   // the workflow file, as the console names it: the argument, or polix.yaml
-	Problems  []string // every problem of the workflow file and of the rules
-	Hint      string   // the hint that the problems may come from a newer polix; empty for none
-	Warning   string   // the warning that rules check --changed would fail; empty for none
-	Found     bool     // whether the workflow file exists
-	Rules     int      // how many rules the folder of rules holds
-	RulesPath string   // the folder of the rules, relative to the root
+	File             string   // the workflow file, as the console names it: the argument, or polix.yaml
+	WorkflowProblems []string // every problem of the workflow file
+	RuleProblems     []string // every problem of the rules
+	Hint             string   // the hint that the problems of the workflow may come from a newer polix; empty for none
+	Warning          string   // the warning that rules check --changed would fail; empty for none
+	Found            bool     // whether the workflow file exists
+	Rules            int      // how many rules the folder of rules holds
+	RulesPath        string   // the folder of the rules, relative to the root
 }
 
 // Port is what the shell of CheckSetup needs from the outside: the workflow, the rules, their checks and
@@ -115,17 +116,19 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	return Response(Decide(i, req.File)), nil
 }
 
-// print serializes the response to the console and returns the exit code: every problem to stderr, with the hint
-// of a newer polix, and 1; else the warning to stderr, the summary to stdout and 0.
+// print serializes the response to the console and returns the exit code: with problems, a report to stderr with a
+// section Workflow and a section Rules, each with its problems as fail rows and the hint of a newer polix as the fix of
+// the last problem of Workflow, and 1; else the warning to stderr, the summary to stdout and 0.
 func (res Response) print(stdout, stderr io.Writer) int {
-	if len(res.Problems) > 0 {
-		u := cli.NewUI(stderr)
-		for _, p := range res.Problems {
-			u.Fail("%s", p)
+	if len(res.WorkflowProblems) > 0 || len(res.RuleProblems) > 0 {
+		workflowRows := rows(res.WorkflowProblems)
+		if n := len(workflowRows); n > 0 {
+			workflowRows[n-1].Fix = res.Hint
 		}
-		if res.Hint != "" {
-			u.Warn("%s", res.Hint)
-		}
+		cli.NewUI(stderr).Report(cli.Report{Sections: []cli.Section{
+			{Title: "Workflow", Detail: res.File, Rows: workflowRows},
+			{Title: "Rules", Detail: res.RulesPath + "/", Rows: rows(res.RuleProblems)},
+		}})
 		return 1
 	}
 	if res.Warning != "" {
@@ -139,4 +142,13 @@ func (res Response) print(stdout, stderr io.Writer) int {
 	}
 	u.Line("%s %s and %d rules of %s/", cli.OKText("ok:"), res.File, res.Rules, res.RulesPath)
 	return 0
+}
+
+// rows returns each problem as a fail row without area.
+func rows(problems []string) []cli.Row {
+	out := make([]cli.Row, 0, len(problems))
+	for _, p := range problems {
+		out = append(out, cli.Row{Level: cli.LevelFail, Message: p})
+	}
+	return out
 }

@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -87,14 +89,9 @@ func TestUI(t *testing.T) {
 	u.Warn("look")
 	u.Fail("broken")
 	u.Line("plain %s", Code("polix check"))
-	u.Status(LevelOK, "git", "found")
-	u.Status(LevelWarn, "hooks", "old")
-	u.Status(LevelFail, "plugin", "missing")
-	u.Status("info", "x", "y")
 	u.Change(false, "created", "a.json")
 	u.Change(true, "removed", OKText("b.json"))
 	want := "✓ done 1\n! look\n✗ broken\nplain polix check\n" +
-		"ok    git       found\nwarn  hooks     old\nfail  plugin    missing\ninfo  x         y\n" +
 		"+ created      a.json\n- removed      b.json\n"
 	if b.String() != want {
 		t.Fatalf("ui wrote %q, want %q", b.String(), want)
@@ -109,5 +106,26 @@ func TestRunErrorNamesProgram(t *testing.T) {
 	code := Run(r, []string{"run", "--nope"}, strings.NewReader(""), &out, &errOut)
 	if code != 1 || !strings.HasPrefix(errOut.String(), "tool: ") || !strings.Contains(errOut.String(), "Run tool --help") {
 		t.Fatalf("code %d, stderr %q", code, errOut.String())
+	}
+}
+
+func TestNewUIWidthIsZeroWithoutTerminal(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+	f, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	for name, out := range map[string]io.Writer{"buffer": &bytes.Buffer{}, "file": f, "pipe": w} {
+		if got := NewUI(out).width; got != 0 {
+			t.Errorf("%s: width = %d, want 0", name, got)
+		}
 	}
 }

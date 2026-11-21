@@ -81,7 +81,7 @@ func healthy(t *testing.T) setup.Inspection {
 func text(out Output) string {
 	var b strings.Builder
 	for _, f := range out.Findings {
-		b.WriteString(f.Level + " " + f.Area + " " + f.Message + "\n")
+		b.WriteString(f.Level + " " + f.Area + " " + f.Text() + "\n")
 	}
 	return b.String()
 }
@@ -220,7 +220,7 @@ func codexLines(out Output) string {
 	var b strings.Builder
 	for _, f := range out.Findings {
 		if f.Area == "codex" {
-			b.WriteString(f.Level + " " + f.Message + "\n")
+			b.WriteString(f.Level + " " + f.Text() + "\n")
 		}
 	}
 	return b.String()
@@ -292,7 +292,7 @@ func requirementLines(out Output) string {
 	var b strings.Builder
 	for _, f := range out.Findings {
 		if f.Area == "requirements" {
-			b.WriteString(f.Level + " " + f.Message + "\n")
+			b.WriteString(f.Level + " " + f.Text() + "\n")
 		}
 	}
 	return b.String()
@@ -352,5 +352,133 @@ func TestRunProblems(t *testing.T) {
 	}
 	if got := runProblems(setup.Inspection{Rules: problemRules, Runnable: runnable}); len(got) != 2 {
 		t.Fatalf("without runner: %v", got)
+	}
+}
+
+// settingsWithout is the example settings of Claude Code without the hooks of event.
+func settingsWithout(t *testing.T, event string) setup.HooksFile {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(exampleSettings(t), &doc); err != nil {
+		t.Fatal(err)
+	}
+	hooks, _ := doc["hooks"].(map[string]any)
+	delete(hooks, event)
+	data, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hooksOf(data)
+}
+
+// Each finding that tells an action carries it as its fix, and its text is the message of the base version;
+// a remedy after a comma, and a message without action, stay whole in the message.
+func TestDecideFixes(t *testing.T) {
+	settings := string(exampleSettings(t))
+	cases := []struct {
+		name    string
+		edit    func(i *setup.Inspection)
+		area    string
+		message string // the whole message, or its prefix when it ends with ...
+		fix     string
+	}{
+		{"development build", func(i *setup.Inspection) { i.Setup.Version, i.Plugin.Version = "dev", "dev" }, "version",
+			"polix dev is a development build", "install a release with polix update --version <version>"},
+		{"older release", func(i *setup.Inspection) { i.Latest = "0.3.0" }, "version",
+			"polix 0.2.0, the latest release is 0.3.0", "run polix update"},
+		{"not on the PATH", func(i *setup.Inspection) { i.PathErr = errors.New("not found") }, "path",
+			"polix is not on the PATH, so the hooks cannot run it", "add " + filepath.Dir("/bin/polix") + " to the PATH"},
+		{"plugin not written", func(i *setup.Inspection) { i.Plugin.Written = false }, "plugin",
+			"the plugin polix (skills and agents) is not installed", "run polix install --skills"},
+		{"plugin of another version", func(i *setup.Inspection) { i.Plugin.Manifest = "0.1.0" }, "plugin",
+			"... is from polix 0.1.0, this binary is 0.2.0", "run polix install --skills"},
+		{"not installed in Claude Code", func(i *setup.Inspection) { i.ClaudeInstalled = false }, "plugin",
+			"Claude Code does not have polix@polix installed", "run polix install --skills"},
+		{"disabled in Claude Code", func(i *setup.Inspection) { i.ClaudeEnabled = false }, "plugin",
+			"polix@polix is disabled in Claude Code", "run claude plugin enable polix@polix"},
+		{"another folder", func(i *setup.Inspection) { i.ClaudeFolder = "/other" }, "plugin",
+			"Claude Code loads polix@polix from /other, not from ...", "run polix install --skills"},
+		{"no hooks", func(i *setup.Inspection) { i.ClaudeHooks = nil }, "hooks",
+			"Claude Code does not run polix in this repository", "run polix install"},
+		{"legacy session start", func(i *setup.Inspection) {
+			i.ClaudeHooks[i.Setup.HooksFile(setup.Claude)] = hooksOf([]byte(strings.Replace(settings, `"polix update --hook"`,
+				`"polix update --hook; polix doctor --hook"`, 1)))
+		}, "hooks", "SessionStart runs a command of an earlier polix", "run polix install to refresh the hooks"},
+		{"no update", func(i *setup.Inspection) {
+			i.ClaudeHooks[i.Setup.HooksFile(setup.Claude)] = hooksOf([]byte(strings.Replace(settings, `"polix update --hook"`, `"echo hi"`, 1)))
+		}, "hooks", "SessionStart does not run " + setup.UpdateCommand + ", so polix does not update itself", "run polix install"},
+		{"twice", func(i *setup.Inspection) {
+			i.ClaudeHooks[filepath.FromSlash("/h/.claude/settings.json")] = hooksOf([]byte(settings))
+		}, "hooks", "Claude Code runs polix twice on ...", "keep the hooks of polix in one of ..."},
+		{"event without polix", func(i *setup.Inspection) {
+			i.ClaudeHooks[i.Setup.HooksFile(setup.Claude)] = settingsWithout(t, "Stop")
+		}, "hooks", "Stop does not run polix hook claude", "run polix install"},
+		{"matcher", func(i *setup.Inspection) {
+			i.ClaudeHooks[i.Setup.HooksFile(setup.Claude)] = hooksOf([]byte(strings.Replace(settings, `"matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash"`,
+				`"matcher": "Edit"`, 1)))
+		}, "hooks", "the matcher of PreToolUse does not cover ...", "run polix install"},
+		{"git hook missing", func(i *setup.Inspection) {
+			i.GitHooks, i.ListsHooks = map[string][]string{}, true
+		}, "githooks", "git does not run polix githook on ...", "run polix install"},
+		{"newer workflow", func(i *setup.Inspection) {
+			i.WorkflowErr = workflow.InvalidError{`polix.yaml:5: unknown key "foo"`}
+		}, "workflow", "these problems may be options of a newer polix than this one (0.2.0)", "run polix update before removing them"},
+		{"codex plugin", func(i *setup.Inspection) {
+			i.CodexHooks = map[string]setup.HooksFile{i.Setup.HooksFile(setup.Codex): hooksOf([]byte(
+				`{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "polix hook codex"}]}]}}`))}
+		}, "codex", "the plugin polix@polix is not enabled in Codex", "run polix install --skills --agent codex"},
+		{"codex hooks", func(i *setup.Inspection) { i.CodexEnabled = true }, "codex",
+			"Codex does not run polix in this repository", "run polix install --agent codex"},
+	}
+	for _, c := range cases {
+		i := healthy(t)
+		c.edit(&i)
+		var got *setup.Finding
+		for _, f := range Decide(i, false).Findings {
+			if f.Area == c.area && f.Problem() && f.Fix != "" {
+				got = &f
+			}
+		}
+		if got == nil {
+			t.Errorf("%s: no finding of %s with a fix:\n%s", c.name, c.area, text(Decide(i, false)))
+			continue
+		}
+		wantFix := c.fix
+		if prefix, ok := strings.CutSuffix(wantFix, "..."); ok {
+			if !strings.HasPrefix(got.Fix, prefix) {
+				t.Errorf("%s: fix %q", c.name, got.Fix)
+			}
+			wantFix = got.Fix
+		}
+		message := c.message
+		if prefix, ok := strings.CutSuffix(message, "..."); ok {
+			if !strings.HasPrefix(got.Message, prefix) {
+				t.Errorf("%s: message %q", c.name, got.Message)
+			}
+			message = got.Message
+		} else if strings.HasPrefix(message, "... ") {
+			if !strings.HasSuffix(got.Message, strings.TrimPrefix(message, "...")) {
+				t.Errorf("%s: message %q", c.name, got.Message)
+			}
+			message = got.Message
+		}
+		if got.Message != message || got.Fix != wantFix || got.Text() != message+": "+wantFix {
+			t.Errorf("%s: %+v", c.name, *got)
+		}
+	}
+	// What has no fix: git missing, and the timeout of the hooks, whose remedy follows a comma.
+	i := healthy(t)
+	i.GitErr = errors.New("no git")
+	for _, f := range Decide(i, false).Findings {
+		if f.Area == "git" && f.Fix != "" {
+			t.Errorf("git missing has no fix: %+v", f)
+		}
+	}
+	i = healthy(t)
+	i.ClaudeHooks[i.Setup.HooksFile(setup.Claude)] = hooksOf([]byte(strings.Replace(settings, `"timeout": 900`, `"timeout": 5`, 1)))
+	for _, f := range Decide(i, false).Findings {
+		if f.Area == "hooks" && f.Problem() && f.Fix != "" {
+			t.Errorf("a remedy after a comma stays in the message: %+v", f)
+		}
 	}
 }
