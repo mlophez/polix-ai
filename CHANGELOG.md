@@ -12,8 +12,14 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 - `/polix:plan` is now `/polix:spec`, so it no longer clashes with `/plan`, the plan mode of Claude Code; it writes
   the same plan in the folder of plans. `polix install` and `polix update` remove `/polix:plan`: search your
   `polix.yaml` for `/polix:plan` and replace it with `/polix:spec`.
-- `/polix:grill-me` returns a brief instead of a spec, with the same sections; `/polix:spec` and `polix:critic` read
-  the brief.
+- `/polix:grill-me` returns a brief instead of a spec, with the same sections; `/polix:spec` reads the brief.
+- `polix:critic` receives only the path of the plan file and reads nothing else, as the builder reads the plan: no
+  brief, template, rules, sections of `/polix:spec`, round nor earlier findings. It reviews the plan against itself
+  (undefined facts, contradictions, edge cases, traceability, the executor walk) and parses it; it no longer checks
+  the coverage of the brief, the rules of the tasks, the keys of the template nor the form of the skill.
+  `/polix:spec` launches it once instead of up to three rounds, and what it leaves open goes to `Pending`.
+- `polix:builder` no longer receives `Rules` from `/polix:build`: it reads the rules of its task in the folder of
+  rules `AGENTS.md` or `CLAUDE.md` names, else `ai/rules/`.
 - `/polix:plan` proposes `effort: medium` for the builder, the verifier and the reviewer at every risk level;
   `risk.level` only picks their models, and the reviewer of a `high` risk runs on `opus` instead of `fable`.
 - `/polix:grill-me` is the one interview of polix: it asks the what of a change and the how only the user should

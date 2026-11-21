@@ -1492,8 +1492,9 @@ also prints that Codex support is not implemented in this release and the setup 
   `Specification` with the outcome, its design and examples, the scope and the acceptance criteria, then `Approach`
   with the tasks, and the user approves its outcome before it is built; it creates the branch with `git switch -c`
   before writing the plan, asks the user when the branch already exists, and records it in `branch`; before the
-  approval the read-only agent `critic` reviews the plan alone for undefined facts, contradictions and edge cases left
-  open, checks it against the brief, the rules, its template and the form the skill sets and parses it, the skill fixes what the plan settles and asks the rest through `grill-me`, up to three rounds, and `spec`
+  approval the read-only agent `critic` receives only the plan file, as the builder reads it, and reviews it for
+  undefined facts, contradictions, edge cases left open and tasks an executor could not build without deciding, and
+  parses it, once; the skill fixes what the plan settles and asks the rest through `grill-me`, and `spec`
   never runs in plan mode), `build` switches to the `branch` of an approved plan, which needs a clean working tree,
   and implements it unattended, one task at a time: a `builder` agent builds the task, the agents `verifier`
   (against the plan) and `reviewer` (the code's quality) check that task alone in parallel, the findings go back to
@@ -1531,7 +1532,9 @@ also prints that Codex support is not implemented in this release and the setup 
     project, governed by polix or not. They take the folders of plans, rules, reports and tasks from `AGENTS.md`,
     `CLAUDE.md` or the session, where the start context of polix names them, `ai/` by default, and the base branch
     from `AGENTS.md`, `CLAUDE.md` or the default branch of `origin`, else `main`. They name each other without the
-    prefix of the plugin, and the skills pass the folder of rules to the agents in their prompt (`Rules:`).
+    prefix of the plugin, and the skills pass the folder of rules in their prompt (`Rules:`) to the agents that judge
+    the code against it, `reviewer` and `auditor`; `critic` gets only the plan, and `builder` finds the
+    folder as `AGENTS.md` or `CLAUDE.md` names it, else `ai/rules/`.
     `add-rule` checks what it writes by parsing it and running each new `check` as `AGENTS.md` runs the checks.
     `init`, `doctor`, `risk`, `task`, `spec`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
     user runs them, typing the command; when a message of polix asks for one, as the session start does for

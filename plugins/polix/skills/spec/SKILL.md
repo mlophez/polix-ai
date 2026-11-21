@@ -29,7 +29,7 @@ Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
   Without the Skill tool, as in Codex, read `../grill-me/SKILL.md` next to this skill and follow it in this session.
 - The subagent `critic`, which reviews the plan at Step 6.
   Without it, as in Codex, read `../../agents/critic.md` next to this skill and follow it yourself at Step 6.
-  Follow it in a pass apart from the writing, reading only what the critic may read.
+  Follow it in a pass apart from the writing, reading only the plan file.
   The critique is then not independent: say so in `Pending`.
 
 ## Input
@@ -55,7 +55,7 @@ Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
 - **Decisions**: every decision of the plan with `source: delegated`, or "none".
 - **Next steps**: adjust the plan, or build, verify and review it with the skill `build`.
 - **Pending**: open blockers and stale or missing docs, with the skill `add-rule` when rules are missing.
-  Also the decisions the user left deferred and the findings of `critic` its last round left open.
+  Also the decisions the user left deferred and the findings of `critic` left open.
   Also the uncommitted changes other than the plan and its task: the skill `build` starts only once they are
   committed; or "none".
 
@@ -84,7 +84,7 @@ Plan progress:
 - [ ] Step 3: Read the project context and the code the tasks will change (see Step 3).
 - [ ] Step 4: Create the branch of a new plan (see Step 4).
 - [ ] Step 5: Write the plan file from the brief and the code (see Step 5).
-- [ ] Step 6: Have `critic` review the plan, and fix what it finds, up to three rounds (see Step 6).
+- [ ] Step 6: Have `critic` review the plan once, and fix what it finds (see Step 6).
 - [ ] Step 7: Show the user the outcome of the plan and ask for approval (see Step 7).
 - [ ] Step 8: Report (see `Output`), stop and return control to the user.
 ```
@@ -131,11 +131,10 @@ When adjusting a plan, follow `Adjusting a plan` at every step.
    Follow `Request`, `Outcome`, `Acceptance criteria`, `Tasks`, `High risk` and `Tests` for its form.
 3. A key that needs a decision the brief does not settle is a reopened brief: invoke `grill-me` with `Adjust`.
 
-### Step 6: Have `critic` review the plan, and fix what it finds, up to three rounds
+### Step 6: Have `critic` review the plan once, and fix what it finds
 
-The critic reads the plan in a context of its own, with the brief, the template and the rules, never the code.
-Of this skill it reads only `Acceptance criteria`, `High risk`, `Tests`, `Readability` and `Plan file`.
-It judges whether an executor could build it without deciding, and whether it follows the brief, the rules and the form.
+The critic reads only the plan file, in a context of its own, as the builder will read it.
+It judges whether an executor could build it without deciding anything itself.
 
 1. Launch the subagent `critic` with the prompt of `Critic prompt`, and wait for its report.
 2. Sort each finding of the report:
@@ -145,19 +144,18 @@ It judges whether an executor could build it without deciding, and whether it fo
    - Decision: its fix is a choice no source settles, as a fix `decision` says.
      Invoke `grill-me` once for all of them, with the findings and the plan's current keys as its `Adjust`.
      Write each answer of its brief into its key.
-3. Launch the critic again, with the next round and the findings so far in `Previous`.
-   It checks the whole plan again, so a fix that breaks another key is a finding of the next round.
-4. Stop when the verdict has no `blocking` nor `major` finding, or after the third round.
-   What the last report leaves open goes to `Pending`, each finding with its severity and its first words.
+3. Never launch the critic again: it reviews the plan once.
+   What the report leaves open, unfixed or unanswered, goes to `Pending`.
+   Write each finding there with its severity and its first words.
 
-Without the subagent `critic`, follow `critic.md` yourself as `Requirements` says, at each round.
+Without the subagent `critic`, follow `critic.md` yourself as `Requirements` says, once.
 
 ### Step 7: Show the user the outcome of the plan and ask for approval
 
 - Write as text, in the language of the session, the final result the plan builds, with the path of the plan.
   It is the `summary` of `overview`, the `interface` and the journeys, `scope` and the titles of the criteria.
   Then the model and effort of each agent of `agents`, which the user may change.
-- Then the critique in a few lines: the rounds, the findings fixed, those asked to the user and those left open.
+- Then the critique in a few lines: the findings fixed, those asked to the user and those left open.
 - Then ask with `AskUserQuestion` whether to approve the plan or adjust it, approve first.
   The question says the result is just above it, since the dialog may hide it.
   Without `AskUserQuestion`, ask for the approval in the text after the result.
@@ -351,16 +349,10 @@ Label each test `new`, which fails before the change, or `kept`, which passes be
 
 ### Critic prompt
 
-What to send `critic` at each round of Step 6, in the language of the session:
+What to send `critic` at Step 6, in the language of the session, and nothing else:
 
 ```text
 Plan: <the path of the plan file>
-Brief: <the brief the user confirmed, whole, with the answers of every reopening>
-Template: <the path of the template.yaml next to this skill>
-Skill: <the path of this SKILL.md, for its sections Acceptance criteria, High risk, Tests, Readability and Plan file>
-Rules: <the path of the folder of rules, or "none" when it does not exist>
-Round: <the round, as 1 of 3>
-Previous: <each finding of the earlier rounds, with fixed, answered by the user or left open, or "none">
 ```
 
 ### Readability

@@ -35,8 +35,6 @@ The prompt names:
 - **Iteration**: the `ITER-NN` of the plan to work on, or "none".
   With one, finish its `task` when it is not `done`, then fix its `findings` (see `Fixing findings`).
   An iteration whose `task` is `final` belongs to the final verification of the whole plan: fix only its findings.
-- **Rules**: the path of the folder of rules, or "none".
-  Without the line, the folder `ai/rules/` when it exists.
 
 Read the `iterations` of the plan before the first task, when it has any.
 Its findings, with their `evidence`, say what the checks found and what the builders did with it.
@@ -99,6 +97,7 @@ Build progress:
 
 The task's data is its item of `tasks`, found by its `id` (see `Task data`).
 Read each rule of its `rules` by its `id` in the `yaml` files of the folder of rules.
+The folder of rules is the one `AGENTS.md` or `CLAUDE.md` names, else `ai/rules/` below the root.
 The earlier tasks are built and committed: build on the tree they left.
 A task `departed` or `blocked` in an earlier try: read its `evidence`, and try another way, never the one that failed.
 

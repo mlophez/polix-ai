@@ -318,7 +318,6 @@ Plan: <path of the plan file>
 Branch: <the branch of Step 1, or "current" for a plan without `branch`>
 Task: <id and title of the one task to build, or "none" when it works on an iteration>
 Iteration: <the `ITER-NN` of the plan to work on, its task and findings, or "none">
-Rules: <the path of the folder of rules, or "none" when it does not exist>
 ```
 
 ### Builder report
