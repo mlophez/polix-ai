@@ -71,6 +71,7 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
   Name the uncommitted changes the run left, and the task or the final verification they belong to.
   Once a person clears it, the skill `build` resumes the plan with those changes.
 - **Pending**: the minor findings, the manual checks and the failures that are not the change's.
+  Also each finding of a re-review that reopened nothing, with its severity, `file:line`, origin and why it waits.
   Also the changes `AGENTS.md`, `CLAUDE.md` or a protected file need; or "none".
 
 ## Limits
@@ -80,12 +81,13 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
 - Never end your turn before Step 8: a subagent that returns, a failed check or a long run is never the end.
   The run ends only when the plan is done or a loop stops (see `Task cycle` and `Final verification`).
 - Never edit the code yourself: only the builder changes it, except in the fallback of `Requirements`.
-  You edit only five parts of the plan, and never a doc of the project.
+  You edit only the parts of the plan below, and never a doc of the project.
   Those are its `status`, the `status` and `evidence` of each task and of each criterion.
   Also the iterations you add, and the fields of `stats` (see `Plan stats`).
   Of the iterations, you set their `status` and the `status` and `evidence` of their findings.
 - Edit the plan with targeted edits that keep it valid YAML, never writing it again whole.
-- Commit only as `Commits` says: never push, stash, reset, amend, rebase nor create branches.
+- Commit only as `Commits` says, each round and each closed task: never push, stash, reset, amend, rebase nor create
+  branches.
   The only checkout is the switch to the plan's `branch` in Step 1 (see `Input`).
 - Write the status of the tasks and findings as the builder reports them, never your own.
   Still, count nothing as closed on the builder's word: only the verifier's and the reviewer's reports close it.
@@ -130,16 +132,28 @@ Run each task from `From` to the last, one at a time, in the order of the plan; 
 4. **Open**: list what is still open of the task.
    - The task, when it is not `done`.
    - The verifier's findings, its criteria `not met` among them.
-   - The reviewer's `blocking` and `major` findings; its `minor` ones go to `Pending`.
+   - In a first review, whose `Previous` is none, the reviewer's `blocking` and `major` findings; its `minor` ones go
+     to `Pending`.
+   - In a re-review, whose `Previous` names an iteration, route each finding of the reviewer by its `Origin`:
+     - A finding of `Previous` that is not fixed, with an `FND-NN` of that iteration in `Repeats` and `Origin: none`,
+       is open.
+     - A `blocking` finding is open, whatever its `Origin`.
+     - A `major` finding with `Origin: fix` is open: the round brought it.
+       One with an `Origin` other than `fix` or `earlier` counts as `fix`.
+     - A `major` finding with `Origin: earlier`, and every `minor` one, opens nothing: it goes to `Pending`.
+       List it with its severity, its `file:line`, its `Origin` and why it waits: the round did not bring it, or it
+       is `minor`.
    - Leave out a finding the builder skipped twice for the same reason: it goes to `Pending`.
 5. **Close**: with nothing open, commit the task (see `Commits`), and go on with the next task.
 6. **Stop**: the cycle stops in any of these cases, each to `Blockers` with what a person must do.
    - The task is `blocked`: it waits for a person.
    - The last two iterations of the task fixed nothing and did not turn it `done`: the work stalled.
-   - The task reached five iterations: the guard against a fix that breaks something else every time.
+   - The task reached three iterations: the guard against a fix that breaks something else every time.
    Count only the iterations this run added, so a resumed plan gets its limits again.
-   The task's changes stay uncommitted, no later task is built, and the commits of the earlier tasks stay.
+   The last round of the task stays uncommitted, and no later task is built.
+   The round commits of the task and the commits of the earlier tasks stay.
 7. **Iteration**: otherwise, add an iteration of the task with what is open (see `Iteration`).
+   Commit the round with it (see `Commits`), so the next review reads only what the next round changes.
    Launch the builder on it (see `Builder prompt`) and write its report in the plan (see `Builder report`).
    Set it `status: built`, and go back to 2.
 
@@ -155,12 +169,15 @@ Once every task is closed, check the whole plan, and repeat until nothing is ope
    Wait for both, and set the iteration the builder worked on, if any, to `status: checked`.
 2. **Criteria**: set every criterion from the verification (see `Acceptance criteria`).
 3. **Open**: the verifier's findings, its criteria `not met` among them.
-   Also the reviewer's `blocking` and `major` findings; its `minor` ones go to `Pending`.
+   Also the reviewer's findings that reopen, routed by their `Origin` as the step `Open` of `Task cycle` does for a
+   re-review: its `Previous` is always an iteration of `final`.
+   The others go to `Pending` with their severity, `file:line`, `Origin` and why they wait.
    Leave out a finding the builder skipped twice for the same reason: it goes to `Pending`.
 4. **Done**: with nothing open, the loop ends.
-5. **Stop**: as in `Task cycle`, after two iterations that fixed nothing or after five iterations of `final`.
-   Its fixes stay uncommitted.
+5. **Stop**: as in `Task cycle`, after two iterations that fixed nothing or after three iterations of `final`.
+   Its last round stays uncommitted, and its round commits stay.
 6. **Iteration**: otherwise, add an iteration with `task: final` and what is open (see `Iteration`).
+   Commit the round with it (see `Commits`), so the next review reads only what the next round changes.
    Launch the builder on it and write its report in the plan, set it `status: built`, and go back to 1.
 
 ### Iteration
@@ -223,17 +240,28 @@ iterations:
 
 You commit, never a subagent; each commit holds the plan file too, so the plan in `HEAD` shows the progress.
 When git ignores the plan file (`git check-ignore -q <plan>`), the commits leave it out.
+The `<path of the plan>` of every line `Plan:` has one form, whatever form the arguments gave it in.
+It is relative to the root of the repository (`git rev-parse --show-toplevel`), with `/` as separator, such as
+`ai/plans/add-retries.yaml`: never a bare filename, an absolute path nor `./` before it.
 
+- **Round**: once the checks of a round leave something open and the loop goes on, after its iteration is added.
+  Subject `T<N> ITER-NN: <title of the task>`, or `Final ITER-NN: <title of the plan>` for the final verification,
+  with the id of the iteration the round opens.
+  A body with the `FND-NN` of that iteration, then the line `Plan: <path of the plan>`.
+  So the review of the next round reads, as `git diff HEAD`, only what that round changes.
+  A round that stops its loop is never committed: it stays uncommitted for `Blockers` and `Resume`.
 - **Task**: once its checks close it.
   Subject `T<N>: <title of the task>`, then a body with its `summary` and the line `Plan: <path of the plan>`.
 - **Final**: at Step 6 when `done`: subject `Final: <title of the plan>`, a body with the `FND-NN` the final
   verification fixed, or "Nothing to fix.", and the line `Plan: <path>`.
-  When `git status --porcelain` shows nothing, as with an ignored plan and nothing fixed, make no final commit and
-  say so in `Commits` of `Output`.
+- When `git status --porcelain` shows nothing, as with an ignored plan and nothing changed, make no round nor final
+  commit, and say so in `Commits` of `Output`.
+  A round without its commit adds nothing to the next review, and the loop goes on as if it had committed.
 
 How to commit:
 
 1. Write the entry of the task, or of `final`, in `stats.timeline` (see `Timeline`), so the commit holds it.
+   A round commit skips this step: it writes no entry.
 2. List the changed and untracked paths with `git status --porcelain`.
    The tree held at most the plan file and its task file when the run started, so all are the run's.
    Stage them by path with `git add <paths>`, never `git add -A`, `-a` nor a path after `git commit`.
@@ -244,6 +272,9 @@ How to commit:
    You never update the docs, so a commit never stops for them.
 5. When a hook or a check fails the commit, the failure is a finding with `source: commit`.
    Add it to an iteration of the task, or of `final`, and go on with its loop: it counts toward its limit.
+   A failed round commit adds it to the iteration the round opens, and the round stays uncommitted.
+   The review after it then reads the change since the last commit, which holds both rounds.
+   A finding with `source: commit` is fixed once the next commit of the task, or of `final`, passes.
    The entry of step 1 stays: the next commit of the task, or of `final`, writes its `end` and `duration` again.
 6. When a block asks for what only a person can do, stop the loop as `Task cycle` does.
 7. Take the short hash with `git rev-parse --short HEAD` for `Output`; never push.
@@ -256,9 +287,12 @@ A plan `in-progress` was interrupted, and one `blocked` stopped; the commits of 
 - Otherwise, with uncommitted changes, they belong to the first task without its commit `T<N>: ` in
   `git log --format=%s $(git merge-base HEAD <base>)..HEAD`, or to `final` when every task has one.
   Run the checks of that task, or of the final verification, on them; their findings start its iterations.
+- A round commit, `T<N> ITER-NN: ` or `Final ITER-NN: `, is work of a task, or of `final`, that is not closed.
 - Otherwise, run the cycle from `From`, or the final verification when every task is `done`.
 - A task `blocked` in an earlier run was cleared by a person: stop on it only when a builder of this run reports it
   `blocked` again.
+- On every path of a resumed run, the task base is the one `Builder prompt` defines.
+  It is never a `HEAD` past a round commit of the task.
 - The base is the base branch `AGENTS.md` or `CLAUDE.md` names.
   Without one, the branch `git symbolic-ref --short refs/remotes/origin/HEAD` names without `origin/`, else `main`.
 
@@ -350,8 +384,29 @@ Send the builder this block, in the language of the session:
 Plan: <path of the plan file>
 Branch: <the branch of Step 1, or "current" for a plan without `branch`>
 Task: <id and title of the one task to build, or "none" when it works on an iteration>
+Base: <the short hash of the task base, or "none" with final>
 Iteration: <the `ITER-NN` of the plan to work on, its task and findings, or "none">
 ```
+
+The task base is the commit the task started from, before its first round: the round commits move `HEAD` within it.
+One rule gives it for every task in every run, a resumed or cleared one too:
+
+- It is the parent of the oldest round commit of the task in this plan, else `HEAD`.
+  A round commit of the task has a subject that starts with `T<N> ITER-` and the line `Plan: <path of the plan>`.
+  Task ids repeat across plans, so a round commit of another plan on the branch never counts.
+  The path is in the one form `Commits` gives it, so every run writes and looks for the same line.
+- Search the whole history of `HEAD`, never a range from the base branch: the line `Plan:` already keeps the search
+  to this plan, and a range would be empty when the branch is the base branch itself.
+- List the commits whose subject starts with `T<N> ITER-`, oldest first, with their message:
+  `git log --reverse --format='commit %h%n%B' --grep='^T<N> ITER-' HEAD`.
+  `git log` without `--reverse` lists the newest first, whose parent is only the round before it.
+- Take the first of them whose message holds a line equal to `Plan: <path of the plan>`.
+  Compare that line as plain text, never as a pattern, so no character of the path changes the match.
+  Then take `git rev-parse --short <its hash>^`.
+- Without a round commit of the task, take `git rev-parse --short HEAD`.
+- Take it once in each run, right before the first builder or the first checks of the task, and keep it for its cycle.
+
+The builder and the verifier of the task, and of each of its iterations, get the same one.
 
 ### Builder report
 
@@ -375,6 +430,7 @@ Send the verifier this block, in the language of the session:
 ```text
 Plan: <path of the plan file>
 Task: <the id of the task whose cycle runs, or "final" for the whole plan>
+Base: <the short hash of the task base, or "none" with final>
 Previous: <the `ITER-NN` of the plan the builder just worked on, or "none">
 Skipped: <the `FND-NN` of that iteration the builder skipped, with why, or "none">
 ```
@@ -400,8 +456,9 @@ Edit only the top-level `status` of the plan:
 - `done` at the end when three things hold.
   Every task is `done` and has its commit.
   The final verification is `met`: every AC `met`, or a manual `not verified` with its steps in `Pending`.
-  The reviews of the tasks and of the final fixes left no `blocking` nor `major` finding.
-  The only exceptions are those a builder skipped twice for the same reason.
+  The reviews of the tasks and of the final fixes left no finding open (see the step `Open` of `Task cycle`).
+  A finding a builder skipped twice for the same reason does not hold it.
+  Nor does one of a re-review listed in `Pending`: a `major` one with `Origin: earlier`, or a `minor` one.
 - `blocked` at the end otherwise.
 
 ### Acceptance criteria

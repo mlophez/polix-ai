@@ -9,6 +9,27 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- `/polix:build` commits each round of a task whose checks leave something open, right after its checks and before
+  the builder fixes it, as `T<N> ITER-NN: <title of the task>`, or `Final ITER-NN: <title of the plan>` in the
+  final verification, with the `FND-NN` of its iteration and `Plan: <path>` in the body. The round that closes a
+  task is still `T<N>: <title>`, the only one that writes `stats.timeline`, and the one that closes the final
+  verification is still `Final:`; the branch now holds one commit per round. A hook that rejects a round commit is a
+  finding of that iteration, and the round stays uncommitted; a task that stops leaves its last round uncommitted,
+  as before. `/polix:build` passes `polix:builder` and `polix:verifier` the commit the task started from as `Base:`:
+  the verifier checks the whole task from it, and the builder uses it as the base version of a differential check,
+  also where an older plan names `HEAD`.
+- A re-review of `polix:reviewer`, one whose `Previous` names an iteration, checks that the findings of `Previous`
+  are fixed and reports only on the lines that iteration changed, its second pass included, instead of reviewing
+  the whole task again; the first review of a task keeps its full procedure. Each new finding of a re-review carries
+  `Origin: fix` when `HEAD` does not have the problem, or `Origin: earlier` when it does. `/polix:build` reopens the
+  task only for an unfixed finding of `Previous`, a `blocking` finding or a `major` one of origin `fix`; the others
+  wait in the `Pending` of its report, with their severity, `file:line`, origin and why, and do not keep the plan
+  from ending `done`.
+- `polix:reviewer` rates a bug on an edge case `major` only when it names a realistic input of the product that
+  reaches it, in its `Evidence`; without one the finding is `minor`. It applies in every review, in plan mode and in
+  change mode, so `/polix:review` rates such cases `minor` too.
+- `/polix:build` stops a task, and the final verification, after three iterations of the run instead of five; it
+  still stops after two iterations that fixed nothing.
 - `/polix:grill-me`, run on its own, asks the next step once you confirm the brief: write a plan (it tells you to
   run `/polix:spec` in the same session, which takes the brief without interviewing again), implement the change
   in the session without a plan, or stop. It recommends a plan when the change does not fit one review or has a

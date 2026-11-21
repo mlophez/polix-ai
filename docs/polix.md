@@ -1514,11 +1514,14 @@ also prints that Codex support is not implemented in this release and the setup 
   never runs in plan mode), `build` switches to the `branch` of an approved plan, which needs a clean working tree,
   and implements it unattended, one task at a time: a `builder` agent builds the task, the agents `verifier`
   (against the plan) and `reviewer` (the code's quality) check that task alone in parallel, the findings go back to
-  the builder in iterations of the task, up to five, and once the checks close it `build` commits it as
-  `T<N>: <title>` with the plan, unless git ignores the plan; a task that does not close leaves the plan `blocked`,
-  with its changes uncommitted and no later task built, and `build` resumes it with them once a person clears it.
-  After the last task it has the `verifier` check the
-  whole plan, fixes what it finds in up to five iterations, which the `reviewer` also reviews, commits them as
+  the builder in iterations of the task, up to three, and once the checks close it `build` commits it as
+  `T<N>: <title>` with the plan, unless git ignores the plan; each round whose checks leave something open is
+  committed first as `T<N> ITER-NN: <title>`, listing the `FND-NN` of its iteration and `Plan: <path>`, so the
+  re-review of the next round reads only what its fix changed; a task that does not close leaves the plan
+  `blocked`, with its last round uncommitted and no later task built, and `build` resumes it with that round once
+  a person clears it. After the last task it has the `verifier` check the
+  whole plan, fixes what it finds in up to three iterations, each round left open committed as
+  `Final ITER-NN: <title of the plan>`, which the `reviewer` also reviews, commits them as
   `Final:`, never pushes nor updates the docs of the project, and reports the stats of the build, with the time and
   iterations of each task, `review` reviews the code of a change without a plan with the agent `reviewer` and saves
   the report
@@ -1574,12 +1577,22 @@ also prints that Codex support is not implemented in this release and the setup 
     edits the plan and commits: for each task the builder builds it and reports its `status` and `evidence`, `build`
     writes them in the plan, with the builder's departures and the failures of its baseline as lines `Departure:`
     and `Baseline:` of the `evidence`, which the checks and the builders of its iterations read, then the verifier
-    and the reviewer check the uncommitted change of that task against
-    `HEAD`, the verifier only the criteria whose last covering task it is, running only their `verify`, and the
-    reviewer only reading the diff, running nothing but `git`; the plan's `verification` is run by the builder alone,
-    once after its baseline, and by the hooks of the project; when they leave something to fix, it adds
-    an iteration (`ITER-NN`) of that task, or of `final`, to `iterations` with the findings to fix
-    (`FND-NN`) and launches the builder on it; it sets in `stats` at the root of the plan its `start`, `end`, `duration`,
+    and the reviewer check that task: the verifier the change from the task base, the commit the task started
+    from, which `build` passes to the builder and the verifier as `Base:` and the builder uses as the base version
+    of a differential check, and only the criteria whose last covering task it is, running only their `verify`;
+    the reviewer the uncommitted change against `HEAD`, only reading the diff and running nothing but `git`: the
+    whole task in its first review, and in a re-review, whose `Previous` names an iteration, only the lines that
+    iteration changed, checking that the findings of `Previous` are fixed and marking each new finding with its
+    `Origin`, `fix` when `HEAD` does not have the problem and `earlier` when it does; the plan's `verification` is
+    run by the builder alone, once after its baseline, and by the hooks of the project; when they leave something
+    to fix, it adds an iteration (`ITER-NN`) of that task, or of `final`, to `iterations` with the findings to fix
+    (`FND-NN`), commits the round, and launches the builder on it; in a re-review only an unfixed finding of
+    `Previous`, a `blocking` finding or a `major` one of origin `fix` reopen the task, and the others wait in the
+    `Pending` of its report with their severity, `file:line`, origin and why, without keeping the plan from ending
+    `done`; a hook that rejects a round commit is a finding of that iteration, with the round left uncommitted; a
+    task or `final` stops after three iterations of the run, or two that fixed nothing; in every review a bug on an
+    edge case is `major` only when the reviewer names a realistic input that reaches it, else `minor`; it sets in
+    `stats` at the root of the plan its `start`, `end`, `duration`,
     the `iterations`, its runs, the `timeline`, the start, end and duration of each run on a task or on `final`,
     written right before its commit, and the `code` it changed; it launches the builder, the verifier and the reviewer each with the `model`
     and `effort` of its item of `agents` of the plan, which `spec` proposes (effort `medium`, the models from the risk) and the user may change,

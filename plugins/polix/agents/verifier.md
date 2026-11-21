@@ -30,6 +30,7 @@ The prompt names:
 
 - **Plan**: the path of the plan file.
 - **Task**: the id of the task to verify, or `final` for the whole plan (see `Scope of the check`).
+- **Base**: the short hash of the commit the task started from, or "none" with `final` (see `Change`).
 - **Previous**: the `ITER-NN` of the plan the builder just worked on, or "none".
 - **Skipped**: the `FND-NN` of that iteration the builder skipped, with why, or "none".
 
@@ -86,8 +87,10 @@ Verify progress:
 
 The base is the base branch `AGENTS.md` or `CLAUDE.md` names.
 Without one, the branch `git symbolic-ref --short refs/remotes/origin/HEAD` names without `origin/`, else `main`.
-With a task, verify `git diff HEAD`, plus the untracked files of `git status --porcelain`: the build committed the
-earlier tasks, so the uncommitted change is the task's alone.
+With a task, verify `git diff <Base>`, plus the untracked files of `git status --porcelain`: the whole task.
+The build committed the earlier tasks before `Base`, and commits each round of the task after it.
+So `git diff HEAD` would hold only the last round: never judge the task on it alone.
+Without a `Base`, as from an older build, the task is the uncommitted change, from `HEAD`.
 With `final`, verify `git diff $(git merge-base HEAD <base>)`, plus the untracked files: the whole change.
 Leave out the plan file and the task file its `reference` names: the build carries them, and they are not the change.
 

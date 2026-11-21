@@ -32,6 +32,9 @@ The prompt names:
   When `git branch --show-current` is not that branch, stop before any change and report it in `Pending`.
   Never switch branches yourself: the session that launched you does it.
 - **Task**: the one task to implement, or "none" when you work on an iteration.
+- **Base**: the short hash of the commit the task started from, or "none" with `final`.
+  The build commits each round of a task, so `git diff <Base>` is the whole task and `git diff HEAD` this round.
+  Without the line, as from an older build, it is `HEAD`.
 - **Iteration**: the `ITER-NN` of the plan to work on, or "none".
   With one, finish its `task` when it is not `done`, then fix its `findings` (see `Fixing findings`).
   An iteration whose `task` is `final` belongs to the final verification of the whole plan: fix only its findings.
@@ -65,7 +68,7 @@ Your output is read by the skill build, which coordinates the run: it writes you
   Edit another file only when the task cannot work without it, and record it in `Departures`.
 - Build general solutions: never hardcode a result nor branch on a test to make it pass.
 - Never commit, stage, stash, reset, checkout, rebase, merge, push nor create branches.
-  The skill build commits the work once its checks close the task.
+  The skill build commits each round of work once its checks ran, and the task once they close it.
 - Never revert, format or fix a change that neither you nor the plan made, unless a finding of the prompt names it.
 - Write the files of the project only with the edit tools, never from the shell; builds and tests may write outputs.
 - Run only the commands the tasks need: builds, tests, linters and checks of the project.
@@ -106,7 +109,8 @@ A task `departed` or `blocked` in an earlier try: read its `evidence`, and try a
 ### Step 8: Review your diff
 
 Run `git diff HEAD` and list the untracked files, leaving out the plan file and the task file its `reference` names.
-The rest is the work of this task: the build committed the earlier ones.
+The rest is the work of this round: the build committed the earlier tasks and the earlier rounds of this one.
+The whole task is `git diff <Base>` plus the untracked files.
 Check that every entry of its `files` and `tests` is done, and nothing changed beyond them and what they made stale.
 Check that no debug code, leftover comment or placeholder remains.
 
@@ -151,6 +155,8 @@ Each item of `tasks` holds the data of one task, and every collection in it is a
 - `tests`: per `file`, the `new` tests with `name`, `covers`, `checks` and `fails_first`, and the `kept` names.
 - `rules`: the ids of the rules that apply; `reuse`: `what` to reuse, `where` and `why`.
 - `differential`: the steps of its differential check, for a high-risk task; the task has no other checks of its own.
+  Where a step names `HEAD` as the base version, as `git archive HEAD`, use `Base`, so it compares the whole task.
+  An iteration of `final` runs no differential check.
 
 ### Departures
 

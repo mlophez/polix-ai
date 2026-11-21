@@ -32,6 +32,7 @@ context:
 - **Plan**: the path of the plan file.
 - **Task**: the id of the task whose change you review, or `final` for the fixes of the final verification.
 - **Previous**: the `ITER-NN` of the plan the builder just worked on, or "none".
+  A `Previous` other than none makes the review a re-review of that iteration (see `Plan mode`).
 - **Skipped**: the `FND-NN` of that iteration the builder skipped, with why, or "none".
 - **Repeats**: the `FND-NN` of the plan whose root cause came back in a later iteration, or "none".
   The second pass sweeps the class of each one (see Step 10).
@@ -115,6 +116,10 @@ The first pass stops at the first way a guarantee breaks; this one looks for eve
 4. With `Repeats`, sweep the guarantee of each `FND-NN` in the same way, even when this review found nothing on it.
 5. List the changed functions that no finding nor step of the first pass covered, and review each one now.
 
+A first review, whose `Previous` is none, runs it whole.
+A re-review runs it only on the lines the iteration changed and the code they break: the paths of 2, the sweep of 4
+and the functions of 5 stay inside them, and the rest of the earlier rounds is never swept again.
+
 ### Step 12: Decide the verdict
 
 - **changes requested**: at least one `blocking` or `major` finding.
@@ -130,8 +135,10 @@ Without one, the branch `git symbolic-ref --short refs/remotes/origin/HEAD` name
 Review `git diff $(git merge-base HEAD <base>)`, plus the untracked files of `git status --porcelain`.
 In plan mode, review `git diff HEAD` and the untracked files instead.
 Leave out the plan file and the task file its `reference` names: the build carries them, and they are not the change.
-The build committed the earlier tasks, so the uncommitted change is the task's alone.
-With `final`, every task is committed, so it is the fixes of the final verification.
+The build committed the earlier tasks, and commits each round of a task once its checks ran.
+So the uncommitted change is the round's: the whole task in a first review, whose `Previous` is none.
+In a re-review, whose `Previous` names an iteration, it is the change of that iteration.
+With `final`, every task is committed, so it is the fixes of the last round of the final verification.
 
 ### Plan mode
 
@@ -146,7 +153,27 @@ The plan is context, never the measure: the verifier checks the change against i
   Report it only when its reason is wrong, and say why.
 - A finding that reports again one of the `iterations`, or breaks its guarantee by another path, names its `FND-NN`.
 - A test of a task `departed` or `blocked` that is skipped, removed or failing is not a finding: list it in `Pending`.
-- The earlier tasks are committed and were reviewed: report on their code only when the task's change breaks it.
+- The earlier tasks, and the earlier rounds of this task, are committed and were reviewed.
+  Report on their code only when the change breaks it.
+
+A re-review, whose `Previous` names an iteration, checks the fix of that iteration, not the whole task again:
+
+- Check that each finding of `Previous` with `source: review` is fixed.
+  The verifier checks those with `source: verification`, and one with `source: commit` is fixed once the next
+  commit passes: leave both out.
+- A finding of `Previous` that is not fixed goes in `Findings` again, with its `FND-NN` in `Repeats` and
+  `Origin: none`.
+- Report only on the lines the iteration changed, the uncommitted change (see `Change`), and on the code of earlier
+  rounds those lines break, such as a caller of a function whose contract the iteration changed.
+  Read the rest of each touched file, and `HEAD`, as context, never as the measure.
+- Mark each new finding with its origin, by whether its problem exists in the tree of `HEAD`, never by where its text
+  lies nor by its line number.
+  It is `fix` when the problem is absent from `HEAD`: the iteration brought it, even on a line it did not touch.
+  It is `earlier` only when the same problem already happens in `HEAD`: on the `-` side of its hunk in `git diff HEAD`,
+  or in the same code read with `git show HEAD:<file>`, found by its content, since the iteration may move lines.
+  Name in its `Evidence` the code of `HEAD` that already has the problem, or why `HEAD` lacks it.
+- Run Step 10 only on the lines of the iteration (see Step 10).
+- A first review, whose `Previous` is none, keeps the whole procedure, and its findings take `Origin: none`.
 
 ### Categories
 
@@ -189,8 +216,16 @@ Try the cases of each kind of code the change touches; a kind not listed takes t
 ### Severity
 
 - **blocking**: a bug or security issue on a reachable path, a broken rule or architecture, or a compatibility break.
-- **major**: a bug on an edge case, a design or abstraction that will cost each later change, or a missing test.
-- **minor**: a readability or simplification issue with a concrete better form, or a stale comment.
+- **major**: a bug on an edge case that a realistic input reaches, a design or abstraction that will cost each later
+  change, or a missing test.
+- **minor**: a readability or simplification issue with a concrete better form, a stale comment, or a bug on an edge
+  case that no realistic input reaches.
+
+A realistic input is one the product meets in its normal use, such as a file, a command line or a setting a user
+writes.
+Rate a bug on an edge case `major` only when you name that input concretely in its `Evidence`; without one, it is
+`minor`.
+This holds for every review, in plan mode and in change mode, a first review and a re-review alike.
 
 ### Report template
 
@@ -210,9 +245,11 @@ Base: `git rev-parse --short HEAD`, the branch and whether the working tree had 
 
 - <severity>, <category>, `<file:line>`: <what is wrong, with the guarantee it breaks when it breaks one>.
   Instances: <each other path to the same root cause, with its `file:line` or case, or "none">.
-  Evidence: <the code at `file:line`, or the rule id for a rule finding>.
+  Evidence: <the code at `file:line`, or the rule id for a rule finding; for a `major` bug on an edge case, also the
+  realistic input of the product that reaches it>.
   Fix: <the direction of the fix, closing the root cause and every instance>.
-  Repeats: <in plan mode, the `FND-NN` of the plan it reports again; else "none">.>
+  Repeats: <in plan mode, the `FND-NN` of the plan it reports again; else "none">.
+  Origin: <in a re-review, fix when the problem is absent from HEAD, earlier when HEAD already has it; else "none">.>
 
 ## Held
 
