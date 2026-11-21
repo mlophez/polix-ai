@@ -137,7 +137,8 @@ Workflow progress:
 - Put the reason of an entry in a YAML comment above it.
 - Write the messages of `block`, `run` and `inject` in the language of the team, as instructions the agent can follow.
 - When `polix config check` names an old name with its new spelling, rewrite it as told.
-  Old names include `protected`, `base`, `max_stop_blocks`, `max_stop_retries`, `if`, `deny`, `record`, `done` and `turn_stop`.
+  Old names include `protected`, `base`, `max_stop_blocks`, `max_stop_retries`, `if`, `deny` and `record`.
+  Also `done` and `turn_stop`.
 - When the change uses a key, event, condition or verb the file did not use yet, set `requires`.
   Set it to the output of `polix version`, unless it is `dev` or `requires` is already newer.
 - When `path` changes, tell the user to move the folders `rules/`, `plans/`, `reports/` and `tasks/` of the old one.

@@ -31,9 +31,10 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   its summary and the plan. The verifier of a task evaluates only the criteria whose last covering task it is. After
   the last task the build updates the docs in a `Docs:` commit, and `polix:verifier` checks the whole plan, with up
   to five iterations of its own, committed as `Final:`. It never pushes.
-- `/polix:build` needs a clean working tree: with changes other than the plan it stops and asks to commit or stash
-  them, unless it resumes a plan `in-progress`. A task that does not close leaves the plan `blocked`, its changes
-  uncommitted and no later task built. `Pre-existing` leaves the prompts of `polix:verifier` and `polix:reviewer`.
+- `/polix:build` needs a clean working tree: with changes other than the plan and the task file it comes from, it
+  stops and asks to commit or stash them, unless it resumes a plan `in-progress` or `blocked`. A task that does not
+  close leaves the plan `blocked`, its changes uncommitted and no later task built; once a person clears it, the
+  build resumes it with those changes. `Pre-existing` leaves the prompts of `polix:verifier` and `polix:reviewer`.
 - `polix:builder` builds one task per launch (`Task:` replaces `From:`), and an iteration of the plan names its
   `task`, or `final`, instead of a list of `tasks`; a failed commit is a finding with `source: commit`.
 - `/polix:plan` sizes a task to one behaviour that its own tests show, without the guide of about 400 lines, and
@@ -69,11 +70,41 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   subagents away from the workflow no longer name the removed agents `polix:workflow-author`, `polix:rules-author`
   and `polix:rules-reviewer`; the fragment names `polix:verifier`, which it lacked.
 
+- `polix:builder` runs, and needs passing for `done`, only the `verify` of the criteria whose last covering task it
+  is, as the verifier evaluates them: a task that shares a criterion with a later one no longer ends `departed`.
+- The limits of `/polix:build`, five iterations and two that fix nothing, count only the iterations of the run, so
+  a resumed plan gets them again.
+- `/polix:build` runs `polix:reviewer` with `Task: final` next to `polix:verifier` after each iteration of the
+  final verification, so its fixes are reviewed before the `Final:` commit. A plan file git ignores stays out of
+  the commits, and with nothing to commit there is no `Final:` commit.
+- `polix:verifier` and `polix:reviewer` give each finding a `Repeats:` line, which `/polix:build` copies into
+  `repeats` instead of judging it, and `polix:verifier` gets the `Skipped:` line `polix:reviewer` already had.
+- `polix:reviewer` requests changes for a `major` finding too, as `polix:critic` does and `/polix:build` treats it.
+- `/polix:plan` follows `critic.md` itself, in a pass of its own, when the agent `critic` is missing, as in Codex,
+  and says the critique is not independent, instead of stopping.
+- `/polix:add-rule` removes the rules it migrates from `AGENTS.md` or `CLAUDE.md` too, after its confirmation,
+  and lists them in `Pending` when the edit is denied. Its `paths` is `**/rules/*.yaml`, so a `path` other than
+  `ai` no longer hides it from the model.
+- The descriptions of `/polix:init`, `/polix:doctor`, `/polix:risk`, `/polix:task`, `/polix:plan`, `/polix:build`,
+  `/polix:review` and `/polix:audit`, which the model cannot invoke, say they run only when the user asks for them.
+- `/polix:doctor` explains the areas `binary`, `git`, `repo`, `githooks`, `memory` and `requirements` of
+  `polix doctor`.
+
 ### Removed
 
 - Plans in Markdown: `/polix:build` and `/polix:plan` no longer build nor adjust them and offer to write a new YAML
   plan instead; `template.md` of `plan` and the sections `Markdown plans` of `polix:builder` and `polix:verifier`
   are gone.
+
+### Fixed
+
+- `/polix:risk` finds the fix and revert commits within its sample, and on macOS: `-n` with `--grep` took the last
+  200 matching commits of the whole history, and `\b`, which `git log -E` lacks, matched nothing.
+- Inconsistencies of the plugin: the tests of a refactor in `/polix:plan`, the place of the plan of a task in its
+  `Input`, its questions, the size in `risk_and_size` instead of a count of tasks, the base of `stats.code`, the
+  examples of `journeys.md` that ran a whole suite or named the differential as a command, the category of the
+  example finding of `/polix:build`, and the templates of `writing-skills` and `writing-agents`, which used the
+  phrases the tests of the plugin forbid.
 
 ## [0.12.1] - 2026-11-20
 

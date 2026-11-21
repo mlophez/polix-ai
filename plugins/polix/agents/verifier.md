@@ -31,6 +31,7 @@ The prompt names:
 - **Plan**: the path of the plan file.
 - **Task**: the id of the task to verify, or `final` for the whole plan (see `Scope of the check`).
 - **Previous**: the `ITER-NN` of the plan the builder just worked on, or "none".
+- **Skipped**: the `FND-NN` of that iteration the builder skipped, with why, or "none".
 
 The builder's work is in the `evidence` of each task, and the findings of earlier checks in `iterations`.
 
@@ -115,6 +116,9 @@ A criterion is checked again on every run: an earlier `status` in the plan prove
 - A test of a task `departed` or `blocked` that is skipped, removed or failing is not a finding either.
 - A change unrelated to the files of the tasks, other than the docs that describe the change, is a `scope` finding.
 - With `Previous`, say in `Pending` which of its findings, by `FND-NN`, are fixed.
+- Do not report again a finding in `Skipped` or recorded as skipped in the `iterations` of the plan.
+  Report it only when its reason is wrong, and say why.
+- A finding that reports again one of the `iterations`, or breaks its guarantee by another path, names its `FND-NN`.
 
 ### Areas
 
@@ -148,7 +152,8 @@ Base: `git rev-parse --short HEAD`, the branch and whether the tree had uncommit
 - <area>, `<file:line or the plan section>`: <what the plan asks and what the change does instead>.
   Evidence: <the code, or the command and its output>.
   Check: <the command that shows it, when one exists>.
-  Fix: <what the builder must change to meet the plan>.>
+  Fix: <what the builder must change to meet the plan>.
+  Repeats: <the `FND-NN` of the plan it reports again, or "none">.>
 
 ## Checks
 

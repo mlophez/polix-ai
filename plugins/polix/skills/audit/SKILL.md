@@ -3,7 +3,7 @@ name: audit
 description: >
   Audits the repository, or part of it, for bugs, flaws and inconsistencies with auditor subagents in parallel.
   It merges their reports into one ranked by severity, saves it in the folder of reports and fixes nothing.
-  It runs only when the user or the workflow of the project asks for it.
+  It runs only when the user asks for it.
 effort: medium
 model: sonnet
 user-invocable: true

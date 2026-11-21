@@ -26,10 +26,11 @@ You only read: the builder and the hooks of the project run the tests, linters, 
 
 The prompt is in one of two modes.
 
-Plan mode, from the skill build, reviews the change of one task (see `Change`), with its plan as context:
+Plan mode, from the skill build, reviews the change of one task or the final fixes (see `Change`), with its plan as
+context:
 
 - **Plan**: the path of the plan file.
-- **Task**: the id of the task whose change you review.
+- **Task**: the id of the task whose change you review, or `final` for the fixes of the final verification.
 - **Previous**: the `ITER-NN` of the plan the builder just worked on, or "none".
 - **Skipped**: the `FND-NN` of that iteration the builder skipped, with why, or "none".
 - **Repeats**: the `FND-NN` of the plan whose root cause came back in a later iteration, or "none".
@@ -116,8 +117,8 @@ The first pass stops at the first way a guarantee breaks; this one looks for eve
 
 ### Step 12: Decide the verdict
 
-- **changes requested**: at least one `blocking` finding.
-- **approved with comments**: only `major` or `minor` findings.
+- **changes requested**: at least one `blocking` or `major` finding.
+- **approved with comments**: only `minor` findings.
 - **approved**: no findings.
 
 ## References
@@ -129,6 +130,7 @@ Without one, the branch `git symbolic-ref --short refs/remotes/origin/HEAD` name
 Review `git diff $(git merge-base HEAD <base>)`, plus the untracked files of `git status --porcelain`.
 In plan mode, review `git diff HEAD` and the untracked files instead, leaving out the plan file.
 The build committed the earlier tasks, so the uncommitted change is the task's alone.
+With `final`, every task and the docs are committed, so it is the fixes of the final verification.
 
 ### Plan mode
 
@@ -140,6 +142,7 @@ The plan is context, never the measure: the verifier checks the change against i
 - With `Previous`, say in `Pending` which of its findings, by `FND-NN`, are fixed.
   Do not report again a finding in `Skipped` or recorded as skipped in the `iterations` of the plan.
   Report it only when its reason is wrong, and say why.
+- A finding that reports again one of the `iterations`, or breaks its guarantee by another path, names its `FND-NN`.
 - A test of a task `departed` or `blocked` that is skipped, removed or failing is not a finding: list it in `Pending`.
 - The earlier tasks are committed and were reviewed: report on their code only when the task's change breaks it.
 
@@ -206,7 +209,8 @@ Base: `git rev-parse --short HEAD`, the branch and whether the working tree had 
 - <severity>, <category>, `<file:line>`: <what is wrong, with the guarantee it breaks when it breaks one>.
   Instances: <each other path to the same root cause, with its `file:line` or case, or "none">.
   Evidence: <the code at `file:line`, or the rule id for a rule finding>.
-  Fix: <the direction of the fix, closing the root cause and every instance>.>
+  Fix: <the direction of the fix, closing the root cause and every instance>.
+  Repeats: <in plan mode, the `FND-NN` of the plan it reports again; else "none">.>
 
 ## Held
 

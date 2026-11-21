@@ -107,7 +107,8 @@ func TestFrontmatterNames(t *testing.T) {
 }
 
 // Every skill and every agent runs only when the user or the workflow of the project asks for it: its description
-// says so with a fixed sentence and invites the model to run it by itself with no other.
+// says so with a fixed sentence and invites the model to run it by itself with no other. A skill with
+// disable-model-invocation: true runs only when the user asks for it, since the model cannot invoke it.
 func TestInvocation(t *testing.T) {
 	check := func(c component, want, banned string) {
 		d, _ := c.field("description")
@@ -120,7 +121,11 @@ func TestInvocation(t *testing.T) {
 		}
 	}
 	for _, c := range components(t, "skills") {
-		check(c, "It runs only when the user or the workflow of the project asks for it.", "Use it")
+		want := "It runs only when the user or the workflow of the project asks for it."
+		if off, _ := c.field("disable-model-invocation"); off == "true" {
+			want = "It runs only when the user asks for it."
+		}
+		check(c, want, "Use it")
 	}
 	for _, c := range components(t, "agents") {
 		check(c, "Launch it only when the user or the workflow of the project asks for it", "Launched by")

@@ -23,9 +23,9 @@ stats:  # the build sets every field; the plan writes none
   start: none  # when it first set the plan in-progress, as YYYY-MM-DDTHH:MM:SS+HH:MM
   end: none  # when the plan ended done or blocked, in the same format
   duration: none  # end minus start, as 1h 05m 12s
-  tokens: none  # the sum of the totalTokens its subagents reported, across every run
+  tokens: none  # the sum of the totalTokens its subagents reported, across every run, or unknown
   iterations: none  # the runs of the build on the plan, a resumed one included
-  code:  # as the build last measured it, against HEAD and without the plan
+  code:  # as the build last measured it, against the base branch and without the plan
     files: none  # the files changed, the untracked ones included
     lines: none  # the lines added plus removed
 
@@ -48,7 +48,7 @@ overview:
     - <What its users notice, in plain language; one to three items.>
   not_changes:
     - <The main limit or what is left out; one to three items.>
-  risk_and_size: <the risk in plain words and why, and the number of tasks>
+  risk_and_size: <the risk in plain words and why, and the size of the change in plain words>
   example: <the id of the simplest journey, e.g. CUJ-01, or none when nothing is visible>
 
   problem: |

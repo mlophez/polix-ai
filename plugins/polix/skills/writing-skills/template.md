@@ -2,7 +2,7 @@
 name: <name>
 description: >
   <What it does, in one sentence.>
-  Use it when <trigger>.
+  <When it runs: its trigger, or who alone runs it, in the sentence the tests of the location require if any.>
   <What it never does, only when easy to confuse.>
 effort: <low|medium|high>
 model: inherit

@@ -88,7 +88,7 @@ Build progress:
   Read its `files` whole, their callers and their tests.
 - [ ] Step 5: Write its tests and run them (see `Test first`).
 - [ ] Step 6: Make the changes of its `files`, file by file, reusing what its `reuse` names, until its tests pass.
-- [ ] Step 7: Run its `tests`, the `verify` of each criterion of its `covers` and its `differential`.
+- [ ] Step 7: Run its `tests`, the `verify` of each criterion it closes (see `Task data`) and its `differential`.
   Fix the failures that are yours.
 - [ ] Step 8: Review your diff against its `files`, `tests` and rules (see Step 8).
 - [ ] Step 9: Run the `verification` of the plan once (see Step 9), then set its status (see `Task status`).
@@ -140,6 +140,8 @@ Each item of `tasks` holds the data of one task, and every collection in it is a
 
 - `summary`: what the task delivers and how; `risk`: its items of high risk, when it has any.
 - `covers`: the ids of the criteria the task fulfils; find each by `id` in `acceptance`, and its `cujs` in `journeys`.
+  The task closes the criteria of its `covers` that no later task covers too: only their `verify` must pass now.
+  A criterion a later task also covers waits for that task, so its `verify` may still fail.
 - A literal named by its id, `LIT-NN`, is the `literal` of a journey's step: reproduce its `text` as `match` says.
 - `files`: under `create` and `modify`, the paths the behaviour lives in; the `design` says what changes in them.
 - `tests`: per `file`, the `new` tests with `name`, `covers`, `checks` and `fails_first`, and the `kept` names.
@@ -160,7 +162,7 @@ A departure is any point where the work differs from the plan or the plan did no
 - A task only a person can unblock: set it `blocked` and end your turn; the build stops the plan on it.
   That is a missing program or credential, a command a permission or a guardrail denies, or a protected file.
   So is a change to `AGENTS.md` or `CLAUDE.md`, or one that reopens the `decisions` or crosses the `constraints`.
-  Never set `blocked` what another way could do: the run retries a task `departed`, never one `blocked`.
+  Never set `blocked` what another way could do: the run iterates on a task `departed`, but stops on one `blocked`.
   A failing test, a bug or a hard change is never `blocked`: keep working on it, and at worst it is `departed`.
 
 Record each one with the task, what you did and why.
@@ -170,7 +172,7 @@ Record each one with the task, what you did and why.
 Decide the `status` and `evidence` of the task once Step 7 and Step 9 ran, and report them in `Task` of `Output`:
 
 - `status: done`, only when three checks pass.
-  Its `tests`, the `verify` of each criterion of its `covers`, and the plan's `verification`.
+  Its `tests`, the `verify` of each criterion it closes, and the plan's `verification`.
   The plan's `verification` holds the checks of the whole project: the full test suite, the linters and the build.
   A failure of the plan's `verification` that the baseline had is not yours, and does not hold the task.
   Its `evidence` names the new tests that failed and then passed, or the existing ones that stayed green.

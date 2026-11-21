@@ -1498,10 +1498,11 @@ also prints that Codex support is not implemented in this release and the setup 
   and implements it unattended, one task at a time: a `builder` agent builds the task, the agents `verifier`
   (against the plan) and `reviewer` (the code's quality) check that task alone in parallel, the findings go back to
   the builder in iterations of the task, up to five, and once the checks close it `build` commits it as
-  `T<N>: <title>` with the plan; a task that does not close leaves the plan `blocked` and builds no later task.
+  `T<N>: <title>` with the plan, unless git ignores the plan; a task that does not close leaves the plan `blocked`,
+  with its changes uncommitted and no later task built, and `build` resumes it with them once a person clears it.
   After the last task it updates the Markdown docs of the project in a `Docs:` commit, has the `verifier` check the
-  whole plan, fixes what it finds in up to five iterations, commits them as `Final:`, never pushes, and reports
-  the stats of the build, `review` reviews the code of a change without a plan with the agent `reviewer` and saves
+  whole plan, fixes what it finds in up to five iterations, which the `reviewer` also reviews, commits them as
+  `Final:`, never pushes, and reports the stats of the build, `review` reviews the code of a change without a plan with the agent `reviewer` and saves
   the report
   in the folder of reports, `audit` audits the repository with several `auditor` agents in parallel and saves the
   report in the folder of reports, `writing-skills` and `writing-agents` write a skill or a subagent in one format,
@@ -1524,7 +1525,8 @@ also prints that Codex support is not implemented in this release and the setup 
     plugins and whose support is not
     implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
-    or the workflow of the project asks for it, as its description says, and the frontmatter enforces it.
+    or the workflow of the project asks for it, as its description says, and the frontmatter enforces it; a skill
+    the model cannot invoke says it runs only when the user asks for it.
     Only `doctor`, `risk` and `workflow` set up polix and name it: the other skills and every agent work in any
     project, governed by polix or not. They take the folders of plans, rules, reports and tasks from `AGENTS.md`,
     `CLAUDE.md` or the session, where the start context of polix names them, `ai/` by default, and the base branch
@@ -1536,8 +1538,8 @@ also prints that Codex support is not implemented in this release and the setup 
     `/polix:doctor` or a gate without a plan for `/polix:plan`, the model tells the user to run it. So the flow of
     the harness always starts by hand, and a gate the model must satisfy alone asks for an agent, as
     `polix:reviewer`, not for a skill. `workflow` and `add-rule`
-    stay open to the model but carry `paths` (`polix.yaml`, `ai/rules/**`): the model sees them only while it works
-    on those files. A `path` other than `ai` leaves `add-rule` to the user's command.
+    stay open to the model but carry `paths` (`polix.yaml`, `**/rules/*.yaml`): the model sees them only while it
+    works on those files, whatever the `path` of the folder of rules.
     `writing-skills` and `writing-agents` stay open too, with `paths` on `**/skills/**` and `**/agents/*.md`, and so
     does `grill-me`, without `paths`, since `plan` invokes it. Every
     skill and agent names the invariants of its whole task `## Limits`, never `## Rules`, which in polix are the

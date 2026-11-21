@@ -3,7 +3,7 @@ name: risk
 description: >
   Calibrates risk.weights and the thresholds changed_lines, changed_files and risk_score of polix.yaml.
   It measures past commits with polix risk --commit, so each gate catches the share of changes the team will review.
-  It runs only when the user or the workflow of the project asks for it.
+  It runs only when the user asks for it.
 effort: medium
 model: inherit
 user-invocable: true
@@ -52,7 +52,7 @@ Copy this checklist and track your progress:
 ```text
 Risk progress:
 - [ ] Step 1: Run `polix config check`, read `risk.weights` and each entry that uses a measure, with its scope.
-- [ ] Step 2: Resolve the input (see `Input`) and the base branch (`base_branch` of polix.yaml, else main).
+- [ ] Step 2: Resolve the input (see `Input`) and the base branch (the first of `base_branch` of polix.yaml, else main).
 - [ ] Step 3: Measure the sample once per gate scope (see `Measuring the history`).
 - [ ] Step 4: Rank the paths by share of score and fix and revert commits, and propose weights (see `Calibration`).
 - [ ] Step 5: Recompute the scores of the sample with the proposed weights.
@@ -97,7 +97,8 @@ Give their subject and measures.
 
 `polix risk --commit` prints the commit, the three totals and one row per file (added, deleted, weight, score, path).
 It uses the weights of the current `polix.yaml`.
-Measure the sample into one file per gate, with the `--changed` of its scope:
+Measure the sample into one file per gate, with the `--changed` of its scope.
+The commands below take `main` as the base branch: write the one of Step 2 instead.
 
 ```sh
 for c in $(git log --no-merges --format=%h -n 200 main); do
@@ -106,9 +107,11 @@ done > "$TMPDIR/risk-go.txt"
 ```
 
 On Windows without a POSIX shell, write the same loop with `foreach` in PowerShell.
-Find the evidence of risk by path with the files of the fix and revert commits of the sample:
+Find the evidence of risk by path with the files of the fix and revert commits of the sample.
+Filter the sample itself, since `-n` with `--grep` counts the commits that match; never use `\b`, which `-E` lacks:
 
 ```sh
-git log --no-merges -n 200 -i -E --grep '\b(fix|revert|hotfix)' --name-only --format= main \
+git log --no-merges --format=%H -n 200 main \
+  | git log --stdin --no-walk -i -E --grep '(^|[^[:alnum:]_])(fix|revert|hotfix)' --name-only --format= \
   | sort | uniq -c | sort -rn
 ```

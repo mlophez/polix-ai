@@ -2,7 +2,7 @@
 name: <name>
 description: >
   <What it does, in one sentence.>
-  Launched by <launcher> with <input>.
+  <Who launches it and with what, in the sentence the tests of the location require if any.>
   <What it never does.>
 tools: <allowlist, only when restricting>
 disallowedTools: <denylist, only when restricting>

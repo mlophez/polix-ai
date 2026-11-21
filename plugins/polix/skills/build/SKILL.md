@@ -1,10 +1,9 @@
 ---
 name: build
 description: >
-  Implements a plan task by task: for each task, the subagent builder builds it, verifier and reviewer check it,
-  and the build commits it once they close it. Then it updates the docs and verifier checks the whole plan.
-  It runs unattended, records each iteration in the plan, never pushes, and returns the stats of the build.
-  It runs only when the user or the workflow of the project asks for it.
+  Implements a plan task by task: the subagent builder builds each task, verifier and reviewer check it, and the
+  build commits it once they close it. Then it updates the docs and checks the whole plan, unattended, recording
+  each iteration in the plan and never pushing. It runs only when the user asks for it.
 effort: low
 model: sonnet
 user-invocable: true
@@ -43,19 +42,21 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
 - **From**: the task from the arguments, as `T3` or `3`, to start there.
   Without it, the first task whose `status` is not `done`, so a task `departed` or `blocked` is tried again.
 - **Clean tree**: run `git status --porcelain`.
-  With changes other than the plan file, stop and ask the user to commit or stash them.
+  With changes other than the plan file and the task file its `reference` names, stop and ask the user to commit or
+  stash them.
   Each commit of the build holds only its task, so the run never starts on changes of others.
   Never stash, commit nor discard them yourself.
-  Only a plan `in-progress` starts with changes: they are the work of the run it resumes (see `Resume`).
+  Only a plan `in-progress` or `blocked` starts with changes: they are the work of the run it resumes (see `Resume`).
 - **Branch**: the `branch` of the plan, the branch it was planned on and is built on.
   When the current branch (`git branch --show-current`) is another one, switch to it with `git switch <branch>`.
   When the branch exists neither locally nor on a remote, stop and tell the user; never create it.
   A plan without `branch` builds on the current branch.
 - **Approval**: a plan with `status: planned` is not approved.
   Stop and ask the user to approve it with the skill `plan`; never approve it yourself.
-- **Resume**: a plan `in-progress` was interrupted: resume it where it stopped (see `Resume`).
+- **Resume**: a plan `in-progress` was interrupted, and a plan `blocked` waited for a person.
+  Resume either where it stopped (see `Resume`); its earlier iterations stay.
   When every task is `done` and the plan is `done`, tell the user and stop.
-  A plan `approved` or `blocked` builds from `From`; its earlier iterations stay.
+  A plan `approved` builds from `From`.
 
 ## Output
 
@@ -65,16 +66,17 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
 - **Changes**: the files changed, by task and by finding.
 - **Docs**: each Markdown file updated and what changed in it, or why none needed it.
 - **Acceptance**: each AC with `met`, `not met`, `not verified` or `pending` and its evidence.
+- **Stats**: the build in figures (see `Stats`).
 - **Blockers**: when the plan ends `blocked`, each reason and what a person must do to clear it; or "none".
   Name the uncommitted changes the run left, and the task or the final verification they belong to.
+  Once a person clears it, the skill `build` resumes the plan with those changes.
 - **Pending**: the minor findings, the manual checks and the failures that are not the change's.
   Also the changes `AGENTS.md`, `CLAUDE.md` or a protected file need; or "none".
-- **Stats**: the build in figures (see `Stats`).
 
 ## Limits
 
 - Ask only in `Input`, before Step 3: from then on, never ask the user nor wait for an answer.
-  Decide what is open as the builder would (see its `Departures`), and record it.
+  Decide what is open from the plan, the code and the rules, and record it in `Pending`.
 - Never end your turn before Step 9: a subagent that returns, a failed check or a long run is never the end.
   The run ends only when the plan is done or a loop stops (see `Task cycle` and `Final verification`).
 - Never edit the code yourself: only the builder changes it, except in the fallback of `Requirements`.
@@ -135,6 +137,7 @@ Run each task from `From` to the last, one at a time, in the order of the plan; 
    - The task is `blocked`: it waits for a person.
    - The last two iterations of the task fixed nothing and did not turn it `done`: the work stalled.
    - The task reached five iterations: the guard against a fix that breaks something else every time.
+   Count only the iterations this run added, so a resumed plan gets its limits again.
    The task's changes stay uncommitted, no later task is built, and the commits of the earlier tasks stay.
 7. **Iteration**: otherwise, add an iteration of the task with what is open (see `Iteration`).
    Launch the builder on it (see `Builder prompt`) and write its report in the plan (see `Builder report`).
@@ -146,10 +149,14 @@ A criterion covered by several tasks is evaluated at the last task that covers i
 
 Once every task is closed and the docs committed, check the whole plan, and repeat until nothing is open:
 
-1. **Check**: launch the verifier with `Task: final` (see `Verifier prompt`); the reviewer does not run here.
-   Set the iteration the builder worked on, if any, to `status: checked`.
+1. **Check**: launch the verifier with `Task: final` (see `Verifier prompt`).
+   After an iteration of `final`, launch the reviewer with `Task: final` in the same message, so they run in
+   parallel (see `Reviewer prompt`); before the first iteration, nothing is uncommitted for it to review.
+   Wait for both, and set the iteration the builder worked on, if any, to `status: checked`.
 2. **Criteria**: set every criterion from the verification (see `Acceptance criteria`).
 3. **Open**: the verifier's findings, its criteria `not met` among them.
+   Also the reviewer's `blocking` and `major` findings; its `minor` ones go to `Pending`.
+   Leave out a finding the builder skipped twice for the same reason: it goes to `Pending`.
 4. **Done**: with nothing open, the loop ends.
 5. **Stop**: as in `Task cycle`, after two iterations that fixed nothing or after five iterations of `final`.
    Its fixes stay uncommitted.
@@ -171,11 +178,10 @@ An iteration is one pass of the builder on what the checks left open, appended t
   - `where`: the `file:line` or the id of the plan it is about.
   - `problem` and `fix`: what is wrong, with its instances and evidence, and what to change, from the report.
     Both are literal blocks.
-  - `repeats`: the `FND-NN` of an earlier iteration the checks report again, or `none`.
-    So is one whose report breaks the same guarantee by another path, such as a second way to read outside the root.
+  - `repeats`: the `FND-NN` of an earlier iteration that the report says the finding repeats, or `none`.
   - `status: open` and `evidence: none`: you set `fixed` or `skipped`, with why, from the builder's report.
 
-Copy each finding from its report as it is: never merge, reword nor judge it.
+Copy each finding from its report as it is, its `repeats` included: never merge, reword nor judge it.
 The criteria go to `acceptance`, never to the iteration, and the rest of the reports goes to `Output`.
 An iteration of a plan built before this format has `tasks` instead of `task`: keep it as it is, as history.
 
@@ -202,7 +208,7 @@ iterations:
           `writer.go` sorts by date; `TestExportRowsSorted` failed before the fix and passes.
       - id: FND-02
         source: review
-        kind: major, error handling
+        kind: major, bug
         where: internal/export/flags.go:40
         problem: |
           A date that does not parse panics instead of returning the error of LIT-03.
@@ -217,12 +223,15 @@ iterations:
 ### Commits
 
 You commit, never a subagent; each commit holds the plan file too, so the plan in `HEAD` shows the progress.
+When git ignores the plan file (`git check-ignore -q <plan>`), the commits leave it out.
 
 - **Task**: once its checks close it.
   Subject `T<N>: <title of the task>`, then a body with its `summary` and the line `Plan: <path of the plan>`.
 - **Docs**: at Step 5, when a doc changed: subject `Docs: <title of the plan>`, and the line `Plan: <path>`.
 - **Final**: at Step 7 when `done`: subject `Final: <title of the plan>`, a body with the `FND-NN` the final
   verification fixed, or "Nothing to fix.", and the line `Plan: <path>`.
+  When `git status --porcelain` shows nothing, as with an ignored plan and nothing fixed, make no final commit and
+  say so in `Commits` of `Output`.
 
 How to commit:
 
@@ -240,13 +249,15 @@ How to commit:
 
 ### Resume
 
-A plan `in-progress` was interrupted; the commits of the branch say which tasks are closed.
+A plan `in-progress` was interrupted, and one `blocked` stopped; the commits of the branch say which tasks are closed.
 
 - With a last iteration `open`, launch the builder on it; with one `built`, run its checks.
 - Otherwise, with uncommitted changes, they belong to the first task without its commit `T<N>: ` in
   `git log --format=%s $(git merge-base HEAD <base>)..HEAD`, or to `final` when every task has one.
   Run the checks of that task, or of the final verification, on them; their findings start its iterations.
-- Otherwise, run the cycle from the first task not `done`, or the docs and the final verification when all are.
+- Otherwise, run the cycle from `From`, or the docs and the final verification when every task is `done`.
+- A task `blocked` in an earlier run was cleared by a person: stop on it only when a builder of this run reports it
+  `blocked` again.
 - The base is the base branch `AGENTS.md` or `CLAUDE.md` names.
   Without one, the branch `git symbolic-ref --short refs/remotes/origin/HEAD` names without `origin/`, else `main`.
 
@@ -327,6 +338,7 @@ Send the verifier this block, in the language of the session:
 Plan: <path of the plan file>
 Task: <the id of the task whose cycle runs, or "final" for the whole plan>
 Previous: <the `ITER-NN` of the plan the builder just worked on, or "none">
+Skipped: <the `FND-NN` of that iteration the builder skipped, with why, or "none">
 ```
 
 ### Reviewer prompt
@@ -335,7 +347,7 @@ Send the reviewer this block, in the language of the session:
 
 ```text
 Plan: <path of the plan file>
-Task: <the id of the task whose cycle runs>
+Task: <the id of the task whose cycle runs, or "final" for the fixes of the final verification>
 Previous: <the `ITER-NN` of the plan the builder just worked on, or "none">
 Skipped: <the `FND-NN` of that iteration the builder skipped, with why, or "none">
 Repeats: <the `FND-NN` that a later finding of the plan `repeats`, with the guarantee they break, or "none">
@@ -350,7 +362,8 @@ Edit only the top-level `status` of the plan:
 - `done` at the end when three things hold.
   Every task is `done` and has its commit.
   The final verification is `met`: every AC `met`, or a manual `not verified` with its steps in `Pending`.
-  The review of each task left no `blocking` nor `major` finding, but those a builder skipped twice for the same reason.
+  The reviews of the tasks and of the final fixes left no `blocking` nor `major` finding.
+  The only exceptions are those a builder skipped twice for the same reason.
 - `blocked` at the end otherwise.
 
 ### Docs

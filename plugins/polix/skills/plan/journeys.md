@@ -214,7 +214,8 @@ journeys:
     but: []
 ```
 
-Its criteria compare with the base version, and a structural one has its own check:
+Its criteria run the `kept` tests, which pass on the base version too, and a structural one has its own check.
+The `differential` of the task compares the outputs with the base version; a `verify` never names it.
 
 ```yaml
 acceptance:
@@ -223,8 +224,8 @@ acceptance:
     requirement: The export shall give the same output, errors and exit code as the base version.
     cujs: [CUJ-05]
     verify:
-      - run: the differential check of the task, on the inputs of CUJ-03
-        expect: no difference with the base version
+      - run: go test ./internal/export -run '^TestExportMonth$'
+        expect: pass, the kept test of CUJ-05, unchanged since the base version
     status: pending
     evidence: none
   - id: AC-03
@@ -232,8 +233,8 @@ acceptance:
     requirement: The writer shall not import the reader.
     cujs: []
     verify:
-      - run: go test ./tests/architecture/...
-        expect: pass, with the test of the dependency between the writer and the reader
+      - run: go test ./tests/architecture -run '^TestWriterImports$'
+        expect: pass, TestWriterImports finds no import of the reader in the writer
     status: pending
     evidence: none
 ```

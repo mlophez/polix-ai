@@ -123,7 +123,7 @@ Each task gets its own checks and its own commit, on the commit the earlier task
    It names those items in its `risk`, holds nothing unrelated to them and has its `differential`.
 2. **Tests**: each task's `tests` follow the skill's `Tests`.
    A `new` test per journey and criterion it covers, each `new` test with its `covers`, and the `kept` tests it needs.
-   A task with `tests: []` says why in its `summary`.
+   A task without `new` tests says why in its `summary`.
 3. **Readability**: the text follows the skill's `Readability`.
    `overview` names no path, identifier or code jargon, and its `example` is the id of a journey.
    Each fact has one owner, each task's `summary` reads alone, and each `requirement` reads alone.

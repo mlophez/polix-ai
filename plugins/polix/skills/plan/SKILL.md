@@ -3,7 +3,7 @@ name: plan
 description: >
   Writes an outcome-driven plan, on a new branch, in the folder of plans from the spec the skill grill-me confirms.
   It writes the tasks that build it, has the subagent critic review it, and never runs in plan mode, codes nor commits.
-  It runs only when the user or the workflow of the project asks for it.
+  It runs only when the user asks for it.
 effort: high
 model: inherit
 user-invocable: true
@@ -28,7 +28,9 @@ Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
   From a plugin, it and the subagent below carry its prefix, as `<plugin>:grill-me` and `<plugin>:critic`.
   Without the Skill tool, as in Codex, read `../grill-me/SKILL.md` next to this skill and follow it in this session.
 - The subagent `critic`, which reviews the plan at Step 6.
-  Without it, stop and tell the user.
+  Without it, as in Codex, read `../../agents/critic.md` next to this skill and follow it yourself at Step 6.
+  Follow it in a pass apart from the writing, reading only what the critic may read.
+  The critique is then not independent: say so in `Pending`.
 
 ## Input
 
@@ -40,8 +42,8 @@ Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
 - **Spec**: a spec that `grill-me` returned and the user confirmed in this session for this request, if any.
 - **Plan**: the plan file, from the arguments or the conversation.
   A file that already exists is the plan to adjust.
-  A plan in Markdown (`.md`) is no longer supported: stop, and offer to write a new YAML plan from its content.
   So is the plan the task's `plan` names, or one written earlier in this session, even with a new scope or title.
+  A plan in Markdown (`.md`) is no longer supported: stop, and offer to write a new YAML plan from its content.
   A path that does not exist is where the new plan goes, used as is, outside the folder of plans too.
   A path ending in `/` is a folder: name the file inside it as `Plan file` says.
   Without a path, write the new plan where `Plan file` says.
@@ -53,7 +55,9 @@ Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
 - **Decisions**: every decision of the plan with `source: delegated`, or "none".
 - **Next steps**: adjust the plan, or build, verify and review it with the skill `build`.
 - **Pending**: open blockers and stale or missing docs, with the skill `add-rule` when rules are missing.
-  Also the decisions the user left deferred and the findings of `critic` its last round left open; or "none".
+  Also the decisions the user left deferred and the findings of `critic` its last round left open.
+  Also the uncommitted changes other than the plan and its task: the skill `build` starts only once they are
+  committed; or "none".
 
 ## Limits
 
@@ -61,7 +65,7 @@ Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
   Started in plan mode, stop and tell the user to leave it and run the skill again.
 - Approval never starts the build: Step 8 still applies.
 - Never ask the user a decision of the plan yourself: `grill-me` asks them (see Steps 2 and 6).
-  The only questions of this skill are the existing branch of Step 4 and the approval of Step 7.
+  Ask the user only what `Input` leaves open, the existing branch of Step 4 and the approval of Step 7.
 - Write only the plan file and its task's frontmatter, create only the branch of Step 4, run only the project's tests.
 - Define tasks, never code: no snippets, implementations or signatures (see `Plan file`).
 - One plan is one change, delivered whole: never phases or follow-up plans.
@@ -144,7 +148,7 @@ It judges whether an executor could build it without deciding, and whether it fo
 4. Stop when the verdict has no `blocking` nor `major` finding, or after the third round.
    What the last report leaves open goes to `Pending`, each finding with its severity and its first words.
 
-When the subagent `critic` is not available, stop and tell the user: never review the plan in its place.
+Without the subagent `critic`, follow `critic.md` yourself as `Requirements` says, at each round.
 
 ### Step 7: Show the user the outcome of the plan and ask for approval
 
@@ -295,7 +299,8 @@ Then the build commits it, and the next task starts from that commit.
 - A criterion covered by several tasks is checked at the last task that covers it: list it in the `covers` of each.
 - The checks of the whole project go to the `verification` of `approach`: the full test suite, the linter, the build.
   What proves a criterion goes to its `verify`, never to both.
-  A task has no checks of its own: the build runs its `tests`, the `verify` of its `covers` and the plan's checks.
+  A task has no checks of its own but its `differential`.
+  The build runs its `tests`, the `verify` of the criteria whose last covering task it is, and the plan's checks.
 - List the tasks in the order they run, with the ids `T1`, `T2`...
 - Each task has a `summary` for the reviewer, then its data for the executor (see template.yaml).
   - `summary` says in two or three sentences what the task delivers and how, naming the part of `design` it builds.
@@ -332,8 +337,8 @@ Label each test `new`, which fails before the change, or `kept`, which passes be
 - Each `new` test names in its `covers` the journeys `CUJ-NN` or the criteria `AC-NN` it checks.
 - Add a `kept` test for each existing command, option or function that calls the code the task changes.
   Skip it when an existing test already covers that behaviour.
-- A refactor kept by existing tests, or a change no test can observe such as docs, takes `tests: []`.
-  Then its `summary` says why, and its `tests` list only the `kept` tests that stay green, or `[]` when none applies.
+- A refactor kept by existing tests, or a change no test can observe such as docs, has no `new` tests.
+  Its `tests` list only the `kept` tests that stay green, or `[]` when none applies, and its `summary` says why.
 - A high-risk task adds a differential check to its `differential`.
   It runs the affected commands, or the tests of the affected functions, with the existing and the new inputs.
   It compares the base version with the working tree.
@@ -423,12 +428,12 @@ The top-level keys, beyond what their placeholders say:
   `medium` when one changes an internal contract or code that several callers share; `low` otherwise.
 - `agents`: one item per subagent of the build, `builder`, `verifier` and `reviewer`, in that order.
   Each has its `name`, without the prefix of a plugin, and the `model` and `effort` the build launches it with.
+  Each name appears once, and only these three.
+  A value the user gives wins, and `inherit` leaves it to the frontmatter of the agent.
   Propose them from `risk.level`, and show them at Step 7 so the user may change them:
   - `low`: builder `sonnet` and `high`, verifier `sonnet` and `medium`, reviewer `sonnet` and `high`.
   - `medium`: builder `opus` and `medium`, verifier `sonnet` and `high`, reviewer `opus` and `high`.
   - `high`: builder `opus` and `medium`, verifier `sonnet` and `xhigh`, reviewer `fable` and `medium`.
-    A value the user gives wins, and `inherit` leaves it to the frontmatter of the agent.
-    Each name appears once, and only these three.
 - `reference`: the ticket, issue or link of the request or the conversation, or `none`; never invent one.
 - `branch`: the branch Step 4 created or switched to for the plan; the build switches to it first.
 - `artifacts`: the external resources of the change the user gives or the conversation names, or `[]`.

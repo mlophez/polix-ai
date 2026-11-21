@@ -7,7 +7,8 @@ Every section holds only bullets, one fact per item, with exact values.
 Every item is a short summary on a single line of at most 120 characters, never wrapped; the detail belongs in docs/.
 It describes how the project is; the rules on how to write its code go to the folder of rules (<path>/rules/).
 Under 100 lines.
-Only the init skill or a human changes this file: any other skill or agent reports the change it needs instead. -->
+Only the init skill, a human, or the add-rule skill removing the rules it migrates out of it changes this file.
+Any other skill or agent reports the change it needs instead. -->
 
 ## Purpose
 

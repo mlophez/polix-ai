@@ -55,7 +55,7 @@ Grilling progress:
 - [ ] Step 2: Explore the project and the code the subject touches (see Step 2).
 - [ ] Step 3: Draft the approaches, the cases and the pre-mortem (see Step 3).
 - [ ] Step 4: Map the design tree and compute the frontier (see Step 4).
-- [ ] Step 5: Launch a subagent for each fact the frontier needs, and do not wait for it before the question.
+- [ ] Step 5: Find the facts the next decisions need as Step 2 says; ask meanwhile one whose facts are known.
 - [ ] Step 6: Pick the next decision of the frontier, ask it alone (see `Question`) and wait for the answer.
 - [ ] Step 7: Record the answer and the facts reported, and recompute the frontier (see Step 7).
 - [ ] Step 8: Repeat Steps 5 to 7 until the frontier is empty, then ask each deferred decision again, alone.
@@ -207,7 +207,8 @@ Ask each decision with `AskUserQuestion`, one question per call, every field in 
 
 ### Question as text
 
-Without `AskUserQuestion`, as in Codex, give the decision a number and a title, say why it matters, then list its alternatives with their pros and cons.
+Without `AskUserQuestion`, as in Codex, give the decision a number and a title, and say why it matters.
+Then list its alternatives with their pros and cons.
 End with your recommended alternative and the reason, worded so that "yes" accepts it:
 
 ```markdown

@@ -3,7 +3,7 @@ name: task
 description: >
   Adds a task to the backlog in the folder of tasks, from a template with a frontmatter, ready for the skill plan.
   It asks only what the request leaves open, never plans the task nor writes code.
-  It runs only when the user or the workflow of the project asks for it.
+  It runs only when the user asks for it.
 effort: medium
 model: sonnet
 user-invocable: true
@@ -33,8 +33,8 @@ Without one, they are `ai/tasks/` and `ai/plans/` below the root.
 ## Output
 
 - **Task**: the path of the task file, its `type`, `priority` and `status`.
-- **Open questions**: those the task keeps, or "none".
 - **Next step**: plan it with the skill `plan` and the path of the task file.
+- **Pending**: the `Open questions` the task keeps, or "none".
 
 ## Limits
 
@@ -62,7 +62,8 @@ Task progress:
 
 1. Read `AGENTS.md` when it is not in context, for the layout and the names of the project.
 2. List the folder of tasks and the folder of plans.
-   When a task or plan already covers the request, show it and ask whether to adjust it instead.
+   When a task already covers the request, show it and ask whether to adjust it instead.
+   When a plan covers it, show it and offer to adjust it with the skill `plan`.
 3. Find with `rg` the commands, files or symbols the request names, to name them right in `Context`.
    Read only what names them: the plan explores the code later, so never study it in depth.
 
