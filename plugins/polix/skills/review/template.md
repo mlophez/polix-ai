@@ -12,13 +12,8 @@ The files or the range reviewed.>
 
 <One per root cause, sorted by severity:
 - <severity>, <category>, `<file:line>`: <what is wrong>.
-  Evidence: <the code, the command and its output, or the rule id for a rule finding>.
-  Check: <the command that shows it, when one exists>.
+  Evidence: <the code at `file:line`, or the rule id for a rule finding>.
   Fix: <the direction of the fix>.>
-
-## Checks
-
-<The commands run and their result.>
 
 ## Held
 
@@ -26,4 +21,4 @@ The files or the range reviewed.>
 
 ## Pending
 
-<What could not be reviewed or run and why.>
+<What could not be reviewed and why.>

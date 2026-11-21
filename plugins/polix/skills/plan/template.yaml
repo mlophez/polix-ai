@@ -113,7 +113,7 @@ specification:
       requirement: <one EARS sentence of the general rule, never the values of its journeys>
       cujs: [<CUJ-01>]  # [] for a non-functional criterion
       verify:
-        - run: <command>
+        - run: <command that runs only the tests or cases of this criterion, never the whole suite>
           expect: <the result, naming the tests or cases that prove this criterion>
         - manual: <a step that needs a person>
           expect: <its result>
@@ -187,11 +187,11 @@ iterations:  # the plan writes []; the build adds one item per pass of the build
   - id: ITER-01  # ITER-01, ITER-02... in the order they run
     date: <today as YYYY-MM-DD>
     status: open  # open while the builder works on it, built once it returns, checked once the checks ran
-    tasks: [<T2>]  # the tasks still to do, pending or departed, or []
+    task: <T2>  # the task whose cycle it belongs to, or final for the final verification of the whole plan
     findings:
       - id: FND-01  # FND-01, FND-02... across the whole plan
-        source: <verification | review>
-        kind: <the area of a finding of the verification, or the severity and category of one of the review>
+        source: <verification | review | commit>
+        kind: <a verification area, a review severity and category, or the check that failed the commit>
         where: <file:line, or the id of the plan it is about>
         problem: |
           <What is wrong, as the report says it.>

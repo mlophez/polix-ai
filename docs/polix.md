@@ -1483,24 +1483,32 @@ also prints that Codex support is not implemented in this release and the setup 
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
   the folder of rules, `risk` calibrates `risk.weights` and the thresholds of the measures on the history of commits,
   `doctor` fixes the setup, `task` adds a task to the backlog `tasks/` below `path` from a template with a frontmatter, ready
-  for `plan`, `plan` writes a plan in the folder of plans, interviewing the user one decision at a time as `grill-me`
-  does, driven by its outcome (`Overview`, then
+  for `plan`, `grill-me` interviews the user one decision at a time on what they want of a change, the what and
+  the how only the user should decide, exploring the code itself, and returns a spec without editing anything, which
+  feeds `plan` or the agent that edits the code directly in the flow without a plan; polix enforces neither flow,
+  each repository injects the one it wants from its `polix.yaml`, `plan` takes the spec from `grill-me`, which it
+  invokes, and writes a plan in the folder of plans on a new branch named as the plan, driven by its outcome
+  (`Overview`, then
   `Specification` with the outcome, its design and examples, the scope and the acceptance criteria, then `Approach`
-  with the tasks, and the user approves its outcome before it is built; its frontmatter records in `branch` the branch
-  it was written on; before the approval the read-only agent `critic` reviews the plan alone for undefined facts,
-  contradictions and edge cases left open, the skill fixes what the plan settles and asks the user the rest, up to
-  three rounds, and `plan` never runs in plan mode), `build` switches to the `branch` of an approved plan and implements it unattended, in iterations: each one launches a `builder` agent on the open tasks, else on the open findings,
-  updates the Markdown docs of the project, has the agents `verifier` (against the plan) and `reviewer` (the code's
-  quality) check the change in parallel, adds their reports to the `Iterations` of the plan and counts it in its
-  `iterations`, until nothing is open or two iterations close nothing, then marks the acceptance criteria and reports
+  with the tasks, and the user approves its outcome before it is built; it creates the branch with `git switch -c`
+  before writing the plan, asks the user when the branch already exists, and records it in `branch`; before the
+  approval the read-only agent `critic` reviews the plan alone for undefined facts, contradictions and edge cases left
+  open, checks it against the spec, the rules, its template and the form the skill sets and parses it, the skill fixes what the plan settles and asks the rest through `grill-me`, up to three rounds, and `plan`
+  never runs in plan mode), `build` switches to the `branch` of an approved plan, which needs a clean working tree,
+  and implements it unattended, one task at a time: a `builder` agent builds the task, the agents `verifier`
+  (against the plan) and `reviewer` (the code's quality) check that task alone in parallel, the findings go back to
+  the builder in iterations of the task, up to five, and once the checks close it `build` commits it as
+  `T<N>: <title>` with the plan; a task that does not close leaves the plan `blocked` and builds no later task.
+  After the last task it updates the Markdown docs of the project in a `Docs:` commit, has the `verifier` check the
+  whole plan, fixes what it finds in up to five iterations, commits them as `Final:`, never pushes, and reports
   the stats of the build, `review` reviews the code of a change without a plan with the agent `reviewer` and saves
   the report
   in the folder of reports, `audit` audits the repository with several `auditor` agents in parallel and saves the
   report in the folder of reports, `writing-skills` and `writing-agents` write a skill or a subagent in one format,
   whose `Limits` hold only what applies across its steps) and, for Claude Code, agents (`workflow-author`, `rules-author`, `builder`, which
-  implements a plan test first from a task to the end, or fixes the findings of its checks, without committing, and
+  implements one task of a plan test first, or fixes the findings of its checks, without committing, and
   the read-only `critic`, which reviews a plan for internal coherence before its approval, `verifier`, which
-  checks a change against its plan, `reviewer`, which reviews the quality of the code, `rules-reviewer` and
+  checks a change against its plan, `reviewer`, which reviews the quality of the code by reading it, `rules-reviewer` and
   `auditor`). Install writes it,
   with the version of the binary in its manifests, to the local marketplace
   `~/.polix/marketplace/` and registers it. A development build, whose version is always `dev`, writes
@@ -1518,14 +1526,15 @@ also prints that Codex support is not implemented in this release and the setup 
     implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
     or the workflow of polix asks for it, as its description says, and the frontmatter enforces it.
-    `init`, `doctor`, `risk`, `task`, `grill-me`, `plan`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
+    `init`, `doctor`, `risk`, `task`, `plan`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
     user runs them, typing the command; when a message of polix asks for one, as the session start does for
     `/polix:doctor` or a gate without a plan for `/polix:plan`, the model tells the user to run it. So the flow of
     the harness always starts by hand, and a gate the model must satisfy alone asks for an agent, as
     `polix:reviewer`, not for a skill. `workflow` and `add-rule`
     stay open to the model but carry `paths` (`polix.yaml`, `ai/rules/**`): the model sees them only while it works
     on those files. A `path` other than `ai` leaves `add-rule` to the user's command.
-    `writing-skills` and `writing-agents` stay open too, with `paths` on `**/skills/**` and `**/agents/*.md`. Every
+    `writing-skills` and `writing-agents` stay open too, with `paths` on `**/skills/**` and `**/agents/*.md`, and so
+    does `grill-me`, without `paths`, since `plan` invokes it. Every
     skill and agent names the invariants of its whole task `## Limits`, never `## Rules`, which in polix are the
     rules of the folder of rules. The agents stay
     open to the model, so a rule that asks for `polix:reviewer` still works.
@@ -1534,15 +1543,19 @@ also prints that Codex support is not implemented in this release and the setup 
     save their report in the folder of reports from the `template.md` next to them; a `polix:reviewer` launched
     without a skill answers in the chat and saves no file. `plan` writes the plan as a YAML file from the
     `template.yaml` next to it, where each fact lives in one place and the others name it by its id (`LIT-NN`,
-    `CUJ-NN`, `AC-NN`, `TN`); it keeps `template.md` to adjust a plan written before in Markdown. `build` coordinates
-    the run and is the only one that edits the plan: the builder builds the tasks and reports the `status` and
-    `evidence` of each, `build` writes them in the plan, then the verifier and the reviewer check them; when they leave something to fix, it adds an iteration (`ITER-NN`) to `iterations` with the findings to fix
+    `CUJ-NN`, `AC-NN`, `TN`); a plan in Markdown, written before, is no longer adjusted nor built. A task is one
+    behaviour that its own tests show, with no size in lines. `build` coordinates the run and is the only one that
+    edits the plan and commits: for each task the builder builds it and reports its `status` and `evidence`, `build`
+    writes them in the plan, then the verifier and the reviewer check the uncommitted change of that task against
+    `HEAD`, the verifier only the criteria whose last covering task it is, running only their `verify`, and the
+    reviewer only reading the diff, running nothing but `git`; the plan's `verification` is run by the builder alone,
+    once after its baseline, and by the hooks of the project; when they leave something to fix, it adds
+    an iteration (`ITER-NN`) of that task, or of `final`, to `iterations` with the findings to fix
     (`FND-NN`) and launches the builder on it; it sets in `stats` at the root of the plan its `start`, `end`, `duration`,
     the `tokens` the subagents report, the `iterations`, its runs, and the `code` it changed; it launches the builder, the verifier and the reviewer each with the `model`
     and `effort` of its item of `agents` of the plan, which `plan` proposes from the risk and the user may change,
     `inherit` or a missing item leaving it to the frontmatter of the agent; a run that did not end resumes
-    where its last iteration stopped. A
-    plan in Markdown is still built in its own format, under `### Iteration N` of `## Iterations`.
+    where its last iteration stopped, or at the first task without its commit.
   - Codex, only with `--agent codex` (not implemented): `codex plugin marketplace add ~/.polix/marketplace` and
     `[plugins."polix@polix"] enabled = true` in `~/.codex/config.toml`, the rest of the file kept. Codex documents
     no command to install a plugin without its interface, and this part was never checked against a running

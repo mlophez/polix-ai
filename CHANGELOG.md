@@ -7,6 +7,53 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- `/polix:grill-me` is the one interview of polix: it asks the what of a change and the how only the user should
+  decide, explores the code, drafts the approaches, the cases and a pre-mortem, and returns a spec with fixed
+  sections, editing nothing. It takes `Known` facts and an `Adjust` mode, and the model may invoke it.
+  Its spec feeds `/polix:plan` or the agent that edits the code directly in the flow without a plan.
+- `/polix:plan` no longer interviews: it invokes `/polix:grill-me` for the spec, for the decisions `polix:critic`
+  finds and for the adjustments of the approval, and writes the plan from the spec and the code.
+- `/polix:plan` creates the branch of a new plan with `git switch -c` before writing it, named as the plan file
+  unless the repository gives a rule, and asks the user when the branch already exists.
+- `/polix:plan` no longer self-reviews the plan before `polix:critic`: the critic takes over the checks that need
+  more than the plan. It receives the spec, the template and the folder of rules, and checks that every item of the
+  spec has its place, that every rule a task names exists, is not retired and none that applies is missing, that the
+  keys follow the template with no placeholder, comment nor code left, and that the plan parses. It also receives the
+  path of the skill and checks the tasks, tests and text against its sections `High risk`, `Tests` and
+  `Readability`. Its new categories are `coverage`, `rules`, `format` and `form`, and it gets `Bash`, used only for
+  the parse. The steps of `/polix:plan` after
+  the plan file are now 6 (critique), 7 (approval) and 8 (report).
+- `/polix:build` builds a plan one task at a time: for each task `polix:builder` builds it, `polix:verifier` and
+  `polix:reviewer` check only that task (the uncommitted change against `HEAD`), its findings go back to the builder
+  in iterations of the task, up to five, and once the checks close it the build commits it as `T<N>: <title>`, with
+  its summary and the plan. The verifier of a task evaluates only the criteria whose last covering task it is. After
+  the last task the build updates the docs in a `Docs:` commit, and `polix:verifier` checks the whole plan, with up
+  to five iterations of its own, committed as `Final:`. It never pushes.
+- `/polix:build` needs a clean working tree: with changes other than the plan it stops and asks to commit or stash
+  them, unless it resumes a plan `in-progress`. A task that does not close leaves the plan `blocked`, its changes
+  uncommitted and no later task built. `Pre-existing` leaves the prompts of `polix:verifier` and `polix:reviewer`.
+- `polix:builder` builds one task per launch (`Task:` replaces `From:`), and an iteration of the plan names its
+  `task`, or `final`, instead of a list of `tasks`; a failed commit is a finding with `source: commit`.
+- `/polix:plan` sizes a task to one behaviour that its own tests show, without the guide of about 400 lines, and
+  `polix:critic` reports a task that mixes behaviours or cannot be verified apart.
+
+- Only `polix:builder` and the hooks of the project run the tests, linters and builds of a build.
+  `polix:verifier` runs only the `verify` of the criteria it evaluates, for a task and for `final`, and never the
+  `verification` of the plan. `polix:reviewer` only reads the change, in plan mode and in change mode: it runs
+  nothing but `git` (no `polix rules check`, tests, linters, builds nor probes in a temporary folder), judges the rules
+  by reading them, and its report and the report of `/polix:review` lose `Checks`. `polix:builder` runs the
+  `verification` once after its baseline instead of twice. `/polix:plan` and `polix:critic` require each `run` of a
+  `verify` to run only the tests of its criterion, never the whole suite, a linter nor a build. No agent runs
+  `polix rules check --changed` any more: a repository that wants it puts it in its hooks.
+
+### Removed
+
+- Plans in Markdown: `/polix:build` and `/polix:plan` no longer build nor adjust them and offer to write a new YAML
+  plan instead; `template.md` of `plan` and the sections `Markdown plans` of `polix:builder` and `polix:verifier`
+  are gone.
+
 ## [0.12.1] - 2026-11-20
 
 ### Changed

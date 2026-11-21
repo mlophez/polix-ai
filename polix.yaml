@@ -56,7 +56,6 @@ guardrails:
 
 # Entries run in file order after guardrails, and the first block ends the evaluation.
 on:
-  # This project commits straight to main: the agent never opens a branch on its own.
   # The skills of polix are the workflow of this repository: the generic ones that overlap them only confuse the agent.
   start:
     - action:
@@ -66,7 +65,8 @@ on:
           - This repository plans, builds, reviews and audits with the skills of polix: polix:plan, polix:build, polix:review and polix:audit.
           - The generic skills that overlap them (engineering:code-review, engineering:architecture, engineering:system-design, engineering:testing-strategy, engineering:tech-debt, code-review, simplify) are not used here.
 
-  # The builders, the verifier and the reviewer start with a clean context: give them the habits each build needs.
+  # The builders and the verifier start with a clean context: give them the habits each build needs.
+  # The reviewer runs nothing but git, so it needs none.
   subagent_start:
     - when: { actor: polix:builder }
       action:
@@ -74,11 +74,6 @@ on:
           - Never run `just install` nor `just check`: they overwrite the polix binary the hooks of this session run.
 
     - when: { actor: polix:verifier }
-      action:
-        inject: |
-          - Never run `just install` nor `just check`: build the binary into a temporary folder and run it from there.
-
-    - when: { actor: polix:reviewer }
       action:
         inject: |
           - Never run `just install` nor `just check`: build the binary into a temporary folder and run it from there.

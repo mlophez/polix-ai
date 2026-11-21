@@ -35,7 +35,6 @@ A change built from a plan is verified and reviewed by the skill build.
 - **Report**: the path of the report file.
 - **Verdict**: the verdict of the subagent and the change it reviewed.
 - **Findings**: the findings, by severity, with `file:line`, what is wrong and the direction of the fix.
-- **Checks**: the checks run and their result.
 - **Pending**: what the subagent could not review, and the question of which findings to fix.
 
 ## Limits

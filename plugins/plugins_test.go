@@ -150,7 +150,8 @@ func TestAgentReportTemplates(t *testing.T) {
 	}
 }
 
-// Every skill that saves a report, a plan or a task writes it from a template.md next to its SKILL.md.
+// Every skill that saves a report, a plan or a task writes it from a template next to its SKILL.md: a template.md,
+// or the template.yaml of a plan.
 func TestSkillFileTemplates(t *testing.T) {
 	for _, c := range components(t, "skills") {
 		body := "\n" + c.body
@@ -158,8 +159,12 @@ func TestSkillFileTemplates(t *testing.T) {
 			!strings.Contains(body, "\n### Task file\n") {
 			continue
 		}
-		if _, err := fs.Stat(FS, path.Join(path.Dir(c.path), "template.md")); err != nil {
-			t.Errorf("%s: a skill that saves a file needs a template.md next to it: %v", c.path, err)
+		name := "template.md"
+		if strings.Contains(body, "\n### Plan file\n") {
+			name = "template.yaml"
+		}
+		if _, err := fs.Stat(FS, path.Join(path.Dir(c.path), name)); err != nil {
+			t.Errorf("%s: a skill that saves a file needs a %s next to it: %v", c.path, name, err)
 		}
 	}
 }
