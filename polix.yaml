@@ -94,16 +94,16 @@ on:
           Then commit again.
 
     # Remind once per content to update README.md and docs/ when the behaviour changes.
-    - when:
-        actor: session
-        changed: ["*.go", "go.mod", "plugins/**", "examples/**", "polix.yaml", "install.sh", "install.ps1", "scripts/**"]
-      action:
-        block:
-          once: true
-          message: |
-            Before committing, check whether this change affects README.md, CHANGELOG.md, docs/**/*.md or internal/**/*.md and update them.
-            Only Update Markdown files.
-            If it does not affect them, commit again.
+    #- when:
+    #    actor: session
+    #    changed: ["*.go", "go.mod", "plugins/**", "examples/**", "polix.yaml", "install.sh", "install.ps1", "scripts/**"]
+    #  action:
+    #    block:
+    #      once: true
+    #      message: |
+    #        Before committing, check whether this change affects README.md, CHANGELOG.md, docs/**/*.md or internal/**/*.md and update them.
+    #        Only Update Markdown files.
+    #        If it does not affect them, commit again.
 
     # A large or risky Go change needs a review of polix:reviewer before the main session commits it. Subagents are
     # left out: a command of theirs that only quotes a git commit (a probe of the reviewer) counts as a commit too.
