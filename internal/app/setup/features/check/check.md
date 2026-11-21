@@ -32,7 +32,7 @@ name the file in place of polix.yaml: a problem that starts with it (followed by
 they come from. The error of a file that cannot be read already names its path, and stays. It gathers the problems with
 the methods of `setup.Inspection` of `internal/app/setup/problems.go`, which `polix doctor` shares:
 
-1. `WorkflowProblems`: the error of loading polix.yaml is one problem, or each problem of a workflow that parses
+1. `WorkflowProblems` (in the output, `Output.WorkflowProblems`): the error of loading polix.yaml is one problem, or each problem of a workflow that parses
    (`workflow.InvalidError`, the runners of `rules.run` included), with whether they may come from a newer polix
    (`version.Problems.NeedsNewer`, never when the workflow requires one: `workflow.TooOldError`). Among them, a verb the
    event does not allow by `workflow.EventVerbs`, the verbs both agents support on it (`run`, `inject` and `notify` on
@@ -45,19 +45,23 @@ the methods of `setup.Inspection` of `internal/app/setup/problems.go`, which `po
    on an event outside `workflow.Informed`, as `the notice is not shown when the entry of line M blocks the event: move
    it after that entry or into its message`, at the line of the `notify`, since a blocked event shows the user no
    message.
-2. The error of reading the rules is one problem; else `RuleProblems`: the problems of the loader
+2. The error of reading the rules is the only entry of `Output.RuleProblems`; else `RuleProblems`: the problems of the loader
    (`rule.Loaded.Problems`): every invalid rule, in the words `<file> <id>: no description`, then every id repeated,
    one an earlier rule or a rule of `retired.yaml` already has, as `<file> <id>: id repeated, also in <other file>`;
    and every check that does not exist.
-3. With problems, the output holds them and, when they may come from a newer polix, the hint `NewerHint`.
+3. With problems, the output holds them, those of the workflow file in `WorkflowProblems` and those of the rules in
+   `RuleProblems`, and, when problems of the workflow file may come from a newer polix, the hint `NewerHint`.
 4. Without problems, `BaseWarning`: when a deterministic rule has a check and no base branch exists,
    `polix rules check --changed` would fail.
 
 ## Response
 
-`Response` is the output: `File` (the file as the console names it: the argument, or polix.yaml), `Problems`, `Hint`,
+`Response` is the output: `File` (the file as the console names it: the argument, or polix.yaml), `WorkflowProblems`, `RuleProblems`, `Hint`,
 `Warning`, `Found` (whether the workflow file exists), `Rules` (how many rules) and `RulesPath` (the folder they were
-read from, `Workflow.RulesPath`). The command prints each problem to stderr and the hint as a warning, and exits with 1;
+read from, `Workflow.RulesPath`). With problems, the command prints to stderr a report without header nor area column: a section Workflow, titled with the
+file, and a section Rules, titled with the folder of rules and a slash, each with its problems as fail rows (a section
+without problems is left out) and the hint as the fix of the last problem of Workflow, then the count line, and exits
+with 1;
 else it prints the warning to stderr and `ok: <file> and <n> rules of <rules path>/` (or `ok: no polix.yaml (only the
 built-in protections apply) and ...`) to stdout, and exits with 0.
 

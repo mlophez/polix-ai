@@ -1162,6 +1162,11 @@ not only the first: a rule without id or description, an id repeated (one that a
 rule that is not `deterministic: true`, and a `check` named by an absolute path instead of one relative to the root.
 It also rejects the problems of the shortcuts of [Guardrails](#guardrails).
 
+With problems, it prints to stderr a report grouped into the section Workflow (titled with the workflow file) and the
+section Rules (titled with the folder of rules and a slash), each problem a `fail` line, and a count line at the end;
+a section without problems is left out. The hint that the problems may come from a newer polix is the `→` line below
+the last problem of Workflow. The exit code is 1. A valid repository prints its single `ok:` line.
+
 ### Names of the old vocabulary
 
 Earlier builds of polix used other names, and only the new ones are accepted. `polix config check` reports each old name

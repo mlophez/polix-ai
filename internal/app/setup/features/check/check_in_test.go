@@ -57,7 +57,8 @@ func TestShell(t *testing.T) {
 		rules:   []rule.Rule{{ID: "S-1", Description: "d", Deterministic: true, Check: "c.sh", File: "f"}},
 		missing: map[string]bool{"c.sh": true}}
 	res, err := run(context.Background(), port, Request{Version: "0.1.0"})
-	if err != nil || len(res.Problems) != 1 || !strings.Contains(res.Problems[0], "does not exist") ||
+	if err != nil || len(res.RuleProblems) != 1 || len(res.WorkflowProblems) != 0 ||
+		!strings.Contains(res.RuleProblems[0], "does not exist") ||
 		port.asked[0] != "trunk" {
 		t.Fatalf("%+v %v", res, err)
 	}
@@ -141,20 +142,22 @@ func TestCommandPath(t *testing.T) {
 		t.Fatalf("CUJ-04: %d %q %q", code, stdout, stderr)
 	}
 	for src, want := range map[string]string{
-		"version: 1\npath: ../x\n":                `✗ polix.yaml: path "../x" must be below the root`,
-		"version: 1\nplans: { path: ai/plans }\n": `✗ polix.yaml:2: unknown key "plans": remove it: the plans go to plans/ below path (ai/plans by default)`,
-		"version: 1\nrules: { path: docs/rules }\n": `✗ polix.yaml: unknown key "path" in rules (run): move it to the top-level key path, ` +
+		"version: 1\npath: ../x\n":                `  fail  polix.yaml: path "../x" must be below the root`,
+		"version: 1\nplans: { path: ai/plans }\n": `  fail  polix.yaml:2: unknown key "plans": remove it: the plans go to plans/ below path (ai/plans by default)`,
+		"version: 1\nrules: { path: docs/rules }\n": `  fail  polix.yaml: unknown key "path" in rules (run): move it to the top-level key path, ` +
 			`the folder that holds rules/ (ai by default)`,
 	} {
 		testenv.Write(t, filepath.Join(r, "polix.yaml"), src)
 		code, _, stderr := runCommand(r)
-		if code != 1 || !slices.Contains(strings.Split(stderr, "\n"), want) || strings.Contains(stderr, "! these problems may be") {
+		if code != 1 || !slices.Contains(strings.Split(stderr, "\n"), want) || strings.Contains(stderr, "→ these problems may be") {
 			t.Errorf("%q: %d %q, want %s", src, code, stderr, want)
 		}
 	}
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nplans: { path: ai/plans }\n")
-	if _, _, stderr := runCommand(r); stderr != "✗ polix.yaml:2: unknown key \"plans\": remove it: the plans go to plans/ below path (ai/plans by default)\n" {
-		t.Errorf("CUJ-06: stderr is exactly the problem: %q", stderr)
+	const plans = "Workflow  polix.yaml\n  fail  polix.yaml:2: unknown key \"plans\": remove it: the plans go to plans/ below path " +
+		"(ai/plans by default)\n\n0 ok · 0 warn · 1 fail\n"
+	if _, _, stderr := runCommand(r); stderr != plans {
+		t.Errorf("CUJ-06: stderr is exactly the report of the problem: %q", stderr)
 	}
 }
 
@@ -223,5 +226,40 @@ func TestCommandFile(t *testing.T) {
 	}
 	if code, _, stderr := runCommand(r, ""); code != 1 || !strings.Contains(stderr, "cannot be empty") {
 		t.Fatalf("an empty file: %d %q", code, stderr)
+	}
+}
+
+// CUJ-07, AC-05: the problems of polix.yaml and of the rules go to stderr in their own sections, the hint of a newer
+// polix is the fix of the last problem of Workflow, and stdout stays empty; a section without problems is left out.
+func TestPrintProblems(t *testing.T) {
+	res := Response{File: "polix.yaml", RulesPath: "ai/rules",
+		WorkflowProblems: []string{"polix.yaml:3: unknown key foo"},
+		RuleProblems:     []string{"go.yaml GO-9: check tests/x.sh does not exist"},
+		Hint:             "these problems may be options of a newer polix than this one (dev): run polix update before removing them"}
+	var stdout, stderr bytes.Buffer
+	code := res.print(&stdout, &stderr)
+	want := `Workflow  polix.yaml
+  fail  polix.yaml:3: unknown key foo
+        → these problems may be options of a newer polix than this one (dev): run polix update before removing them
+
+Rules  ai/rules/
+  fail  go.yaml GO-9: check tests/x.sh does not exist
+
+0 ok · 0 warn · 2 fail
+`
+	if code != 1 || stdout.Len() != 0 || stderr.String() != want {
+		t.Fatalf("%d %q\n%q", code, stdout.String(), stderr.String())
+	}
+	stderr.Reset()
+	res.RuleProblems = nil
+	want = "Workflow  polix.yaml\n  fail  polix.yaml:3: unknown key foo\n        → " + res.Hint + "\n\n0 ok · 0 warn · 1 fail\n"
+	if code := res.print(&stdout, &stderr); code != 1 || stderr.String() != want {
+		t.Fatalf("only workflow: %d %q", code, stderr.String())
+	}
+	stderr.Reset()
+	res.WorkflowProblems, res.RuleProblems, res.Hint = nil, []string{"ai/rules/a.yaml A-1: no description"}, ""
+	want = "Rules  ai/rules/\n  fail  ai/rules/a.yaml A-1: no description\n\n0 ok · 0 warn · 1 fail\n"
+	if code := res.print(&stdout, &stderr); code != 1 || stderr.String() != want {
+		t.Fatalf("only rules: %d %q", code, stderr.String())
 	}
 }
