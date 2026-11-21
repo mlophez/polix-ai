@@ -15,9 +15,13 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   task is still `T<N>: <title>`, the only one that writes `stats.timeline`, and the one that closes the final
   verification is still `Final:`; the branch now holds one commit per round. A hook that rejects a round commit is a
   finding of that iteration, and the round stays uncommitted; a task that stops leaves its last round uncommitted,
-  as before. `/polix:build` passes `polix:builder` and `polix:verifier` the commit the task started from as `Base:`:
-  the verifier checks the whole task from it, and the builder uses it as the base version of a differential check,
-  also where an older plan names `HEAD`.
+  as before. `/polix:build` passes `polix:builder` the commit the task started from as `Base:`, the base version of
+  a differential check, also where an older plan names `HEAD`.
+- `/polix:build` no longer launches `polix:verifier` in each task: a task closes with `polix:builder` and
+  `polix:reviewer` alone, in its first check and in its iterations, whatever its `risk`. The verifier runs only in
+  the final verification, with `Task: final`, on the whole plan, the only check against it; the acceptance criteria
+  stay `pending` until then, instead of being set at the last task that covers them. `polix:verifier` no longer has
+  a mode for one task, nor takes `Base:`, and the final verification still stops after three iterations.
 - A re-review of `polix:reviewer`, one whose `Previous` names an iteration, checks that the findings of `Previous`
   are fixed and reports only on the lines that iteration changed, its second pass included, instead of reviewing
   the whole task again; the first review of a task keeps its full procedure. Each new finding of a re-review carries

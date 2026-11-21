@@ -1512,15 +1512,17 @@ also prints that Codex support is not implemented in this release and the setup 
   undefined facts, contradictions, edge cases left open and tasks an executor could not build without deciding, and
   parses it, once; the skill fixes what the plan settles and asks the rest through `grill-me`, and `spec`
   never runs in plan mode), `build` switches to the `branch` of an approved plan, which needs a clean working tree,
-  and implements it unattended, one task at a time: a `builder` agent builds the task, the agents `verifier`
-  (against the plan) and `reviewer` (the code's quality) check that task alone in parallel, the findings go back to
-  the builder in iterations of the task, up to three, and once the checks close it `build` commits it as
+  and implements it unattended, one task at a time: a `builder` agent builds the task, the agent `reviewer`
+  (the code's quality) checks that task alone, the findings go back to
+  the builder in iterations of the task, up to three, and once the review closes it `build` commits it as
   `T<N>: <title>` with the plan, unless git ignores the plan; each round whose checks leave something open is
   committed first as `T<N> ITER-NN: <title>`, listing the `FND-NN` of its iteration and `Plan: <path>`, so the
   re-review of the next round reads only what its fix changed; a task that does not close leaves the plan
   `blocked`, with its last round uncommitted and no later task built, and `build` resumes it with that round once
   a person clears it. After the last task it has the `verifier` check the
-  whole plan, fixes what it finds in up to three iterations, each round left open committed as
+  whole plan against it, the only check against the plan, since no verifier runs in a task, and the first that
+  sets the acceptance criteria, which stay `pending` until then; it fixes what it finds in up to three iterations,
+  each round left open committed as
   `Final ITER-NN: <title of the plan>`, which the `reviewer` also reviews, commits them as
   `Final:`, never pushes nor updates the docs of the project, and reports the stats of the build, with the time and
   iterations of each task, `review` reviews the code of a change without a plan with the agent `reviewer` and saves
@@ -1576,11 +1578,10 @@ also prints that Codex support is not implemented in this release and the setup 
     behaviour that its own tests show, with no size in lines. `build` coordinates the run and is the only one that
     edits the plan and commits: for each task the builder builds it and reports its `status` and `evidence`, `build`
     writes them in the plan, with the builder's departures and the failures of its baseline as lines `Departure:`
-    and `Baseline:` of the `evidence`, which the checks and the builders of its iterations read, then the verifier
-    and the reviewer check that task: the verifier the change from the task base, the commit the task started
-    from, which `build` passes to the builder and the verifier as `Base:` and the builder uses as the base version
-    of a differential check, and only the criteria whose last covering task it is, running only their `verify`;
-    the reviewer the uncommitted change against `HEAD`, only reading the diff and running nothing but `git`: the
+    and `Baseline:` of the `evidence`, which the checks and the builders of its iterations read, then the reviewer
+    checks that task, while the builder gets the task base, the commit the task started from, as `Base:`, and uses
+    it as the base version of a differential check; the reviewer reviews the uncommitted change against `HEAD`,
+    reading only the diff and running nothing but `git`: the
     whole task in its first review, and in a re-review, whose `Previous` names an iteration, only the lines that
     iteration changed, checking that the findings of `Previous` are fixed and marking each new finding with its
     `Origin`, `fix` when `HEAD` does not have the problem and `earlier` when it does; the plan's `verification` is

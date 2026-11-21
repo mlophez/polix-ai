@@ -279,8 +279,8 @@ Each key of template.yaml comes from a section of the brief of `grill-me`, or fr
 
 ### Tasks
 
-The build runs each task alone, in order, without asking: a builder builds it, a verifier and a reviewer check it.
-Then the build commits it, and the next task starts from that commit.
+The build runs each task alone, in order, without asking: a builder builds it and a reviewer checks it.
+Then the build commits it, and the next task starts from that commit; a verifier checks the whole plan at the end.
 
 - Each task leaves the project building and no test failing that passed at the baseline.
   Never a task that breaks what a later one repairs.

@@ -107,7 +107,7 @@ on:
 
     # A large or risky Go change needs a review of polix:reviewer before the main session commits it. Subagents are
     # left out: a command of theirs that only quotes a git commit (a probe of the reviewer) counts as a commit too.
-    # A change built by /polix:build already went through polix:builder, polix:verifier and polix:reviewer: the gate
+    # A change built by /polix:build already went through polix:builder and polix:reviewer: the gate
     # stays released while HEAD has not moved since polix:builder ended, whatever changed after it, until the commit.
     - when:
         actor: session

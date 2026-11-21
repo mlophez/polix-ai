@@ -1,8 +1,8 @@
 ---
 name: build
 description: >
-  Implements a plan task by task: the subagent builder builds each task, verifier and reviewer check it, and the
-  build commits it once they close it. Then it checks the whole plan, unattended, recording each iteration in the
+  Implements a plan task by task: the subagent builder builds each task, reviewer checks it, and the build commits
+  it once the review closes it. Then verifier checks the whole plan, unattended, recording each iteration in the
   plan and never pushing. It runs only when the user asks for it.
 effort: low
 model: sonnet
@@ -15,11 +15,12 @@ argument-hint: "[plan and optional first task, e.g. add-retries.yaml T3; empty t
 
 Run a plan to its end, unattended: once it starts, it ends `done`, or `blocked` for what only a person can solve.
 You coordinate and never build: each task runs its own cycle, so every agent sees one task and a small context.
-In the cycle of a task, the builder builds it and reports, you write the report in the plan, and the verifier and
-the reviewer check that task alone, in parallel.
-When the checks leave something to fix, you add an iteration of that task to the plan and launch the builder on it.
-When the checks close the task, you commit it, and the next task starts from that commit.
-Once every task is closed, the verifier checks the whole plan.
+In the cycle of a task, the builder builds it and reports, you write the report in the plan, and the reviewer
+checks that task alone.
+When the review leaves something to fix, you add an iteration of that task to the plan and launch the builder on it.
+When the review closes the task, you commit it, and the next task starts from that commit.
+Once every task is closed, the verifier checks the whole plan: it is the only check against the plan, and it runs
+in no task.
 You never update the docs of the project: they are not part of building.
 You are the only one that edits the plan and commits: the subagents read it and report.
 The folders of plans, rules, reports and tasks are those the project names in `AGENTS.md`, `CLAUDE.md` or the session.
@@ -90,7 +91,8 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
   branches.
   The only checkout is the switch to the plan's `branch` in Step 1 (see `Input`).
 - Write the status of the tasks and findings as the builder reports them, never your own.
-  Still, count nothing as closed on the builder's word: only the verifier's and the reviewer's reports close it.
+  Still, count nothing as closed on the builder's word: only the reviewer's report closes a task, and the
+  verifier's the whole plan.
 - Never run a command that installs, generates or formats, even when the plan or `AGENTS.md` lists it.
 - Add the findings the verifier, the reviewer and a failed commit report as they are: none of your own, none dropped.
 - Talk to the user in the language of the session.
@@ -125,13 +127,11 @@ Run each task from `From` to the last, one at a time, in the order of the plan; 
 1. **Build**: launch the builder on the task (see `Models` and `Builder prompt`).
    Write its report in the plan (see `Builder report`).
    When it left the task `not started`, launch it again on the task once; a second time, the task is open.
-2. **Checks**: launch the verifier and the reviewer on the task in one message, so they run in parallel.
-   Wait for both (see `Verifier prompt` and `Reviewer prompt`).
+2. **Review**: launch the reviewer on the task and wait for it (see `Reviewer prompt`).
+   Never launch the verifier in a task, in its first check nor in its iterations, whatever its `risk`.
    Set the iteration the builder worked on, if any, to `status: checked`.
-3. **Criteria**: set the criteria the verification evaluated (see `Acceptance criteria`).
-4. **Open**: list what is still open of the task.
+3. **Open**: list what is still open of the task.
    - The task, when it is not `done`.
-   - The verifier's findings, its criteria `not met` among them.
    - In a first review, whose `Previous` is none, the reviewer's `blocking` and `major` findings; its `minor` ones go
      to `Pending`.
    - In a re-review, whose `Previous` names an iteration, route each finding of the reviewer by its `Origin`:
@@ -144,20 +144,20 @@ Run each task from `From` to the last, one at a time, in the order of the plan; 
        List it with its severity, its `file:line`, its `Origin` and why it waits: the round did not bring it, or it
        is `minor`.
    - Leave out a finding the builder skipped twice for the same reason: it goes to `Pending`.
-5. **Close**: with nothing open, commit the task (see `Commits`), and go on with the next task.
-6. **Stop**: the cycle stops in any of these cases, each to `Blockers` with what a person must do.
+4. **Close**: with nothing open, commit the task (see `Commits`), and go on with the next task.
+5. **Stop**: the cycle stops in any of these cases, each to `Blockers` with what a person must do.
    - The task is `blocked`: it waits for a person.
    - The last two iterations of the task fixed nothing and did not turn it `done`: the work stalled.
    - The task reached three iterations: the guard against a fix that breaks something else every time.
    Count only the iterations this run added, so a resumed plan gets its limits again.
    The last round of the task stays uncommitted, and no later task is built.
    The round commits of the task and the commits of the earlier tasks stay.
-7. **Iteration**: otherwise, add an iteration of the task with what is open (see `Iteration`).
+6. **Iteration**: otherwise, add an iteration of the task with what is open (see `Iteration`).
    Commit the round with it (see `Commits`), so the next review reads only what the next round changes.
    Launch the builder on it (see `Builder prompt`) and write its report in the plan (see `Builder report`).
    Set it `status: built`, and go back to 2.
 
-A criterion covered by several tasks is evaluated at the last task that covers it; until then it stays `pending`.
+The criteria stay `pending` through the cycles of the tasks: only the final verification evaluates them.
 
 ### Final verification
 
@@ -189,7 +189,7 @@ An iteration is one pass of the builder on what the checks left open, appended t
 - `status`: `open` while the builder works on it, `built` once it returns, `checked` once the checks ran.
 - `task`: the id of the task whose cycle it belongs to, or `final` for the final verification.
 - `findings`: one item per finding to fix, with its own id, `FND-NN`, numbered across the whole plan.
-  - `source`: `verification`, `review` or `commit`.
+  - `source`: `review` or `commit`, or `verification` in an iteration of `final`.
   - `kind`: the area of a finding of the verification, the severity and category of one of the review, or the check
     that failed the commit.
   - `where`: the `file:line` or the id of the plan it is about.
@@ -201,7 +201,7 @@ An iteration is one pass of the builder on what the checks left open, appended t
 Copy each finding from its report as it is, its `repeats` included: never merge, reword nor judge it.
 The criteria go to `acceptance`, never to the iteration, and the rest of the reports goes to `Output`.
 
-Two checks of a task, the first leaving a finding of each kind, and the iteration that fixed them:
+Two reviews of a task, the first leaving two findings, and the iteration that fixed them:
 
 ```yaml
 iterations:
@@ -211,17 +211,17 @@ iterations:
     task: T3
     findings:
       - id: FND-01
-        source: verification
-        kind: criterion
-        where: internal/export/writer.go:31
+        source: review
+        kind: major, test
+        where: internal/export/writer_test.go:31
         problem: |
-          CUJ-03 asks the rows in the order of LIT-04, and they come unsorted.
+          TestExportRows compares the rows as a set, so it passes with the rows unsorted, against LIT-04.
         fix: |
-          Sort the invoices by date before writing them.
+          Compare the rows in order, with a case whose input comes unsorted.
         repeats: none
         status: fixed
         evidence: |
-          `writer.go` sorts by date; `TestExportRowsSorted` failed before the fix and passes.
+          `TestExportRows` compares the slice in order; its unsorted case failed before the fix and passes.
       - id: FND-02
         source: review
         kind: major, bug
@@ -250,7 +250,7 @@ It is relative to the root of the repository (`git rev-parse --show-toplevel`), 
   A body with the `FND-NN` of that iteration, then the line `Plan: <path of the plan>`.
   So the review of the next round reads, as `git diff HEAD`, only what that round changes.
   A round that stops its loop is never committed: it stays uncommitted for `Blockers` and `Resume`.
-- **Task**: once its checks close it.
+- **Task**: once its review closes it.
   Subject `T<N>: <title of the task>`, then a body with its `summary` and the line `Plan: <path of the plan>`.
 - **Final**: at Step 6 when `done`: subject `Final: <title of the plan>`, a body with the `FND-NN` the final
   verification fixed, or "Nothing to fix.", and the line `Plan: <path>`.
@@ -406,7 +406,7 @@ One rule gives it for every task in every run, a resumed or cleared one too:
 - Without a round commit of the task, take `git rev-parse --short HEAD`.
 - Take it once in each run, right before the first builder or the first checks of the task, and keep it for its cycle.
 
-The builder and the verifier of the task, and of each of its iterations, get the same one.
+The builder of the task, and of each of its iterations, gets the same one.
 
 ### Builder report
 
@@ -425,12 +425,11 @@ The builder never edits the plan: it reports what it built, and you write it in 
 
 ### Verifier prompt
 
-Send the verifier this block, in the language of the session:
+Send the verifier this block at the final verification, its only launch, in the language of the session:
 
 ```text
 Plan: <path of the plan file>
-Task: <the id of the task whose cycle runs, or "final" for the whole plan>
-Base: <the short hash of the task base, or "none" with final>
+Task: final
 Previous: <the `ITER-NN` of the plan the builder just worked on, or "none">
 Skipped: <the `FND-NN` of that iteration the builder skipped, with why, or "none">
 ```
@@ -463,13 +462,12 @@ Edit only the top-level `status` of the plan:
 
 ### Acceptance criteria
 
-After each verification, take the criteria it evaluated as they are:
+Only the final verification evaluates the criteria; after each of its checks, take them as they are:
 
 1. Each AC is `met`, `not met` or `not verified`, with its evidence; a manual step goes to `Pending` for the user.
-   The verification of a task evaluates only the criteria whose last covering task it is; leave the others alone.
 2. Set the `status` and `evidence` of each criterion evaluated in `acceptance`, again on every run.
    The evidence is the one of the verification, in one line or a literal block.
-3. A criterion no verification evaluated keeps `status: pending`.
+3. A criterion no verification evaluated keeps `status: pending`, as every criterion does until the final one.
 
 ### Stats
 
