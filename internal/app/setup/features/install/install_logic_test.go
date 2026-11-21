@@ -10,7 +10,7 @@ import (
 
 var logicPlugin = map[string][]byte{
 	"polix/.claude-plugin/plugin.json": []byte(`{"name": "polix", "version": "0", "description": "d"}`),
-	"polix/skills/plan/SKILL.md":       []byte("x"),
+	"polix/skills/spec/SKILL.md":       []byte("x"),
 	"polix/agents/reviewer.md":         []byte("x"),
 }
 
@@ -21,7 +21,7 @@ func TestDecideAgents(t *testing.T) {
 	}
 	out = Decide(setup.Setup{Home: "/h", Root: "/r", Version: "1.2.3"}, logicPlugin, setup.Parts{})
 	if !slices.Equal(out.Setup.Agents, []string{setup.Claude}) || !slices.Equal(out.HooksFiles, []string{out.Setup.HooksFile(setup.Claude)}) ||
-		!slices.Equal(out.Skills, []string{"plan"}) || !slices.Equal(out.PluginAgents, []string{"reviewer"}) ||
+		!slices.Equal(out.Skills, []string{"spec"}) || !slices.Equal(out.PluginAgents, []string{"reviewer"}) ||
 		out.Plugin.Embedded["polix/.claude-plugin/plugin.json"] == nil || out.Plugin.Version != "1.2.3" || out.Summary == "" {
 		t.Fatalf("Claude Code alone in a repository, never Codex by itself: %+v", out)
 	}
@@ -98,7 +98,7 @@ func TestDecideGitHooksOnly(t *testing.T) {
 // --skills is only the plugin, also inside a repository: neither hooks files nor hooks of git.
 func TestDecideSkillsOnly(t *testing.T) {
 	out := Decide(setup.Setup{Home: "/h", Root: "/r", Version: "1.2.3"}, logicPlugin, setup.Parts{Skills: true})
-	if out.Failure != "" || out.Plugin.Embedded == nil || !slices.Equal(out.Skills, []string{"plan"}) ||
+	if out.Failure != "" || out.Plugin.Embedded == nil || !slices.Equal(out.Skills, []string{"spec"}) ||
 		out.HooksFiles != nil || out.GitHooks != nil || strings.Contains(out.Summary, "hook") {
 		t.Fatalf("%+v", out)
 	}

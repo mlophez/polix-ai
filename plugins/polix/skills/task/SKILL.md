@@ -1,7 +1,7 @@
 ---
 name: task
 description: >
-  Adds a task to the backlog in the folder of tasks, from a template with a frontmatter, ready for the skill plan.
+  Adds a task to the backlog in the folder of tasks, from a template with a frontmatter, ready for the skill spec.
   It asks only what the request leaves open, never plans the task nor writes code.
   It runs only when the user asks for it.
 effort: medium
@@ -14,7 +14,7 @@ argument-hint: "[the task to add, e.g. the export times out with 10,000 rows; em
 # Adding a task
 
 Turn a request into a task file of the backlog: what is wrong or missing, the outcome wanted and when it is done.
-A task says what and why, never how: the plan that the skill `plan` writes from it decides the approach and the steps.
+A task says what and why, never how: the plan that the skill `spec` writes from it decides the approach and the steps.
 The folders of tasks and of plans are those the project names in `AGENTS.md`, `CLAUDE.md` or the session.
 Without one, they are `ai/tasks/` and `ai/plans/` below the root.
 
@@ -33,7 +33,7 @@ Without one, they are `ai/tasks/` and `ai/plans/` below the root.
 ## Output
 
 - **Task**: the path of the task file, its `type`, `priority` and `status`.
-- **Next step**: plan it with the skill `plan` and the path of the task file.
+- **Next step**: plan it with the skill `spec` and the path of the task file.
 - **Pending**: the `Open questions` the task keeps, or "none".
 
 ## Limits
@@ -63,7 +63,7 @@ Task progress:
 1. Read `AGENTS.md` when it is not in context, for the layout and the names of the project.
 2. List the folder of tasks and the folder of plans.
    When a task already covers the request, show it and ask whether to adjust it instead.
-   When a plan covers it, show it and offer to adjust it with the skill `plan`.
+   When a plan covers it, show it and offer to adjust it with the skill `spec`.
 3. Find with `rg` the commands, files or symbols the request names, to name them right in `Context`.
    Read only what names them: the plan explores the code later, so never study it in depth.
 
@@ -94,11 +94,11 @@ The frontmatter, beyond what its placeholders say:
 
 - `type`: `feature` for a new behaviour, `bug` for a wrong one, `refactor` for a change that keeps it.
   `chore` is for tooling, dependencies or the build; `docs` for the docs only; `idea` for one still to shape.
-- `status`: `open` when written; the skill `plan` sets `planned` with its `plan`.
+- `status`: `open` when written; the skill `spec` sets `planned` with its `plan`.
   Set `done` or `dropped` only when the user says so; the build never touches the task.
 - `priority`: `high` when it blocks users or other work, `medium` for the usual, `low` when it can wait.
 - `reference`: the ticket, issue or link of the request, or `none`; never invent one.
-- `plan`: `none`; the skill `plan` writes the path of its plan.
+- `plan`: `none`; the skill `spec` writes the path of its plan.
 
 The body:
 

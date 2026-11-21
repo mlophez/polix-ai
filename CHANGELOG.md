@@ -9,6 +9,11 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- `/polix:plan` is now `/polix:spec`, so it no longer clashes with `/plan`, the plan mode of Claude Code; it writes
+  the same plan in the folder of plans. `polix install` and `polix update` remove `/polix:plan`: search your
+  `polix.yaml` for `/polix:plan` and replace it with `/polix:spec`.
+- `/polix:grill-me` returns a brief instead of a spec, with the same sections; `/polix:spec` and `polix:critic` read
+  the brief.
 - `/polix:plan` proposes `effort: medium` for the builder, the verifier and the reviewer at every risk level;
   `risk.level` only picks their models, and the reviewer of a `high` risk runs on `opus` instead of `fable`.
 - `/polix:grill-me` is the one interview of polix: it asks the what of a change and the how only the user should

@@ -573,7 +573,7 @@ on:
     - when: { not: { path: "ai/plans/{key}-*.md" } }
       unless: { file: "ai/plans/{key}-*.md" }
       action:
-        block: "No hay plan: escríbelo con /plan"
+        block: "No hay plan: escríbelo con /polix:spec"
 
     # file + contains: some matching file, ignored ones included, also holds this text (plain substring,
     # placeholders allowed). contains is only valid next to file, and never directly inside any, where it would hold

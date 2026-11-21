@@ -1,7 +1,7 @@
 ---
-name: plan
+name: spec
 description: >
-  Writes an outcome-driven plan, on a new branch, in the folder of plans from the spec the skill grill-me confirms.
+  Writes an outcome-driven plan, on a new branch, in the folder of plans from the brief the skill grill-me confirms.
   It writes the tasks that build it, has the subagent critic review it, and never runs in plan mode, codes nor commits.
   It runs only when the user asks for it.
 effort: high
@@ -16,7 +16,7 @@ argument-hint: "[what to plan, e.g. add retries to the webhook sender, and where
 Turn a request into a plan file that an executor builds task by task in order, knowing only the plan and the code.
 The plan goes from the outcome expected to the criteria that prove it and the tasks that build it, and holds no code.
 The plan is a YAML file: each fact lives in one place, and the others name it by its id.
-The skill `grill-me` interviews the user; this skill turns its spec into the plan and never interviews.
+The skill `grill-me` interviews the user; this skill turns its brief into the plan and never interviews.
 The folders of plans, of rules and of tasks are those the project names in `AGENTS.md`, `CLAUDE.md` or the session.
 Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
 
@@ -24,7 +24,7 @@ Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
 
 - [template.yaml](template.yaml) next to this file.
   Without it, stop and tell the user.
-- The skill `grill-me`, which interviews the user each time the spec opens or reopens.
+- The skill `grill-me`, which interviews the user each time the brief opens or reopens.
   From a plugin, it and the subagent below carry its prefix, as `<plugin>:grill-me` and `<plugin>:critic`.
   Without the Skill tool, as in Codex, read `../grill-me/SKILL.md` next to this skill and follow it in this session.
 - The subagent `critic`, which reviews the plan at Step 6.
@@ -39,7 +39,7 @@ Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
   It may be a file of the folder of tasks, as the skill `task` writes it.
   Then plan from its sections, and give its path as the `reference` of the plan.
   Once the plan file exists, set the task's `status: planned` and `plan: <path of the plan>`, and nothing else of it.
-- **Spec**: a spec that `grill-me` returned and the user confirmed in this session for this request, if any.
+- **Brief**: a brief that `grill-me` returned and the user confirmed in this session for this request, if any.
 - **Plan**: the plan file, from the arguments or the conversation.
   A file that already exists is the plan to adjust.
   So is the plan the task's `plan` names, or one written earlier in this session, even with a new scope or title.
@@ -79,27 +79,27 @@ Copy this checklist and track your progress:
 
 ```text
 Plan progress:
-- [ ] Step 1: Resolve the request, the spec and the plan to adjust, if any (see `Input`).
-- [ ] Step 2: Get the confirmed spec from `grill-me` (see Step 2).
+- [ ] Step 1: Resolve the request, the brief and the plan to adjust, if any (see `Input`).
+- [ ] Step 2: Get the confirmed brief from `grill-me` (see Step 2).
 - [ ] Step 3: Read the project context and the code the tasks will change (see Step 3).
 - [ ] Step 4: Create the branch of a new plan (see Step 4).
-- [ ] Step 5: Write the plan file from the spec and the code (see Step 5).
+- [ ] Step 5: Write the plan file from the brief and the code (see Step 5).
 - [ ] Step 6: Have `critic` review the plan, and fix what it finds, up to three rounds (see Step 6).
 - [ ] Step 7: Show the user the outcome of the plan and ask for approval (see Step 7).
 - [ ] Step 8: Report (see `Output`), stop and return control to the user.
 ```
 
 Never reach Step 7 before Step 6 is done: the critique is what the approval relies on.
-Every time `grill-me` reopens the spec, update the keys it changes, then run Step 6 again whole.
+Every time `grill-me` reopens the brief, update the keys it changes, then run Step 6 again whole.
 When adjusting a plan, follow `Adjusting a plan` at every step.
 
-### Step 2: Get the confirmed spec from `grill-me`
+### Step 2: Get the confirmed brief from `grill-me`
 
-1. With a `Spec` of `Input`, take it as it is and skip the rest of this step.
+1. With a `Brief` of `Input`, take it as it is and skip the rest of this step.
 2. Otherwise invoke the skill `grill-me` with the request as its subject.
    Give as its `Known` the facts and decisions the conversation or the task file already settle.
    When adjusting a plan, give the plan's current keys as its `Adjust`, with what the adjustment changes.
-3. Wait for the spec the user confirms, then go on with Step 3 of this checklist.
+3. Wait for the brief the user confirms, then go on with Step 3 of this checklist.
    Its `Pending` decisions go to `Pending`, and Step 7 never sets `status: approved` while one is open.
 
 ### Step 3: Read the project context and the code the tasks will change
@@ -108,10 +108,10 @@ When adjusting a plan, follow `Adjusting a plan` at every step.
 2. Run the test command of the project once in the background, editing nothing.
    Its failures, when any, go to `context` as failures that already exist; when it cannot run, say so in `Pending`.
    When adjusting a plan, skip it unless the adjustment adds tasks.
-3. Take the `Facts` of the spec as leads, never as facts of the plan.
+3. Take the `Facts` of the brief as leads, never as facts of the plan.
 4. Read each file a task will change and each symbol the plan will name: never name one from a search hit alone.
-5. The code wins over the docs and the spec when they disagree.
-   A gap that changes a decision of the spec reopens it with `grill-me`; any other gap goes to `Pending`.
+5. The code wins over the docs and the brief when they disagree.
+   A gap that changes a decision of the brief reopens it with `grill-me`; any other gap goes to `Pending`.
 
 ### Step 4: Create the branch of a new plan
 
@@ -123,19 +123,19 @@ When adjusting a plan, follow `Adjusting a plan` at every step.
 5. Create it from the current branch with `git switch -c <name>`, so the uncommitted changes go with it.
    Switch to an existing branch the user chose with `git switch <name>`.
 
-### Step 5: Write the plan file from the spec and the code
+### Step 5: Write the plan file from the brief and the code
 
 1. Create the plan file from [template.yaml](template.yaml) (see `Plan file`).
    Or open the plan to adjust and edit it as `Adjusting a plan` says.
-2. Write each key in the order of template.yaml, from the section of the spec `Spec to keys` names for it.
+2. Write each key in the order of template.yaml, from the section of the brief `Brief to keys` names for it.
    Follow `Request`, `Outcome`, `Acceptance criteria`, `Tasks`, `High risk` and `Tests` for its form.
-3. A key that needs a decision the spec does not settle is a reopened spec: invoke `grill-me` with `Adjust`.
+3. A key that needs a decision the brief does not settle is a reopened brief: invoke `grill-me` with `Adjust`.
 
 ### Step 6: Have `critic` review the plan, and fix what it finds, up to three rounds
 
-The critic reads the plan in a context of its own, with the spec, the template and the rules, never the code.
+The critic reads the plan in a context of its own, with the brief, the template and the rules, never the code.
 Of this skill it reads only `Acceptance criteria`, `High risk`, `Tests`, `Readability` and `Plan file`.
-It judges whether an executor could build it without deciding, and whether it follows the spec, the rules and the form.
+It judges whether an executor could build it without deciding, and whether it follows the brief, the rules and the form.
 
 1. Launch the subagent `critic` with the prompt of `Critic prompt`, and wait for its report.
 2. Sort each finding of the report:
@@ -144,7 +144,7 @@ It judges whether an executor could build it without deciding, and whether it fo
      Never write the plan again whole nor elsewhere.
    - Decision: its fix is a choice no source settles, as a fix `decision` says.
      Invoke `grill-me` once for all of them, with the findings and the plan's current keys as its `Adjust`.
-     Write each answer of its spec into its key.
+     Write each answer of its brief into its key.
 3. Launch the critic again, with the next round and the findings so far in `Previous`.
    It checks the whole plan again, so a fix that breaks another key is a finding of the next round.
 4. Stop when the verdict has no `blocking` nor `major` finding, or after the third round.
@@ -188,17 +188,17 @@ Without the subagent `critic`, follow `critic.md` yourself as `Requirements` say
 
 - Every requirement of the request, and of each free-text answer that changes it, goes to `outcome`.
   Never drop nor weaken one: the review checks the work against `outcome`.
-- A decision of the spec goes to `decisions`, with `on: outcome` when it is `what` and `on: approach` when `how`.
+- A decision of the brief goes to `decisions`, with `on: outcome` when it is `what` and `on: approach` when `how`.
 - The literals quote verbatim the strings, messages, commands and data of the request.
 - Never add a requirement the user did not ask for.
-- Never make a choice yourself: what the request, the spec, the docs, the code or a rule do not settle reopens the
-  spec with `grill-me`, even when it looks minor, obvious or not decisive.
+- Never make a choice yourself: what the request, the brief, the docs, the code or a rule do not settle reopens the
+  brief with `grill-me`, even when it looks minor, obvious or not decisive.
 - A limit on how the solution is built is a constraint, and a measurable property of the result is a criterion.
   A choice among options is a decision.
 
-### Spec to keys
+### Brief to keys
 
-Each key of template.yaml comes from a section of the spec of `grill-me`, or from the code when never asked.
+Each key of template.yaml comes from a section of the brief of `grill-me`, or from the code when never asked.
 
 - `overview`: `summary`, `changes`, `not_changes` and `risk_and_size` from `Outcome`, `Scope` and `Risks`.
   `problem` from `Problem`, `affected` from `Affected`, `terms` from `Terms` and `context` from the code.
@@ -212,7 +212,7 @@ Each key of template.yaml comes from a section of the spec of `grill-me`, or fro
 - `approach`: `design` from `Approach`, naming what other modules use, never a private helper.
   `risks` from `Risks`; what the design always does goes to `cross_cutting`, never to `risks`.
   `runtime`, `cross_cutting` and `verification` from the code and the earlier keys.
-- `tasks`: from the code and the earlier keys; a question they raise belongs to an earlier key and reopens the spec.
+- `tasks`: from the code and the earlier keys; a question they raise belongs to an earlier key and reopens the brief.
 
 ### Outcome
 
@@ -269,7 +269,7 @@ Each key of template.yaml comes from a section of the spec of `grill-me`, or fro
   Its `cujs` is `[]`, and its `verify` measures it.
 - A guarantee the change gives is a criterion of its own, never only a sentence of `cross_cutting` or a comment.
   That covers security or platforms, such as "never reads outside the root" or "a link is never followed".
-  It has one journey per way it could break, from the cases of the spec: each input, platform and path that reaches it.
+  It has one journey per way it could break, from the cases of the brief: each input, platform and path that reaches it.
   For example, a walk of folders has a journey for `..`, a link in any segment, a Windows junction and name case.
 - `requirement` reads alone: it never points to another key, such as "as `outcome` says".
 - `verify` lists commands with their expected result, or `manual` steps that show the criterion on the finished change.
@@ -355,7 +355,7 @@ What to send `critic` at each round of Step 6, in the language of the session:
 
 ```text
 Plan: <the path of the plan file>
-Spec: <the spec the user confirmed, whole, with the answers of every reopening>
+Brief: <the brief the user confirmed, whole, with the answers of every reopening>
 Template: <the path of the template.yaml next to this skill>
 Skill: <the path of this SKILL.md, for its sections Acceptance criteria, High risk, Tests, Readability and Plan file>
 Rules: <the path of the folder of rules, or "none" when it does not exist>

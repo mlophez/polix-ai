@@ -9,7 +9,7 @@ import (
 
 var logicPlugin = map[string][]byte{
 	"polix/.claude-plugin/plugin.json": []byte(`{"name": "polix", "version": "0", "description": "d"}`),
-	"polix/skills/plan/SKILL.md":       []byte("x"),
+	"polix/skills/spec/SKILL.md":       []byte("x"),
 	"polix/agents/reviewer.md":         []byte("x"),
 }
 

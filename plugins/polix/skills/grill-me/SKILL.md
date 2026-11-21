@@ -2,7 +2,7 @@
 name: grill-me
 description: >
   Interviews the user one decision at a time until both share what they want of a change.
-  It covers the what and the how only the user should decide, explores the code and returns a spec, editing nothing.
+  It covers the what and the how only the user should decide, explores the code and returns a brief, editing nothing.
   It runs only when the user or the workflow of the project asks for it.
 effort: high
 model: inherit
@@ -17,26 +17,26 @@ Interview the user until you both share one understanding of a change, with noth
 Map the subject as a design tree: each decision branches into the decisions that hang off it.
 The frontier is every open decision whose prerequisites are settled: what you can ask now without guessing answers.
 The what comes first: every decision of the how hangs off the decisions of the what.
-The spec it returns feeds the skill `plan`, or the agent that edits the code directly in the flow without a plan.
+The brief it returns feeds the skill `spec`, or the agent that edits the code directly in the flow without a plan.
 The folder of rules is the one the project names in `AGENTS.md`, `CLAUDE.md` or the session, `ai/rules/` by default.
 
 ## Input
 
 - **Subject**: the change, decision or idea, from the arguments, else the conversation; without either, ask for it.
-  A single decision is a tree with one root: the same steps, and the sections of `Spec` it leaves empty say "none".
+  A single decision is a tree with one root: the same steps, and the sections of `Brief` it leaves empty say "none".
 - **Known**: the facts and decisions already settled, from the conversation or from the skill that invokes this one.
   Never search them again nor ask them.
-- **Adjust**: a spec confirmed earlier and what reopens it, such as the findings of the subagent `critic` on a plan.
+- **Adjust**: a brief confirmed earlier and what reopens it, such as the findings of the subagent `critic` on a plan.
   Then map only the decisions it reopens and those that hang off them.
 
 ## Output
 
-- **Spec**: the sections of `Spec`, in its order, written in the language of the session.
+- **Brief**: the sections of `Brief`, in its order, written in the language of the session.
 - **Pending**: the decisions the user left open or deferred, or "none".
 
 ## Limits
 
-- Never write, edit nor commit a file, and never act on the subject before the user confirms the spec.
+- Never write, edit nor commit a file, and never act on the subject before the user confirms the brief.
 - Never ask the user a fact you can find in the files, git, the tools or the docs.
 - Never settle a decision yourself: put each one to the user, even when you recommend its answer.
 - Ask one decision per call of `AskUserQuestion`, or per message without it, and wait for its answer.
@@ -59,7 +59,7 @@ Grilling progress:
 - [ ] Step 6: Pick the next decision of the frontier, ask it alone (see `Question`) and wait for the answer.
 - [ ] Step 7: Record the answer and the facts reported, and recompute the frontier (see Step 7).
 - [ ] Step 8: Repeat Steps 5 to 7 until the frontier is empty, then ask each deferred decision again, alone.
-- [ ] Step 9: Give the `Spec` and ask the user to confirm it (see Step 9).
+- [ ] Step 9: Give the `Brief` and ask the user to confirm it (see Step 9).
 ```
 
 ### Step 2: Explore the project and the code the subject touches
@@ -100,13 +100,13 @@ A report is a lead, never a fact: read yourself each file a fact of `Facts` name
 - An answer that picks none of the alternatives is valid: record it as given and ask about it only when ambiguous.
 - Only when the user leaves a decision to you explicitly, take the recommended option with the source `delegated`.
 
-### Step 9: Give the `Spec` and ask the user to confirm it
+### Step 9: Give the `Brief` and ask the user to confirm it
 
-- Write the `Spec` as text, then ask with `AskUserQuestion` whether to confirm it or adjust it, confirm first.
-  The question says the `Spec` is just above it, since the dialog may hide it.
-  Without `AskUserQuestion`, ask for the confirmation in the text after the `Spec`.
+- Write the `Brief` as text, then ask with `AskUserQuestion` whether to confirm it or adjust it, confirm first.
+  The question says the `Brief` is just above it, since the dialog may hide it.
+  Without `AskUserQuestion`, ask for the confirmation in the text after the `Brief`.
 - An adjustment reopens the decisions it touches: go back to Step 6 for them.
-- When a skill invoked this one, return the confirmed `Spec` to it and go on with that skill's checklist.
+- When a skill invoked this one, return the confirmed `Brief` to it and go on with that skill's checklist.
 
 ## References
 
@@ -130,7 +130,7 @@ A report is a lead, never a fact: read yourself each file a fact of `Facts` name
 - Operation: concurrent runs, retries, partial runs and how to undo the change.
 - Security: who may trigger the change, what it exposes and what it trusts.
 
-### Spec
+### Brief
 
 Every section says "none" when it holds nothing; a fact or a decision lives in one section only.
 

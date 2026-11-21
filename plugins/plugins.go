@@ -12,7 +12,7 @@ import (
 //go:embed all:polix
 var FS embed.FS
 
-// Files returns the files of the plugin, by path below polix/ (polix/skills/plan/SKILL.md).
+// Files returns the files of the plugin, by path below polix/ (polix/skills/spec/SKILL.md).
 func Files() (map[string][]byte, error) {
 	files := map[string][]byte{}
 	err := fs.WalkDir(FS, "polix", func(p string, d fs.DirEntry, err error) error {

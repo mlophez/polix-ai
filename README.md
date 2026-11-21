@@ -223,7 +223,7 @@ Paste [`examples/AGENTS-polix.md`](examples/AGENTS-polix.md) into your `AGENTS.m
 **The engine** is the binary, `polix.yaml` and `ai/rules/`. It enforces whatever process you write down and assumes
 none: use it with your own skills, agents and conventions.
 
-**The harness** is optional: the `polix` plugin ships a ready-to-use development flow, with `/polix:plan` (whose
+**The harness** is optional: the `polix` plugin ships a ready-to-use development flow, with `/polix:spec` (whose
 plan `polix:critic` reviews before you approve it), `/polix:build` (run by `polix:builder`, checked against the plan by `polix:verifier` and reviewed by
 `polix:reviewer`), `/polix:review` and `/polix:audit`, with `/polix:task` to add tasks to the backlog and
 `/polix:grill-me` to stress-test a plan or an idea one question at a time, plus the skills that set Polix up

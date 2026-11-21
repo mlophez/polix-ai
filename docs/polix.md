@@ -727,7 +727,7 @@ is not a map as `guardrails.builtin takes a map of true or false, as { forbid_gi
 `builtin` reports it as an unknown key of `guardrails`, so a file that writes it sets `requires`.
 
 `path` places the folder of the AI, relative to the root, `ai` by default; it holds four folders: `rules/`, the rules
-polix reads, injects and checks, `plans/`, the plans the skill `plan` writes, `reports/`, the reports of audits and
+polix reads, injects and checks, `plans/`, the plans the skill `spec` writes, `reports/`, the reports of audits and
 reviews, and `tasks/`, the backlog the skill `task` writes. It is cleaned (slashes, no spaces around it, no `./` nor
 trailing slash). `polix config check` reports an absolute path, the root itself, a path out of the root (`..`) or a
 glob, as `path "../x" must be below the root`. polix reads only `<path>/rules`, its `*.yaml` but `retired.yaml` and
@@ -870,7 +870,7 @@ on:
     - when: { not: { path: "ai/plans/{key}-*.md" } }
       unless: { file: "ai/plans/{key}-*.md" }
       action:
-        block: "There is no plan for {key}: ask the user to write it with /polix:plan"
+        block: "There is no plan for {key}: ask the user to write it with /polix:spec"
 ```
 
 Globs are relative to the root and use `/`: `*` stays inside a segment, `**` crosses segments, a pattern
@@ -1483,17 +1483,17 @@ also prints that Codex support is not implemented in this release and the setup 
   repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
   the folder of rules, `risk` calibrates `risk.weights` and the thresholds of the measures on the history of commits,
   `doctor` fixes the setup, `task` adds a task to the backlog `tasks/` below `path` from a template with a frontmatter, ready
-  for `plan`, `grill-me` interviews the user one decision at a time on what they want of a change, the what and
-  the how only the user should decide, exploring the code itself, and returns a spec without editing anything, which
-  feeds `plan` or the agent that edits the code directly in the flow without a plan; polix enforces neither flow,
-  each repository injects the one it wants from its `polix.yaml`, `plan` takes the spec from `grill-me`, which it
+  for `spec`, `grill-me` interviews the user one decision at a time on what they want of a change, the what and
+  the how only the user should decide, exploring the code itself, and returns a brief without editing anything, which
+  feeds `spec` or the agent that edits the code directly in the flow without a plan; polix enforces neither flow,
+  each repository injects the one it wants from its `polix.yaml`, `spec` takes the brief from `grill-me`, which it
   invokes, and writes a plan in the folder of plans on a new branch named as the plan, driven by its outcome
   (`Overview`, then
   `Specification` with the outcome, its design and examples, the scope and the acceptance criteria, then `Approach`
   with the tasks, and the user approves its outcome before it is built; it creates the branch with `git switch -c`
   before writing the plan, asks the user when the branch already exists, and records it in `branch`; before the
   approval the read-only agent `critic` reviews the plan alone for undefined facts, contradictions and edge cases left
-  open, checks it against the spec, the rules, its template and the form the skill sets and parses it, the skill fixes what the plan settles and asks the rest through `grill-me`, up to three rounds, and `plan`
+  open, checks it against the brief, the rules, its template and the form the skill sets and parses it, the skill fixes what the plan settles and asks the rest through `grill-me`, up to three rounds, and `spec`
   never runs in plan mode), `build` switches to the `branch` of an approved plan, which needs a clean working tree,
   and implements it unattended, one task at a time: a `builder` agent builds the task, the agents `verifier`
   (against the plan) and `reviewer` (the code's quality) check that task alone in parallel, the findings go back to
@@ -1519,9 +1519,9 @@ also prints that Codex support is not implemented in this release and the setup 
     (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
     `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
     skills are `/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`, `/polix:task`,
-    `/polix:grill-me`, `/polix:plan`, `/polix:build`, `/polix:review`, `/polix:audit`, `/polix:writing-skills` and
+    `/polix:grill-me`, `/polix:spec`, `/polix:build`, `/polix:review`, `/polix:audit`, `/polix:writing-skills` and
     `/polix:writing-agents`, its agents `polix:builder`, `polix:verifier`, `polix:reviewer`, `polix:critic` and
-    `polix:auditor`. The skills `plan`, `build`, `review` and `audit` launch the agents; Codex, which has no agents of
+    `polix:auditor`. The skills `spec`, `build`, `review` and `audit` launch the agents; Codex, which has no agents of
     plugins and whose support is not
     implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
@@ -1533,21 +1533,21 @@ also prints that Codex support is not implemented in this release and the setup 
     from `AGENTS.md`, `CLAUDE.md` or the default branch of `origin`, else `main`. They name each other without the
     prefix of the plugin, and the skills pass the folder of rules to the agents in their prompt (`Rules:`).
     `add-rule` checks what it writes by parsing it and running each new `check` as `AGENTS.md` runs the checks.
-    `init`, `doctor`, `risk`, `task`, `plan`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
+    `init`, `doctor`, `risk`, `task`, `spec`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
     user runs them, typing the command; when a message of polix asks for one, as the session start does for
-    `/polix:doctor` or a gate without a plan for `/polix:plan`, the model tells the user to run it. So the flow of
+    `/polix:doctor` or a gate without a plan for `/polix:spec`, the model tells the user to run it. So the flow of
     the harness always starts by hand, and a gate the model must satisfy alone asks for an agent, as
     `polix:reviewer`, not for a skill. `workflow` and `add-rule`
     stay open to the model but carry `paths` (`polix.yaml`, `**/rules/*.yaml`): the model sees them only while it
     works on those files, whatever the `path` of the folder of rules.
     `writing-skills` and `writing-agents` stay open too, with `paths` on `**/skills/**` and `**/agents/*.md`, and so
-    does `grill-me`, without `paths`, since `plan` invokes it. Every
+    does `grill-me`, without `paths`, since `spec` invokes it. Every
     skill and agent names the invariants of its whole task `## Limits`, never `## Rules`, which in polix are the
     rules of the folder of rules. The agents stay
     open to the model, so a rule that asks for `polix:reviewer` still works.
     The read-only agents (`critic`, `verifier`, `reviewer`, `auditor`) fill the report template inside their own file. The skills `audit` and `review`
     save their report in the folder of reports from the `template.md` next to them; a `polix:reviewer` launched
-    without a skill answers in the chat and saves no file. `plan` writes the plan as a YAML file from the
+    without a skill answers in the chat and saves no file. `spec` writes the plan as a YAML file from the
     `template.yaml` next to it, where each fact lives in one place and the others name it by its id (`LIT-NN`,
     `CUJ-NN`, `AC-NN`, `TN`); a plan in Markdown, written before, is no longer adjusted nor built. A task is one
     behaviour that its own tests show, with no size in lines. `build` coordinates the run and is the only one that
@@ -1561,7 +1561,7 @@ also prints that Codex support is not implemented in this release and the setup 
     an iteration (`ITER-NN`) of that task, or of `final`, to `iterations` with the findings to fix
     (`FND-NN`) and launches the builder on it; it sets in `stats` at the root of the plan its `start`, `end`, `duration`,
     the `tokens` the subagents report, the `iterations`, its runs, and the `code` it changed; it launches the builder, the verifier and the reviewer each with the `model`
-    and `effort` of its item of `agents` of the plan, which `plan` proposes (effort `medium`, the models from the risk) and the user may change,
+    and `effort` of its item of `agents` of the plan, which `spec` proposes (effort `medium`, the models from the risk) and the user may change,
     `inherit` or a missing item leaving it to the frontmatter of the agent; a run that did not end resumes
     where its last iteration stopped, or at the first task without its commit.
   - Codex, only with `--agent codex` (not implemented): `codex plugin marketplace add ~/.polix/marketplace` and

@@ -26,9 +26,9 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
 
 ## Requirements
 
-- A plan file of the folder of plans, in YAML with a list `tasks` of ids `T1`, `T2`..., as the skill plan writes it.
-  A plan in Markdown (`.md`) is no longer built: stop and offer the skill `plan` to write it again as YAML.
-  Without a plan, stop and offer the skill `plan`: never build without a plan nor write one yourself.
+- A plan file of the folder of plans, in YAML with a list `tasks` of ids `T1`, `T2`..., as the skill spec writes it.
+  A plan in Markdown (`.md`) is no longer built: stop and offer the skill `spec` to write it again as YAML.
+  Without a plan, stop and offer the skill `spec`: never build without a plan nor write one yourself.
 - The subagents `builder`, `verifier` and `reviewer`, as `<plugin>:builder` when a plugin provides them.
   `verifier` checks that the change meets the plan, and `reviewer` that its code is well written.
   Without them, as in Codex, read `builder.md`, `verifier.md` and `reviewer.md` in `../../agents/`, next to this skill.
@@ -52,7 +52,7 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
   When the branch exists neither locally nor on a remote, stop and tell the user; never create it.
   A plan without `branch` builds on the current branch.
 - **Approval**: a plan with `status: planned` is not approved.
-  Stop and ask the user to approve it with the skill `plan`; never approve it yourself.
+  Stop and ask the user to approve it with the skill `spec`; never approve it yourself.
 - **Resume**: a plan `in-progress` was interrupted, and a plan `blocked` waited for a person.
   Resume either where it stopped (see `Resume`); its earlier iterations stay.
   When every task is `done` and the plan is `done`, tell the user and stop.

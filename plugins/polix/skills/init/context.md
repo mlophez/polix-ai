@@ -34,7 +34,7 @@ Add one item per other top-level folder, in alphabetical order, as `- **<folder>
 Then one item per top-level file that configures the agents, such as a workflow, as `- **<file>**: <what it does>`. -->
 
 - **<path>/**: instructions for the AI only; without it the repository is a plain project.
-- **<path>/plans/**: one plan per file, written by the `plan` skill.
+- **<path>/plans/**: one plan per file, written by the `spec` skill.
 - **<path>/reports/**: the reports of audits and reviews, one per file.
 - **<path>/rules/**: rules on how to write the code, one `yaml` file per topic.
 - **<path>/tasks/**: the backlog of tasks, one per file, written by the `task` skill.

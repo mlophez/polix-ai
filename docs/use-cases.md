@@ -612,7 +612,7 @@ on:
     - when: { not: { path: "ai/plans/{key}-*.md" } }
       unless: { file: "ai/plans/{key}-*.md" }
       action:
-        block: "There is no plan for {key}: ask the user to write it with /polix:plan"
+        block: "There is no plan for {key}: ask the user to write it with /polix:spec"
     - when: { not: { path: "ai/plans/{key}-*.md" } }
       unless: { file: "ai/plans/{key}-*.md", contains: "Ticket: {key}" }
       action:
