@@ -31,6 +31,36 @@ func TestInspectionGitHooks(t *testing.T) {
 	}
 }
 
+// Each known area belongs to a section, git to Machine when it fails, and an unknown area is not a finding.
+func TestFindingSection(t *testing.T) {
+	want := map[string]string{
+		"binary": SectionMachine, "version": SectionMachine, "path": SectionMachine,
+		"git": SectionRepository, "repo": SectionRepository, "workflow": SectionRepository,
+		"requirements": SectionRepository, "rules": SectionRepository, "githooks": SectionRepository,
+		"state": SectionRepository, "hooks": SectionAgents, "memory": SectionAgents, "plugin": SectionAgents,
+		"codex": SectionAgents,
+	}
+	if len(want) != 14 {
+		t.Fatal("fourteen known areas")
+	}
+	for area, section := range want {
+		f := Finding{Level: LevelOK, Area: area, Message: "m"}
+		if f.Valid() != nil || f.Section() != section {
+			t.Errorf("%s: section %q, want %q (%v)", area, f.Section(), section, f.Valid())
+		}
+	}
+	if got := (Finding{Level: LevelFail, Area: "git", Message: "m"}).Section(); got != SectionMachine {
+		t.Fatalf("git that fails: %q", got)
+	}
+	if got := (Finding{Level: LevelWarn, Area: "git", Message: "m"}).Section(); got != SectionRepository {
+		t.Fatalf("git that warns: %q", got)
+	}
+	unknown := Finding{Level: LevelOK, Area: "nowhere", Message: "m"}
+	if unknown.Valid() == nil || unknown.Section() != "" {
+		t.Fatal("an unknown area is not valid")
+	}
+}
+
 // The text of a finding is its message, followed by `: ` and its fix when it has one.
 func TestFindingText(t *testing.T) {
 	plain := Finding{Level: LevelOK, Area: "git", Message: "repository at /r"}

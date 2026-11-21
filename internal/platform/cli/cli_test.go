@@ -87,14 +87,9 @@ func TestUI(t *testing.T) {
 	u.Warn("look")
 	u.Fail("broken")
 	u.Line("plain %s", Code("polix check"))
-	u.Status(LevelOK, "git", "found")
-	u.Status(LevelWarn, "hooks", "old")
-	u.Status(LevelFail, "plugin", "missing")
-	u.Status("info", "x", "y")
 	u.Change(false, "created", "a.json")
 	u.Change(true, "removed", OKText("b.json"))
 	want := "✓ done 1\n! look\n✗ broken\nplain polix check\n" +
-		"ok    git       found\nwarn  hooks     old\nfail  plugin    missing\ninfo  x         y\n" +
 		"+ created      a.json\n- removed      b.json\n"
 	if b.String() != want {
 		t.Fatalf("ui wrote %q, want %q", b.String(), want)

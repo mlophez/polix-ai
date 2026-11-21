@@ -22,14 +22,15 @@ import (
 // UI writes the output meant for people: colors and symbols on a terminal, plain text elsewhere (a pipe, a file,
 // CI, NO_COLOR), so scripts and tests read the same words. Output read by agents never uses it.
 type UI struct {
-	w io.Writer
+	w    io.Writer
+	rich bool // whether the output has colors: symbols and styles instead of words
 }
 
 // ExitCodeError is the error of a command that already told the user why it failed: it only carries the exit code,
 // and Run prints nothing for it.
 type ExitCodeError int
 
-// Levels of a line of Status.
+// Levels of a row of a Report.
 const (
 	LevelOK   = "ok"
 	LevelWarn = "warn"
@@ -42,27 +43,14 @@ var (
 	styleFail  = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
 	styleMuted = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	styleCode  = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	styleBold  = lipgloss.NewStyle().Bold(true)
 )
 
-// NewUI returns the ui that writes to w, with the colors the terminal and the environment allow.
+// NewUI returns the ui that writes to w, with the colors the terminal and the environment allow: the output is rich
+// when colorprofile detects colors for w, plain otherwise.
 func NewUI(w io.Writer) *UI {
-	return &UI{w: colorprofile.NewWriter(w, os.Environ())}
-}
-
-// Status prints one line of a report: the level, an area and the message.
-func (u *UI) Status(level, area, msg string) {
-	var badge string
-	switch level {
-	case LevelOK:
-		badge = styleOK.Render("ok  ")
-	case LevelWarn:
-		badge = styleWarn.Render("warn")
-	case LevelFail:
-		badge = styleFail.Render("fail")
-	default:
-		badge = fmt.Sprintf("%-4s", level)
-	}
-	fmt.Fprintf(u.w, "%s  %s  %s\n", badge, styleMuted.Render(fmt.Sprintf("%-8s", area)), msg)
+	cw := colorprofile.NewWriter(w, os.Environ())
+	return &UI{w: cw, rich: cw.Profile >= colorprofile.ANSI}
 }
 
 // Line prints a plain line.

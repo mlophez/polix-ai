@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -36,6 +37,8 @@ type Request struct {
 // transport: the command serializes it to the console.
 type Response struct {
 	Hook     bool            // the response of the session start hook: only the problems, and it never fails
+	Version  string          // the running version, for the header of the report
+	Root     string          // the root of the repository; empty outside one
 	Findings []setup.Finding // the findings of the report, in order
 	Failed   bool            // whether a finding is a failure
 }
@@ -186,7 +189,11 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		return Response{}, err
 	}
 	out := Decide(i, req.Hook)
-	return Response{Hook: req.Hook, Findings: out.Findings, Failed: out.Failed}, nil
+	res := Response{Hook: req.Hook, Version: req.Version, Findings: out.Findings, Failed: out.Failed}
+	if repoErr == nil {
+		res.Root = filepath.ToSlash(root)
+	}
+	return res, nil
 }
 
 // releases returns the latest release, known from the cache, and asked to the releases only by a release build
@@ -255,8 +262,8 @@ func askClaude(ctx context.Context, port Port, req Request, s setup.Setup, p set
 	return port.ClaudePlugin(ctx)
 }
 
-// print serializes the response to stdout: one line per finding; with --hook only the problems, in a paragraph
-// the agent tells the user, and nothing when everything is fine.
+// print serializes the response to stdout: the report, with its findings grouped into sections and counted; with
+// --hook only the problems, in a paragraph the agent tells the user, and nothing when everything is fine.
 func (res Response) print(stdout io.Writer) {
 	if res.Hook {
 		var lines []string
@@ -271,8 +278,18 @@ func (res Response) print(stdout io.Writer) {
 		}
 		return
 	}
-	u := cli.NewUI(stdout)
-	for _, f := range res.Findings {
-		u.Status(f.Level, f.Area, f.Text())
+	report := cli.Report{Title: "polix doctor · polix " + res.Version}
+	for _, name := range []string{setup.SectionMachine, setup.SectionRepository, setup.SectionAgents} {
+		section := cli.Section{Title: name}
+		if name == setup.SectionRepository {
+			section.Detail = res.Root
+		}
+		for _, f := range res.Findings {
+			if f.Section() == name {
+				section.Rows = append(section.Rows, cli.Row{Level: f.Level, Area: f.Area, Message: f.Message, Fix: f.Fix})
+			}
+		}
+		report.Sections = append(report.Sections, section)
 	}
+	cli.NewUI(stdout).Report(report)
 }

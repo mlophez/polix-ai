@@ -124,15 +124,18 @@ func TestDoctor(t *testing.T) {
 		t.Fatal(stderr)
 	}
 	code, stdout, _ := runSetup("doctor", "--offline", "--dir", r)
-	if !strings.Contains(stdout, "hooks     registered in") || !strings.Contains(stdout, "polix.yaml is valid") ||
-		code != 1 || !strings.Contains(stdout, "polix is not on the PATH") ||
-		!strings.Contains(stdout, " memory    auto memory of Claude Code is off\n") {
+	if !strings.HasPrefix(stdout, "polix doctor · polix ") || !strings.Contains(stdout, "\nMachine\n") ||
+		!repositoryHasDetail(stdout) || !strings.Contains(stdout, "\nAgents\n") ||
+		!strings.Contains(stdout, "  ok    hooks     registered in") || !strings.Contains(stdout, "polix.yaml is valid") ||
+		code != 1 || !strings.Contains(stdout, "polix is not on the PATH") || !strings.Contains(stdout, "→ add ") ||
+		!strings.Contains(stdout, "  ok    memory    auto memory of Claude Code is off\n") ||
+		!strings.Contains(stdout, " fail\n") {
 		t.Fatalf("doctor after install: %d\n%s", code, stdout)
 	}
 	// CUJ-08: the variable unset by the test, a warning of the area memory keeps the exit code.
 	t.Setenv(setup.AutoMemoryVariable, "0")
 	if code, stdout, _ := runSetup("doctor", "--offline", "--dir", r); code != 1 ||
-		!strings.Contains(stdout, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=0 turns auto memory of Claude Code on: unset it") {
+		!strings.Contains(stdout, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=0 turns auto memory of Claude Code on\n") || !strings.Contains(stdout, "→ unset it\n") {
 		t.Fatalf("a warning of the auto memory: %d\n%s", code, stdout)
 	}
 	if code, _, _ := runSetup("doctor", "--hook", "--dir", r); code != 0 {
@@ -185,4 +188,15 @@ func TestCommandsTheUpdateRuns(t *testing.T) {
 			t.Errorf("polix %s: %d %q", strings.Join(args, " "), code, stderr)
 		}
 	}
+}
+
+// repositoryHasDetail tells whether the title of the section Repository carries a detail, whatever the separator of
+// the paths of the system.
+func repositoryHasDetail(stdout string) bool {
+	for line := range strings.SplitSeq(stdout, "\n") {
+		if rest, ok := strings.CutPrefix(line, "Repository  "); ok {
+			return strings.TrimSpace(rest) != ""
+		}
+	}
+	return false
 }

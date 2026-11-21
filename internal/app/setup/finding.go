@@ -74,15 +74,53 @@ const (
 	LevelFail = "fail"
 )
 
-// Valid reports why f is not a finding: a known level, an area and a message.
+// Sections of the report of polix doctor, in the order it prints them.
+const (
+	SectionMachine    = "Machine"
+	SectionRepository = "Repository"
+	SectionAgents     = "Agents"
+)
+
+// sectionOf is, by known area of a finding, the section of the report that holds it. The area git is the exception
+// that Section decides by level.
+var sectionOf = map[string]string{
+	"binary":       SectionMachine,
+	"version":      SectionMachine,
+	"path":         SectionMachine,
+	"git":          SectionRepository,
+	"repo":         SectionRepository,
+	"workflow":     SectionRepository,
+	"requirements": SectionRepository,
+	"rules":        SectionRepository,
+	"githooks":     SectionRepository,
+	"state":        SectionRepository,
+	"hooks":        SectionAgents,
+	"memory":       SectionAgents,
+	"plugin":       SectionAgents,
+	"codex":        SectionAgents,
+}
+
+// Valid reports why f is not a finding: a known level, a known area and a message.
 func (f Finding) Valid() error {
+	_, known := sectionOf[f.Area]
 	switch {
 	case !slices.Contains([]string{LevelOK, LevelWarn, LevelFail}, f.Level):
 		return fmt.Errorf("unknown level %q of a finding", f.Level)
 	case f.Area == "" || f.Message == "":
 		return errors.New("a finding needs an area and a message")
+	case !known:
+		return fmt.Errorf("unknown area %q of a finding", f.Area)
 	}
 	return nil
+}
+
+// Section returns the section of the report that holds the finding, from its area: git goes to Machine when it
+// fails, since git is then missing from the PATH. It is empty for an unknown area.
+func (f Finding) Section() string {
+	if f.Area == "git" && f.Failure() {
+		return SectionMachine
+	}
+	return sectionOf[f.Area]
 }
 
 // Valid reports why i is not an inspection: its setup must be valid, and a git that lists the hooks of its
