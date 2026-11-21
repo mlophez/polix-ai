@@ -153,18 +153,17 @@ protected file git does not ignore back as it was before the command and tells t
 [Files a command changed](polix.md#files-a-command-changed)).
 
 To keep only the subagents away and let the main session change a path, use regular entries of `on:`: `path` for
-the edits and `writes` for the commands. The authors of the plugin of polix keep their way in:
+the edits and `writes` for the commands. The skills `workflow` and `add-rule` run in the main session, so they keep
+their way in:
 
 ```yaml
 on:
   pre_edit:
     - when: { path: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
-      unless: { actor: ["polix:workflow-author", "polix:rules-author"] }
       action:
         block: "{path} is the workflow of the repository: only the main session changes it"
   pre_command:
     - when: { writes: ["polix.yaml", "ai/rules/**"], not: { actor: session } }
-      unless: { actor: ["polix:workflow-author", "polix:rules-author"] }
       action:
         block: "Only the main session writes the workflow: {command}"
 ```

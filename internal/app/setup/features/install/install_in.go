@@ -109,9 +109,8 @@ func Command() *cobra.Command {
 			"support is not implemented in this release and the setup is untested.\n\n" +
 			"--skills: for the user, the plugin polix, with skills (/polix:workflow, /polix:add-rule, /polix:risk,\n" +
 			"/polix:doctor, /polix:init, /polix:task, /polix:grill-me, /polix:plan, /polix:build, /polix:review,\n" +
-			"/polix:audit, /polix:writing-skills, /polix:writing-agents) and agents\n" +
-			"(polix:workflow-author, polix:rules-author, polix:builder, polix:verifier, polix:reviewer,\n" +
-			"polix:critic, polix:rules-reviewer, polix:auditor) that help in any repository. It is written to the\n" +
+			"/polix:audit, /polix:writing-skills, /polix:writing-agents) and agents (polix:builder, polix:verifier,\n" +
+			"polix:reviewer, polix:critic, polix:auditor) that help in any repository. It is written to the\n" +
 			"local marketplace ~/.polix/marketplace/ and registered with each agent:\n" +
 			"  Claude Code  claude plugin marketplace add, claude plugin install polix@polix --scope user\n" +
 			"  Codex        codex plugin marketplace add, and enabled in ~/.codex/config.toml (not implemented)\n\n" +

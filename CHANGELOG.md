@@ -65,6 +65,9 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   `Instances` of `polix:reviewer` and the one of `/polix:audit` the `Impact` of `polix:auditor`; `/polix:build`
   never edits the folder of tasks when it updates the docs; `/polix:workflow` no longer names the removed
   `polix:rules-reviewer`.
+- The help of `polix install`, `examples/AGENTS-polix.md` and the recipe of `docs/use-cases.md` that keeps the
+  subagents away from the workflow no longer name the removed agents `polix:workflow-author`, `polix:rules-author`
+  and `polix:rules-reviewer`; the fragment names `polix:verifier`, which it lacked.
 
 ### Removed
 
