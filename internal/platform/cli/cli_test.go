@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -104,5 +106,26 @@ func TestRunErrorNamesProgram(t *testing.T) {
 	code := Run(r, []string{"run", "--nope"}, strings.NewReader(""), &out, &errOut)
 	if code != 1 || !strings.HasPrefix(errOut.String(), "tool: ") || !strings.Contains(errOut.String(), "Run tool --help") {
 		t.Fatalf("code %d, stderr %q", code, errOut.String())
+	}
+}
+
+func TestNewUIWidthIsZeroWithoutTerminal(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "1")
+	t.Setenv("NO_COLOR", "")
+	f, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	for name, out := range map[string]io.Writer{"buffer": &bytes.Buffer{}, "file": f, "pipe": w} {
+		if got := NewUI(out).width; got != 0 {
+			t.Errorf("%s: width = %d, want 0", name, got)
+		}
 	}
 }

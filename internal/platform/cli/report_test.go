@@ -110,6 +110,79 @@ func TestReportWithoutAreas(t *testing.T) {
 	}
 }
 
+// wrapRow is the row of CUJ-03: one long message in one line.
+func wrapRow(fix string) Report {
+	msg := strings.Join(strings.Fields(`polix@polix 0.0.0-dev: skills
+		/polix:add-rule /polix:audit /polix:build, agents polix:auditor polix:builder`), " ")
+	return Report{Sections: []Section{{Title: "Agents", Rows: []Row{
+		{Level: LevelOK, Area: "plugin", Message: msg, Fix: fix}}}}}
+}
+
+// AC-03: a rich ui of a known width wraps the message at word boundaries under its column, and the fix under its text.
+func TestReportWrap(t *testing.T) {
+	var b bytes.Buffer
+	(&UI{w: &b, rich: true, width: 50}).Report(wrapRow(""))
+	want := "  ✓  plugin  polix@polix 0.0.0-dev: skills\n" +
+		"             /polix:add-rule /polix:audit\n" +
+		"             /polix:build, agents polix:auditor\n" +
+		"             polix:builder\n"
+	got := escape.ReplaceAllString(b.String(), "")
+	if !strings.Contains(got, want) {
+		t.Fatalf("got %q\nwant it to contain %q", got, want)
+	}
+	if strings.Join(strings.Fields(got), " ") == "" || !strings.Contains(strings.Join(strings.Fields(got), " "), strings.Join(strings.Fields(want), " ")) {
+		t.Fatal("a word was lost")
+	}
+
+	b.Reset()
+	(&UI{w: &b, rich: true, width: 44}).Report(wrapRow("run polix install --skills and then polix doctor again"))
+	got = escape.ReplaceAllString(b.String(), "")
+	wantFix := "             → run polix install --skills\n" +
+		"               and then polix doctor again\n"
+	if !strings.Contains(got, wantFix) {
+		t.Fatalf("got %q\nwant it to contain %q", got, wantFix)
+	}
+	if !strings.Contains(b.String(), styleCode.Render("→ run polix install --skills")) ||
+		!strings.Contains(b.String(), styleCode.Render("  and then polix doctor again")) {
+		t.Fatalf("each line of the fix carries its style: %q", b.String())
+	}
+	for line := range strings.SplitSeq(got, "\n") {
+		if n := len([]rune(line)); n > 44 {
+			t.Errorf("line of %d columns: %q", n, line)
+		}
+	}
+
+	b.Reset()
+	(&UI{w: &b, rich: true, width: 20}).Report(Report{Sections: []Section{{Title: "S", Rows: []Row{
+		{Level: LevelOK, Message: "abcdefghijklmnopqrstuvwxyz"}}}}})
+	if got := escape.ReplaceAllString(b.String(), ""); !strings.Contains(got, "  ✓  abcdefghijklmno\n     pqrstuvwxyz\n") {
+		t.Fatalf("a word longer than the room breaks at it: %q", got)
+	}
+}
+
+// AC-03: plain output, an unknown width and a room of zero never wrap.
+func TestReportWrapPlain(t *testing.T) {
+	msg := wrapRow("").Sections[0].Rows[0].Message
+	for name, c := range map[string]struct {
+		rich  bool
+		width int
+	}{
+		"plain":      {false, 50},
+		"no width":   {true, 0},
+		"no room":    {true, 8},
+		"exact zero": {true, 13},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var b bytes.Buffer
+			(&UI{w: &b, rich: c.rich, width: c.width}).Report(wrapRow(""))
+			got := escape.ReplaceAllString(b.String(), "")
+			if !strings.Contains(got, msg+"\n") {
+				t.Fatalf("the message stays on one line: %q", got)
+			}
+		})
+	}
+}
+
 // NewUI is rich from a 16-colour profile up and plain below it: CLICOLOR_FORCE gives colors to a writer that is no
 // terminal, NO_COLOR takes them away.
 func TestNewUIProfile(t *testing.T) {
@@ -144,6 +217,42 @@ func TestNewUIProfile(t *testing.T) {
 			out := b.String()
 			if !strings.Contains(out, c.want) || strings.Contains(out, c.avoid) {
 				t.Fatalf("output %q: want %q, not %q", out, c.want, c.avoid)
+			}
+		})
+	}
+}
+
+func TestWordWrapKeepsSpacing(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		room int
+		want []string
+	}{
+		{"fits keeps spacing", "a  b\tc ", 20, []string{"a  b\tc "}},
+		{"a tab makes a line that looks like it fits pass the room", "ab\tcd ef", 12, []string{"ab\tcd", "ef"}},
+		{"keeps line breaks", "yaml:\n  line 1: x", 40, []string{"yaml:", "  line 1: x"}},
+		{"cuts at single spaces", "aaa bbb ccc", 7, []string{"aaa bbb", "ccc"}},
+		{"keeps double spaces when cutting", "run  x  y zzzzzz", 9, []string{"run  x  y", "zzzzzz"}},
+		{"cut at a double space", "aaaa  bb", 4, []string{"aaaa", "bb"}},
+		{"cut at a double space before a word that fits the line", "aaaa  bbbb", 4, []string{"aaaa", "bbbb"}},
+		{"cut at a double space before a long word", "aaaa  bbbbbbbbbb", 4, []string{"aaaa", "bbbb", "bbbb", "bb"}},
+		{"cut at a trailing space", "aaaa ", 4, []string{"aaaa"}},
+		{"breaks long word", "abcdefgh", 3, []string{"abc", "def", "gh"}},
+		{"leading space before a long word", " abcdefgh", 4, []string{" abc", "defg", "h"}},
+		{"leading spaces before a word that does not fit", "  abcd", 4, []string{"  ab", "cd"}},
+		{"leading spaces wider than the room", "      abcdefgh", 4, []string{"abcd", "efgh"}},
+		{"a tab-only word after a cut", "aaa \t bbb", 4, []string{"aaa", "bbb"}},
+		{"a tab-led remainder after a cut", "aaaaaaa \tb", 9, []string{"aaaaaaa", "b"}},
+		{"a tab-led word that does not fit the line", "aa \tb", 4, []string{"aa", "b"}},
+		{"invalid byte at the end", "abcd\xe9", 3, []string{"abc", "d\xe9"}},
+		{"invalid byte in the middle", "ab\xe9cdefg", 3, []string{"ab\xe9c", "def", "g"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := wordWrap(tt.text, tt.room)
+			if strings.Join(got, "|") != strings.Join(tt.want, "|") {
+				t.Errorf("wordWrap(%q, %d) = %q, want %q", tt.text, tt.room, got, tt.want)
 			}
 		})
 	}

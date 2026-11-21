@@ -14,6 +14,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/fang"
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
 	"github.com/mlophez/polix-ai/internal/platform/build"
@@ -24,6 +25,8 @@ import (
 type UI struct {
 	w    io.Writer
 	rich bool // whether the output has colors: symbols and styles instead of words
+	// width is the columns of the terminal the output goes to; zero when unknown or not a terminal, and then nothing wraps
+	width int
 }
 
 // ExitCodeError is the error of a command that already told the user why it failed: it only carries the exit code,
@@ -47,10 +50,24 @@ var (
 )
 
 // NewUI returns the ui that writes to w, with the colors the terminal and the environment allow: the output is rich
-// when colorprofile detects colors for w, plain otherwise.
+// when colorprofile detects colors for w, plain otherwise. When w is a terminal it reads its width, so rich output
+// wraps long text; a width that cannot be read is zero, which never wraps.
 func NewUI(w io.Writer) *UI {
 	cw := colorprofile.NewWriter(w, os.Environ())
-	return &UI{w: cw, rich: cw.Profile >= colorprofile.ANSI}
+	return &UI{w: cw, rich: cw.Profile >= colorprofile.ANSI, width: terminalWidth(w)}
+}
+
+// terminalWidth is the width in columns of w when it is a terminal, and zero otherwise.
+func terminalWidth(w io.Writer) int {
+	f, ok := w.(interface{ Fd() uintptr })
+	if !ok || !term.IsTerminal(f.Fd()) {
+		return 0
+	}
+	width, _, err := term.GetSize(f.Fd())
+	if err != nil || width < 0 {
+		return 0
+	}
+	return width
 }
 
 // Line prints a plain line.
