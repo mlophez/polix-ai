@@ -202,7 +202,11 @@ The rules it follows, as before this use case:
    and `tasks` below `path`, each with its purpose.
 5. The entries of the event run in order: one runs when every condition of `when` holds and, with `unless`, not every
    condition of `unless` holds, and carries out the verb of its action (`workflow.Action.Verb`). The condition `path`
-   ignores case where file names ignore it (`anyPathFold`), as the protection of the state and `writes` do. `block`
+   ignores case where file names ignore it (`anyPathFold`), as the protection of the state and `writes` do. The
+   condition `skill` (a name or a list, `skillMatches`) holds when one name equals the name of the skill of the event
+   (`agent.Event.Skill`) as it came, plugin prefix included, or that name without the prefix, the part after its last
+   colon (`spec` for `polix:spec`); a blank name never holds, nor does an event without a skill. It only makes sense
+   on `skill`, and costs nothing, ranked with `actor` and `path` (`cost`). `block`
    blocks with its message; `run` runs a command or the checks of the rules (`changed`, or a path), and a failure, its
    `message`, a blank line and the output, blocks the event or, on `start`, `subagent_start`, `post_edit`,
    `post_command` and `post_commit` (`workflow.Informed`), reaches the AI as context and is logged as `inform`; `inject`
