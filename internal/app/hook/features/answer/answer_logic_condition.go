@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/diff"
@@ -59,12 +60,14 @@ func (r *pass) condition(k string, all workflow.Cond, scope []string) bool {
 	return r.condAgents(k, all, scope)
 }
 
-// condAgents evaluates the condition k of all that is about the agents: the actor, the subagents that finished and
-// those still running; any other k does not hold.
+// condAgents evaluates the condition k of all that is about the agents: the actor, the skill that starts, the
+// subagents that finished and those still running; any other k does not hold.
 func (r *pass) condAgents(k string, all workflow.Cond, scope []string) bool {
 	switch k {
 	case "actor":
 		return slices.Contains(r.list(all, k), r.ev.Event.Actor)
+	case "skill":
+		return skillMatches(r.list(all, k), r.ev.Event.Skill)
 	case "finished":
 		return r.condFinished(all, scope)
 	case "finished_since_commit":
@@ -73,6 +76,21 @@ func (r *pass) condAgents(k string, all workflow.Cond, scope []string) bool {
 		want, _ := all[k].(bool)
 		running := r.agentsRunning()
 		return !r.waiting() && running == want
+	}
+	return false
+}
+
+// skillMatches reports whether one of names equals the name of the skill or its bare name, the part after its last
+// colon (spec for polix:spec); a blank name, or a skill without a name, never matches.
+func skillMatches(names []string, skill string) bool {
+	if strings.TrimSpace(skill) == "" {
+		return false
+	}
+	bare := skill[strings.LastIndex(skill, ":")+1:]
+	for _, n := range names {
+		if strings.TrimSpace(n) != "" && (n == skill || n == bare) {
+			return true
+		}
 	}
 	return false
 }
@@ -266,7 +284,7 @@ func keys(c workflow.Cond) []string {
 // condition that fails spares the content hash.
 func cost(k string) int {
 	switch k {
-	case "path", "actor", "command", "exit", "contains":
+	case "path", "actor", "skill", "command", "exit", "contains":
 		return 0
 	case "writes":
 		return 1

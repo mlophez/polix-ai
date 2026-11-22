@@ -4,6 +4,7 @@ package workflow
 const (
 	Start         = "start"
 	Prompt        = "prompt"
+	Skill         = "skill"          // a skill starts, typed by the user or invoked by the agent through the tool Skill
 	SubagentStart = "subagent_start" // a subagent starts, with a new context; the actor is its type
 	PreEdit       = "pre_edit"
 	PostEdit      = "post_edit"
@@ -24,28 +25,30 @@ const (
 )
 
 // Events lists every neutral event in lifecycle order.
-var Events = []string{Start, Prompt, SubagentStart, PreEdit, PostEdit, PreCommand, PostCommand, PreCommit,
+var Events = []string{Start, Prompt, Skill, SubagentStart, PreEdit, PostEdit, PreCommand, PostCommand, PreCommit,
 	PostCommit, SubagentStop, Stop}
 
 // Actions are the verbs an action can hold, exactly one per entry.
 var Actions = []string{VerbRun, VerbInject, VerbBlock, VerbNotify}
 
 // Conditions a `when` or `unless` can use.
-var Conditions = []string{"actor", "finished", "finished_since_commit", "agents_are_running", "branch", "var", "path", "changed", "file",
-	"contains", "command", "writes", "exit", "not", "any", "changed_lines", "changed_files", "risk_score"}
+var Conditions = []string{"actor", "skill", "finished", "finished_since_commit", "agents_are_running", "branch", "var",
+	"path", "changed", "file", "contains", "command", "writes", "exit", "not", "any", "changed_lines", "changed_files", "risk_score"}
 
 // Measures are the conditions that measure the uncommitted diff, over the files of the nearest `changed`.
 var Measures = []string{"changed_lines", "changed_files", "risk_score"}
 
 // Builtins are the placeholders every string may use; a variable cannot take their names. commit and subject, the
-// short hash and the subject of the commit just made, expand only on post_commit, and to an empty text elsewhere.
+// short hash and the subject of the commit just made, expand only on post_commit, and skill, the name of the skill
+// that starts, only on skill; each to an empty text elsewhere.
 var Builtins = []string{"path", "command", "branch", "changed_lines", "changed_files", "risk_score", "commit",
-	"subject"}
+	"subject", "skill"}
 
 // AgentOnlyBuiltins are the placeholders of Builtins that only an event of an agent can give, never a hook of git:
-// path and command, of the edit or the command line of an agent, and commit and subject, of a commit already made
-// (post_commit). The others, the branch and the measures of the diff, git can compute.
-var AgentOnlyBuiltins = []string{"path", "command", "commit", "subject"}
+// path and command, of the edit or the command line of an agent, commit and subject, of a commit already made
+// (post_commit), and skill, of a skill that starts. The others, the branch and the measures of the diff, git can
+// compute.
+var AgentOnlyBuiltins = []string{"path", "command", "commit", "subject", "skill"}
 
 // conditionEvents limits the conditions that only make sense on some events; the rest hold on any event.
 var conditionEvents = map[string][]string{
@@ -53,10 +56,12 @@ var conditionEvents = map[string][]string{
 	"command": {PreCommand, PostCommand, PreCommit, PostCommit},
 	"writes":  {PreCommand, PostCommand, PreCommit, PostCommit},
 	"exit":    {PostCommand},
+	"skill":   {Skill},
 }
 
 // Informed are the events that already happened when polix hears of them: a block cannot stop them, and a failing
-// run only reaches the AI as context. Neither agent can stop the start of a subagent.
+// run only reaches the AI as context. Neither agent can stop the start of a subagent; the start of a skill comes
+// before it runs, so a block refuses it.
 var Informed = []string{Start, SubagentStart, PostEdit, PostCommand, PostCommit}
 
 // EventVerbs are the verbs each event of Events allows, in the order of Actions: what both agents support on it, so
@@ -66,6 +71,7 @@ var Informed = []string{Start, SubagentStart, PostEdit, PostCommand, PostCommit}
 var EventVerbs = map[string][]string{
 	Start:         {VerbRun, VerbInject, VerbNotify},
 	Prompt:        {VerbRun, VerbInject, VerbBlock, VerbNotify},
+	Skill:         {VerbRun, VerbInject, VerbBlock, VerbNotify},
 	SubagentStart: {VerbRun, VerbInject, VerbNotify},
 	PreEdit:       {VerbRun, VerbInject, VerbBlock, VerbNotify},
 	PostEdit:      {VerbRun, VerbInject, VerbNotify},

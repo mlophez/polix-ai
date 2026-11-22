@@ -15,18 +15,19 @@ const (
 	keyRequirements = actionRequirements + ": "
 )
 
-// session answers start, prompt and subagent_start: the start of a session (or the compaction of its context), a
-// prompt of the user and the start of a subagent. They come with no protection, and an unusable workflow only warns.
-// Without polix.yaml nothing happens.
+// session answers start, prompt, skill and subagent_start: the start of a session (or the compaction of its
+// context), a prompt of the user, the start of a skill and the start of a subagent. They come with no protection, and
+// an unusable workflow only warns. Without polix.yaml nothing happens.
 //
 // On start the start context of the workflow, always injected, comes before the entries, so the contexts of the
-// repository have the last word. On start and subagent_start, which begin a new context, every inject injects each time
-// it applies; with the answer known, they write that the session, keyed by the source of the start, or the subagent of
-// the type of the actor, with its id, started when the workflow observes it (workflow.Workflow.ObservesStart), so its
+// repository have the last word. On start and subagent_start, which begin a new context, and on skill, whose
+// instructions come each time it starts, every inject injects each time it applies. On start and subagent_start,
+// with the answer known, they write that the session, keyed by the source of the start, or the subagent of the type
+// of the actor, with its id, started when the workflow observes it (workflow.Workflow.ObservesStart), so its
 // once-only injects are due again (see due) and the subagents still running are known (see agentsRunning).
-// subagent_start gets neither the start context nor the requirements, which are told to the main session. On prompt a
-// refusal rejects the prompt, so its contexts never reach the AI: its once-only injects are written as injected only
-// when the answer does not refuse. On prompt, before the entries, the programs of requirements the PATH does not run
+// subagent_start and skill get neither the start context nor the requirements, which are told to the main session on
+// a prompt, and a block on skill refuses the skill. On prompt a refusal rejects the prompt, so its contexts never
+// reach the AI: its once-only injects are written as injected only when the answer does not refuse. On prompt, before the entries, the programs of requirements the PATH does not run
 // are told to the AI once (see requirements).
 func (r *pass) session() agent.Answer {
 	if r.ev.Invalid != nil {
@@ -37,6 +38,8 @@ func (r *pass) session() agent.Answer {
 	}
 	name := r.ev.Event.Name
 	start := name == workflow.Start || name == workflow.SubagentStart
+	// A skill brings its instructions each time it starts, so its injects act every time, as on a start.
+	always := start || name == workflow.Skill
 	var ans agent.Answer
 	switch name {
 	case workflow.Start:
@@ -47,7 +50,7 @@ func (r *pass) session() agent.Answer {
 			return ans
 		}
 	}
-	r.always = start
+	r.always = always
 	ans = r.entries(ans)
 	if r.waiting() {
 		return ans

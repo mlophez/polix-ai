@@ -11,9 +11,9 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 )
 
-// expand replaces {var}, {path}, {command}, {branch}, {commit}, {subject} and the measures in s. The diff is read
-// only when s holds a measure placeholder, and measured over the globs of the `changed` of the `when` of the entry,
-// else whole. {commit} and {subject} are the short hash and the subject of the commit just made on post_commit, read
+// expand replaces {var}, {path}, {command}, {branch}, {commit}, {subject}, {skill} and the measures in s. The diff is
+// read only when s holds a measure placeholder, and measured over the globs of the `changed` of the `when` of the
+// entry, else whole. {commit} and {subject} are the short hash and the subject of the commit just made on post_commit, read
 // only when s holds one of them, and an empty text on any other event or when the commit cannot be read.
 func (r *pass) expand(s string) string {
 	if !strings.Contains(s, "{") {
@@ -74,16 +74,17 @@ func branchVars(wf workflow.Workflow, branch string) map[string]string {
 	return vars
 }
 
-// expandPlaceholders replaces {path}, {command}, {branch}, {commit}, {subject}, the variables and the measures in s.
-// The measures are the values of {changed_lines}, {changed_files} and {risk_score} (see measureValues); nil leaves
-// them as they are. {commit} and {subject} take the hash and the subject of commit, empty outside post_commit.
+// expandPlaceholders replaces {path}, {command}, {branch}, {commit}, {subject}, {skill}, the variables and the
+// measures in s. The measures are the values of {changed_lines}, {changed_files} and {risk_score} (see
+// measureValues); nil leaves them as they are. {commit} and {subject} take the hash and the subject of commit, empty
+// outside post_commit, and {skill} the name of the skill of the event, prefix included, empty outside skill.
 func expandPlaceholders(s string, ev agent.Event, branch string, vars, measures map[string]string,
 	commit hook.Commit) string {
 	if !strings.Contains(s, "{") {
 		return s
 	}
 	repl := []string{"{path}", ev.Path, "{command}", ev.Command, "{branch}", branch, "{commit}", commit.Hash,
-		"{subject}", commit.Subject}
+		"{subject}", commit.Subject, "{skill}", ev.Skill}
 	for k, v := range measures {
 		repl = append(repl, "{"+k+"}", v)
 	}

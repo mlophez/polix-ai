@@ -110,6 +110,14 @@ func (c Cond) countsAgents() bool {
 	return false
 }
 
+// namedConditions are the conditions of strings whose every item names something, with what it names: an empty list
+// or a blank item is a problem.
+var namedConditions = map[string]string{
+	"finished":              "the type of a subagent",
+	"finished_since_commit": "the type of a subagent",
+	"skill":                 "the name of a skill",
+}
+
 // cond reports the problems of the conditions c on event ev, in the order of their names; an empty ev skips the
 // events they hold on. inAny tells that c is the map of an `any`, where contains is rejected.
 func (v *validator) cond(ev string, c Cond, line int, inAny bool) {
@@ -217,21 +225,22 @@ func (v *validator) condContains(c Cond, line int, inAny bool) {
 }
 
 // condStrings reports the problems of the condition k of c whose value is a string or a list of strings: another
-// value, a placeholder that is not known, an empty finished or finished_since_commit (an empty list or a blank type)
-// or a var not defined in vars.
+// value, a placeholder that is not known, an empty finished or finished_since_commit (an empty list or a blank type),
+// an empty skill (an empty list or a blank name) or a var not defined in vars.
 func (v *validator) condStrings(c Cond, k string, line int) {
 	list, err := c.Strings(k)
 	if err != nil {
 		v.add(line, "%s: %v", k, err)
 		return
 	}
-	if (k == "finished" || k == "finished_since_commit") && len(list) == 0 {
-		v.add(line, "%s needs the type of a subagent", k)
+	need, named := namedConditions[k]
+	if named && len(list) == 0 {
+		v.add(line, "%s needs %s", k, need)
 	}
 	for _, s := range list {
 		v.placeholders(line, s)
-		if (k == "finished" || k == "finished_since_commit") && strings.TrimSpace(s) == "" {
-			v.add(line, "%s needs the type of a subagent", k)
+		if named && strings.TrimSpace(s) == "" {
+			v.add(line, "%s needs %s", k, need)
 		}
 		if k == "var" && v.w != nil {
 			if _, ok := v.w.Vars[s]; !ok {

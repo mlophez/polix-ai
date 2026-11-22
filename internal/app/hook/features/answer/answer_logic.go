@@ -109,14 +109,14 @@ func Decide(ev hook.Evaluation) Output {
 	return Output{Answer: ans, Facts: ev.Facts.Carry(r.epoch, r.state).Answered(ans, r.pending), Follow: r.follow}
 }
 
-// route returns the family of the event name, the method of pass that answers it: session for start, prompt and
-// subagent_start (answer_logic_session.go), edit for pre_edit and post_edit (answer_logic_edit.go), command for
+// route returns the family of the event name, the method of pass that answers it: session for start, prompt, skill
+// and subagent_start (answer_logic_session.go), edit for pre_edit and post_edit (answer_logic_edit.go), command for
 // pre_command, post_command, pre_commit and post_commit (answer_logic_command.go), and stop for stop and subagent_stop
 // (answer_logic_stop.go); nil for an event polix does not evaluate. Each family stops early when a step is missing; its
 // answer is then meaningless.
 func route(name string) func(*pass) agent.Answer {
 	switch name {
-	case workflow.Start, workflow.Prompt, workflow.SubagentStart:
+	case workflow.Start, workflow.Prompt, workflow.Skill, workflow.SubagentStart:
 		return (*pass).session
 	case workflow.PreEdit, workflow.PostEdit:
 		return (*pass).edit

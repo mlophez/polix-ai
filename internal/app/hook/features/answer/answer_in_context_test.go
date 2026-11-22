@@ -26,11 +26,13 @@ func systemMessage(t *testing.T, stdout string) string {
 	return out.SystemMessage
 }
 
-// nativeEvents are the native events of each agent that polix reads as each neutral event (see parse).
+// nativeEvents are the native events of each agent that polix reads as each neutral event (see parse); an event an
+// agent never gives, as skill in Codex, is in agentlessEvents instead.
 var nativeEvents = map[string]map[string][]string{
 	agent.Claude: {
 		workflow.Start:         {"SessionStart"},
 		workflow.Prompt:        {"UserPromptSubmit"},
+		workflow.Skill:         {"PreToolUse"},
 		workflow.SubagentStart: {"SubagentStart"},
 		workflow.PreEdit:       {"PreToolUse"},
 		workflow.PostEdit:      {"PostToolUse"},
@@ -55,6 +57,9 @@ var nativeEvents = map[string]map[string][]string{
 		workflow.Stop:          {"Stop"},
 	},
 }
+
+// agentlessEvents are the neutral events each agent never gives: Codex has no tool Skill.
+var agentlessEvents = map[string][]string{agent.Codex: {workflow.Skill}}
 
 // eventAnswers returns the answers the verbs of workflow.EventVerbs allow on the event name, by kind: contexts from
 // an inject or a failing run on an event that already happened, a block from a block or a failing run on any other,
@@ -89,6 +94,9 @@ func TestRenderFieldsOfEachAgent(t *testing.T) {
 		ce := agents[name]
 		for _, event := range workflow.Events {
 			natives := nativeEvents[name][event]
+			if slices.Contains(agentlessEvents[name], event) {
+				continue
+			}
 			if len(natives) == 0 {
 				t.Fatalf("%s: no native event for %s", name, event)
 			}
@@ -203,7 +211,7 @@ func TestNativeEventsParse(t *testing.T) {
 }
 
 // parsedEvent returns the neutral event the format of the agent name reads from a call of native that stands for
-// event: an edit, a command or a commit for the events of tools.
+// event: an edit, a command, a commit or a skill for the events of tools.
 func parsedEvent(t *testing.T, name, native, event string) string {
 	t.Helper()
 	in := map[string]any{"hook_event_name": native, "session_id": "s1", "cwd": "/repo", "agent_type": "polix:reviewer"}
@@ -217,6 +225,9 @@ func parsedEvent(t *testing.T, name, native, event string) string {
 	case workflow.PreCommit, workflow.PostCommit:
 		in["tool_name"] = "Bash"
 		in["tool_input"] = map[string]any{"command": "git commit -m x"}
+	case workflow.Skill:
+		in["tool_name"] = "Skill"
+		in["tool_input"] = map[string]any{"skill": "polix:spec"}
 	}
 	data, err := json.Marshal(in)
 	if err != nil {

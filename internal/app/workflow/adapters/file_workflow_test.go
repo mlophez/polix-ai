@@ -93,8 +93,8 @@ func TestValidRejects(t *testing.T) {
 		{"placeholder in a condition", "version: 1\non:\n  pre_edit:\n    - unless: { file: \"plans/{kye}.md\" }" + block, "unknown placeholder {kye}"},
 		{"reserved var name", "version: 1\nvars:\n  path: { branch: x }\n", "var path: the name is a built-in placeholder"},
 		{"reserved measure var name", "version: 1\nvars:\n  risk_score: { branch: x }\n", "var risk_score: the name is a built-in placeholder"},
-		{"reserved commit var name", "version: 1\nvars:\n  commit: { branch: \"^(.*)$\" }\n", "var commit: the name is a built-in placeholder (path, command, branch, changed_lines, changed_files, risk_score, commit, subject)"},
-		{"reserved subject var name", "version: 1\nvars:\n  subject: { branch: \"^(.*)$\" }\n", "var subject: the name is a built-in placeholder (path, command, branch, changed_lines, changed_files, risk_score, commit, subject)"},
+		{"reserved commit var name", "version: 1\nvars:\n  commit: { branch: \"^(.*)$\" }\n", "var commit: the name is a built-in placeholder (path, command, branch, changed_lines, changed_files, risk_score, commit, subject, skill)"},
+		{"reserved subject var name", "version: 1\nvars:\n  subject: { branch: \"^(.*)$\" }\n", "var subject: the name is a built-in placeholder (path, command, branch, changed_lines, changed_files, risk_score, commit, subject, skill)"},
 		{"empty any", "version: 1\non:\n  pre_commit:\n    - when: { any: {} }" + block, "any needs at least one condition"},
 		{"any not a map", "version: 1\non:\n  pre_commit:\n    - when: { any: [a] }" + block, "any needs a map of conditions"},
 		{"empty weight glob", "version: 1\nrisk:\n  weights:\n    \"\": 1\n", "risk.weights: weight: empty glob"},
@@ -154,6 +154,54 @@ func TestFinishedSinceCommitProblems(t *testing.T) {
 	for _, v := range []string{"polix:builder", "[polix:builder, polix:verifier]"} {
 		if got := validate(t, pre+"unless: { finished_since_commit: "+v+" }"+block); got != "" {
 			t.Fatalf("%s: unexpected problems:\n%s", v, got)
+		}
+	}
+}
+
+// CUJ-07 and AC-07: the condition skill holds only on the event skill, needs the name of a skill, and takes a text or
+// a list of texts; a variable cannot take the name of the placeholder {skill}.
+func TestValidRejectsSkill(t *testing.T) {
+	inject := "\n      action: { inject: x }\n"
+	on := func(event, when string) string {
+		return "version: 1\non:\n  " + event + ":\n    - when: " + when + inject
+	}
+	cases := []struct {
+		name, src, want string
+	}{
+		{"on pre_command", on("pre_command", "{ skill: spec }"),
+			"polix.yaml:4: skill never holds on pre_command (only on skill)"},
+		{"inside not on prompt", on("prompt", "{ not: { skill: spec } }"),
+			"polix.yaml:4: skill never holds on prompt (only on skill)"},
+		{"empty", on("skill", `{ skill: "" }`), "polix.yaml:4: skill needs the name of a skill"},
+		{"blank", on("skill", `{ skill: " " }`), "polix.yaml:4: skill needs the name of a skill"},
+		{"empty list", on("skill", "{ skill: [] }"), "polix.yaml:4: skill needs the name of a skill"},
+		{"blank in a list", on("skill", `{ skill: [spec, " "] }`), "polix.yaml:4: skill needs the name of a skill"},
+		{"a map", on("skill", "{ skill: { a: b } }"),
+			"polix.yaml:4: skill: expected a string or a list of strings"},
+		{"a variable named skill", "version: 1\nvars:\n  skill: { branch: \"^(.*)$\" }\n",
+			"var skill: the name is a built-in placeholder"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := validate(t, c.src); !strings.Contains(got, c.want) {
+				t.Fatalf("want a problem with %q, got:\n%s", c.want, got)
+			}
+		})
+	}
+}
+
+// CUJ-07 and AC-07: an entry of skill with a list of names is valid, with each verb as its action and {skill} in its
+// strings.
+func TestValidAcceptsSkill(t *testing.T) {
+	for _, action := range []string{
+		`{ run: "echo {skill}" }`,
+		`{ inject: "Skill {skill} started." }`,
+		`{ block: "Run {skill} on a plan branch." }`,
+		`{ notify: "Skill {skill} started." }`,
+	} {
+		src := "version: 1\non:\n  skill:\n    - when: { skill: [polix:spec, spec] }\n      action: " + action + "\n"
+		if got := validate(t, src); got != "" {
+			t.Errorf("%s: unexpected problems:\n%s", action, got)
 		}
 	}
 }

@@ -162,6 +162,44 @@ func TestClaudeBackgroundTasks(t *testing.T) {
 	}
 }
 
+// AC-01: a PreToolUse of the tool Skill gives one event skill with the name of tool_input.skill, its prefix included,
+// and the actor of the call; a name that is missing, empty, blank or not a text, and a PostToolUse or a
+// PostToolUseFailure of the tool Skill, give none.
+func TestParseClaudeSkill(t *testing.T) {
+	cases := []struct {
+		input, actor string
+	}{
+		{`{"hook_event_name":"PreToolUse","session_id":"s1","tool_name":"Skill",` +
+			`"tool_input":{"skill":"polix:spec","args":"add a login"}}`, agent.ActorSession},
+		{`{"hook_event_name":"PreToolUse","session_id":"s1","agent_id":"a1","agent_type":"polix:builder",` +
+			`"tool_name":"Skill","tool_input":{"skill":"polix:spec"}}`, "polix:builder"},
+	}
+	for _, c := range cases {
+		native, evs, err := claude{}.parse([]byte(c.input))
+		if err != nil || native != "PreToolUse" || len(evs) != 1 {
+			t.Fatalf("%s: %q %+v %v", c.input, native, evs, err)
+		}
+		ev := evs[0]
+		if ev.Name != workflow.Skill || ev.Skill != "polix:spec" || ev.Actor != c.actor || ev.Session != "s1" ||
+			ev.Agent != agent.Claude || ev.Valid() != nil {
+			t.Errorf("%s: event %+v", c.input, ev)
+		}
+	}
+	for _, input := range []string{
+		`{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{}}`,
+		`{"hook_event_name":"PreToolUse","tool_name":"Skill"}`,
+		`{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":""}}`,
+		`{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"  "}}`,
+		`{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":7}}`,
+		`{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"polix:spec"}}`,
+		`{"hook_event_name":"PostToolUseFailure","tool_name":"Skill","tool_input":{"skill":"polix:spec"}}`,
+	} {
+		if _, evs, err := (claude{}).parse([]byte(input)); err != nil || len(evs) != 0 {
+			t.Errorf("%s: %+v %v", input, evs, err)
+		}
+	}
+}
+
 // AC4: the start of a subagent of Claude Code is one subagent_start of its type, and its contexts reach the subagent
 // as the additionalContext of SubagentStart.
 func TestClaudeSubagentStart(t *testing.T) {

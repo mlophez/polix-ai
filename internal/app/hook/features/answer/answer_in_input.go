@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
@@ -86,11 +87,11 @@ func (in hookInput) exitCode() int {
 }
 
 // event returns the event name of the agent ag for the input, with abs, the path of an edit, and with command and
-// code, a command line and its exit code, and with the id of the call of the tool when the format set it; the error
-// tells why it is not valid. The stop of a turn (stop) is always of the main session: a subagent stops with
-// subagent_stop. The id of the subagent goes only with a subagent as the actor, the source only with a start, and
-// the subagents in flight only with stop and subagent_stop.
-func (in hookInput) event(ag, name, abs, command string, code int) (agent.Event, error) {
+// code, a command line and its exit code, with skill, the name of the skill that starts, and with the id of the call
+// of the tool when the format set it; the error tells why it is not valid. The stop of a turn (stop) is always of the
+// main session: a subagent stops with subagent_stop. The id of the subagent goes only with a subagent as the actor,
+// the source only with a start, and the subagents in flight only with stop and subagent_stop.
+func (in hookInput) event(ag, name, abs, command, skill string, code int) (agent.Event, error) {
 	actor := in.actor()
 	if name == workflow.Stop {
 		actor = agent.ActorSession
@@ -108,8 +109,8 @@ func (in hookInput) event(ag, name, abs, command string, code int) (agent.Event,
 		inFlight, known = in.inFlight()
 	}
 	ev := agent.Event{Name: name, Agent: ag, Session: in.SessionID, Actor: actor, AgentID: id, Source: source,
-		AbsPath: abs, Command: command, ExitCode: code, Prompt: in.Prompt, Cwd: in.Cwd, ToolUse: in.ToolUse,
-		InFlight: inFlight, InFlightKnown: known}
+		AbsPath: abs, Command: command, ExitCode: code, Prompt: in.Prompt, Skill: skill, Cwd: in.Cwd,
+		ToolUse: in.ToolUse, InFlight: inFlight, InFlightKnown: known}
 	return ev, ev.Valid()
 }
 
@@ -137,7 +138,20 @@ func (in hookInput) inFlight() ([]agent.Subagent, bool) {
 
 // single returns the one event name of the agent ag for an input that is neither an edit nor a command.
 func (in hookInput) single(ag, name string) ([]agent.Event, error) {
-	ev, err := in.event(ag, name, "", "", 0)
+	ev, err := in.event(ag, name, "", "", "", 0)
+	if err != nil {
+		return nil, err
+	}
+	return []agent.Event{ev}, nil
+}
+
+// skill returns the event skill of the agent ag for the skill name, as the agent gave it; none for a blank name, which
+// names no skill.
+func (in hookInput) skill(ag, name string) ([]agent.Event, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, nil
+	}
+	ev, err := in.event(ag, workflow.Skill, "", "", name, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +166,7 @@ func (in hookInput) edits(ag, name string, paths []string) ([]agent.Event, error
 		if !filepath.IsAbs(p) && in.Cwd != "" {
 			p = filepath.Join(in.Cwd, p)
 		}
-		ev, err := in.event(ag, name, p, "", 0)
+		ev, err := in.event(ag, name, p, "", "", 0)
 		if err != nil {
 			return nil, err
 		}
@@ -182,7 +196,7 @@ func (in hookInput) commands(ag, name, command string, failed bool) ([]agent.Eve
 	}
 	var events []agent.Event
 	for _, n := range names {
-		ev, err := in.event(ag, n, "", command, code)
+		ev, err := in.event(ag, n, "", command, "", code)
 		if err != nil {
 			return nil, err
 		}
