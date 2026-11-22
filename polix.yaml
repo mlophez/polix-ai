@@ -73,6 +73,12 @@ on:
       action:
         inject: { file: ai/ctx/spec.md }
 
+    # The plans of this repository are numbered: tell spec the convention, since the plans are deleted after the merge.
+    - when: { skill: polix:spec }
+      action:
+        inject: |
+          - Name the plan file `<NNN>-<slug>.yaml` and its branch `<NNN>-<slug>`: `<NNN>` is the next number after the highest one in the branches and the history of git, with three digits; a date yyyy-mm-dd is not a number.
+
     - when: { skill: polix:build }
       action:
         block:
