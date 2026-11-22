@@ -3034,3 +3034,77 @@ func TestRunRecordsFailure(t *testing.T) {
 		t.Fatalf("observations: %+v", obs)
 	}
 }
+
+// AC-09: every outcome a run can take carries what answer.md says. A pass, a block, an inform on post_command and on
+// post_edit and a stop the loop guard lets through have the key of the run, its duration in whole milliseconds and,
+// but a pass, the reason; a skipped run ran nothing, so it has neither key nor duration.
+func TestRunRecordsEveryOutcome(t *testing.T) {
+	const failure = "just lint failed: exit status 1"
+	runErr := errors.New("exit status 1")
+	took := 700*time.Millisecond + 900*time.Microsecond
+	check := func(t *testing.T, a state.Action, line int, outcome string, reason bool) {
+		t.Helper()
+		if a.Action != workflow.VerbRun || a.Outcome != outcome || a.Line != line || a.Key != "just lint" ||
+			duration(a) != 700 || reason != strings.HasPrefix(a.Reason, failure) || (!reason && a.Reason != "") {
+			t.Fatalf("outcome %s: %+v", outcome, a)
+		}
+	}
+	t.Run("passed", func(t *testing.T) {
+		ev := eval(t, "version: 1\non:\n  stop:\n    - action: { run: just lint }\n", workflow.Stop)
+		_, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"}, took: took})
+		acts := actionsOf(steps)
+		if len(acts) != 1 {
+			t.Fatalf("actions: %+v", acts)
+		}
+		check(t, acts[0], 4, state.OutcomePassed, false)
+	})
+	t.Run("block", func(t *testing.T) {
+		base := eval(t, "version: 1\non:\n  pre_edit:\n    - action: { run: just lint }\n"+builtinOff, workflow.PreEdit)
+		ev := edit(t, base, workflow.PreEdit, "src/a.go", agent.ActorSession)
+		_, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"}, runErr: runErr, took: took})
+		acts := actionsOf(steps)
+		if len(acts) != 1 {
+			t.Fatalf("actions: %+v", acts)
+		}
+		check(t, acts[0], 4, "block", true)
+	})
+	for _, event := range []string{workflow.PostCommand, workflow.PostEdit} {
+		t.Run("inform "+event, func(t *testing.T) {
+			ev := eval(t, "version: 1\non:\n  "+event+":\n    - action: { run: just lint }\n"+builtinOff, event)
+			_, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"}, runErr: runErr, took: took})
+			acts := actionsOf(steps)
+			if len(acts) != 1 {
+				t.Fatalf("actions: %+v", acts)
+			}
+			check(t, acts[0], 4, "inform", true)
+		})
+	}
+	t.Run("loop_guard", func(t *testing.T) {
+		ev := eval(t, "version: 1\nstop_retries: 2\non:\n  stop:\n    - action: { run: just lint }\n", workflow.Stop)
+		block := entry{Kind: kindObserved, Outcome: state.OutcomeBlocked, Session: "s1", Event: workflow.Stop,
+			Actor: agent.ActorSession, Line: 5, Key: "just lint", Hash: "h"}
+		out, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h", "h", "h"}, runErr: runErr, took: took,
+			state: stateOf(block, block)})
+		acts := actionsOf(steps)
+		if out.Answer.Block || len(acts) != 1 {
+			t.Fatalf("answer %+v, actions: %+v", out.Answer, acts)
+		}
+		check(t, acts[0], 5, "loop_guard", true)
+	})
+	t.Run("skip", func(t *testing.T) {
+		ev := eval(t, "version: 1\non:\n  stop:\n    - action: { run: just lint }\n", workflow.Stop)
+		pass := entry{Kind: kindObserved, Outcome: state.OutcomePassed, Session: "s1", Event: workflow.Stop,
+			Actor: agent.ActorSession, Line: 4, Key: "just lint", Hash: "h", Branch: "main"}
+		_, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"}, took: took, state: stateOf(pass)})
+		var skips []state.Action
+		for _, a := range actionsOf(steps) {
+			if a.Outcome == "skip" {
+				skips = append(skips, a)
+			}
+		}
+		if len(runs(steps)) != 0 || len(skips) != 1 || skips[0].Key != "" || skips[0].DurationMS != nil ||
+			skips[0].Line != 4 {
+			t.Fatalf("a skipped run: %+v %q", skips, runs(steps))
+		}
+	})
+}
