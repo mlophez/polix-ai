@@ -40,8 +40,8 @@ The folder of rules is the one the project names in `AGENTS.md`, `CLAUDE.md` or 
   Step 10 to implement it.
 - Never ask the user a fact you can find in the files, git, the tools or the docs.
 - Never settle a decision yourself: put each one to the user, even when you recommend its answer.
-- Ask one decision per call of `AskUserQuestion`, or per message without it, and wait for its answer.
-  Never two decisions in one call or message, nor a list of them.
+- Ask one decision per message, as text with [question.md](question.md), and wait for its answer.
+  Never two decisions in one message, nor a list of them, nor `AskUserQuestion` or any dialog of the agent.
 - Ask only the decisions of the how that `What and how` names; leave the rest to whoever builds the change.
 - Never end while the frontier has a decision: every branch is visited, none silently assumed.
 - Talk to the user in the language they write in (see `Questions`).
@@ -57,7 +57,7 @@ Grilling progress:
 - [ ] Step 3: Draft the approaches, the cases and the pre-mortem (see Step 3).
 - [ ] Step 4: Map the design tree and compute the frontier (see Step 4).
 - [ ] Step 5: Find the facts the next decisions need as Step 2 says; ask meanwhile one whose facts are known.
-- [ ] Step 6: Pick the next decision of the frontier, ask it alone (see `Question`) and wait for the answer.
+- [ ] Step 6: Pick the next decision of the frontier, ask it alone (see [question.md](question.md)) and wait for the answer.
 - [ ] Step 7: Record the answer and the facts reported, and recompute the frontier (see Step 7).
 - [ ] Step 8: Repeat Steps 5 to 7 until the frontier is empty, then ask each deferred decision again, alone.
 - [ ] Step 9: Give the `Brief` and ask the user to confirm it (see Step 9).
@@ -104,9 +104,8 @@ A report is a lead, never a fact: read yourself each file a fact of `Facts` name
 
 ### Step 9: Give the `Brief` and ask the user to confirm it
 
-- Write the `Brief` as text, then ask with `AskUserQuestion` whether to confirm it or adjust it, confirm first.
-  The question says the `Brief` is just above it, since the dialog may hide it.
-  Without `AskUserQuestion`, ask for the confirmation in the text after the `Brief`.
+- Write the `Brief` as text, then ask with [question.md](question.md) whether to confirm it or adjust it, confirm
+  first, saying the `Brief` is just above it.
 - An adjustment reopens the decisions it touches: go back to Step 6 for them.
 - When a skill invoked this one, return the confirmed `Brief` to it and go on with that skill's checklist.
   Skip Step 10: that skill decides what comes next.
@@ -114,7 +113,7 @@ A report is a lead, never a fact: read yourself each file a fact of `Facts` name
 ### Step 10: Ask the user the next step and follow it
 
 Ask it always once the `Brief` is confirmed, even when the conversation already names the next step.
-Ask it as one decision (see `Question`, or `Question as text` without `AskUserQuestion`), with three options:
+Ask it as one decision with [question.md](question.md), with three options:
 
 - **Write a plan**: the skill `spec` turns the confirmed `Brief` into a plan, without interviewing again.
 - **Implement directly**: this session changes the code from the `Brief`, in the flow without a plan.
@@ -199,63 +198,9 @@ Return, with paths and symbols, never whole files nor what Known already says:
 
 ### Questions
 
-- Write every question in the language the user writes in.
-  That is the question, its header, the label, description and preview of each option, and the text before the call.
-  Only the names of the code, commands and literals keep their spelling.
+- Ask every question with [question.md](question.md), next to this file, in the language the user writes in.
 - Never put a decision with fewer than two alternatives or more than four, nor an alternative without its pros and cons.
-  With more than four, drop or merge the weakest: `Other` still takes any alternative the user writes.
+  With more than four, drop or merge the weakest: the user may still answer with any alternative of their own.
 - A fact only the user knows is a decision too: who suffers the problem, a threshold, the steps of a manual check.
   Its alternatives are two to four hypotheses drawn from the subject, the docs and the code, each with what it implies.
-  A hypothesis is never a figure or a cause no source gives: `Other` takes the answer the user writes.
-- Write a longer comparison as text before the call, and keep the question answerable without it.
-- Ask an unanswered question again; never fill it with a default.
-
-### Question
-
-Ask each decision with `AskUserQuestion`, one question per call, every field in the language of the session:
-
-- **header**: the number of the decision and the progress, at most 12 characters.
-- **question**: the title of the decision and why it matters.
-  It stands on its own: it names the subject and what leaves it open, since the dialog may hide the text before it.
-- **options**: two to four alternatives, each description with its pros and cons in one or two sentences.
-  They say how the change behaves with it and its effort, risk and tests.
-- **recommended**: the first option, its label ending in `(Recommended)` and its description saying why.
-
-```json
-{
-  "header": "Q3 (3 of 5)",
-  "question": "Storage of the sessions: where the service writes each session decides how the folder grows and what deleting one costs. Where does it write them?",
-  "multiSelect": false,
-  "options": [
-    {"label": "One JSONL file per day (Recommended)", "description": "No command deletes a single session. Pros: the folder stays small; a day reads in one open. Cons: deleting one session rewrites the whole file."},
-    {"label": "One JSONL file per session", "description": "Pros: deleting a session is removing a file; no write contends with another session. Cons: thousands of small files after a few months."},
-    {"label": "One SQLite database", "description": "Pros: queries by session or date without parsing. Cons: a new dependency and a binary format no one can read with cat."}
-  ]
-}
-```
-
-### Question as text
-
-Without `AskUserQuestion`, as in Codex, give the decision a number and a title, and say why it matters.
-Then list its alternatives with their pros and cons.
-End with your recommended alternative and the reason, worded so that "yes" accepts it:
-
-```markdown
-**Q3 (3 of 5) - Storage of the sessions**
-
-Where the service writes each session decides how the folder grows and what deleting a session costs.
-
-**A. One JSONL file per day**
-- Pros: the folder stays small; a day reads in one open.
-- Cons: deleting one session rewrites the whole file.
-
-**B. One JSONL file per session**
-- Pros: deleting a session is removing a file; no write contends with another session.
-- Cons: thousands of small files after a few months.
-
-**C. One SQLite database**
-- Pros: queries by session or date without parsing.
-- Cons: a new dependency and a binary format no one can read with `cat`.
-
-Recommended: A, one file per day, since no command deletes a single session. Reply yes, or pick another option.
-```
+  A hypothesis is never a figure or a cause no source gives: the user may answer with their own.

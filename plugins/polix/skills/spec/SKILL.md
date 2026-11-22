@@ -154,9 +154,8 @@ Without the subagent `critic`, follow `critic.md` yourself as `Requirements` say
   It is the `summary` of `overview`, the `interface` and the journeys, `scope` and the titles of the criteria.
   Then the model and effort of each agent of `agents`, which the user may change.
 - Then the critique in a few lines: the findings fixed, those asked to the user and those left open.
-- Then ask with `AskUserQuestion` whether to approve the plan or adjust it, approve first.
-  The question says the result is just above it, since the dialog may hide it.
-  Without `AskUserQuestion`, ask for the approval in the text after the result.
+- Then ask whether to approve the plan or adjust it, approve first, as text with the template of `grill-me`
+  ([question.md](../grill-me/question.md)), saying the result is just above it.
 - With a deferred decision open, reopen it with `grill-me` first; while it stays open, never offer to approve.
 - Approved: set `status: approved`, and nothing else.
 - Adjust: invoke `grill-me` with the comments as its `Adjust`, keeping `status: planned`.
