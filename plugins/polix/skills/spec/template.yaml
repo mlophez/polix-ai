@@ -166,13 +166,12 @@ tasks:
     files:
       create: [<path>]  # the files the behaviour of the task lives in
       modify: [<path>]  # never the callers, fixtures and comments that only follow: the build finds them
-    tests:  # only kept tests, or [], for a refactor or a change no test can observe; its summary says why
+    tests:  # the tests it writes or keeps, or [] when it has none; its summary then says why
       - file: <test file>
         new:
           - name: <TestName>
             covers: [<CUJ-NN or AC-NN>]
             checks: <what it checks>
-            fails_first: <why it fails before the change>
         kept: [<TestName>]
     rules: [<rule id>]
     reuse:
@@ -181,7 +180,7 @@ tasks:
         why: <what for>
     differential: []  # for a high-risk task, the steps of its differential check against the base version
     status: pending  # the build sets done, departed or blocked, as the builder reports it
-    evidence: none  # the build sets it from the builder's report, with its lines Baseline: and Departure:
+    evidence: none  # the build sets it from the builder's report, with its lines Departure: and any Baseline:
 
 iterations:  # the plan writes []; the build adds one item per pass of the builder on what the checks left open
   - id: ITER-01  # ITER-01, ITER-02... in the order they run

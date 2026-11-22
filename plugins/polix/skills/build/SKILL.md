@@ -417,8 +417,9 @@ The builder never edits the plan: it reports what it built, and you write it in 
 - **Findings**: for each finding of its `Findings`, set its `status` (`fixed` or `skipped`) and `evidence`.
 - **Departures**: add each item of its `Departures` to the `evidence` of the task or finding it names.
   Write it as a line `Departure: <what the builder did and why>`, so the checks and later builders read it.
-- **Baseline**: when the builder ran the baseline, add to the task's `evidence` a line `Baseline: <its failures>`.
-  Take the failures its `Verification` reports apart, or write `Baseline: none`; its iterations rely on that line.
+- **Baseline**: only when the builder reports a baseline, as the method of its project may ask, add to the task's
+  `evidence` a line `Baseline: <its failures>`.
+  Take the failures its `Verification` reports under `Baseline`, or write `Baseline: none`; its iterations rely on it.
 - Keep the lines `Baseline:` and `Departure:` of an earlier `evidence` of the task when a new one replaces it.
 - Write each `evidence` as a literal block `|`, one sentence per line, with the builder's words.
 - A task or finding of the prompt that the report leaves out keeps its `status`: say so in `Pending`.

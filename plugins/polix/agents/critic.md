@@ -81,11 +81,9 @@ A task with `status: done` is built and the plan never rewrites it: read it as t
 Report nothing on it.
 
 1. For each task, list what it must decide that the plan does not say: a name, a value, a message, an order, a case.
-2. Check that each task leaves the project building on the tree the earlier tasks left.
-   Check that each task delivers one behaviour that its own tests show, without waiting for a later task.
-   A task that mixes behaviours, or one no test of its own can verify apart, is a finding.
-3. Check that each `new` test can fail before the change and that its `covers` exist.
-4. A point the executor would decide is a finding, unless `design` leaves it to the executor on purpose.
+2. Check that each task delivers one behaviour on the tree the earlier tasks left, without waiting for a later task.
+   A task that mixes behaviours, or one that needs a later task to work, is a finding.
+3. A point the executor would decide is a finding, unless `design` leaves it to the executor on purpose.
 
 ### Step 7: Parse
 
@@ -122,7 +120,7 @@ A case is settled when a journey, a criterion, a constraint, a decision, `cross_
 - **edge-case**: a case of `Edge cases` that applies and no part of the plan settles.
 - **traceability**: an id named that does not exist, or a behaviour without its journey, criterion or task.
 - **executor**: a task that cannot run as written.
-  It depends on a later task, breaks the build or has a test that cannot fail.
+  It depends on a later task, or on a fact, file or id the plan does not give.
 - **duplication**: a fact stated in more than one place, so the places can drift apart.
 - **readability**: a sentence a reviewer new to the request cannot follow, or a term `terms` does not define.
 - **format**: a placeholder left, or a parse error.
@@ -132,7 +130,6 @@ A case is settled when a journey, a criterion, a constraint, a decision, `cross_
 - **blocking**: a contradiction, or an undefined fact the executor needs, so two builds differ.
   Also a task that cannot run as written, a placeholder left, or a plan that does not parse.
 - **major**: an edge case left open, a broken reference, or a behaviour without its journey, criterion or task.
-  Also a criterion or journey without its `new` test.
 - **minor**: duplication, readability or a term not defined, with a concrete better form.
 
 ### Report template

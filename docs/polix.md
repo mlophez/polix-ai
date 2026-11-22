@@ -822,6 +822,12 @@ separate events, so the entries of `stop` never run when a subagent ends.
 Its injects and the failures of its runs reach the subagent as context, so a subagent that only reads, such as a
 reviewer, gets the rules even if it never edits nor runs a command. It cannot be stopped, and it gets neither the
 start context nor the context of `requirements`, which are told to the main session.
+This is how a project gives the agents of the plugin its method of work: `polix:builder` builds a task in the way
+that best fits its work and imposes no method by itself, neither test first nor a baseline, so a repository that
+wants them injects them, as this one does with `inject: { file: ai/ctx/builder.md }` on `subagent_start` with the
+actor `polix:builder`; the tests its plans ask for reach `spec` the same way, with an `inject` on `skill` for
+`polix:spec`. A build without subagents, which follows `builder.md` in the session, fires no `subagent_start`, so
+the method of the builder does not reach it.
 
 Conditions:
 
@@ -1552,8 +1558,10 @@ also prints that Codex support is not implemented in this release and the setup 
   in the folder of reports, `audit` audits the repository with several `auditor` agents in parallel and saves the
   report in the folder of reports, `writing-skills` and `writing-agents` write a skill or a subagent in one format,
   whose `Limits` hold only what applies across its steps) and, for Claude Code, agents (`builder`, which
-  implements one task of a plan test first, or fixes the findings of its checks, without committing, and
-  the read-only `critic`, which reviews a plan for internal coherence before its approval, `verifier`, which
+  builds one task of a plan in the way that best fits its work, code, docs, configuration or data, in the method
+  its project injects at its start, if any, or fixes the findings of its checks, without committing, and
+  the read-only `critic`, which reviews a plan for internal coherence and wording before its approval, knowing
+  nothing of the method of development, `verifier`, which
   checks a change against its plan, `reviewer`, which reviews the quality of the code by reading it, and
   `auditor`). Install writes it,
   with the version of the binary in its manifests, to the local marketplace
@@ -1597,17 +1605,19 @@ also prints that Codex support is not implemented in this release and the setup 
     without a skill answers in the chat and saves no file. `spec` writes the plan as a YAML file from the
     `template.yaml` next to it, where each fact lives in one place and the others name it by its id (`LIT-NN`,
     `CUJ-NN`, `AC-NN`, `TN`); a plan in Markdown, written before, is no longer adjusted nor built. A task is one
-    behaviour that its own tests show, with no size in lines. `build` coordinates the run and is the only one that
-    edits the plan and commits: for each task the builder builds it and reports its `status` and `evidence`, `build`
-    writes them in the plan, with the builder's departures and the failures of its baseline as lines `Departure:`
-    and `Baseline:` of the `evidence`, which the checks and the builders of its iterations read, then the reviewer
+    behaviour that its own checks show, with no size in lines, and its `tests` are optional: `[]` for a task no
+    test can observe, such as one that changes only docs; `spec` imposes no method of testing, which the project
+    injects. `build` coordinates the run and is the only one that edits the plan and commits: for each task the
+    builder builds it and reports its `status` and `evidence`, `build` writes them in the plan, with the builder's
+    departures and, when the method of its project runs one, the failures of its baseline as lines `Departure:` and
+    `Baseline:` of the `evidence`, which the checks and the builders of its iterations read, then the reviewer
     checks that task, while the builder gets the task base, the commit the task started from, as `Base:`, and uses
     it as the base version of a differential check; the reviewer reviews the uncommitted change against `HEAD`,
     reading only the diff and running nothing but `git`: the
     whole task in its first review, and in a re-review, whose `Previous` names an iteration, only the lines that
     iteration changed, checking that the findings of `Previous` are fixed and marking each new finding with its
     `Origin`, `fix` when `HEAD` does not have the problem and `earlier` when it does; the plan's `verification` is
-    run by the builder alone, once after its baseline, and by the hooks of the project; when they leave something
+    run by the builder alone, once per task or iteration, and by the hooks of the project; when they leave something
     to fix, it adds an iteration (`ITER-NN`) of that task, or of `final`, to `iterations` with the findings to fix
     (`FND-NN`), commits the round, and launches the builder on it; in a re-review only an unfixed finding of
     `Previous`, a `blocking` finding or a `major` one of origin `fix` reopen the task, and the others wait in the

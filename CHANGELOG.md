@@ -9,6 +9,16 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- `polix:builder` builds any task of a plan, code, docs, configuration or data, in the way that best fits its work,
+  and imposes no method by itself: no test first and no baseline. It runs the checks the plan names, its `tests`,
+  the `verify` of the criteria it closes and the plan's `verification`, and a task without any check is `done` once
+  its diff does what its `summary` and the `design` say. A repository that wants test first or a baseline injects
+  them with an `inject` of `file` on `subagent_start` with the actor `polix:builder`, as this repository does with
+  `ai/ctx/builder.md`. `/polix:spec` imposes no method of testing either, and takes the one of the project from an
+  `inject` on `skill`; the `tests` of a task are optional, `[]` for a task no test can observe. `polix:critic`
+  reviews only the coherence and the wording of a plan, and no longer asks for a failing `new` test per criterion.
+  `/polix:build` writes the line `Baseline:` only when the builder reports a baseline.
+
 - `/polix:build` commits each round of a task whose checks leave something open, right after its checks and before
   the builder fixes it, as `T<N> ITER-NN: <title of the task>`, or `Final ITER-NN: <title of the plan>` in the
   final verification, with the `FND-NN` of its iteration and `Plan: <path>` in the body. The round that closes a
@@ -149,6 +159,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Removed
 
+- The field `fails_first` of the `new` tests of a task in the plan: the builder no longer reads it, and a plan
+  written before keeps it without effect.
 - Plans in Markdown: `/polix:build` and `/polix:plan` no longer build nor adjust them and offer to write a new YAML
   plan instead; `template.md` of `plan` and the sections `Markdown plans` of `polix:builder` and `polix:verifier`
   are gone.

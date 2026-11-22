@@ -576,6 +576,12 @@ on:
       action:
         inject: "Revisa el diff contra las reglas de ai/rules/: cada hallazgo cita el id de la regla que incumple."
 
+    # polix:builder imposes no method: a team that builds test first gives it its cycle from a file of the repository.
+    # The file must exist: a missing one injects nothing. Uncomment it once ai/ctx/builder.md holds the method.
+    # - when: { actor: polix:builder }
+    #   action:
+    #     inject: { file: ai/ctx/builder.md }
+
   # pre_edit: before a file is edited, once per path. Conditions of the edit: path, actor. It also applies, after
   # the command, to each file a command changed (up to 25, see "Files a command changed" in docs/polix.md): there
   # the edit already happened, so a block or a failing run only reaches the AI as context.

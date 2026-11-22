@@ -66,7 +66,7 @@ Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
 - Approval never starts the build: Step 8 still applies.
 - Never ask the user a decision of the plan yourself: `grill-me` asks them (see Steps 2 and 6).
   Ask the user only what `Input` leaves open, the existing branch of Step 4 and the approval of Step 7.
-- Write only the plan file and its task's frontmatter, create only the branch of Step 4, run only the project's tests.
+- Write only the plan file and its task's frontmatter, create only the branch of Step 4, run only the project's checks.
 - Define tasks, never code: no snippets, implementations or signatures (see `Plan file`).
 - One plan is one change, delivered whole: never phases or follow-up plans.
 - Reference the rules of the folder of rules by id in the `rules` of each task, never restate them.
@@ -105,7 +105,7 @@ When adjusting a plan, follow `Adjusting a plan` at every step.
 ### Step 3: Read the project context and the code the tasks will change
 
 1. Read the project context (see `Project context`).
-2. Run the test command of the project once in the background, editing nothing.
+2. Run the checks the project documents once in the background, editing nothing; without any, skip it.
    Its failures, when any, go to `context` as failures that already exist; when it cannot run, say so in `Pending`.
    When adjusting a plan, skip it unless the adjustment adds tasks.
 3. Take the `Facts` of the brief as leads, never as facts of the plan.
@@ -128,7 +128,7 @@ When adjusting a plan, follow `Adjusting a plan` at every step.
 1. Create the plan file from [template.yaml](template.yaml) (see `Plan file`).
    Or open the plan to adjust and edit it as `Adjusting a plan` says.
 2. Write each key in the order of template.yaml, from the section of the brief `Brief to keys` names for it.
-   Follow `Request`, `Outcome`, `Acceptance criteria`, `Tasks`, `High risk` and `Tests` for its form.
+   Follow `Request`, `Outcome`, `Acceptance criteria`, `Tasks`, `High risk` and `Checks` for its form.
 3. A key that needs a decision the brief does not settle is a reopened brief: invoke `grill-me` with `Adjust`.
 
 ### Step 6: Have `critic` review the plan once, and fix what it finds
@@ -273,7 +273,7 @@ Each key of template.yaml comes from a section of the brief of `grill-me`, or fr
 - `verify` lists commands with their expected result, or `manual` steps that show the criterion on the finished change.
   It names the tests or cases that prove this criterion, so two criteria never share a vague `verify`.
   Each `run` runs only those tests or cases, such as `go test ./internal/export -run '^TestExport'`.
-  Never the whole suite, a linter nor a build: they go to the `verification` of `approach`.
+  Never a check of the whole project, such as the full test suite: it goes to the `verification` of `approach`.
   The verifier runs it as written, and the build sets `status` and `evidence` from its report.
 - Number them `AC-01`, `AC-02`...; never renumber them: the `covers` of the tasks name them.
 
@@ -282,10 +282,10 @@ Each key of template.yaml comes from a section of the brief of `grill-me`, or fr
 The build runs each task alone, in order, without asking: a builder builds it and a reviewer checks it.
 Then the build commits it, and the next task starts from that commit; a verifier checks the whole plan at the end.
 
-- Each task leaves the project building and no test failing that passed at the baseline.
+- Each task leaves the project working: no check of the project that passed before it fails after it.
   Never a task that breaks what a later one repairs.
-- Slice by behaviour, never by layer: each task delivers one behaviour that a test shows, across the layers it needs.
-  A refactor and a change no test can observe are the only tasks without one.
+- Slice by behaviour, never by layer: each task delivers one behaviour that a check shows, across the parts it needs.
+  A refactor and a change no check can observe are the only tasks without one.
 - Start with the thinnest path that runs end to end, then widen it task by task.
 - When the change is hard to make in the current code, put first a refactor that keeps the behaviour, as its own task.
 - Change a contract and every caller of it in the same task.
@@ -294,10 +294,11 @@ Then the build commits it, and the next task starts from that commit; a verifier
   For example, it adds a new optional field, or a new version beside the old one.
   A journey `kept: true` shows the current consumers still work.
   Removing the old form goes to `scope.out`, with the condition to do it.
-- Size a task to one behaviour that its own tests show, verified and reviewed apart from the other tasks.
+- Size a task to one behaviour that its own checks show, verified and reviewed apart from the other tasks.
   Split a task that mixes behaviours, and merge tasks not verifiable apart.
 - A criterion covered by several tasks is checked at the last task that covers it: list it in the `covers` of each.
-- The checks of the whole project go to the `verification` of `approach`: the full test suite, the linter, the build.
+- The checks of the whole project go to the `verification` of `approach`, such as the full test suite, the linter or
+  the build, from `AGENTS.md`; `[]` when the project has none.
   What proves a criterion goes to its `verify`, never to both.
   A task has no checks of its own but its `differential`.
   The build runs its `tests`, the `verify` of the criteria whose last covering task it is, and the plan's checks.
@@ -321,24 +322,20 @@ A task is high risk when it touches one of these:
 6. Existing behaviour that the task changes and no test covers.
 
 Keep each high-risk change in a task with nothing unrelated to it, unless that splits one behaviour.
-Name its items in the task's `risk` and add its differential check to its `differential` (see `Tests`).
+Name its items in the task's `risk` and add its differential check to its `differential` (see `Checks`).
 
-### Tests
+### Checks
 
-Test first: a task's `tests` say how each new test fails before the change, and its `files` what makes it pass.
-Label each test `new`, which fails before the change, or `kept`, which passes before and after it.
+A task is checked by its `tests`, the `verify` of the criteria it closes and the plan's `verification`.
+The method of the project, when it gives one in the context of this skill, says which tests each task needs and how:
+follow it.
+Without one, plan the tests the work of each task needs, and none for a task no test can observe.
 
-- Test in two loops: the outer one checks the journeys and the criteria, the inner one the parts that build them.
-- Outer loop: one `new` test per journey and per criterion the task covers, end to end through the public interface.
-  It checks every observable effect of its `then` and `but`.
-  The effects are the output, the exit code or error returned and, when an input is rejected, the state unchanged.
+- A task's `tests` name the tests it writes or keeps, per test file; `[]` when it has none, and its `summary` says why.
+- Label each test `new`, which the task writes, or `kept`, which exists already and stays green after the change.
+- Each `new` test names in its `covers` the journeys `CUJ-NN` or the criteria `AC-NN` it checks, and in `checks`
+  what it checks.
 - A journey `kept: true` has a `kept` test, or the differential check when no test can run both versions.
-- Inner loop: unit tests of the parts, `new` too, only where a part has logic the outer test cannot reach.
-- Each `new` test names in its `covers` the journeys `CUJ-NN` or the criteria `AC-NN` it checks.
-- Add a `kept` test for each existing command, option or function that calls the code the task changes.
-  Skip it when an existing test already covers that behaviour.
-- A refactor kept by existing tests, or a change no test can observe such as docs, has no `new` tests.
-  Its `tests` list only the `kept` tests that stay green, or `[]` when none applies, and its `summary` says why.
 - A high-risk task adds a differential check to its `differential`.
   It runs the affected commands, or the tests of the affected functions, with the existing and the new inputs.
   It compares the base version with the working tree.
