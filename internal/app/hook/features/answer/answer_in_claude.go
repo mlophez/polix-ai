@@ -40,7 +40,7 @@ func (c claude) parse(input []byte) (string, []agent.Event, error) {
 	case "SessionStart":
 		events, err = in.single(agent.Claude, workflow.Start)
 	case "UserPromptSubmit":
-		events, err = in.single(agent.Claude, workflow.Prompt)
+		events, err = in.prompts(agent.Claude)
 	case "SubagentStart":
 		events, err = in.single(agent.Claude, workflow.SubagentStart)
 	case "Stop":
@@ -53,11 +53,15 @@ func (c claude) parse(input []byte) (string, []agent.Event, error) {
 	return native, events, err
 }
 
-// tool returns the events of a call of a tool of Claude Code: an edit, a command, or none for any other tool.
+// tool returns the events of a call of a tool of Claude Code: an edit, a command, the start of a skill before a call
+// of the tool Skill with the name of the skill in tool_input.skill, or none for any other tool and after a call of the
+// tool Skill, since no event follows a skill.
 func (claude) tool(in hookInput) ([]agent.Event, error) {
 	native := in.HookEventName
 	pre := native == "PreToolUse"
 	switch {
+	case in.ToolName == "Skill" && pre:
+		return in.skill(agent.Claude, in.str("skill"))
 	case claudeEditTools[in.ToolName] && native == "PostToolUseFailure":
 		return nil, nil // a failed edit changed nothing: no post_edit
 	case claudeEditTools[in.ToolName]:

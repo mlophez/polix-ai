@@ -268,7 +268,9 @@ The use case `AnswerHook`, `internal/app/hook/features/answer` (layout in `docs/
    commit` of it decides that code (alone, last, or followed by `&&`, as the condition `exit` reads it), so a failed
    command (`PostToolUseFailure`) or `git commit -m x; echo done` gives none. The `SubagentStart`
    of either agent becomes `subagent_start`, with the type of the subagent as
-   actor.
+   actor. A `PreToolUse` of the tool `Skill` of Claude Code becomes `skill`, with the name of `tool_input.skill`
+   as it came; a `UserPromptSubmit` whose prompt has the shape of a typed skill becomes `prompt` and, right
+   after it, `skill` (see [Events](#events)).
 2. The logic of AnswerHook (`internal/app/hook/features/answer`) applies the [protections](#protections): the built-in protection of the
    state, then `guardrails.protected_files` and `guardrails.forbidden_commands`; then the entries of the event in
    order. Around a command, when the workflow watches the edits, it records the content before it runs and, after
@@ -791,8 +793,22 @@ one context. It is injected only with a valid `polix.yaml`, to Claude Code and C
 gets none of it. It asks the agent to cooperate and blocks nothing. It no longer asks to change files only with the
 edit tool: a repository that wants it writes an `inject` on `start`.
 
-Events: `start`, `prompt`, `subagent_start`, `pre_edit`, `post_edit`, `pre_command`, `post_command`, `pre_commit`,
-`post_commit`, `subagent_stop` and `stop`.
+Events: `start`, `prompt`, `skill`, `subagent_start`, `pre_edit`, `post_edit`, `pre_command`, `post_command`,
+`pre_commit`, `post_commit`, `subagent_stop` and `stop`.
+`skill` is a skill that starts, whether the user typed it (`/spec`) or the agent invoked it through the tool `Skill`
+(`PreToolUse` of Claude Code; `install` adds `Skill` to the matcher of that hook). A typed skill comes right after
+the `prompt` of the same call, so the entries of `prompt` act first. It is detected by the shape of the prompt, never by
+looking skills up on disk: a slash first, then a name that is not empty and holds no slash, then whitespace or the
+end, so `/tmp is full` fires `skill` as the skill `tmp` and `/tmp/foo` fires nothing. It allows `run`, `inject`,
+`block` and `notify`; a `block` refuses the skill, and a typed one with its prompt. It gets neither the start context nor the context
+of `requirements`. Every `inject` of it acts every time the skill starts, as on `start` and `post_commit`, whatever
+`always` says, so a skill run many times repeats its context. Its condition is `skill` and its placeholder `{skill}`.
+Two limits: a forked skill (`context: fork`) fires the event like any other, but its `inject` reaches the caller, not
+the skill, so the context of a forked skill belongs on `subagent_start`; and the detection by shape takes any typed
+slash word for a skill. Codex is not implemented. A polix older than the event reports `skill` as unknown, and
+an older one rejects the condition and the placeholder too, so a file that uses them sets `requires` to a release that
+knows them (the first after 0.12.1). `polix doctor` warns when the `PreToolUse` hook of the repository does not watch
+the tool `Skill`, so the agent's calls of it fire nothing until `polix install --hooks` is run again.
 `post_commit` is a commit of the agent that succeeded: it comes after the `post_command` of a command line that holds
 a `git commit`, so a team can remind the agent of the docs or of the Jira ticket right after each commit. It cannot
 be stopped, since the commit already happened, so `block` and the condition `exit` are rejected there. Every `inject`
@@ -810,6 +826,10 @@ start context nor the context of `requirements`, which are told to the main sess
 Conditions:
 
 - `branch`: the current branch matches a regular expression.
+- `skill`: the name of the skill that starts equals one of the names given (a text or a list of literal names, no
+  globs), either as it came (`polix:spec`) or without the prefix of its plugin, the part after the last colon
+  (`spec`), so `spec` also matches the skill `other:spec`, and `polix:spec` does not match a typed `/spec`; a blank
+  name never holds. Only on `skill`.
 - `var`: a variable of `vars` has a value.
 - `path`: the edited path matches a glob (or a list), also of a file git ignores; only on `pre_edit` and
   `post_edit`. On macOS and Windows,
@@ -886,7 +906,9 @@ Globs are relative to the root and use `/`: `*` stays inside a segment, `**` cro
 without `/` matches the base name anywhere (`*.md`), and a leading `/` anchors it to the root, as in `.gitignore`
 (`/polix.yaml` is the file of the root, not `examples/polix.yaml`).
 Strings may use `{path}`, `{command}`, `{branch}`, `{changed_lines}`, `{changed_files}`, `{risk_score}`, `{commit}`,
-`{subject}` and the variables, which cannot take those built-in names. `{commit}` and `{subject}` are the short hash
+`{subject}`, `{skill}` and the variables, which cannot take those built-in names. `{skill}` is the name of the skill
+that starts, as it came and with the prefix of its plugin, on `skill`, and an empty text on any other event; the
+arguments of the skill have no placeholder. `{commit}` and `{subject}` are the short hash
 and the subject of the commit just made (`git log -1 --format=%h` and `--format=%s`) on `post_commit`, and an empty
 text on any other event.
 
@@ -945,7 +967,7 @@ form, a map:
 
 - `block: <message>` blocks the event with a message for the AI (placeholders allowed). The long form is
   a map of `message: <message>` and `once: true`, and `message` is required. Valid on `prompt`, `pre_edit`,
-  `pre_command`, `pre_commit`, `stop` and `subagent_stop`; `start`, `subagent_start`, `post_edit`, `post_command`
+  `pre_command`, `pre_commit`, `skill`, `stop` and `subagent_stop`; `start`, `subagent_start`, `post_edit`, `post_command`
   and `post_commit` already happened, so `polix config check` rejects it there.
 - `run: <command>` runs a command from the root, without a shell (no pipes, redirections or globs). The command is
   a string, split on spaces into arguments and never given to a shell, or a list of arguments when one holds a
@@ -981,7 +1003,7 @@ The verbs each event allows are one table, the same for every agent: only what C
 on the event, so `polix.yaml` means the same in each (`workflow.EventVerbs`).
 
 - `start`, `subagent_start`, `post_edit`, `post_command`, `post_commit`: `run`, `inject` and `notify`.
-- `prompt`, `pre_edit`, `pre_command`, `pre_commit`: `run`, `inject`, `block` and `notify`.
+- `prompt`, `skill`, `pre_edit`, `pre_command`, `pre_commit`: `run`, `inject`, `block` and `notify`.
 - `stop`, `subagent_stop`: `run`, `block` and `notify`.
 
 `polix config check` reports any other verb as a problem at the line of its entry, naming the event, the verb, why
@@ -993,7 +1015,7 @@ failed: exit status 1`) and the last 15 lines of the output, indented (the faili
 of 412 lines)`, so the AI knows it sees a part and can run the command to read the rest. What it does depends on
 the event:
 
-- On `prompt`, `pre_edit`, `pre_command`, `pre_commit`, `stop` and `subagent_stop` it blocks, as a `block`
+- On `prompt`, `skill`, `pre_edit`, `pre_command`, `pre_commit`, `stop` and `subagent_stop` it blocks, as a `block`
   does, and ends the evaluation of the event (up to the [loop guard](#loop-guard) on the two stops).
 - On `start`, `subagent_start`, `post_edit`, `post_command` and `post_commit`, which already happened, it never blocks: the
   message and the
@@ -1027,7 +1049,7 @@ enforcing it: try a new gate in a branch, and read its decisions with `polix log
   type in the session, since its run starts with a new context; the start of a subagent leaves the main session and
   the other types as they were. `always: true` injects it on every event. A text with a placeholder that changes on
   every event (`{command}`, a measure such as `{changed_lines}`) expands to a new text each time, so it is injected
-  every time its value changes; `{path}` gives one inject per path. On `start`, `subagent_start` and `post_commit`
+  every time its value changes; `{path}` gives one inject per path. On `start`, `skill`, `subagent_start` and `post_commit`
   every `inject` acts every time, so `always` has no effect there, and `post_commit` writes no `injected` line.
 - A `notify` reaches the user once per session for each entry and each text it expands to, whatever the actor: the
   user is one person, so a subagent or another actor does not show it again, and neither does a `start`, a
@@ -1079,7 +1101,7 @@ the decisions included, also carries `agent_id`, the id the agent gives that sub
 - `started`: a session started, resumed, was cleared or was compacted, on `start`, with the `source` the agent gives
   (`startup`, `resume`, `clear` or `compact`) as key, empty when it gives none, or a subagent started, on
   `subagent_start`, with its type as the actor. Written only when the workflow has an `inject` without `always` on
-  an event other than `start` and `subagent_start` (one that acts once, an `inject` of `rules` included),
+  an event other than `start`, `skill` and `subagent_start` (one that acts once, an `inject` of `rules` included),
   `requirements` or `agents_are_running`. The line of `start` makes the once-only injects due again for every actor;
   the line of a subagent only for its type.
 - `ended`: a subagent the log had open was missing from the list of work in flight that Claude Code sends on a
@@ -1608,7 +1630,8 @@ also prints that Codex support is not implemented in this release and the setup 
 - The hooks, for the repository of the working directory (or `--dir`), since they belong to the project like its
   `polix.yaml` and are committed with it: merged into `.claude/settings.json`, and into `.codex/hooks.json` only with
   `--agent codex`. For Claude Code they cover `SessionStart`, `UserPromptSubmit`, `SubagentStart` (the start of a
-  subagent, `subagent_start`), `PreToolUse`, `PostToolUse`, `PostToolUseFailure` (a failed command reaches
+  subagent, `subagent_start`), `PreToolUse` (matcher `Edit|Write|MultiEdit|NotebookEdit|Bash|Skill`, where `Skill`
+  gives the event `skill`), `PostToolUse`, `PostToolUseFailure` (a failed command reaches
   `post_command` with a non-zero `exit`; a failed edit runs no `post_edit`), `SubagentStop` and `Stop`; Codex gets
   the same events except `PostToolUseFailure`. Rerunning install adds `SubagentStart` to the hooks of an earlier
   release. Every handler

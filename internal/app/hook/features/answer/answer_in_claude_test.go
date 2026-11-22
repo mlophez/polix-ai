@@ -1,6 +1,7 @@
 package answer
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -158,6 +159,87 @@ func TestClaudeBackgroundTasks(t *testing.T) {
 		}
 		if evs[0].InFlightKnown != c.known || strings.Join(ids, ",") != c.ids || evs[0].Valid() != nil {
 			t.Errorf("%s: event %+v", c.input, evs[0])
+		}
+	}
+}
+
+// AC-01: a PreToolUse of the tool Skill gives one event skill with the name of tool_input.skill, its prefix included,
+// and the actor of the call; a name that is missing, empty, blank or not a text, and a PostToolUse or a
+// PostToolUseFailure of the tool Skill, give none.
+func TestParseClaudeSkill(t *testing.T) {
+	cases := []struct {
+		input, actor string
+	}{
+		{`{"hook_event_name":"PreToolUse","session_id":"s1","tool_name":"Skill",` +
+			`"tool_input":{"skill":"polix:spec","args":"add a login"}}`, agent.ActorSession},
+		{`{"hook_event_name":"PreToolUse","session_id":"s1","agent_id":"a1","agent_type":"polix:builder",` +
+			`"tool_name":"Skill","tool_input":{"skill":"polix:spec"}}`, "polix:builder"},
+	}
+	for _, c := range cases {
+		native, evs, err := claude{}.parse([]byte(c.input))
+		if err != nil || native != "PreToolUse" || len(evs) != 1 {
+			t.Fatalf("%s: %q %+v %v", c.input, native, evs, err)
+		}
+		ev := evs[0]
+		if ev.Name != workflow.Skill || ev.Skill != "polix:spec" || ev.Actor != c.actor || ev.Session != "s1" ||
+			ev.Agent != agent.Claude || ev.Valid() != nil {
+			t.Errorf("%s: event %+v", c.input, ev)
+		}
+	}
+	for _, input := range []string{
+		`{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{}}`,
+		`{"hook_event_name":"PreToolUse","tool_name":"Skill"}`,
+		`{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":""}}`,
+		`{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"  "}}`,
+		`{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":7}}`,
+		`{"hook_event_name":"PostToolUse","tool_name":"Skill","tool_input":{"skill":"polix:spec"}}`,
+		`{"hook_event_name":"PostToolUseFailure","tool_name":"Skill","tool_input":{"skill":"polix:spec"}}`,
+	} {
+		if _, evs, err := (claude{}).parse([]byte(input)); err != nil || len(evs) != 0 {
+			t.Errorf("%s: %+v %v", input, evs, err)
+		}
+	}
+}
+
+// AC-02: a prompt with the shape of a typed skill, a slash, a name without slash and whitespace or the end, gives the
+// events prompt and skill in that order, with the name as typed, prefix included; any other prompt gives only prompt.
+func TestParseClaudePromptSkill(t *testing.T) {
+	cases := []struct {
+		prompt, skill string
+	}{
+		{"/polix:spec add a login", "polix:spec"},
+		{"/spec", "spec"},
+		{"/spec\nadd a login", "spec"},
+		{"/tmp is full", "tmp"},
+		{"please run /polix:spec", ""},
+		{"/tmp/foo is full", ""},
+		{"/", ""},
+		{"/ spec", ""},
+		{" /polix:spec", ""},
+		{"hola", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		input, err := json.Marshal(map[string]string{"hook_event_name": "UserPromptSubmit", "session_id": "s1",
+			"prompt": c.prompt})
+		if err != nil {
+			t.Fatal(err)
+		}
+		native, evs, err := claude{}.parse(input)
+		want := 1
+		if c.skill != "" {
+			want = 2
+		}
+		if err != nil || native != "UserPromptSubmit" || len(evs) != want || evs[0].Name != workflow.Prompt {
+			t.Errorf("%q: %q %+v %v", c.prompt, native, evs, err)
+			continue
+		}
+		if c.skill == "" {
+			continue
+		}
+		if ev := evs[1]; ev.Name != workflow.Skill || ev.Skill != c.skill || ev.Actor != agent.ActorSession ||
+			ev.Session != "s1" || ev.Agent != agent.Claude || ev.Valid() != nil {
+			t.Errorf("%q: event %+v", c.prompt, ev)
 		}
 	}
 }

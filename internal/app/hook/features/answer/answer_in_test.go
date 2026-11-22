@@ -787,6 +787,249 @@ func TestPostCommitDerived(t *testing.T) {
 	}
 }
 
+// skillCall returns the input of a PreToolUse of the tool Skill of Claude Code in the session s1 with tool_input
+// input, from the subagent of type actor, or from the main session when actor is empty.
+func skillCall(input, actor string) string {
+	by := ""
+	if actor != "" {
+		by = `"agent_id":"a1","agent_type":"` + actor + `",`
+	}
+	return `{"hook_event_name":"PreToolUse","tool_name":"Skill","cwd":"/repo","session_id":"s1",` + by +
+		`"tool_input":` + input + `}`
+}
+
+// additionalContext returns the additionalContext of the JSON stdout of a hook, "" when stdout is empty or holds
+// none.
+func additionalContext(t *testing.T, stdout string) string {
+	t.Helper()
+	if stdout == "" {
+		return ""
+	}
+	var out struct {
+		HookSpecificOutput struct {
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("stdout is not one JSON object: %q: %v", stdout, err)
+	}
+	return out.HookSpecificOutput.AdditionalContext
+}
+
+// skillInject is a polix.yaml whose entry of skill injects the name of the skill when the condition when holds.
+func skillInject(when string) string {
+	return "version: 1\non:\n  skill:\n    - when: " + when + "\n      action: { inject: \"Skill {skill} started.\" }\n"
+}
+
+// CUJ-01 and AC-01: the call of the tool Skill by the agent gives the agent the context of the entry of skill that
+// names it, with {skill} expanded, on exit 0; a call of another skill gives none, and a call without a name or a
+// PostToolUse of the tool Skill gives no event at all.
+func TestSkillEventAgentCall(t *testing.T) {
+	port := &fakePort{yaml: skillInject(`{ skill: "polix:spec" }`)}
+	res, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:spec","args":"add a login"}`, "")))
+	if err != nil || res.Code != 0 || additionalContext(t, res.Stdout) != "Skill polix:spec started." {
+		t.Fatalf("polix:spec: %+v %v", res, err)
+	}
+	res, err = run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:build"}`, "")))
+	if err != nil || res.Code != 0 || res.Stdout != "" {
+		t.Fatalf("polix:build: %+v %v", res, err)
+	}
+	for _, input := range []string{
+		skillCall(`{}`, ""),
+		skillCall(`{"skill":" "}`, ""),
+		`{"hook_event_name":"PostToolUse","tool_name":"Skill","cwd":"/repo","session_id":"s1",` +
+			`"tool_input":{"skill":"polix:spec"}}`,
+	} {
+		port := &fakePort{yaml: "version: 1\non:\n  skill:\n    - action: { inject: \"Skill {skill} started.\" }\n"}
+		res, err := run(context.Background(), port, claudeRequest(input))
+		if err != nil || res != (Response{}) || len(port.calls) != 0 {
+			t.Errorf("%s: %+v %v %q", input, res, err, port.calls)
+		}
+	}
+}
+
+// CUJ-12 and AC-01: a subagent that calls the tool Skill is the actor of the event, so an entry for its type applies
+// to its call and not to the same call of the main session.
+func TestSkillEventActor(t *testing.T) {
+	port := &fakePort{yaml: skillInject("{ actor: polix:builder, skill: spec }")}
+	res, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:spec"}`, "polix:builder")))
+	if err != nil || res.Code != 0 || additionalContext(t, res.Stdout) != "Skill polix:spec started." {
+		t.Fatalf("polix:builder: %+v %v", res, err)
+	}
+	res, err = run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:spec"}`, "")))
+	if err != nil || res.Code != 0 || res.Stdout != "" {
+		t.Fatalf("main session: %+v %v", res, err)
+	}
+}
+
+// CUJ-03 and AC-03: through the tool Skill, the condition skill matches the name with or without its prefix, and any
+// name of a list; never a name that only starts with it.
+func TestSkillEventMatchesBareName(t *testing.T) {
+	cases := []struct {
+		when, skill, want string
+	}{
+		{"{ skill: spec }", "polix:spec", "Skill polix:spec started."},
+		{`{ skill: "polix:spec" }`, "polix:spec", "Skill polix:spec started."},
+		{"{ skill: [polix:build, spec] }", "polix:spec", "Skill polix:spec started."},
+		{"{ skill: spec }", "polix:spectre", ""},
+	}
+	for _, c := range cases {
+		port := &fakePort{yaml: skillInject(c.when)}
+		res, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"`+c.skill+`"}`, "")))
+		if err != nil || res.Code != 0 || additionalContext(t, res.Stdout) != c.want {
+			t.Errorf("%s on %s: %+v %v", c.when, c.skill, res, err)
+		}
+	}
+}
+
+// CUJ-05 and AC-04: a block of an entry of skill refuses the call of the tool Skill with exit 2 and its message on
+// stderr, which the agent reads; the call of another skill goes through.
+func TestSkillEventBlock(t *testing.T) {
+	port := &fakePort{yaml: "version: 1\non:\n  skill:\n    - when: { skill: \"polix:spec\" }\n" +
+		"      action: { block: \"Run polix:spec on a plan branch.\" }\n"}
+	res, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:spec"}`, "")))
+	if err != nil || res.Code != 2 || res.Stderr != "Run polix:spec on a plan branch.\n" || res.Stdout != "" {
+		t.Fatalf("polix:spec: %+v %v", res, err)
+	}
+	res, err = run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:build"}`, "")))
+	if err != nil || res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("polix:build: %+v %v", res, err)
+	}
+}
+
+// CUJ-06 and AC-05: every inject of skill, without always, acts on every start of the skill in the session, while the
+// inject of prompt still acts once.
+func TestSkillEventInjectsEveryTime(t *testing.T) {
+	port := &fakePort{yaml: skillInject(`{ skill: "polix:spec" }`) +
+		"  prompt:\n    - action: { inject: \"Prompt received.\" }\n"}
+	for i := range 2 {
+		port.state = state.State{Entries: port.appended}
+		res, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:spec"}`, "")))
+		if err != nil || res.Code != 0 || additionalContext(t, res.Stdout) != "Skill polix:spec started." {
+			t.Fatalf("call %d: %+v %v", i+1, res, err)
+		}
+	}
+	var contexts []string
+	for range 2 {
+		port.state = state.State{Entries: port.appended}
+		res, err := run(context.Background(), port, claudeRequest(
+			`{"hook_event_name":"UserPromptSubmit","cwd":"/repo","session_id":"s1","prompt":"hola"}`))
+		if err != nil || res.Code != 0 {
+			t.Fatalf("prompt: %+v %v", res, err)
+		}
+		contexts = append(contexts, additionalContext(t, res.Stdout))
+	}
+	if !slices.Equal(contexts, []string{"Prompt received.", ""}) {
+		t.Fatalf("prompts: %q", contexts)
+	}
+}
+
+// CUJ-11 and AC-06: an entry of skill runs its command with the name of the skill, and another notifies the user with
+// {skill} expanded, in the systemMessage and never in the context. The run comes first, since a notice before an
+// entry that may block its event is not valid.
+func TestSkillEventNotifyAndRun(t *testing.T) {
+	port := &fakePort{yaml: "version: 1\non:\n  skill:\n    - action: { run: \"echo {skill}\" }\n" +
+		"    - action: { notify: \"Skill {skill} started.\" }\n"}
+	res, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:spec"}`, "")))
+	if err != nil || res.Code != 0 || systemMessage(t, res.Stdout) != "polix: Skill polix:spec started." ||
+		strings.Contains(additionalContext(t, res.Stdout), "Skill polix:spec started.") {
+		t.Fatalf("notify: %+v %v", res, err)
+	}
+	if !slices.ContainsFunc(port.calls, func(c string) bool {
+		return strings.HasPrefix(c, "Run ") && strings.HasSuffix(c, "echo polix:spec")
+	}) {
+		t.Fatalf("run: %q", port.calls)
+	}
+}
+
+// promptCall returns the input of a UserPromptSubmit of Claude Code in the session s1 with the prompt text.
+func promptCall(t *testing.T, text string) string {
+	t.Helper()
+	raw, err := json.Marshal(map[string]string{"hook_event_name": "UserPromptSubmit", "cwd": "/repo",
+		"session_id": "s1", "prompt": text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// CUJ-02 and AC-02: a typed skill gives the context of its entry of skill once, and the text of the entry of prompt
+// once, on exit 0.
+func TestSkillEventTypedPrompt(t *testing.T) {
+	port := &fakePort{yaml: skillInject(`{ skill: "polix:spec" }`) +
+		"  prompt:\n    - action: { inject: \"Prompt received.\" }\n"}
+	res, err := run(context.Background(), port, claudeRequest(promptCall(t, "/polix:spec add a login")))
+	if err != nil || res.Code != 0 {
+		t.Fatalf("typed: %+v %v", res, err)
+	}
+	got := additionalContext(t, res.Stdout)
+	if strings.Count(got, "Skill polix:spec started.") != 1 || strings.Count(got, "Prompt received.") != 1 {
+		t.Fatalf("context: %q", got)
+	}
+}
+
+// CUJ-04 and AC-02: a prompt without the shape of a typed skill gives only the text of the entry of prompt; the
+// prompt /tmp is full has the shape, so it also gives the context of the skill tmp, the known limit of the detection.
+func TestSkillEventNotASkill(t *testing.T) {
+	yaml := "version: 1\non:\n  skill:\n    - action: { inject: \"Skill {skill} started.\" }\n" +
+		"  prompt:\n    - action: { inject: \"Prompt received.\" }\n"
+	for _, prompt := range []string{"please run /polix:spec", "/tmp/foo is full", "/", " /polix:spec", "hola"} {
+		port := &fakePort{yaml: yaml}
+		res, err := run(context.Background(), port, claudeRequest(promptCall(t, prompt)))
+		if err != nil || res.Code != 0 || additionalContext(t, res.Stdout) != "Prompt received." {
+			t.Errorf("%q: %+v %v", prompt, res, err)
+		}
+	}
+	port := &fakePort{yaml: yaml}
+	res, err := run(context.Background(), port, claudeRequest(promptCall(t, "/tmp is full")))
+	got := additionalContext(t, res.Stdout)
+	if err != nil || res.Code != 0 || !strings.Contains(got, "Skill tmp started.") ||
+		!strings.Contains(got, "Prompt received.") {
+		t.Fatalf("/tmp is full: %+v %v", res, err)
+	}
+}
+
+// CUJ-03 and AC-03: through a typed prompt, the condition skill matches the name as typed, and a name with a prefix
+// does not match the bare name typed.
+func TestSkillEventTypedMatchesBareName(t *testing.T) {
+	port := &fakePort{yaml: skillInject("{ skill: spec }")}
+	res, err := run(context.Background(), port, claudeRequest(promptCall(t, "/spec")))
+	if err != nil || res.Code != 0 || additionalContext(t, res.Stdout) != "Skill spec started." {
+		t.Fatalf("spec: %+v %v", res, err)
+	}
+	port = &fakePort{yaml: skillInject(`{ skill: "polix:spec" }`)}
+	res, err = run(context.Background(), port, claudeRequest(promptCall(t, "/spec")))
+	if err != nil || res.Code != 0 || res.Stdout != "" {
+		t.Fatalf("polix:spec: %+v %v", res, err)
+	}
+}
+
+// CUJ-05 and AC-04 and DEC-13: a block of skill rejects the typed prompt with exit 2 and its message on stderr, and
+// another skill goes through; a block of prompt rejects it too, and the run of a skill entry still runs.
+func TestSkillEventTypedBlock(t *testing.T) {
+	port := &fakePort{yaml: "version: 1\non:\n  skill:\n    - when: { skill: \"polix:spec\" }\n" +
+		"      action: { block: \"Run polix:spec on a plan branch.\" }\n"}
+	res, err := run(context.Background(), port, claudeRequest(promptCall(t, "/polix:spec add a login")))
+	if err != nil || res.Code != 2 || res.Stderr != "Run polix:spec on a plan branch.\n" || res.Stdout != "" {
+		t.Fatalf("polix:spec: %+v %v", res, err)
+	}
+	res, err = run(context.Background(), port, claudeRequest(promptCall(t, "/polix:build add a login")))
+	if err != nil || res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("polix:build: %+v %v", res, err)
+	}
+	port = &fakePort{yaml: "version: 1\non:\n  prompt:\n    - action: { block: \"No prompts.\" }\n" +
+		"  skill:\n    - action: { run: \"echo {skill}\" }\n"}
+	res, err = run(context.Background(), port, claudeRequest(promptCall(t, "/polix:spec add a login")))
+	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, "No prompts.") {
+		t.Fatalf("block on prompt: %+v %v", res, err)
+	}
+	if !slices.ContainsFunc(port.calls, func(c string) bool {
+		return strings.HasPrefix(c, "Run ") && strings.HasSuffix(c, "echo polix:spec")
+	}) {
+		t.Fatalf("run: %q", port.calls)
+	}
+}
+
 // The exit code of a command is read from any of the names the agents use, 0 when it says none.
 func TestExitCode(t *testing.T) {
 	for raw, want := range map[string]int{`{"exit_code":3}`: 3, `{"exitCode":4}`: 4, `{"returncode":5}`: 5,

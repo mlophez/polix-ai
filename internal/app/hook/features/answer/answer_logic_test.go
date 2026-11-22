@@ -2525,13 +2525,14 @@ func TestDetachedHead(t *testing.T) {
 	}
 }
 
-// Decide routes each event of the workflow to its family: session for start, prompt and subagent_start, edit for
-// pre_edit and post_edit, command for pre_command, post_command, pre_commit and post_commit, and stop for stop and
+// Decide routes each event of the workflow to its family: session for start, prompt, skill and subagent_start, edit
+// for pre_edit and post_edit, command for pre_command, post_command, pre_commit and post_commit, and stop for stop and
 // subagent_stop; an event polix does not evaluate reaches none.
 func TestRoutesByFamily(t *testing.T) {
 	families := map[string]func(*pass) agent.Answer{
-		workflow.Start: (*pass).session, workflow.Prompt: (*pass).session, workflow.SubagentStart: (*pass).session,
-		workflow.PreEdit: (*pass).edit, workflow.PostEdit: (*pass).edit,
+		workflow.Start: (*pass).session, workflow.Prompt: (*pass).session, workflow.Skill: (*pass).session,
+		workflow.SubagentStart: (*pass).session,
+		workflow.PreEdit:       (*pass).edit, workflow.PostEdit: (*pass).edit,
 		workflow.PreCommand: (*pass).command, workflow.PostCommand: (*pass).command, workflow.PreCommit: (*pass).command,
 		workflow.PostCommit: (*pass).command,
 		workflow.Stop:       (*pass).stop, workflow.SubagentStop: (*pass).stop,

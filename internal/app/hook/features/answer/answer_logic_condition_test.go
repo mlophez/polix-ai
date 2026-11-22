@@ -1,8 +1,10 @@
 package answer
 
 import (
+	"path/filepath"
 	"testing"
 
+	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/hook"
 	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
@@ -214,6 +216,54 @@ on:
 			hashes: []string{"h"}})
 		if got := len(out.Answer.Contexts) > 0; got != want {
 			t.Errorf("%q: exit holds %v, want %v", line, got, want)
+		}
+	}
+}
+
+// skillEval returns the evaluation of the event skill of the main session for the skill name, with the workflow of
+// yaml.
+func skillEval(t *testing.T, yaml, name string) hook.Evaluation {
+	t.Helper()
+	wf, err := parseWorkflow(yaml, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.FromSlash("/repo")
+	ev := hook.Evaluation{Workflow: wf, Present: true, Root: root, GitDir: filepath.Join(root, ".git"), System: "linux",
+		Event: agent.Event{Name: workflow.Skill, Agent: agent.Claude, Session: "s1", Actor: agent.ActorSession,
+			Cwd: root, Skill: name}}
+	if err := ev.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	return ev
+}
+
+// AC-03: the condition skill holds when one of its names equals the name of the skill or its bare name, the part
+// after its last colon; never on another name, on a name that only starts with one of them, nor with a prefixed name
+// on a skill without that prefix.
+func TestConditionSkill(t *testing.T) {
+	cases := []struct {
+		cond, skill string
+		want        bool
+	}{
+		{`"polix:spec"`, "polix:spec", true},
+		{"spec", "polix:spec", true},
+		{"spec", "spec", true},
+		{"[polix:build, spec]", "polix:spec", true},
+		{"[polix:build, spec]", "other:spec", true},
+		{`"polix:spec"`, "spec", false},
+		{"spec", "polix:spectre", false},
+		{"spec", "polix:build", false},
+		{"spe", "polix:spec", false},
+		{"polix", "polix:spec", false},
+		{"[polix:build, polix:plan]", "polix:spec", false},
+	}
+	for _, c := range cases {
+		yaml := "version: 1\non:\n  skill:\n    - when: { skill: " + c.cond + " }\n" +
+			"      action: { inject: \"Skill {skill} started.\" }\n"
+		out, _ := walk(t, skillEval(t, yaml, c.skill), facts{branch: "main"})
+		if got := len(out.Answer.Contexts) > 0; got != c.want {
+			t.Errorf("skill %s on %s: holds %v, want %v", c.cond, c.skill, got, c.want)
 		}
 	}
 }

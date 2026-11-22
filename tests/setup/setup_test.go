@@ -6,6 +6,7 @@ package setup
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -199,4 +200,42 @@ func repositoryHasDetail(stdout string) bool {
 		}
 	}
 	return false
+}
+
+// install rewrites the matcher of PreToolUse an earlier polix wrote, so it watches the tool Skill, and a second
+// install changes nothing.
+func TestInstallAddsSkillMatcher(t *testing.T) {
+	testenv.Machine(t, false, false)
+	const old = "Edit|Write|MultiEdit|NotebookEdit|Bash"
+	r := testenv.GitRepo(t)
+	path := filepath.Join(r, ".claude", "settings.json")
+	data := strings.Replace(testenv.Read(t, filepath.Join("..", "..", "examples", "claude-settings.json")), old+`|Skill"`, old+`"`, 1)
+	if !strings.Contains(data, `"matcher": "`+old+`"`) {
+		t.Fatal("the example holds the matcher of PreToolUse")
+	}
+	testenv.Write(t, path, data)
+	if code, _, stderr := runSetup("install", "--hooks", "--yes", "--agent", "claude", "--dir", r); code != 0 {
+		t.Fatalf("install: %d %s", code, stderr)
+	}
+	got := testenv.Read(t, path)
+	var settings struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal([]byte(got), &settings); err != nil {
+		t.Fatal(err)
+	}
+	if pre := settings.Hooks["PreToolUse"]; len(pre) != 1 || pre[0].Matcher != old+"|Skill" {
+		t.Fatalf("PreToolUse: %+v", pre)
+	}
+	for _, ev := range []string{"PostToolUse", "PostToolUseFailure"} {
+		if g := settings.Hooks[ev]; len(g) != 1 || g[0].Matcher != old {
+			t.Fatalf("%s: %+v", ev, g)
+		}
+	}
+	code, stdout, stderr := runSetup("install", "--hooks", "--yes", "--agent", "claude", "--dir", r)
+	if code != 0 || strings.Contains(stdout, "updated") || strings.Contains(stdout, "created") || testenv.Read(t, path) != got {
+		t.Fatalf("second install: %d\n%s%s", code, stdout, stderr)
+	}
 }

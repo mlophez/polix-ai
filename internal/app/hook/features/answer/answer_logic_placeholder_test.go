@@ -76,6 +76,28 @@ func TestExpandCommitByEvent(t *testing.T) {
 	}
 }
 
+// AC-06: {skill} expands to the name of the skill as it came, its prefix included, on the event skill, and to an
+// empty text on any other event.
+func TestExpandSkill(t *testing.T) {
+	ev := agent.Event{Name: workflow.Skill, Skill: "polix:spec"}
+	if got := expandPlaceholders("Skill {skill} started.", ev, "main", nil, nil, hook.Commit{}); got != "Skill polix:spec started." {
+		t.Fatalf("skill: %q", got)
+	}
+	prompt := agent.Event{Name: workflow.Prompt, Prompt: "/polix:spec add a login"}
+	if got := expandPlaceholders("[{skill}]", prompt, "main", nil, nil, hook.Commit{}); got != "[]" {
+		t.Fatalf("prompt: %q", got)
+	}
+	const entry = "    - action: { inject: \"Skill {skill} started.\" }\n"
+	out, _ := walk(t, skillEval(t, "version: 1\non:\n  skill:\n"+entry, "polix:spec"), facts{branch: "main"})
+	if !slices.Equal(out.Answer.Contexts, []string{"Skill polix:spec started."}) {
+		t.Fatalf("skill: %+v", out.Answer)
+	}
+	out, _ = walk(t, eval(t, "version: 1\non:\n  prompt:\n"+entry, workflow.Prompt), facts{branch: "main"})
+	if !slices.Equal(out.Answer.Contexts, []string{"Skill  started."}) {
+		t.Fatalf("prompt: %+v", out.Answer)
+	}
+}
+
 // The measures expand as integers, or ? when the diff could not be measured.
 func TestExpandMeasures(t *testing.T) {
 	d := diff.Diff{Changes: []diff.Change{{Path: "a.go", Added: 3}, {Path: "b.png", Binary: true}}}

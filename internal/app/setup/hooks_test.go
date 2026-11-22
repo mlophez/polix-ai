@@ -85,7 +85,7 @@ func TestHookEvents(t *testing.T) {
 			t.Fatalf("SubagentStart goes right after UserPromptSubmit: %q", events)
 		}
 	}
-	if got := (Setup{}).Hooks(Claude)["PreToolUse"]; len(got) != 1 || got[0].Matcher != claudeTools {
+	if got := (Setup{}).Hooks(Claude)["PreToolUse"]; len(got) != 1 || got[0].Matcher != claudePreTools {
 		t.Fatalf("the tools polix governs: %+v", got)
 	}
 	start := (Setup{}).Hooks(Codex)["SessionStart"]
@@ -114,5 +114,33 @@ func TestHooksFileValid(t *testing.T) {
 	if (HooksFile{Hooks: hooks, ReadErr: errors.New("denied")}).Valid() == nil ||
 		(HooksFile{Hooks: map[string][]HookGroup{"Stop": {{}}}}).Valid() == nil {
 		t.Fatal("a file that cannot be read holds no hooks, and its groups are valid")
+	}
+}
+
+// Claude Code watches the tool Skill on PreToolUse only, and Codex keeps an empty matcher.
+func TestHookEventsSkill(t *testing.T) {
+	const pre = "Edit|Write|MultiEdit|NotebookEdit|Bash|Skill"
+	const post = "Edit|Write|MultiEdit|NotebookEdit|Bash"
+	if claudeTools != post {
+		t.Fatalf("claudeTools: %q", claudeTools)
+	}
+	hooks := (Setup{}).Hooks(Claude)
+	if got := hooks["PreToolUse"]; len(got) != 1 || got[0].Matcher != pre {
+		t.Fatalf("PreToolUse: %+v", got)
+	}
+	for _, ev := range []string{"PostToolUse", "PostToolUseFailure"} {
+		if got := hooks[ev]; len(got) != 1 || got[0].Matcher != post {
+			t.Fatalf("%s: %+v", ev, got)
+		}
+	}
+	for _, ev := range ClaudeHookEvents {
+		if want := ev.Name == "PreToolUse"; slices.Contains(ev.Tools, "Skill") != want {
+			t.Errorf("%s lists Skill: %v", ev.Name, !want)
+		}
+	}
+	for _, ev := range []string{"PreToolUse", "PostToolUse"} {
+		if got := (Setup{}).Hooks(Codex)[ev]; len(got) != 1 || got[0].Matcher != "" {
+			t.Fatalf("Codex %s: %+v", ev, got)
+		}
 	}
 }

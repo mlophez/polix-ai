@@ -48,3 +48,20 @@ func TestEventValidByCommand(t *testing.T) {
 		}
 	}
 }
+
+// AC-01: an event skill needs the name of its skill, and only it carries one.
+func TestEventValidSkill(t *testing.T) {
+	if err := (Event{Name: workflow.Skill, Agent: Claude, Skill: "polix:spec"}).Valid(); err != nil {
+		t.Fatalf("a skill with its name: %v", err)
+	}
+	for _, ev := range []Event{
+		{Name: workflow.Skill, Agent: Claude},
+		{Name: workflow.Skill, Agent: Claude, Skill: "  "},
+		{Name: workflow.Prompt, Agent: Claude, Skill: "polix:spec"},
+		{Name: workflow.PreCommand, Agent: Claude, Command: "ls", Skill: "polix:spec"},
+	} {
+		if ev.Valid() == nil {
+			t.Errorf("%+v is valid", ev)
+		}
+	}
+}

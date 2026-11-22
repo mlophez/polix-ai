@@ -36,7 +36,12 @@ included, whose normalized words start with `git commit`, and by the regular exp
 rejects; a `post_command` whose exit code is 0 and whose line holds a `git commit` that propagates its exit code
 (`shell.Command.Propagates`, `hookInput.commitSucceeds`) also gives `post_commit`, right after it and before the edits
 the command made, and a `PostToolUseFailure` never does; the `SubagentStart` of either agent gives one `subagent_start`
-whose actor is its `agent_type`), and `render`, which turns an `agent.Answer` into stdout, stderr and the exit code for
+whose actor is its `agent_type`; a `PreToolUse` of the tool `Skill` gives one `skill` with the name in
+`tool_input.skill`, as the agent gave it, in `agent.Event.Skill`, and none when the name is blank, and a `PostToolUse` of
+it gives none; a `UserPromptSubmit` of Claude Code whose prompt has the shape of a typed skill, a slash first, then a
+name that is not empty and holds no slash, then whitespace or the end (`hookInput.typedSkill`, by the text alone, so
+`/tmp is full` counts and `/tmp/foo` does not), gives `prompt` and, right after it, `skill` with the name as typed
+(`hookInput.prompts`), and both are evaluated as the events of one command line are), and `render`, which turns an `agent.Answer` into stdout, stderr and the exit code for
 the native event. It has one implementation per agent: `claude` in `answer_in_claude.go` and `codex` in
 `answer_in_codex.go`, which share the fields of the input both agents write and the rendering of an answer, in
 `answer_in.go` and `answer_in_input.go`. Both read `agent_id`, the id of the subagent that acts, into
@@ -72,10 +77,11 @@ what the next event of the call starts from.
 `answer_logic.go`, gives the family that answers it, a method of `pass` in a file of its own. Each family reads
 top-down, holds only what its events do and calls the engine as a library:
 
-- `session` (`answer_logic_session.go`), for `start`, `prompt` and `subagent_start`: the session context of `start`
+- `session` (`answer_logic_session.go`), for `start`, `prompt`, `skill` and `subagent_start`: the session context of `start`
   (rule 4), the `started` line of `start` and `subagent_start` (rule 6), the context of the missing programs of
   `requirements` on `prompt` (rule 14), and the discard of the once-only injects of a refused `prompt` (rule 6).
-  `subagent_start` gets neither the session context nor the requirements, which are told to the main session.
+  `subagent_start` and `skill` get neither the session context nor the requirements, which are told to the main
+  session, and a `block` on `skill` refuses the skill.
 - `edit` (`answer_logic_edit.go`), for `pre_edit` and `post_edit`: the protections of an edit (rule 1), but for an edit
   a command made (rule 16), the edits an unusable workflow lets through (rule 2) and the skip of the edits outside the
   repository (rule 3).
@@ -98,7 +104,7 @@ of the entries and their verbs (`answer_logic_entries.go`, `answer_logic_run.go`
 (`answer_logic_watch.go`), and the log (`answer_logic_log.go`). What differs per event reaches it as fields of the pass:
 `informed`, set by `Decide` for the events of `workflow.Informed` and for an edit a command made, turns a failing `run`
 into context; `byCommand`, set by `Decide` for an edit a command made (`agent.Event.ByCommand`), turns a `block` into
-context too; `always`, set by `session` on `start` and `subagent_start` and by `command` on `post_commit`, makes every
+context too; `always`, set by `session` on `start`, `skill` and `subagent_start` and by `command` on `post_commit`, makes every
 inject act every time; `every`, set by `command` on `post_commit`, makes every notify show every time; and `loop`, set
 by `stop`, sends every block through the loop guard.
 
@@ -199,7 +205,11 @@ The rules it follows, as before this use case:
    and `tasks` below `path`, each with its purpose.
 5. The entries of the event run in order: one runs when every condition of `when` holds and, with `unless`, not every
    condition of `unless` holds, and carries out the verb of its action (`workflow.Action.Verb`). The condition `path`
-   ignores case where file names ignore it (`anyPathFold`), as the protection of the state and `writes` do. `block`
+   ignores case where file names ignore it (`anyPathFold`), as the protection of the state and `writes` do. The
+   condition `skill` (a name or a list, `skillMatches`) holds when one name equals the name of the skill of the event
+   (`agent.Event.Skill`) as it came, plugin prefix included, or that name without the prefix, the part after its last
+   colon (`spec` for `polix:spec`); a blank name never holds, nor does an event without a skill. It only makes sense
+   on `skill`, and costs nothing, ranked with `actor` and `path` (`cost`). `block`
    blocks with its message; `run` runs a command or the checks of the rules (`changed`, or a path), and a failure, its
    `message`, a blank line and the output, blocks the event or, on `start`, `subagent_start`, `post_edit`,
    `post_command` and `post_commit` (`workflow.Informed`), reaches the AI as context and is logged as `inform`; `inject`
@@ -238,8 +248,9 @@ The rules it follows, as before this use case:
      writes `passed` with its key when the hash before and after it is the same; a run during which the content
      changed, or with an unknown hash, writes none, and the hash after it is computed only when the one before it is
      known. With `always: true` it runs on every event.
-   - `inject` acts once by default, except on `start` and `subagent_start`, which begin a new context, and on
-     `post_commit`, which repeats on every commit, where it always injects: keyed by the session, the actor, the line of
+   - `inject` acts once by default, except on `start` and `subagent_start`, which begin a new context, on `skill`,
+     whose instructions come each time it starts, and on `post_commit`, which repeats on every commit, where it always
+     injects: keyed by the session, the actor, the line of
      its entry and the expanded text or file path (one key per rule id for an `inject` of `rules`), it is skipped while
      not due and writes `injected`, without hash, when it reaches the AI: the lines are written once the answer of the
      event is known, in the order of the injects, and not at all when the answer to a `prompt` refuses, since the AI
@@ -254,7 +265,7 @@ The rules it follows, as before this use case:
      subagent type on `subagent_start`, with its id), when the workflow has a once-only inject, `requirements` or an
      `agents_are_running` (`workflow.Workflow.ObservesStart`); the `started` of `start` has the `source` of the start
      as its key, empty when the agent gives none. The end of a subagent is written only for a once-only inject
-     (`workflow.Workflow.InjectsOnce`, which skips the injects of `start`, `subagent_start` and `post_commit`) or an
+     (`workflow.Workflow.InjectsOnce`, which skips the injects of `start`, `skill`, `subagent_start` and `post_commit`) or an
      `agents_are_running` (`workflow.Workflow.CountsAgents`, rule 17), since the context of the requirements never
      goes to a subagent.
    - `notify` acts once by default, but on `post_commit` it shows every time and writes no line: keyed by the session,
@@ -343,7 +354,8 @@ The rules it follows, as before this use case:
     the measures over the `changed` of its `when`, else the whole diff, or to `?` when it cannot be measured
     (`measureValues`). On `post_commit`, `{commit}` and `{subject}` expand to the short hash and the subject of the
     commit just made, to an empty text when it cannot be read, and on any other event to an empty text, without
-    asking for the commit; they are read only when a string holds one of them.
+    asking for the commit; they are read only when a string holds one of them. `{skill}` expands to the name of the
+    skill of the event, prefix of its plugin included, and to an empty text outside `skill`.
 14. On `prompt`, before the entries, when the workflow declares `requirements` (`workflow.Workflow.Requirements`), its
     programs followed by git (`workflow.Workflow.Programs`) are looked up once per call (`hook.Step.Programs`, answered
     by `Missing`) and, when some are not on the PATH, the AI gets one context: `These programs that polix.yaml requires

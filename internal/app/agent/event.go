@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 )
@@ -26,8 +27,11 @@ type Event struct {
 	Command  string // pre_command, post_command, pre_commit, post_commit
 	ExitCode int    // post_command, post_commit
 	Prompt   string // prompt
-	Cwd      string
-	ToolUse  string // the id the agent gives the call of a tool, the same before and after it; empty when it gives none
+	// Skill is the name of the skill that starts, as the agent gave it, the prefix of its plugin included: only on
+	// skill, where it is never blank.
+	Skill   string
+	Cwd     string
+	ToolUse string // the id the agent gives the call of a tool, the same before and after it; empty when it gives none
 	// ByCommand is set on a pre_edit or post_edit that polix derived from the effect of a command, not on one of the
 	// edit tool: the edit already happened.
 	ByCommand bool
@@ -49,8 +53,8 @@ const ActorSession = "session"
 
 // Valid tells why the event is not one polix evaluates: its name is not a neutral event, it has no agent, it is
 // derived from a command without being an edit with its path, it carries the id of a subagent while its actor is the
-// main session, a source without being a start, or subagents in flight without being a stop, without the list
-// known or with one that is not valid.
+// main session, a source without being a start, a skill without its name or a name without being a skill, or
+// subagents in flight without being a stop, without the list known or with one that is not valid.
 func (e Event) Valid() error {
 	if !slices.Contains(workflow.Events, e.Name) {
 		return fmt.Errorf("unknown event %q", e.Name)
@@ -66,6 +70,9 @@ func (e Event) Valid() error {
 	}
 	if e.Source != "" && e.Name != workflow.Start {
 		return errors.New("only a start has a source")
+	}
+	if (e.Name == workflow.Skill) != (strings.TrimSpace(e.Skill) != "") {
+		return errors.New("a skill needs its name, and only a skill has one")
 	}
 	return e.validInFlight()
 }

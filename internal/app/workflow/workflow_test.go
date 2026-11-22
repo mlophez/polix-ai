@@ -101,6 +101,19 @@ func TestInjectsOnce(t *testing.T) {
 	}
 }
 
+// AC-05: every inject of skill acts every time the skill starts, so an inject on skill alone, without always, does
+// not make the workflow inject once.
+func TestInjectsOnceSkill(t *testing.T) {
+	inject := Action{Inject: &Inject{Text: "Skill {skill} started."}, Keys: []string{VerbInject}}
+	w := Workflow{Version: 1, On: map[string][]Entry{Skill: {{Action: inject}}}}
+	if err := w.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	if w.InjectsOnce() {
+		t.Fatal("an inject on skill alone injects once")
+	}
+}
+
 // The requirements inject once without any inject of on: the context of the missing programs on the first prompt.
 func TestObservesStartRequirements(t *testing.T) {
 	w := Workflow{Version: 1, Requirements: []string{"go"}}

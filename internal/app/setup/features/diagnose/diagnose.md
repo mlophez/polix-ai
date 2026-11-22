@@ -34,7 +34,9 @@ of Claude Code (`diagnose_logic_hooks.go`: the settings that cannot be read or a
 `setup.ClaudeHookEvents`, the matchers, the timeouts above the run budget, run once, the session start update, with
 `setup.HookHandler.Polix`, `Update` and `Legacy`; an event that does not run polix fails, but `PostToolUseFailure` and
 `SubagentStart`, which settings written by an older polix lack, only warn and ask to run `polix install`, since only the
-feedback of failed commands or the context at the start of subagents is lost), the auto memory of Claude Code
+feedback of failed commands or the context at the start of subagents is lost; a matcher of `PreToolUse` that does not
+cover the tool `Skill` only warns, `the matcher of PreToolUse does not cover Skill`, apart from the failure that lists
+the other missing tools, since only the event `skill` of the calls of the agent is lost), the auto memory of Claude Code
 (`diagnose_logic_memory.go`, area `memory`: only when the settings of Claude Code register polix and none of them fails
 to read or is not JSON, as the hooks report it; decided as Claude Code does, the first that sets it wins:
 `AutoMemoryEnv` of the inspection, the variable `setup.AutoMemoryVariable` (`1` off, `0` on, any other value nothing),
