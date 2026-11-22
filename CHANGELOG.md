@@ -9,6 +9,9 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- `/polix:spec` proposes the same `agents` at every risk level: the builder and the verifier on `sonnet`, the reviewer
+  on `opus`, all three with `effort: medium`. `risk.level` no longer picks their models, and adjusting a plan keeps
+  its `agents` even when its risk changes; a plan without `agents` gets these defaults.
 - `polix:builder` builds any task of a plan, code, docs, configuration or data, in the way that best fits its work,
   and imposes no method by itself: no test first and no baseline. It runs the checks the plan names, its `tests`,
   the `verify` of the criteria it closes and the plan's `verification`, and a task without any check is `done` once

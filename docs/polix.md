@@ -1628,7 +1628,7 @@ also prints that Codex support is not implemented in this release and the setup 
     `stats` at the root of the plan its `start`, `end`, `duration`,
     the `iterations`, its runs, the `timeline`, the start, end and duration of each run on a task or on `final`,
     written right before its commit, and the `code` it changed; it launches the builder, the verifier and the reviewer each with the `model`
-    and `effort` of its item of `agents` of the plan, which `spec` proposes (effort `medium`, the models from the risk) and the user may change,
+    and `effort` of its item of `agents` of the plan, which `spec` proposes (builder and verifier `sonnet`, reviewer `opus`, all `medium`) and the user may change,
     `inherit` or a missing item leaving it to the frontmatter of the agent; a run that did not end resumes
     where its last iteration stopped, or at the first task without its commit.
   - Codex, only with `--agent codex` (not implemented): `codex plugin marketplace add ~/.polix/marketplace` and
