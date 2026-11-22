@@ -1,7 +1,7 @@
 # LogWorkflow
 
 Prints the last session of the state log, or those `--tail`, `--all` and `--session` select, one file per session in
-`<git-dir>/polix/sessions/`, grouped by session: the sanctioned way to read it, since the commands that name the state folder and write files are denied. Each
+`<git-dir>/polix/sessions/`, as a table of events: the sanctioned way to read it, since the commands that name the state folder and write files are denied. Each
 line of a file is the record of one event of the agent, with what polix did with it and what it observed on it (see
 `docs/polix.md`), or a legacy line an earlier polix wrote, which is shown too. The old `<git-dir>/polix/log.jsonl` is never read.
 
@@ -56,13 +56,35 @@ of the files of every session skipped for being too long.
 
 The command writes to stderr `polix: <n> lines of the log are longer than <max> bytes and were skipped` once when
 `Skipped` is not 0, then the sessions to stdout. With `--json` it writes only the `Raw` line of each record, exactly as it
-is in the file, in the same order and without headers. Else it writes, for each session, the line `== session <id> ==`
-and then one row for each action and each observation of each record, with its time (`at`), its event and its actor,
-then what it is. This layout is provisional, until the table of `polix log` replaces it: an action shows as
-`action <verb>: <outcome> <key or the first line of the reason>`, an observation as `observed <outcome> <the first line of
-its key>`, a legacy decision as `decision <verb>: <outcome> ...` and a legacy observed line as an observation; a legacy
-line of a kind polix no longer writes (`fact`, `injected`, `stop_block`) as its kind and its fact, its rule or the first
-line of its key or reason. Without sessions it prints nothing. It exits with 0.
+is in the file, in the same order and without headers. Else it writes a borderless table (`log_in_table.go`).
+
+The table has a header row, `TIME`, `SESSION`, `EVENT`, `ACTOR`, `ACTIONS` and `OBSERVED`, and one block per record, in
+file order, the sessions ordered by their last activity. Columns are separated by two spaces and padded to their widest
+value, counted without color codes; there are no borders, no blank lines and no trailing spaces.
+
+- The first row of a block holds `TIME` (the `at` in the local time zone as `2006-01-02 15:04:05`, or as it is when it
+  does not parse), `SESSION` (the first 8 characters of the id), `EVENT` and `ACTOR`. The rows that follow leave them
+  empty and hold the rest of the actions and observations, one per row.
+- An element of `ACTIONS` is `<action>: <values>`, the values joined by a comma and a space: the outcome, left out
+  when it adds nothing (an `inject` that `injected`, a `notify` that `notify`, a `block` that `block`, a `deny` that
+  `deny`), then the key or else the first line of the reason, then, on a `run`, its duration: `300ms` under a second,
+  else seconds with one decimal, truncated (8450 ms is `8.4s`). Each line is cut to 44 characters, the three dots
+  included.
+- An element of `OBSERVED` is `<outcome>: <key>`, or the outcome alone.
+- A legacy decision shows in `ACTIONS` and a legacy observed line in `OBSERVED`, as the same elements; a line of an
+  old kind (`fact`, `injected`, `stop_block`) in `ACTIONS` as `<kind>: <fact, rule or key>`. A legacy line is a block of
+  its own, even when it says nothing, unless it is a `snapshot` or a `watched`.
+- Left out: `snapshot` and `watched`; an observation that repeats an action of its record (`passed` after a `run`,
+  `injected` after an `inject`, `blocked` after a `block` or a `run` that blocked, `notified` after a `notify`); and
+  every record left with no action and no observation to show. When no record of the chosen sessions has anything to
+  show, neither the table nor `--json` prints anything.
+- Before a key or a reason goes in a cell, its line breaks and tabs become spaces, runs of spaces become one and every
+  other control character is removed, so no escape code of the log reaches the terminal.
+- Colors, when `cli.NewUI` finds the output allows them (so never on a pipe, in a file, in CI or with `NO_COLOR`): the
+  name of each action takes the color of its outcome (red for `block`, `deny` and `loop_guard`, green for `passed`,
+  `injected` and `notify`, dimmed for `skip`) and every `OBSERVED` line is dimmed.
+
+Without sessions it prints nothing. It exits with 0.
 
 ## Port
 
@@ -96,5 +118,5 @@ The use case fails, printing the error and exiting with 1, when:
 2. The shell reads the file of every session through the port.
 3. `Decide` picks the sessions to show, by `--tail`, `--all` or `--session`, and their order: `Output`.
 4. The shell builds the response from the output: each session with its id and its records, and the skipped lines.
-5. `Command` prints the warning of the skipped lines and the sessions, with their headers and rows or, with `--json`, the
-   lines of their records as they are in the file.
+5. `Command` prints the warning of the skipped lines and the sessions, as the table or, with `--json`, the lines of
+   their records as they are in the file.

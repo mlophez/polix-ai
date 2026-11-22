@@ -53,7 +53,7 @@ polix rules check --changed  # only the rules whose scope matches the files chan
 polix rules fmt            # format every rules file of rules/ below path in place, retired.yaml included
                            # (--check only tells whether they are formatted, exiting with 1 when not)
 polix graph                # print the workflow as a Mermaid diagram
-polix log                  # print the last session of the state log, whole under `== session <id> ==`
+polix log                  # print the last session of the state log as a table, one block per event
                            # (-n counts sessions, 1 by default and 1 or more; --all for every session;
                            # --session ID for the one whose id is ID or starts with it; --json prints only the
                            # lines as they are in the files)
@@ -1465,15 +1465,32 @@ when the log cannot be read, with the warning of a log polix cannot use. The sin
 `<git-dir>/polix/log.jsonl`, is ignored by the hook and by `polix log`, and left on disk: remove it by hand when its
 history is no longer wanted.
 
-`polix log` prints the sessions grouped, each whole and in file order under the line `== session <id> ==`, ordered
-by their last activity (the latest `at` of their lines), the most recent last. By default it shows only the last
+`polix log` prints the sessions each whole and in file order, ordered by their last activity (the latest `at` of
+their lines), the most recent last. By default it shows only the last
 session. `-n` (`--tail`) counts sessions, 1 by default, and a value below 1 is an error that points to `--all`;
 `--all` shows every session, and `--all` with `-n` is refused. `--session <id>` shows only the session whose id equals
 the value, else the only one whose id starts with it: no match and several matches (their ids sorted) are errors, and
 so is an empty value or `--session` together with `-n` or `--all`. `--json` prints only the lines of the chosen
-sessions exactly as they are in the files, one JSON line each, in the same order and without headers. Without it, each
-session shows one row for each action and each observation of its lines, with the time, the event and the actor of the
-line, then what it is (a provisional layout).
+sessions exactly as they are in the files, one JSON line each, in the same order and without headers. Without it,
+`polix log` prints a borderless table with the header row `TIME`, `SESSION`, `EVENT`, `ACTOR`, `ACTIONS` and
+`OBSERVED` and one block per line of the log, in file order. The columns are separated by two spaces and padded to their
+widest value, with no blank lines and no trailing spaces. The first row of a block holds `TIME` (the `at` in the local
+time zone as `2006-01-02 15:04:05`, or as it is when it does not parse), `SESSION` (the first 8 characters of the id),
+`EVENT` and `ACTOR`; the rows that follow leave those columns empty and hold the rest of its actions and observations,
+one per row. Each element of `ACTIONS` is `<action>: <values>`: the values are the outcome (left out for an `inject`
+that `injected`, a `notify` that `notify`, a `block` that `block` and a `deny` that `deny`), then the key or else the
+first line of the reason, then, on a `run`, its duration, as `300ms` under a second and else in seconds with one
+decimal, truncated (8450 ms is `8.4s`). Each line of `ACTIONS` is cut to 44 characters, the three dots included. Each
+element of `OBSERVED` is `<outcome>: <key>`, or the outcome alone. A line of an old kind (`fact`, `injected` or
+`stop_block`) shows in `ACTIONS` as `<kind>: <fact, rule or key>`. The table leaves out `snapshot` and `watched`, an
+observation that repeats an action of its line (`passed` after a `run`, `injected` after an `inject`, `blocked` after a
+`block` or a `run` that blocked, and `notified` after a `notify`) and every event left with nothing to show; with
+nothing left in any line, neither the table nor `--json` prints anything and the exit is 0. Before a key or a reason
+goes in a cell its line breaks and tabs become spaces, the runs of spaces become one and every other control character
+is removed, so no escape code of the log reaches the terminal. On a terminal that allows colors the name of each action
+takes the color of its outcome (red for `block`, `deny` and `loop_guard`, green for `passed`, `injected` and `notify`,
+dimmed for `skip`) and `OBSERVED` is dimmed; on a pipe, in a file, in CI and with `NO_COLOR` the output is plain text.
+The input of the event is not in the table: `--json` shows it.
 
 Each line is the record of one event of the agent, an event line: what the event was, what polix did with it and what
 polix noted by itself on it, written once the event is evaluated and only when something acted or was observed on it, so

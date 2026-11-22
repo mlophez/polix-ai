@@ -33,6 +33,9 @@ type UI struct {
 // and Run prints nothing for it.
 type ExitCodeError int
 
+// Tone is the color Paint gives a text; the zero Tone gives none.
+type Tone int
+
 // Levels of a row of a Report.
 const (
 	LevelOK   = "ok"
@@ -98,6 +101,30 @@ func (u *UI) Change(removal bool, action, what string) {
 		sign = styleWarn.Render("-")
 	}
 	fmt.Fprintf(u.w, "%s %s %s\n", sign, styleMuted.Render(fmt.Sprintf("%-12s", action)), what)
+}
+
+// Tones of Paint.
+const (
+	ToneRed   Tone = iota + 1 // something refused or stopped
+	ToneGreen                 // something that went well
+	ToneMuted                 // something to see only when looked for
+)
+
+// Paint returns s in the color of tone when the output of the ui has colors, and s as it is otherwise or for a tone
+// that has none.
+func (u *UI) Paint(tone Tone, s string) string {
+	if !u.rich {
+		return s
+	}
+	switch tone {
+	case ToneRed:
+		return styleFail.Render(s)
+	case ToneGreen:
+		return styleOK.Render(s)
+	case ToneMuted:
+		return styleMuted.Render(s)
+	}
+	return s
 }
 
 // Code styles a command or a path inside a line of the ui.

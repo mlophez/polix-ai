@@ -51,8 +51,8 @@ func Command(loadState state.Load) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "log",
 		Short: "Print the last session of the state log, or the sessions --tail, --all or --session select",
-		Long: "Print the last session of the state log, one file per session, each whole under a header " +
-			"`== session <id> ==`, the most recently active last: the sanctioned way to read it, since commands " +
+		Long: "Print the last session of the state log, one file per session, each whole as a table with one " +
+			"block per event, the most recently active last: the sanctioned way to read it, since commands " +
 			"that name the state folder and write files are denied. --tail shows the last n sessions, --all every " +
 			"session and --session the one whose id is the value or starts with it.",
 		Args: cobra.NoArgs,
@@ -115,74 +115,26 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	return res, nil
 }
 
-// print writes the warning of the skipped lines to stderr and the sessions to stdout: with raw only the lines of
-// their records, as they are in the file, one JSON line each; else each session under the line `== session <id> ==`,
-// and each action and each observation of a record as one row: its time, event and actor, then what it is (the layout
-// is provisional, see rows).
+// print writes the warning of the skipped lines to stderr and the sessions to stdout. With nothing to show, that is no
+// record with an action or an observation the table shows, it writes nothing else. With raw it writes only the lines
+// of the records, as they are in the file, one JSON line each; else the table of the events (see printTable), with
+// the colors the output allows.
 func (res Response) print(stdout, stderr io.Writer, raw bool) {
 	if res.Skipped > 0 {
 		fmt.Fprintf(stderr, "polix: %d lines of the log are longer than %d bytes and were skipped\n", res.Skipped,
 			state.MaxLine)
 	}
+	blocks := res.blocks()
+	if len(blocks) == 0 {
+		return
+	}
+	if !raw {
+		res.printTable(stdout, cli.NewUI(stdout), blocks)
+		return
+	}
 	for _, s := range res.Sessions {
-		if !raw {
-			fmt.Fprintf(stdout, "== session %s ==\n", s.ID)
-		}
 		for _, r := range s.Records {
-			if raw {
-				fmt.Fprintln(stdout, r.Raw)
-				continue
-			}
-			for _, what := range s.rows(r) {
-				fmt.Fprintf(stdout, "%s  %-13s %-9s %s\n", r.At, r.Event, r.Actor, what)
-			}
+			fmt.Fprintln(stdout, r.Raw)
 		}
 	}
-}
-
-// rows returns what a record of the session shows, one row for each of its actions and observations: an action as its verb, its
-// outcome and what it acted on or the first line of its reason, an observation as its outcome and the first line of
-// its key, each under the word that names it (action or observed, or decision for a legacy decision); a legacy line of
-// a kind polix no longer writes as its kind and its fact, its rule or the first line of its key or reason.
-func (s Session) rows(r state.Record) []string {
-	var out []string
-	switch r.Legacy {
-	case "", state.LegacyDecision, state.LegacyObserved:
-	default:
-		return []string{strings.TrimSpace(r.Legacy + " " + s.first(r.Fact, r.Rule, s.legacyKey(r)))}
-	}
-	word := "action"
-	if r.Legacy == state.LegacyDecision {
-		word = "decision"
-	}
-	for _, a := range r.Actions {
-		out = append(out, strings.TrimSpace(fmt.Sprintf("%s %s: %s %s", word, a.Action, a.Outcome,
-			s.first(a.Key, a.Reason))))
-	}
-	word = "observed"
-	for _, o := range r.Observations {
-		out = append(out, strings.TrimSpace(fmt.Sprintf("%s %s %s", word, o.Outcome, s.first(o.Key))))
-	}
-	return out
-}
-
-// legacyKey returns the first non empty key or reason of the one action of a legacy record of an old kind.
-func (s Session) legacyKey(r state.Record) string {
-	for _, a := range r.Actions {
-		if v := s.first(a.Key, a.Reason); v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
-// first returns the first line of the first of the values that is not empty, "" when all are.
-func (Session) first(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			line, _, _ := strings.Cut(v, "\n")
-			return line
-		}
-	}
-	return ""
 }

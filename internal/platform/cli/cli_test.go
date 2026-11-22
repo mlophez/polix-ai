@@ -129,3 +129,19 @@ func TestNewUIWidthIsZeroWithoutTerminal(t *testing.T) {
 		}
 	}
 }
+
+// Paint colors a text in a rich ui, and leaves it as it is in a plain one and for a tone without color.
+func TestPaint(t *testing.T) {
+	rich, plain := &UI{rich: true}, &UI{}
+	for _, tone := range []Tone{ToneRed, ToneGreen, ToneMuted} {
+		if got := rich.Paint(tone, "x"); got == "x" || !strings.Contains(got, "x") || !strings.Contains(got, "\x1b[") {
+			t.Errorf("rich %d: %q", tone, got)
+		}
+		if got := plain.Paint(tone, "x"); got != "x" {
+			t.Errorf("plain %d: %q", tone, got)
+		}
+	}
+	if got := rich.Paint(0, "x"); got != "x" {
+		t.Errorf("no tone: %q", got)
+	}
+}

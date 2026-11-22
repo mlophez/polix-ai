@@ -122,7 +122,7 @@ func TestCommand(t *testing.T) {
 }
 
 // AC7 to AC10: polix log shows the last session by default, -n 5 the last five, the most recently active last, each
-// whole under its header; --all all of them, and --json only their lines. Without sessions it prints nothing.
+// whole as the rows of the table; --all all of them, and --json only their lines. Without sessions it prints nothing.
 func TestCommandSessions(t *testing.T) {
 	code, stdout, stderr := runCommand(t, newRepo(t, nil), "log")
 	if code != 0 || stdout != "" || stderr != "" {
@@ -135,33 +135,24 @@ func TestCommandSessions(t *testing.T) {
 			i, id) + "\n" + fmt.Sprintf(`{"at":"2026-11-12T0%d:30:00Z","kind":"decision","session":"%s"}`, i, id) + "\n"
 	}
 	repo := newRepo(t, files)
-	headers := func(out string) []string {
-		var got []string
-		for line := range strings.SplitSeq(out, "\n") {
-			if strings.HasPrefix(line, "== session ") {
-				got = append(got, line)
-			}
-		}
-		return got
-	}
+	headers := shown
 	code, stdout, _ = runCommand(t, repo, "log")
-	if got := headers(stdout); code != 0 || !slices.Equal(got, []string{"== session s6 =="}) ||
+	if got := headers(stdout); code != 0 || !slices.Equal(got, []string{"s6"}) ||
 		strings.Count(stdout, "\n") != 3 {
 		t.Fatalf("default: %d %q", code, stdout)
 	}
 	code, stdout, _ = runCommand(t, repo, "log", "-n", "5")
-	want := []string{"== session s2 ==", "== session s3 ==", "== session s4 ==", "== session s5 ==",
-		"== session s6 =="}
-	if got := headers(stdout); code != 0 || !slices.Equal(got, want) || strings.Count(stdout, "\n") != 15 {
+	want := []string{"s2", "s3", "s4", "s5", "s6"}
+	if got := headers(stdout); code != 0 || !slices.Equal(got, want) || strings.Count(stdout, "\n") != 11 {
 		t.Fatalf("-n 5: %d %q", code, stdout)
 	}
 	code, stdout, _ = runCommand(t, repo, "log", "-n", "1")
-	if got := headers(stdout); code != 0 || !slices.Equal(got, []string{"== session s6 =="}) ||
+	if got := headers(stdout); code != 0 || !slices.Equal(got, []string{"s6"}) ||
 		strings.Count(stdout, "\n") != 3 {
 		t.Fatalf("-n 1: %d %q", code, stdout)
 	}
 	code, stdout, _ = runCommand(t, repo, "log", "--all")
-	if got := headers(stdout); code != 0 || len(got) != 7 || got[0] != "== session s0 ==" {
+	if got := headers(stdout); code != 0 || len(got) != 7 || got[0] != "s0" {
 		t.Fatalf("-n 0: %d %q", code, stdout)
 	}
 	code, stdout, _ = runCommand(t, repo, "log", "-n", "2", "--json")

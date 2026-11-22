@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -53,11 +52,6 @@ func one(t *testing.T, lines ...string) fakePort {
 	return fakePort{sessions: []state.State{load(t, lines...)}}
 }
 
-// row is a row of the provisional layout: the time, the event and the actor of a record, then what it is.
-func row(at, event, actor, what string) string {
-	return fmt.Sprintf("%s  %-13s %-9s %s\n", at, event, actor, what)
-}
-
 // The lines of a session: legacy lines of three kinds and an old one, and an event line with two actions and two
 // observations.
 var lines = []string{
@@ -71,35 +65,6 @@ var lines = []string{
 		`"reason":"just test already passed on this content"},{"line":6,"action":"block","outcome":"block",` +
 		`"reason":"revisa\nahora"}],"observed":[{"line":5,"outcome":"passed","key":"just test","hash":"h"},` +
 		`{"outcome":"snapshot","key":"toolu_1","hash":"h"}]}`,
-}
-
-// Each action and each observation of a record is one row under the header of its session, with the time, the event
-// and the actor of its record: an action with its verb, its outcome and what it acted on or its reason, an
-// observation with its outcome and key, a legacy decision and a legacy observed line the same, and a line of a kind
-// polix no longer writes with its kind and its fact.
-func TestShellPrintsText(t *testing.T) {
-	st := load(t, lines...)
-	st.Skipped = 1
-	res, err := run(context.Background(), fakePort{sessions: []state.State{st}}, Request{Tail: 5})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var out, errb bytes.Buffer
-	res.print(&out, &errb, false)
-	want := "== session s1 ==\n" +
-		row("t0", "stop", "session", "fact reviewed") +
-		row("t1", "subagent_stop", "polix:reviewer", "observed finished polix:reviewer") +
-		row("t2", "pre_edit", "builder", "decision block: block first") +
-		row("t3", "pre_commit", "session", "action run: skip just test already passed on this content") +
-		row("t3", "pre_commit", "session", "action block: block revisa") +
-		row("t3", "pre_commit", "session", "observed passed just test") +
-		row("t3", "pre_commit", "session", "observed snapshot toolu_1")
-	if out.String() != want {
-		t.Fatalf("got:\n%q\nwant:\n%q", out.String(), want)
-	}
-	if want := "polix: 1 lines of the log are longer than 4194304 bytes and were skipped\n"; errb.String() != want {
-		t.Fatalf("stderr %q", errb.String())
-	}
 }
 
 // --json prints the line of each record as it is in the file, the keys of an old fact line and of an event line
@@ -116,8 +81,9 @@ func TestShellPrintsJSON(t *testing.T) {
 	}
 }
 
-// AC7, AC9, AC10: the sessions are printed in the order of their last activity, each under its header in the text
-// and only as lines with --json; the warning of the skipped lines sums every file.
+// AC7, AC9, AC10: the sessions are printed in the order of their last activity, as the rows of the table of the
+// events that show something and only as lines with --json, which keeps every line; the warning of the skipped lines
+// sums every file.
 func TestShellPrintsSessions(t *testing.T) {
 	late := load(t, `{"at":"2026-11-12T10:00:00Z","kind":"decision","session":"late"}`)
 	late.Skipped = 2
@@ -126,17 +92,19 @@ func TestShellPrintsSessions(t *testing.T) {
 		`{"at":"2026-11-12T09:00:00Z","kind":"decision","session":"early","outcome":"b"}`)
 	early.Skipped = 1
 	port := fakePort{sessions: []state.State{late, early}}
+	madrid(t)
+	plain(t)
 	res, err := run(context.Background(), port, Request{Tail: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var out, errb bytes.Buffer
 	res.print(&out, &errb, false)
-	want := "== session early ==\n" +
-		row("2026-11-12T08:00:00Z", "", "", "decision : a") +
-		row("2026-11-12T09:00:00Z", "", "", "decision : b") +
-		"== session late ==\n" +
-		row("2026-11-12T10:00:00Z", "", "", "decision :")
+	want := tableOf(
+		"TIME                 SESSION  EVENT  ACTOR  ACTIONS  OBSERVED",
+		"2026-11-12 09:00:00  early"+strings.Repeat(" ", 18)+"a",
+		"2026-11-12 10:00:00  early"+strings.Repeat(" ", 18)+"b",
+		"2026-11-12 11:00:00  late")
 	if out.String() != want {
 		t.Fatalf("got:\n%q\nwant:\n%q", out.String(), want)
 	}
@@ -180,12 +148,13 @@ func threeSessions(t *testing.T) *git.Repo {
 	})
 }
 
-// shown returns the ids of the sessions the text output names, in order.
+// shown returns the SESSION column of each row of the table, the session ids cut to 8 characters, one for each
+// session in order.
 func shown(out string) []string {
 	var ids []string
 	for l := range strings.SplitSeq(out, "\n") {
-		if id, ok := strings.CutPrefix(l, "== session "); ok {
-			ids = append(ids, strings.TrimSuffix(id, " =="))
+		if f := strings.Fields(l); len(f) > 2 && f[0] != "TIME" && (len(ids) == 0 || ids[len(ids)-1] != f[2]) {
+			ids = append(ids, f[2])
 		}
 	}
 	return ids
@@ -197,7 +166,7 @@ func TestShellShowsLastSessionByDefault(t *testing.T) {
 	if code != 0 || errb != "" {
 		t.Fatalf("exit %d, stderr %q", code, errb)
 	}
-	if got, want := shown(out), []string{"4037ea3d-b191-4a27-970d-92ce6488cd63"}; !slices.Equal(got, want) {
+	if got, want := shown(out), []string{"4037ea3d"}; !slices.Equal(got, want) {
 		t.Fatalf("sessions %v:\n%s", got, out)
 	}
 }
@@ -206,12 +175,12 @@ func TestShellShowsLastSessionByDefault(t *testing.T) {
 func TestShellTailAndAll(t *testing.T) {
 	repo := threeSessions(t)
 	code, out, _ := runCommand(t, repo, "log", "-n", "2")
-	want := []string{"8e90182c-cf0e-43ea-b3f1-f6f94bc6ad2f", "4037ea3d-b191-4a27-970d-92ce6488cd63"}
+	want := []string{"8e90182c", "4037ea3d"}
 	if got := shown(out); code != 0 || !slices.Equal(got, want) {
 		t.Fatalf("-n 2: exit %d, sessions %v", code, got)
 	}
 	code, out, _ = runCommand(t, repo, "log", "--all")
-	want = []string{"bf6d55cb-3725-4ee0-aa97-551114a740f0", want[0], want[1]}
+	want = []string{"bf6d55cb", want[0], want[1]}
 	if got := shown(out); code != 0 || !slices.Equal(got, want) {
 		t.Fatalf("--all: exit %d, sessions %v", code, got)
 	}
@@ -235,8 +204,8 @@ func TestCommandRejectsTailBelowOne(t *testing.T) {
 // CUJ-04: a prefix and a full id each print only their session, an older one included.
 func TestShellSessionPrefix(t *testing.T) {
 	repo := threeSessions(t)
-	for arg, want := range map[string]string{"bf6d": "bf6d55cb-3725-4ee0-aa97-551114a740f0",
-		"8e90182c-cf0e-43ea-b3f1-f6f94bc6ad2f": "8e90182c-cf0e-43ea-b3f1-f6f94bc6ad2f"} {
+	for arg, want := range map[string]string{"bf6d": "bf6d55cb",
+		"8e90182c-cf0e-43ea-b3f1-f6f94bc6ad2f": "8e90182c"} {
 		code, out, errb := runCommand(t, repo, "log", "--session", arg)
 		if got := shown(out); code != 0 || errb != "" || !slices.Equal(got, []string{want}) {
 			t.Fatalf("--session %s: exit %d, sessions %v, stderr %q", arg, code, got, errb)
@@ -316,37 +285,6 @@ func TestShellPrintsJSONHead(t *testing.T) {
 	}
 	if h := port.sessions[0].Records[0].Head; h != "c1" || port.sessions[0].Records[1].Head != "" {
 		t.Fatalf("heads %q %q", h, port.sessions[0].Records[1].Head)
-	}
-}
-
-// The rows of the repeat rules: a verb spared as a skip action with its verb, a passed observation with what it ran,
-// the old injected and stop_block lines with their kind, the rule of the injected one included, and an inject of a
-// text of several lines with its first line only.
-func TestShellPrintsRepeatLines(t *testing.T) {
-	port := one(t,
-		`{"at":"t3","session":"s","event":"stop","actor":"session","actions":[{"line":5,"action":"run","outcome":"skip",`+
-			`"reason":"just test already passed on this content"}],"observed":[{"line":5,"outcome":"passed",`+
-			`"key":"just test","hash":"0123456789abcdef"}]}`,
-		`{"at":"t5","kind":"injected","session":"s","rule":"GO-2"}`,
-		`{"at":"t6","kind":"stop_block","session":"s","event":"stop","actor":"session","line":4,`+
-			`"hash":"abcdef0123456789","reason":"revisa"}`,
-		`{"at":"t7","session":"s","event":"pre_edit","actor":"session","observed":[{"line":9,"outcome":"injected",`+
-			`"key":"uno\ndos"}]}`,
-	)
-	res, err := run(context.Background(), port, Request{Tail: 5})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var out, errb bytes.Buffer
-	res.print(&out, &errb, false)
-	want := "== session s ==\n" +
-		row("t3", "stop", "session", "action run: skip just test already passed on this content") +
-		row("t3", "stop", "session", "observed passed just test") +
-		row("t5", "", "", "injected GO-2") +
-		row("t6", "stop", "session", "stop_block revisa") +
-		row("t7", "pre_edit", "session", "observed injected uno")
-	if out.String() != want {
-		t.Fatalf("got:\n%q\nwant:\n%q", out.String(), want)
 	}
 }
 
