@@ -4,8 +4,6 @@ description: >
   Adds a task to the backlog in the folder of tasks, from a template with a frontmatter, ready for the skill spec.
   It asks only what the request leaves open, never plans the task nor writes code.
   It runs only when the user asks for it.
-effort: medium
-model: sonnet
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[the task to add, e.g. the export times out with 10,000 rows; empty to take it from the conversation]"

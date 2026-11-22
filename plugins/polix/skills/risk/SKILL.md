@@ -4,8 +4,6 @@ description: >
   Calibrates risk.weights and the thresholds changed_lines, changed_files and risk_score of polix.yaml.
   It measures past commits with polix risk --commit, so each gate catches the share of changes the team will review.
   It runs only when the user asks for it.
-effort: medium
-model: inherit
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[share of commits to gate and commits to sample, e.g. 15% of the last 300; empty for 15% of 200]"

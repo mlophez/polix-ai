@@ -4,8 +4,6 @@ description: >
   Writes or rewrites a skill of Claude Code in a fixed format: frontmatter, fixed sections and a short, imperative body.
   It runs only when the user or the workflow of the project asks for it.
   It never writes a subagent: that is the skill writing-agents.
-effort: medium
-model: inherit
 user-invocable: true
 disable-model-invocation: false
 paths: "**/skills/**"
@@ -86,8 +84,9 @@ The style of every skill and subagent, also of those `writing-agents` writes:
 ### Frontmatter
 
 Write the fields in the order of [template.md](template.md).
-Always write `name`, `description`, `effort`, `model`, `user-invocable` and `disable-model-invocation`.
+Always write `name`, `description`, `user-invocable` and `disable-model-invocation`.
 Omit the others when not needed and never leave a field commented out.
+Never write `effort` nor `model`: they hold only for the turn that invokes the skill, so it runs on the session's.
 
 - `name`: kebab-case naming the activity, equal to the folder name.
   Use a gerund plus object (`writing-skills`, `creating-tickets`) or a bare verb (`plan`, `commit`).
@@ -95,9 +94,6 @@ Omit the others when not needed and never leave a field commented out.
 - `description`: at most 3 sentences and 400 characters, starting with a verb in third person.
   It is the only part always in context: it says what and when, never how.
   If it needs more, the skill does more than one task: split it.
-- `effort`: `low` for mechanical steps, `medium` by default, `high` for analysis or review.
-- `model`: `inherit` by default (the model of the session).
-  Use `sonnet` or `opus` only when the skill must not run on the model of the session.
 - `user-invocable`: written even with its default value; `true` unless only the model may use the skill.
 - `disable-model-invocation`: written even with its default value, `false` by default.
   Set it to `true` only for a skill that the user alone launches and no other skill invokes.

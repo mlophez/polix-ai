@@ -4,8 +4,6 @@ description: >
   Writes an outcome-driven plan, on a new branch, in the folder of plans from the brief the skill grill-me confirms.
   It writes the tasks that build it, has the subagent critic review it, and never runs in plan mode, codes nor commits.
   It runs only when the user asks for it.
-effort: high
-model: inherit
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[what to plan, e.g. add retries to the webhook sender, and where to save it; empty: the conversation]"
@@ -296,6 +294,13 @@ Then the build commits it, and the next task starts from that commit; a verifier
   Removing the old form goes to `scope.out`, with the condition to do it.
 - Size a task to one behaviour that its own checks show, verified and reviewed apart from the other tasks.
   Split a task that mixes behaviours, and merge tasks not verifiable apart.
+- Estimate `expected_files` of each task: its `files` plus the files that follow its change, such as the callers of
+  each contract it changes, counted with `rg`, and their tests.
+  A task over 20 gets one review too thin for its lines: split it by behaviour.
+  To split the change of a contract with many callers, put first a refactor that keeps the behaviour, or change it by
+  expand-contract: widen it, move the callers in later tasks, then remove the old form.
+  When no split keeps each task working and verifiable apart, keep it and record why in a decision of `decisions`
+  that names the task, so the user sees it before approving.
 - A criterion covered by several tasks is checked at the last task that covers it: list it in the `covers` of each.
 - The checks of the whole project go to the `verification` of `approach`, such as the full test suite, the linter or
   the build, from `AGENTS.md`; `[]` when the project has none.
@@ -308,6 +313,7 @@ Then the build commits it, and the next task starts from that commit; a verifier
     It never restates its tests nor its criteria: `tests` and `covers` hold them.
   - `files` lists the paths the behaviour of the task lives in, with no description: the `design` says what changes.
     Never list the callers, comments or fixtures that only follow the change: the build finds them.
+  - `expected_files` is the number of files the task is expected to change, `files` and the ones that follow.
   - `status: pending` and `evidence: none`: the build sets them from the builder's report.
 
 ### High risk

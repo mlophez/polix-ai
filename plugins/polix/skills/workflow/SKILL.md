@@ -4,8 +4,6 @@ description: >
   Writes or changes polix.yaml, the workflow polix applies to the sessions of the agents on every event.
   It runs only when the user or the workflow of the project asks for it.
   It never writes the rules (the folder rules/ below path): that is the skill add-rule.
-effort: medium
-model: inherit
 user-invocable: true
 disable-model-invocation: false
 paths: polix.yaml

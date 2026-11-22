@@ -4,8 +4,6 @@ description: >
   Implements a plan task by task: the subagent builder builds each task, reviewer checks it, and the build commits
   it once the review closes it. Then verifier checks the whole plan, unattended, recording each iteration in the
   plan and never pushing. It runs only when the user asks for it.
-effort: low
-model: sonnet
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[plan and optional first task, e.g. add-retries.yaml T3; empty to take it from the conversation]"
@@ -325,6 +323,8 @@ stats:
       start: 2026-11-14T21:05:40+01:00
       end: 2026-11-14T21:12:03+01:00
       duration: 6m 23s
+      files: 2
+      lines: 146
     - id: T2
       start: 2026-11-14T21:12:03+01:00
       end: 2026-11-14T21:20:15+01:00
@@ -333,6 +333,8 @@ stats:
       start: 2026-11-14T21:31:40+01:00
       end: 2026-11-14T21:44:10+01:00
       duration: 12m 30s
+      files: 5
+      lines: 214
     - id: final
       start: 2026-11-14T21:44:10+01:00
       end: 2026-11-14T21:48:02+01:00
@@ -360,6 +362,10 @@ Never edit nor remove an entry of an earlier run: it is the history of the plan.
   - The final verification: `stats.end`, written at Step 6, also when there is no final commit.
   - The task or the final verification the run stops on, when the plan ends `blocked`: `stats.end`, at Step 6.
 - `duration`: `end` minus `start`, as `stats.duration`.
+- `files` and `lines`: only in the entry written at the commit `T<N>: ` of a task, the change of the whole task.
+  Measure them at step 1 of `How to commit`, as `stats.code` but against the task base, the plan excluded:
+  `git diff --shortstat <task base> -- . ':(exclude)<plan>'`, plus the lines of its untracked files.
+  Every other entry, of an earlier run, of a stop or of `final`, has neither.
 
 A run interrupted before Step 6 leaves no entry for the task it was on: the next run measures it from its start.
 A plan without `timeline` gets it as `[]`.

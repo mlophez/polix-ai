@@ -24,7 +24,8 @@ stats:  # the build sets every field; the plan writes none
   end: none  # when the plan ended done or blocked, in the same format
   duration: none  # end minus start, as 1h 05m 12s
   iterations: none  # the runs of the build on the plan, a resumed one included
-  timeline: []  # one entry per run on a task or the final verification: id (T<N> or final), start, end, duration
+  timeline: []  # one entry per run on a task or the final verification: id (T<N> or final), start, end, duration,
+               # and files and lines in the entry of the commit of a task
   code:  # as the build last measured it, against the base branch and without the plan
     files: none  # the files changed, the untracked ones included
     lines: none  # the lines added plus removed
@@ -166,6 +167,7 @@ tasks:
     files:
       create: [<path>]  # the files the behaviour of the task lives in
       modify: [<path>]  # never the callers, fixtures and comments that only follow: the build finds them
+    expected_files: <n>  # the files the task is expected to change, callers included; over 20, split it or a DEC says why
     tests:  # the tests it writes or keeps, or [] when it has none; its summary then says why
       - file: <test file>
         new:

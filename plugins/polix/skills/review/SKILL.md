@@ -4,8 +4,6 @@ description: >
   Reviews a change without a plan (files, a range or the current change) with the subagent reviewer in change mode.
   It relays the verdict on the code's quality: design, rules, bugs and tests; saves the report and fixes nothing.
   It runs only when the user asks for it.
-effort: low
-model: sonnet
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[range or files, e.g. HEAD~3..HEAD or internal/app/setup; empty for the current change]"

@@ -4,8 +4,6 @@ description: >
   <What it does, in one sentence.>
   <When it runs: its trigger, or who alone runs it, in the sentence the tests of the location require if any.>
   <What it never does, only when easy to confuse.>
-effort: <low|medium|high>
-model: inherit
 user-invocable: true
 disable-model-invocation: <false by default; true only when the user alone launches it>
 paths: "<glob of the files it works on, only when the model should see it only while on them>"

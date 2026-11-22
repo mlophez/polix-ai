@@ -84,6 +84,9 @@ Report nothing on it.
 2. Check that each task delivers one behaviour on the tree the earlier tasks left, without waiting for a later task.
    A task that mixes behaviours, or one that needs a later task to work, is a finding.
 3. A point the executor would decide is a finding, unless `design` leaves it to the executor on purpose.
+4. Check the size of each task by its `expected_files`.
+   A task over 20 is a finding unless a decision of `decisions` names it and says why it is not split.
+   A task of 20 or fewer, or one without `expected_files` in a plan written before the key existed, is never one.
 
 ### Step 7: Parse
 
@@ -121,6 +124,7 @@ A case is settled when a journey, a criterion, a constraint, a decision, `cross_
 - **traceability**: an id named that does not exist, or a behaviour without its journey, criterion or task.
 - **executor**: a task that cannot run as written.
   It depends on a later task, or on a fact, file or id the plan does not give.
+- **size**: a task over 20 `expected_files` with no decision that names it.
 - **duplication**: a fact stated in more than one place, so the places can drift apart.
 - **readability**: a sentence a reviewer new to the request cannot follow, or a term `terms` does not define.
 - **format**: a placeholder left, or a parse error.
@@ -129,7 +133,8 @@ A case is settled when a journey, a criterion, a constraint, a decision, `cross_
 
 - **blocking**: a contradiction, or an undefined fact the executor needs, so two builds differ.
   Also a task that cannot run as written, a placeholder left, or a plan that does not parse.
-- **major**: an edge case left open, a broken reference, or a behaviour without its journey, criterion or task.
+- **major**: an edge case left open, a broken reference, a behaviour without its journey, criterion or task, or a
+  task over the size limit.
 - **minor**: duplication, readability or a term not defined, with a concrete better form.
 
 ### Report template

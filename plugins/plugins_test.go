@@ -106,6 +106,18 @@ func TestFrontmatterNames(t *testing.T) {
 	}
 }
 
+// No skill declares effort nor model: Claude Code holds them only for the turn that invokes the skill, then the
+// session resumes its own, so a skill runs on the effort and model of the session.
+func TestSkillsWithoutEffortNorModel(t *testing.T) {
+	for _, c := range components(t, "skills") {
+		for _, key := range []string{"effort", "model"} {
+			if _, ok := c.field(key); ok {
+				t.Errorf("%s: the frontmatter must not declare %s: the skill runs on the one of the session", c.path, key)
+			}
+		}
+	}
+}
+
 // Every skill and every agent runs only when the user or the workflow of the project asks for it: its description
 // says so with a fixed sentence and invites the model to run it by itself with no other. A skill with
 // disable-model-invocation: true runs only when the user asks for it, since the model cannot invoke it.

@@ -4,8 +4,6 @@ description: >
   Interviews the user one decision at a time until both share what they want of a change.
   It covers the what and the how only the user should decide, explores the code and returns a brief, editing nothing.
   It runs only when the user or the workflow of the project asks for it.
-effort: high
-model: inherit
 user-invocable: true
 disable-model-invocation: false
 argument-hint: "[the change, decision or idea to grill, e.g. split the hooks by agent; empty for the conversation]"

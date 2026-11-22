@@ -4,8 +4,6 @@ description: >
   Adds rules on how to write the code to the folder of rules of the project, one YAML file per topic.
   It runs only when the user or the workflow of the project asks for it.
   It never changes the code nor the configuration of the tools that enforce the rules.
-effort: medium
-model: inherit
 user-invocable: true
 disable-model-invocation: false
 paths: "**/rules/*.yaml"

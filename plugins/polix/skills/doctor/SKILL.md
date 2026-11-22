@@ -3,8 +3,6 @@ name: doctor
 description: >
   Diagnoses and fixes the setup of polix on this machine and repository: binary, PATH, hooks, plugin, workflow, rules.
   It runs only when the user asks for it.
-effort: low
-model: sonnet
 user-invocable: true
 disable-model-invocation: true
 ---

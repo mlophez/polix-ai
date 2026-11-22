@@ -3,8 +3,6 @@ name: init
 description: >
   Writes the general context of the project in AGENTS.md, imported by CLAUDE.md, and the README.md from its templates.
   It runs only when the user asks for it.
-effort: high
-model: inherit
 user-invocable: true
 disable-model-invocation: true
 ---

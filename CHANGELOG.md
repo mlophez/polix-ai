@@ -9,6 +9,16 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Changed
 
+- The skills of the plugin declare neither `effort` nor `model`: Claude Code held them only for the turn that
+  invoked the skill, then resumed the ones of the session, so a skill now runs on the effort and model of the
+  session. `build`, `review`, `audit`, `task` and `doctor` no longer ask for `sonnet` and run on the model of the
+  session, which may cost more. `writing-skills` no longer writes either key, and a test of the package `plugins`
+  rejects a skill that declares them. The agents keep `model` and `effort` in their frontmatter.
+- `/polix:spec` states the size of each task as `expected_files`, the files it is expected to change with the
+  callers that follow, and splits a task over 20 by behaviour, with a refactor first or by expand-contract, or
+  records in `decisions` why it cannot. `polix:critic` reports a task over 20 with no decision that names it, as
+  `major`. `/polix:build` records the `files` and `lines` the whole task changed in the entry of `stats.timeline`
+  written at its commit.
 - `/polix:spec` proposes the same `agents` at every risk level: the builder and the verifier on `sonnet`, the reviewer
   on `opus`, all three with `effort: medium`. `risk.level` no longer picks their models, and adjusting a plan keeps
   its `agents` even when its risk changes; a plan without `agents` gets these defaults.

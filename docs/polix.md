@@ -1585,8 +1585,10 @@ also prints that Codex support is not implemented in this release and the setup 
   with the tasks, and the user approves its outcome before it is built; it creates the branch with `git switch -c`
   before writing the plan, asks the user when the branch already exists, and records it in `branch`; before the
   approval the read-only agent `critic` receives only the plan file, as the builder reads it, and reviews it for
-  undefined facts, contradictions, edge cases left open and tasks an executor could not build without deciding, and
-  parses it, once; the skill fixes what the plan settles and asks the rest through `grill-me`, and `spec`
+  undefined facts, contradictions, edge cases left open, tasks an executor could not build without deciding and
+  tasks over the size limit, and parses it, once; each task states its `expected_files`, the files it is expected
+  to change with the callers that follow, and `spec` splits a task over 20 by behaviour, with a refactor first or
+  by expand-contract, or records in `decisions` why it cannot; the skill fixes what the plan settles and asks the rest through `grill-me`, and `spec`
   never runs in plan mode), `build` switches to the `branch` of an approved plan, which needs a clean working tree,
   and implements it unattended, one task at a time: a `builder` agent builds the task, the agent `reviewer`
   (the code's quality) checks that task alone, the findings go back to
@@ -1627,7 +1629,10 @@ also prints that Codex support is not implemented in this release and the setup 
     implemented, would follow the file of the agent in the session instead.
   - Conventions, which the tests of the package `plugins` check. Every skill and every agent runs only when the user
     or the workflow of the project asks for it, as its description says, and the frontmatter enforces it; a skill
-    the model cannot invoke says it runs only when the user asks for it.
+    the model cannot invoke says it runs only when the user asks for it. No skill declares `effort` nor `model`:
+    Claude Code holds them only for the turn that invokes the skill and then resumes the ones of the session, so a
+    skill runs on the effort and model of the session. The agents keep both in their frontmatter, as the default
+    for a launch without them, since a subagent holds them for its whole context.
     Only `doctor`, `risk` and `workflow` set up polix and name it: the other skills and every agent work in any
     project, governed by polix or not. They take the folders of plans, rules, reports and tasks from `AGENTS.md`,
     `CLAUDE.md` or the session, where the start context of polix names them, `ai/` by default, and the base branch
@@ -1674,7 +1679,8 @@ also prints that Codex support is not implemented in this release and the setup 
     task or `final` stops after three iterations of the run, or two that fixed nothing; in every review a bug on an
     edge case is `major` only when the reviewer names a realistic input that reaches it, else `minor`; it sets in
     `stats` at the root of the plan its `start`, `end`, `duration`,
-    the `iterations`, its runs, the `timeline`, the start, end and duration of each run on a task or on `final`,
+    the `iterations`, its runs, the `timeline`, the start, end and duration of each run on a task or on `final`, with
+    the `files` and `lines` the whole task changed in the entry of its commit,
     written right before its commit, and the `code` it changed; it launches the builder, the verifier and the reviewer each with the `model`
     and `effort` of its item of `agents` of the plan, which `spec` proposes (builder and verifier `sonnet`, reviewer `opus`, all `medium`) and the user may change,
     `inherit` or a missing item leaving it to the frontmatter of the agent; a run that did not end resumes
