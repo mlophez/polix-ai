@@ -572,7 +572,7 @@ func TestRunRepeatOnTheContent(t *testing.T) {
 	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - action: { run: [git, status, --short] }\n")
 	r.write("src/app.go", "package app\n")
 	r.stops("", 0, 0)
-	if n := r.lines("outcome=passed", "key=git status --short"); n != 1 {
+	if n := r.lines("kind=observed", "outcome=passed", "key=git status --short"); n != 1 {
 		t.Fatalf("passed %d times: %s", n, r.log())
 	}
 	if r.lines("action=run", "line=4", "outcome=skip") != 1 {
@@ -580,7 +580,7 @@ func TestRunRepeatOnTheContent(t *testing.T) {
 	}
 	r.write("src/app.go", "package app\n\nfunc A() {}\n")
 	r.stops("", 0)
-	if n := strings.Count(r.log(), `"outcome":"passed"`); n != 2 {
+	if n := r.lines("kind=observed", "outcome=passed"); n != 2 {
 		t.Fatalf("an edit runs it again: %s", r.log())
 	}
 }
@@ -616,7 +616,7 @@ on:
 	code, stderr = stop("s2")
 	expect(t, "s2 stops on the content s1 reviewed", code, 2, stderr)
 	s2 := r.logOf("s2")
-	if r.linesOf("s2", "outcome=passed", "key=git status --short") != 1 || r.linesOf("s2", "outcome=skip") != 0 ||
+	if r.linesOf("s2", "kind=observed", "outcome=passed", "key=git status --short") != 1 || r.linesOf("s2", "outcome=skip") != 0 ||
 		strings.Contains(s2, `"session":"s1"`) {
 		t.Fatalf("s2 runs again what passed in s1: %s", s2)
 	}
@@ -2000,7 +2000,7 @@ func (r *repo) sessionLog() string {
 }
 
 // CUJ-01, CUJ-02, CUJ-03, CUJ-05 and CUJ-10: after a successful commit line the agent gets the injects of post_commit
-// and the user the notices, on every commit and with no injected or notified line; a failed commit, a commit that
+// and the user the notices, on every commit and with no injected or notified observation; a failed commit, a commit that
 // does not decide the exit code of the line and a commit in another repository give none.
 func TestPostCommit(t *testing.T) {
 	const reminder = "Update the docs and the Jira ticket if this commit changes them."
@@ -2019,8 +2019,8 @@ func TestPostCommit(t *testing.T) {
 			}
 		}
 	}
-	if log := r.sessionLog(); strings.Contains(log, `"outcome":"injected"`) || strings.Contains(log, `"outcome":"notified"`) {
-		t.Fatalf("injected or notified lines written: %s", log)
+	if r.lines("kind=observed", "outcome=injected")+r.lines("kind=observed", "outcome=notified") != 0 {
+		t.Fatalf("injected or notified observations written: %s", r.sessionLog())
 	}
 	for name, in := range map[string]map[string]any{
 		"a failed tool": {"hook_event_name": "PostToolUseFailure", "tool_name": "Bash",

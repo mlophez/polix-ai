@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/diff"
@@ -54,6 +55,9 @@ type facts struct {
 	reals       map[string]string // the real path of a path, when it differs from the path
 	foreign     map[string]bool   // the folders inside another git repository
 	missing     []string          // the programs the PATH does not run
+
+	took  time.Duration     // how long each run and check took
+	files map[string]string // the content of the files a read finds
 
 	// checkFails, when set, decides each check instead of runErr: it fails when it covers one of these rules
 	checkFails map[string]bool
@@ -240,6 +244,10 @@ func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
 		case s.Contains != nil:
 			ev = ev.KnowFound(s.Epoch, s.Contains, s.Text, f.found)
 		case s.Read != "":
+			if data, ok := f.files[s.Read]; ok {
+				ev = ev.KnowContent(s.Epoch, s.Read, data, nil)
+				break
+			}
 			ev = ev.KnowContent(s.Epoch, s.Read, "", errors.New("no file"))
 		case s.Check != nil && f.checkFails != nil:
 			var err error
@@ -248,11 +256,11 @@ func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
 					err = errors.New("exit status 1")
 				}
 			}
-			ev = ev.Note("salida", err)
+			ev = ev.Note("salida", err).Timed(f.took)
 		case s.Run != nil && f.runOut != "":
-			ev = ev.Note(f.runOut, f.runErr)
+			ev = ev.Note(f.runOut, f.runErr).Timed(f.took)
 		case s.Run != nil, s.Check != nil:
-			ev = ev.Note("salida", f.runErr)
+			ev = ev.Note("salida", f.runErr).Timed(f.took)
 		case s.Restore != nil && f.restoreErrs != nil:
 			ev = ev.Note("", f.restoreErrs[s.Restore[0]])
 		case s.Restore != nil:
@@ -374,7 +382,8 @@ on:
 		t.Fatalf("answer %+v", out.Answer)
 	}
 	logged := appended(steps)
-	if len(logged) != 1 || logged[0].Action != workflow.VerbBlock || logged[0].Outcome != "block" || logged[0].Line != 5 {
+	if len(logged) != 2 || logged[0].Action != workflow.VerbInject || logged[0].Outcome != state.OutcomeInjected ||
+		logged[1].Action != workflow.VerbBlock || logged[1].Outcome != "block" || logged[1].Line != 5 {
 		t.Fatalf("logged: %+v", logged)
 	}
 }
@@ -710,7 +719,7 @@ func TestMessagesOfACall(t *testing.T) {
 func TestRun(t *testing.T) {
 	ev := eval(t, "version: 1\non:\n  stop:\n    - action: { run: just test }\n", workflow.Stop)
 	out, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"}})
-	if logged := appended(steps); out.Answer.Block || len(logged) != 1 ||
+	if logged := observed(steps); out.Answer.Block || len(logged) != 1 ||
 		logged[0].Outcome != state.OutcomePassed {
 		t.Fatalf("a passing run: %+v %+v", out.Answer, logged)
 	}
@@ -785,7 +794,7 @@ func TestRunInformsAfterTheFact(t *testing.T) {
 				contexts[1] != "después" {
 				t.Fatalf("answer: %+v", out.Answer)
 			}
-			if logged := appended(steps); len(logged) != 1 || logged[0].Outcome != "inform" ||
+			if logged := decided(steps, "inform"); len(logged) != 1 || len(observed(steps)) != 0 ||
 				logged[0].Action != workflow.VerbRun || logged[0].Line != 4 {
 				t.Fatalf("logged: %+v", logged)
 			}
@@ -813,7 +822,7 @@ on:
 			t.Fatal(err)
 		}
 		_, steps := walk(t, post, facts{branch: "main", hashes: []string{"h"}})
-		if len(appended(steps)) != 0 {
+		if len(observed(steps)) != 0 {
 			t.Fatalf("exit %d: %+v", exit, appended(steps))
 		}
 	}
@@ -1914,7 +1923,7 @@ func TestRunAlways(t *testing.T) {
 	}
 	// The run rewrote files: the content it checked is gone.
 	if _, steps := walk(t, always, facts{branch: "main", hashes: []string{"h", "h2"}}); len(
-		appended(steps)) != 0 {
+		observed(steps)) != 0 {
 		t.Fatalf("changed during the run: %+v", appended(steps))
 	}
 	// Without a hash nothing is written, and a run without always runs every time.
@@ -2287,8 +2296,8 @@ func TestInjectKeys(t *testing.T) {
 				if got := len(out.Answer.Contexts) == 1; got != c.want[i] {
 					t.Fatalf("edit %d of %s: %+v", i, path, out.Answer)
 				}
-				if c.name == "always" && len(appended(steps)) != 0 {
-					t.Fatalf("always writes nothing: %+v", appended(steps))
+				if c.name == "always" && len(observed(steps)) != 0 {
+					t.Fatalf("always observes nothing: %+v", appended(steps))
 				}
 				st = logged(t, st, steps)
 			}
@@ -2348,7 +2357,7 @@ func TestObservesOnlyWhatTheWorkflowAsks(t *testing.T) {
 			stop := as(t, eval(t, yaml, workflow.SubagentStop), "acme:builder")
 			for _, ev := range []hook.Evaluation{start, spawn, stop} {
 				_, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h"}})
-				if len(appended(steps)) != 0 || hashed(steps) {
+				if len(observed(steps)) != 0 || hashed(steps) {
 					t.Fatalf("%s: %+v", ev.Event.Name, steps)
 				}
 			}
@@ -2898,5 +2907,130 @@ on:
 	if !slices.Equal(ran(steps), []string{"DOC-1"}) || len(out.Answer.Contexts) != 1 ||
 		!strings.HasPrefix(out.Answer.Contexts[0], "Rules not met:\n- DOC-1") {
 		t.Fatalf("post_commit after post_command: %+v, checks %v", out.Answer, ran(steps))
+	}
+}
+
+// duration returns the duration_ms of the action, -1 when it has none.
+func duration(a state.Action) int64 {
+	if a.DurationMS == nil {
+		return -1
+	}
+	return *a.DurationMS
+}
+
+// actionsOf returns the actions of the records the steps appended, in order.
+func actionsOf(steps []hook.Step) []state.Action {
+	var out []state.Action
+	for _, r := range records(steps) {
+		out = append(out, r.Actions...)
+	}
+	return out
+}
+
+// CUJ-08, AC-08: an inject that reaches the AI adds an action injected, once-only or always. Its key is the file, the
+// word rules and the expanded target, or the text cut to 32 characters. An inject that does not reach the AI, as one
+// of a prompt that is refused, adds none.
+func TestInjectRecordsAction(t *testing.T) {
+	const long = "Remember to follow the rules of ai/rules before editing"
+	rules := []rule.Rule{{ID: "GO-1", Description: "d", Scope: []string{"src/**"}, Deterministic: true,
+		Check: "tests/go1_test.go"}}
+	cases := []struct {
+		name, inject, event string
+		want                string
+	}{
+		{"file", "{ file: ai/rules/go.yaml }", workflow.PreEdit, "ai/rules/go.yaml"},
+		{"file always", "{ file: ai/rules/go.yaml, always: true }", workflow.PreEdit, "ai/rules/go.yaml"},
+		{"rules", "{ rules: \"{path}\" }", workflow.PreEdit, "rules src/a.go"},
+		{"rules always", "{ rules: \"{path}\", always: true }", workflow.PreEdit, "rules src/a.go"},
+		{"short text", "\"Lee el plan\"", workflow.PreEdit, "Lee el plan"},
+		{"long text", "\"" + long + "\"", workflow.PreEdit, "Remember to follow the rules ..."},
+		{"long text always", "{ text: \"" + long + "\", always: true }", workflow.PreEdit,
+			"Remember to follow the rules ..."},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			base := eval(t, "version: 1\non:\n  "+c.event+":\n    - action: { inject: "+c.inject+" }\n"+builtinOff,
+				c.event)
+			ev := edit(t, base, c.event, "src/a.go", agent.ActorSession)
+			_, steps := walk(t, ev, facts{branch: "main", rules: rules, files: map[string]string{"ai/rules/go.yaml": "go"}})
+			var got []state.Action
+			for _, a := range actionsOf(steps) {
+				if a.Outcome == state.OutcomeInjected {
+					got = append(got, a)
+				}
+			}
+			if len(got) != 1 || got[0].Action != workflow.VerbInject || got[0].Key != c.want || got[0].Line != 4 ||
+				got[0].DurationMS != nil {
+				t.Fatalf("actions %+v, want an inject injected with key %q", actionsOf(steps), c.want)
+			}
+		})
+	}
+	// The text of a refused prompt never reaches the AI: it is no injected action.
+	ev := eval(t, "version: 1\non:\n  prompt:\n    - action: { inject: \"Lee el plan\" }\n    - action: { block: \"No.\" }\n",
+		workflow.Prompt)
+	out, steps := walk(t, ev, facts{branch: "main"})
+	if !out.Answer.Block || slices.ContainsFunc(actionsOf(steps), func(a state.Action) bool {
+		return a.Outcome == state.OutcomeInjected
+	}) {
+		t.Fatalf("a refused prompt: %+v %+v", out.Answer, actionsOf(steps))
+	}
+}
+
+// CUJ-06, AC-09: a run that passes adds an action passed with its key, the key of its repeat, and its duration in
+// whole milliseconds; the run of rules gets the sum of its checks and the word rules in its key.
+func TestRunRecordsPassAndDuration(t *testing.T) {
+	ev := eval(t, "version: 1\non:\n  stop:\n    - action: { run: just test }\n", workflow.Stop)
+	_, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"}, took: 1500*time.Millisecond + 900*time.Microsecond})
+	acts := actionsOf(steps)
+	if len(acts) != 1 || acts[0].Action != workflow.VerbRun || acts[0].Outcome != state.OutcomePassed ||
+		acts[0].Key != "just test" || acts[0].Line != 4 || duration(acts[0]) != 1500 {
+		t.Fatalf("a passing run: %+v", acts)
+	}
+	// A run that took nothing still has its duration.
+	_, steps = walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"}})
+	if acts := actionsOf(steps); len(acts) != 1 || duration(acts[0]) != 0 {
+		t.Fatalf("a run that took nothing: %+v", acts)
+	}
+	// A run whose content is unknown still ran and passed.
+	_, steps = walk(t, ev, facts{branch: "main", hashErr: errors.New("no git"), took: time.Second})
+	if acts := actionsOf(steps); len(acts) != 1 || acts[0].Outcome != state.OutcomePassed || duration(acts[0]) != 1000 {
+		t.Fatalf("a run with an unknown content: %+v", acts)
+	}
+	ev = eval(t, `version: 1
+rules:
+  run:
+    "*_test.go": [go, test, "{dir}", -run, "^Test{name}$"]
+on:
+  stop:
+    - action: { run: { rules: changed } }
+`, workflow.Stop)
+	rules := []rule.Rule{
+		{ID: "GO-1", Description: "d", Scope: []string{"src/**"}, Deterministic: true, Check: "tests/go1_test.go"},
+		{ID: "SH-1", Description: "s", Scope: []string{"src/**"}, Deterministic: true, Check: "checks/sh1.sh"},
+	}
+	_, steps = walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"}, changed: []string{"src/a.go"}, rules: rules,
+		took: 300 * time.Millisecond})
+	acts = actionsOf(steps)
+	if len(acts) != 1 || acts[0].Outcome != state.OutcomePassed || acts[0].Key != "rules changed" ||
+		duration(acts[0]) != 600 {
+		t.Fatalf("a run of rules sums its checks: %+v", acts)
+	}
+}
+
+// CUJ-09, AC-09: a failing run adds an action run with outcome block, its key, its duration and its reason, and
+// writes no observation since it did not pass and its block is not once.
+func TestRunRecordsFailure(t *testing.T) {
+	base := eval(t, "version: 1\non:\n  pre_edit:\n    - action: { run: just lint }\n"+builtinOff, workflow.PreEdit)
+	ev := edit(t, base, workflow.PreEdit, "src/a.go", agent.ActorSession)
+	out, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"}, runErr: errors.New("exit status 1"),
+		took: 700 * time.Millisecond})
+	acts := actionsOf(steps)
+	if !out.Answer.Block || len(acts) != 1 || acts[0].Action != workflow.VerbRun || acts[0].Outcome != "block" ||
+		acts[0].Key != "just lint" || duration(acts[0]) != 700 ||
+		!strings.HasPrefix(acts[0].Reason, "just lint failed: exit status 1") {
+		t.Fatalf("a failing run: %+v %+v", out.Answer, acts)
+	}
+	if obs := observed(steps); len(obs) != 0 {
+		t.Fatalf("observations: %+v", obs)
 	}
 }

@@ -263,7 +263,10 @@ The rules it follows, as before this use case:
      HEAD commit, and on the content hash, whoever's entry ran it. The key is what it runs: the expanded arguments
      joined by single spaces, or `rules` and the expanded target, so a `{path}` repeats it per path; on `post_commit`,
      `rules changed` checks the files of the commit and adds `@` and its short hash, so it never shares a pass with
-     the same run on the working tree. Any run of polix that passes, with or without `always`,
+     the same run on the working tree. Every run that ran adds an action `run` with its outcome (`passed`, `block`,
+     `inform` or `loop_guard`), that key and `duration_ms`, the time the shell measured for its `Run` or `Check` steps
+     into `hook.Outcome.Took` (the sum of the checks for a run of rules), truncated to whole milliseconds; a skip has
+     neither. Any run of polix that passes, with or without `always`,
      writes `passed` with its key when the hash before and after it is the same; a run during which the content
      changed, or with an unknown hash, writes none, and the hash after it is computed only when the one before it is
      known. With `always: true` it runs on every event.
@@ -271,15 +274,18 @@ The rules it follows, as before this use case:
      whose instructions come each time it starts, and on `post_commit`, which repeats on every commit, where it always
      injects: keyed by the session, the actor, the line of
      its entry and the expanded text or file path (one key per rule id for an `inject` of `rules`), it is skipped while
-     not due and writes `injected`, without hash, when it reaches the AI: the lines are written once the answer of the
-     event is known, in the order of the injects, and not at all when the answer to a `prompt` refuses, since the AI
-     never sees the contexts of a rejected prompt (on the other events they reach the AI with the block, and are
-     written). It is due when it never reached the actor in the session, or when after it a `started` of the session
+     not due and writes `injected`, without hash, when it reaches the AI: the observations are written once the answer
+     of the event is known, in the order of the injects, and not at all when the answer to a `prompt` refuses, since the
+     AI never sees the contexts of a rejected prompt (on the other events they reach the AI with the block, and are
+     written). Every inject that reaches the AI, once-only or always, also adds an action `inject` with outcome
+     `injected` where its entry is evaluated, so the actions keep the order of the entries; its `key` is the file, `rules`
+     and the expanded target, or the expanded text cut to 32 characters (`maxInjectKey`); a refused `prompt` drops them
+     (`unreached`). It is due when it never reached the actor in the session, or when after it a `started` of the session
      (written on `start`, which resets every actor) or, for a subagent, a `started` of its type (written on its
      `subagent_start`) or a `finished` of its type in the session was written: each starts a new context. The `started`
      of a subagent resets only its type: the main session and the other types keep theirs. A placeholder that changes on
      every event (a measure, `{command}`) makes a new key each time, so the inject acts every time; `{path}` gives once
-     per path. With `always: true` it injects on every event and writes nothing.
+     per path. With `always: true` it injects on every event and writes no observation.
    - On `start` and `subagent_start`, after the entries, polix writes `started`, with the actor of the event (the
      subagent type on `subagent_start`, with its id), when the workflow has a once-only inject, `requirements` or an
      `agents_are_running` (`workflow.Workflow.ObservesStart`); the `started` of `start` has the `source` of the start

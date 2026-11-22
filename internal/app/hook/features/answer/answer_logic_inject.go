@@ -8,6 +8,7 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	"github.com/mlophez/polix-ai/internal/platform/text"
 )
 
 // inject carries out the verb inject of the entry e: the text, the file or the rules that apply to a path (see
@@ -40,22 +41,27 @@ func (r *pass) inject(e workflow.Entry, ans agent.Answer) agent.Answer {
 			return ans
 		}
 	}
-	text := key
+	content, shown := key, text.Shorten(key, maxInjectKey)
 	if in.File != "" {
 		data, readable := r.read(key)
 		if !readable {
 			return ans
 		}
-		text = data
+		content, shown = data, key
 	}
-	if text == "" {
+	if content == "" {
 		return ans
 	}
 	if once {
 		r.injected = append(r.injected, passInject{line: e.Line, key: key})
 	}
-	return ans.Inform(text)
+	r.logInjected(e.Line, shown)
+	return ans.Inform(content)
 }
+
+// maxInjectKey is the longest key of an inject action of a text, cut with text.Shorten: the start of the text says which
+// one it was, and the log does not keep the whole text.
+const maxInjectKey = 32
 
 // injectRules injects into ans the rules that apply to the expanded target of the entry at line (see contextRules).
 func (r *pass) injectRules(line int, target string, once bool, ans agent.Answer) agent.Answer {
@@ -64,6 +70,7 @@ func (r *pass) injectRules(line int, target string, once bool, ans agent.Answer)
 		return ans
 	}
 	if t := r.contextRules(line, target, once); t != "" && !r.waiting() {
+		r.logInjected(line, "rules "+target)
 		ans = ans.Inform(t)
 	}
 	return ans

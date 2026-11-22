@@ -1057,7 +1057,7 @@ enforcing it: try a new gate in a branch, and read its decisions with `polix log
   the other types as they were. `always: true` injects it on every event. A text with a placeholder that changes on
   every event (`{command}`, a measure such as `{changed_lines}`) expands to a new text each time, so it is injected
   every time its value changes; `{path}` gives one inject per path. On `start`, `skill`, `subagent_start` and `post_commit`
-  every `inject` acts every time, so `always` has no effect there, and `post_commit` writes no `injected` line.
+  every `inject` acts every time, so `always` has no effect there, and `post_commit` writes no `injected` observation.
 - A `notify` reaches the user once per session for each entry and each text it expands to, whatever the actor: the
   user is one person, so a subagent or another actor does not show it again, and neither does a `start`, a
   compaction or the end of a subagent. Each notice shown is logged as a `notify` decision with its text, and
@@ -1498,8 +1498,13 @@ the lists with nothing left out:
   `guardrails.protected_files` or `guardrails.forbidden_commands` for those protections, `invalid` for an invalid
   workflow, `message` for a message for the user a blocked event did not show, and `finished` for the end of a subagent
   it could not observe or a tree it could not compare), `outcome` (`block`, `deny` for a protection, `inform`, `notify`
-  for a notice shown to the user, `warn`, `skip` or `loop_guard`) and `reason`, and may carry `key`, what the action
-  acted on, and `duration_ms`, the milliseconds a run took.
+  for a notice shown to the user, `warn`, `skip`, `loop_guard`, `injected` for an `inject` that reached the AI and
+  `passed` for a `run` that passed) and `reason`, and may carry `key`, what the action acted on, and `duration_ms`.
+  The `key` of a `run` that ran is the key of its repeat (the command line, or `rules` and the expanded target) and its
+  `duration_ms` the milliseconds it took, truncated, 0 included, and for a `run` of rules the sum of its checks; a
+  `run` skipped for having passed already has neither. The `key` of an `inject` is the file, `rules` and the expanded
+  target, or the expanded text cut to 32 characters, the three dots included. An `inject` records `injected` whether it
+  acts once or always, but not when the answer to a `prompt` refuses, since the AI never sees it.
 - `observed`: what polix saw by itself and the workflow asks about, the memory of the session. Each is an object with
   `line`, its `outcome` (`finished`, `passed`, `blocked`, `injected`, `started`, `notified`, `snapshot`, `watched` or
   `ended`), its `key` and, for the outcomes about a content, its `hash`, plus the `refs` on a `snapshot` and the `before`

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os/exec"
 	"runtime"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -278,13 +279,18 @@ func lookup(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hoo
 }
 
 // act carries out the step s that acts, a run, a check, a restore of files or an append to the log, through the
-// port and notes its outcome in the evaluation ev.
+// port and notes its outcome in the evaluation ev; a run and a check are timed, which the logic records as the
+// duration of the action.
 func act(ctx context.Context, port Port, ev hook.Evaluation, s hook.Step) hook.Evaluation {
 	switch {
 	case s.Run != nil:
-		return ev.Note(port.Run(ctx, s.Run))
+		start := time.Now()
+		output, err := port.Run(ctx, s.Run)
+		return ev.Note(output, err).Timed(time.Since(start))
 	case s.Check != nil:
-		return ev.Note(port.RunCheck(ctx, *s.Check))
+		start := time.Now()
+		output, err := port.RunCheck(ctx, *s.Check)
+		return ev.Note(output, err).Timed(time.Since(start))
 	case s.Restore != nil:
 		return ev.Note("", port.Restore(ctx, s.Source, s.Restore))
 	case s.Append != nil:

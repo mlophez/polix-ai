@@ -2,6 +2,7 @@ package hook
 
 import (
 	"errors"
+	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/state"
@@ -41,10 +42,12 @@ type Step struct {
 }
 
 // Outcome is the result of a step that acts (Run, Check, Restore or Append): what it printed and why it failed, nil
-// when it did not.
+// when it did not, and, for a Run or a Check, how long it took, which the shell measures (the logic never reads the
+// clock).
 type Outcome struct {
 	Output string
 	Err    error
+	Took   time.Duration
 }
 
 // Valid tells why the step is not one step: it asks for several things at once, or a negative epoch.
@@ -82,6 +85,23 @@ func (s Step) asks() int {
 		}
 	}
 	return n
+}
+
+// Timed returns the evaluation with the time the step that acted last took, the one Note just noted: the shell
+// measures a Run and a Check, and the logic records it as the duration of the action. Without an outcome in the journal
+// it returns the evaluation as it is. The journal is a copy of its own (see Note), so the evaluation the shell passed in
+// stays as it was.
+func (e Evaluation) Timed(took time.Duration) Evaluation {
+	n := len(e.Journal)
+	if n == 0 {
+		return e
+	}
+	o := Outcome{Output: e.Journal[n-1].Output, Err: e.Journal[n-1].Err, Took: took}
+	if o.Valid() != nil {
+		return e
+	}
+	e.Journal[n-1] = o
+	return e
 }
 
 // Valid tells why the outcome is not one: it never is, any output and error may come from a step.

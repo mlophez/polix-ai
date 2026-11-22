@@ -57,6 +57,8 @@ func (r *pass) session() agent.Answer {
 	}
 	if !ans.Block {
 		r.writeInjected()
+	} else {
+		r.unreached()
 	}
 	if r.waiting() {
 		return ans

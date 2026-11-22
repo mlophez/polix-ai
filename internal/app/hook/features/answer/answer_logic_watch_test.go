@@ -176,7 +176,7 @@ func TestWatchHeadMoved(t *testing.T) {
 	}
 	var skips []entry
 	for _, e := range appended(steps) {
-		if e.Kind == kindDecision {
+		if e.Kind == kindDecision && e.Action == builtinProtection {
 			skips = append(skips, e)
 		}
 	}

@@ -2,6 +2,8 @@ package answer
 
 import (
 	"errors"
+	"slices"
+	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/hook"
@@ -17,6 +19,58 @@ func (r *pass) log(action string, line int, outcome, reason string) {
 		return
 	}
 	r.actions = append(r.actions, a)
+}
+
+// millis returns d in whole milliseconds, truncated, as the duration of an action: never more time than passed.
+func millis(d time.Duration) *int64 {
+	ms := max(d, 0).Milliseconds()
+	return &ms
+}
+
+// logRun records a run action on the event: its outcome, the key of its repeat, why when it did not pass, and how
+// long it took.
+func (r *pass) logRun(line int, outcome, key, reason string, took time.Duration) {
+	a := state.Action{Line: line, Action: workflow.VerbRun, Outcome: outcome, Key: key, Reason: reason,
+		DurationMS: millis(took)}
+	if a.Valid() != nil {
+		return
+	}
+	r.actions = append(r.actions, a)
+}
+
+// stamp gives the key of its repeat and its duration to the run actions recorded since the n-th action of the event,
+// those a failing run left through the block, whose entry the loop guard may have let through.
+func (r *pass) stamp(n int, key string, took time.Duration) {
+	for i := n; i < len(r.actions); i++ {
+		a := r.actions[i]
+		if a.Action != workflow.VerbRun {
+			continue
+		}
+		ran := state.Action{Line: a.Line, Action: a.Action, Outcome: a.Outcome, Key: key, Reason: a.Reason,
+			DurationMS: millis(took)}
+		if ran.Valid() == nil {
+			r.actions[i] = ran
+		}
+	}
+}
+
+// logInjected records an inject action on the event: what reached the AI, by key, which is the file, the word rules
+// and the expanded target, or the expanded text cut to maxInjectKey characters. It is recorded where the inject is
+// evaluated, so the actions keep the order of the entries, and dropped when the answer shows it never reached the AI
+// (see unreached).
+func (r *pass) logInjected(line int, key string) {
+	a := state.Action{Line: line, Action: workflow.VerbInject, Outcome: state.OutcomeInjected, Key: key}
+	if a.Valid() != nil {
+		return
+	}
+	r.actions = append(r.actions, a)
+}
+
+// unreached drops the inject actions of the event: its answer is refused, so the contexts never reach the AI.
+func (r *pass) unreached() {
+	r.actions = slices.DeleteFunc(r.actions, func(a state.Action) bool {
+		return a.Action == workflow.VerbInject && a.Outcome == state.OutcomeInjected
+	})
 }
 
 // note records an observation of outcome on the event, about key and, for the outcomes that are about a content,

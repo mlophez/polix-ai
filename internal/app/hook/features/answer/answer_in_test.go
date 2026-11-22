@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -46,6 +47,7 @@ type fakePort struct {
 	calls     []string
 	appended  []state.Record
 	clock     func() time.Time // the time Now gives; the time of the machine when nil
+	delay     time.Duration    // how long Run and RunCheck take
 }
 
 var _ Port = (*fakePort)(nil)
@@ -171,6 +173,7 @@ func (p *fakePort) Read(_ context.Context, path string) (string, error) {
 
 func (p *fakePort) Run(_ context.Context, argv []string) (string, error) {
 	p.calls = append(p.calls, "Run "+strings.Join(argv, " "))
+	time.Sleep(p.delay)
 	return "salida", p.runErr
 }
 
@@ -180,6 +183,7 @@ func (p *fakePort) RunCheck(_ context.Context, run rule.Run) (string, error) {
 		ids = append(ids, r.ID)
 	}
 	p.calls = append(p.calls, "RunCheck "+strings.Join(ids, " "))
+	time.Sleep(p.delay)
 	return "salida", p.runErr
 }
 
@@ -1216,5 +1220,66 @@ func TestExitCode(t *testing.T) {
 		if got := (hookInput{ToolResponse: json.RawMessage(raw)}).exitCode(); got != want {
 			t.Errorf("exitCode(%s) = %d, want %d", raw, got, want)
 		}
+	}
+}
+
+// CUJ-06, AC-06: a pre_commit with an inject that always applies, a run that passes and a block gets one event line,
+// the one of LIT-05, with the inject injected, the run passed with its key and its duration, and the block.
+func TestPreCommitEventLine(t *testing.T) {
+	at := time.Date(2026, 11, 22, 13, 50, 5, 0, time.FixedZone("CET", 3600))
+	port := &fakePort{yaml: "version: 1\non:\n  pre_commit:\n" +
+		"    - action: { inject: { file: ai/rules/go.yaml, always: true } }\n" +
+		"    - action: { run: just test }\n" +
+		"    - action: { block: \"Subagents never commit.\" }\n", clock: func() time.Time { return at }}
+	res, err := run(context.Background(), port, claudeRequest(
+		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","session_id":"s1","tool_use_id":"toolu_1",`+
+			`"tool_input":{"command":"git commit -m \"wip\""}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Code != 2 || !strings.Contains(res.Stderr, "Subagents never commit.") || len(port.appended) != 1 {
+		t.Fatalf("response %+v, appended %+v", res, port.appended)
+	}
+	rec := port.appended[0]
+	if len(rec.Actions) != 3 || rec.Actions[1].DurationMS == nil {
+		t.Fatalf("actions %+v", rec.Actions)
+	}
+	want := state.Record{At: "2026-11-22T13:50:05+01:00", Agent: "claude", Session: "s1", Event: "pre_commit",
+		Actor: "session", Branch: "main", Head: "c0ffee", Hash: "h",
+		Input: state.Input{Command: `git commit -m "wip"`, ToolUse: "toolu_1"},
+		Actions: []state.Action{
+			{Line: 4, Action: "inject", Outcome: "injected", Key: "ai/rules/go.yaml"},
+			{Line: 5, Action: "run", Outcome: "passed", Key: "just test", DurationMS: rec.Actions[1].DurationMS},
+			{Line: 6, Action: "block", Outcome: "block", Reason: "Subagents never commit."}},
+		Observations: []state.Observation{{Line: 5, Outcome: state.OutcomePassed, Key: "just test", Hash: "h"}}}
+	if !reflect.DeepEqual(rec, want) {
+		t.Fatalf("record\n got %+v\nwant %+v", rec, want)
+	}
+	// The adapter encodes this record as the event line of LIT-05 (TestAppendWritesOneEventLine).
+}
+
+// AC-09: the shell times each Run and Check step into the outcome of the evaluation, whatever the port gives back,
+// and the duration of the action is its whole milliseconds, truncated.
+func TestShellMeasuresRunDuration(t *testing.T) {
+	const delay = 25 * time.Millisecond
+	port := &fakePort{delay: delay}
+	ev := hook.Evaluation{}
+	for _, s := range []hook.Step{{Run: []string{"just", "test"}}, {Check: &rule.Run{Rules: []rule.Rule{{ID: "GO-1"}}}},
+		{Restore: []string{"a"}, Source: "t"}} {
+		ev = act(context.Background(), port, ev, s)
+	}
+	if len(ev.Journal) != 3 {
+		t.Fatalf("journal %+v", ev.Journal)
+	}
+	for i, took := range []bool{true, true, false} {
+		if got := ev.Journal[i].Took; took != (got >= delay) || !took && got != 0 {
+			t.Errorf("outcome %d took %v", i, got)
+		}
+	}
+	if got := millis(1999 * time.Microsecond); got == nil || *got != 1 {
+		t.Fatalf("1999us is 1 ms, truncated: %v", got)
+	}
+	if got := millis(0); got == nil || *got != 0 {
+		t.Fatalf("a run that took nothing still has 0: %v", got)
 	}
 }

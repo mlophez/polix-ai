@@ -3,6 +3,7 @@ package answer
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/hook"
@@ -45,12 +46,13 @@ func (r *pass) runEntry(e workflow.Entry, ans agent.Answer) (agent.Answer, bool)
 	if r.waiting() {
 		return ans, false
 	}
-	reason := r.run(run, args)
+	reason, took := r.run(run, args)
 	if r.waiting() {
 		return ans, false
 	}
 	r.epoch++
 	if reason == "" {
+		r.logRun(e.Line, state.OutcomePassed, key, "", took)
 		if !known {
 			return ans, false // the content before the run is unknown: the one after it would prove nothing
 		}
@@ -63,10 +65,13 @@ func (r *pass) runEntry(e workflow.Entry, ans agent.Answer) (agent.Answer, bool)
 		reason = message + "\n\n" + reason
 	}
 	if r.informed {
-		r.log(workflow.VerbRun, e.Line, "inform", reason)
+		r.logRun(e.Line, "inform", key, reason, took)
 		return ans.Inform(reason), false
 	}
-	return r.block(e, ans, reason, key)
+	n := len(r.actions)
+	ans, stop := r.block(e, ans, reason, key)
+	r.stamp(n, key, took)
+	return ans, stop
 }
 
 // runKey returns the arguments of the command of run, expanded, and the key of its repeat: those arguments joined
@@ -112,18 +117,18 @@ func (r *pass) passed(key, hash string) bool {
 }
 
 // run executes the command of run, with its expanded args, or the checks of the rules and returns why it failed,
-// or "".
-func (r *pass) run(run workflow.Run, args []string) string {
+// or "", and how long it took: for the checks of the rules, the sum of those it ran.
+func (r *pass) run(run workflow.Run, args []string) (string, time.Duration) {
 	if run.Rules != "" {
 		return r.runRules(run.Rules)
 	}
 	s := hook.Step{Run: args}
 	o := r.act(s, s.Valid())
 	if r.waiting() || o.Err == nil {
-		return ""
+		return "", o.Took
 	}
 	return fmt.Sprintf("%s failed: %v%s\n%s", strings.Join(args, " "), o.Err, cut(o.Output),
-		indent(text.LastLines(o.Output, outputLines, rule.MaxLineLen)))
+		indent(text.LastLines(o.Output, outputLines, rule.MaxLineLen))), o.Took
 }
 
 // cut tells how much of output a reason keeps when it keeps only its last outputLines lines, as
@@ -140,36 +145,39 @@ func cut(output string) string {
 // runRules runs the checks of the rules that apply to the changed files (`changed`, on post_commit those of the
 // commit just made) or to a path, through the runners of rules.run that match their files or as programs, grouped
 // as the runners group them (Rules.Plan); a failed shared run is rerun per rule (Run.Settle). It returns the rules
-// that failed, or "", and fails closed when the commit just made cannot be read.
-func (r *pass) runRules(target string) string {
+// that failed, or "", and fails closed when the commit just made cannot be read. It also returns the time its checks
+// took, added up.
+func (r *pass) runRules(target string) (string, time.Duration) {
 	all, err := r.rules()
 	if r.waiting() {
-		return ""
+		return "", 0
 	}
 	if err != nil {
-		return fmt.Sprintf("The rules cannot be loaded: %v", err)
+		return fmt.Sprintf("The rules cannot be loaded: %v", err), 0
 	}
 	var paths []string
 	if target == "changed" {
 		if reason := r.unreadableCommit(); reason != "" || r.waiting() {
-			return reason
+			return reason, 0
 		}
 		paths = r.changed()
 	} else {
 		paths = []string{r.expand(target)}
 	}
 	var results []rule.Result
+	var took time.Duration
 	queue := rule.Rules(all).Matching(paths).Plan(r.ev.Workflow)
 	for len(queue) > 0 {
 		run := queue[0]
 		s := hook.Step{Check: &run}
 		o := r.act(s, s.Valid())
 		if r.waiting() {
-			return ""
+			return "", took
 		}
+		took += o.Took
 		outcome := rule.Outcome{Output: o.Output, Err: o.Err}
 		if err := outcome.Valid(); err != nil {
-			return ""
+			return "", took
 		}
 		res, reruns := run.Settle(outcome, r.ev.Workflow)
 		results = append(results, res...)
@@ -177,14 +185,14 @@ func (r *pass) runRules(target string) string {
 	}
 	failed := rule.Results(results).Failed()
 	if len(failed) == 0 {
-		return ""
+		return "", took
 	}
 	var b strings.Builder
 	b.WriteString("Rules not met:")
 	for _, f := range failed {
 		fmt.Fprintf(&b, "\n- %s (%s): %s\n%s", f.Rule.ID, f.Rule.Check, f.Rule.Description, indent(f.Tail()))
 	}
-	return b.String()
+	return b.String(), took
 }
 
 // indent indents every line of s by two spaces, for the outputs inside a reason.
