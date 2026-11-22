@@ -98,24 +98,25 @@ func (r *pass) finishedOnHead(name string) bool {
 		return false
 	}
 	st, last, ok := r.latestFinished(all)
-	return ok && slices.Contains(st.Observed(q), last)
+	return ok && slices.ContainsFunc(st.Observed(q), func(m state.Match) bool { return m.Seq == last.Seq })
 }
 
-// latestFinished reads the log of the session and returns it with the latest line with a hash that q selects; ok is
-// false when the pass waits for a step, the log cannot be read (warned) or q selects no line with a hash.
-func (r *pass) latestFinished(q state.Query) (state.State, state.Entry, bool) {
+// latestFinished reads the log of the session and returns it with the latest observation with a hash that q selects;
+// ok is false when the pass waits for a step, the log cannot be read (warned) or q selects no observation with a
+// hash.
+func (r *pass) latestFinished(q state.Query) (state.State, state.Match, bool) {
 	st, err := r.currentState()
 	if r.waiting() {
-		return st, state.Entry{}, false
+		return st, state.Match{}, false
 	}
 	if err != nil {
 		r.warnLog(err)
-		return st, state.Entry{}, false
+		return st, state.Match{}, false
 	}
-	var last state.Entry
-	for _, e := range st.Observed(q) {
-		if e.Hash != "" {
-			last = e
+	var last state.Match
+	for _, m := range st.Observed(q) {
+		if m.Hash != "" {
+			last = m
 		}
 	}
 	return st, last, last.Hash != ""

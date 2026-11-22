@@ -12,7 +12,7 @@ func TestStepValid(t *testing.T) {
 		t.Fatal("the zero step is none and valid")
 	}
 	for _, s := range []Step{{Branch: true}, {Refs: true}, {Hash: true, Epoch: 2}, {Ignored: "a"}, {Real: []string{"/a"}}, {Foreign: "/a"},
-		{Read: "a", Epoch: 1}, {Run: []string{"ls"}}, {Append: &state.Entry{Kind: state.KindObserved}},
+		{Read: "a", Epoch: 1}, {Run: []string{"ls"}}, {Append: &state.Record{Session: "s"}},
 		{Commit: true}, {Compare: "old", Tree: "new"}, {Programs: []string{"go"}}, {Restore: []string{"AGENTS.md"}, Source: "old"}} {
 		if s.None() || s.Valid() != nil {
 			t.Errorf("%+v: none %v, valid %v", s, s.None(), s.Valid())

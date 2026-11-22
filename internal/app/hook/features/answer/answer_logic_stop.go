@@ -91,7 +91,7 @@ func (r *pass) observeFinished() {
 	ends := r.ev.Workflow.InjectsOnce() || r.ev.Workflow.CountsAgents()
 	if r.guarded {
 		if ends {
-			_ = r.write(state.KindObserved, "", 0, state.OutcomeFinished, "", ev.Actor, "")
+			_ = r.note(0, state.OutcomeFinished, ev.Actor, "")
 		}
 		return
 	}
@@ -115,16 +115,16 @@ func (r *pass) observeFinished() {
 		hash = h
 	}
 	if hash != "" || ends {
-		_ = r.write(state.KindObserved, "", 0, state.OutcomeFinished, "", ev.Actor, hash)
+		_ = r.note(0, state.OutcomeFinished, ev.Actor, hash)
 	}
 }
 
-// reconcile writes an ended line for each subagent the log has open in the session (state.State.Running) that the
-// subagents in flight of the event do not list (unlisted), the actor aside, so a subagent whose end never reached
+// reconcile notes an ended observation for each subagent the log has open in the session (state.State.Running) that
+// the subagents in flight of the event do not list (unlisted), the actor aside, so a subagent whose end never reached
 // polix, an interrupted one, stops counting as running. It acts only when the workflow counts the subagents
 // (workflow.Workflow.CountsAgents) and the agent gave the list: without it, or with one that does not decode, the
 // log stays as it is. A log that cannot be read reconciles nothing, with a warning. The entries of the event never
-// depend on these lines: with the list known, agents_are_running reads the list (see agentsRunning).
+// depend on these observations: with the list known, agents_are_running reads the list (see agentsRunning).
 func (r *pass) reconcile() {
 	ev := r.ev.Event
 	if !ev.InFlightKnown || !r.ev.Workflow.CountsAgents() {
@@ -150,34 +150,28 @@ func (r *pass) reconcile() {
 	}
 }
 
-// writeEnded appends the ended line of the open subagent of the started line open: about the event, with the type
-// and the id of that subagent, without key nor hash.
-func (r *pass) writeEnded(open state.Entry) {
-	ev := r.ev.Event
-	branch := r.branch()
-	if r.waiting() {
-		return
-	}
-	e := state.Entry{Kind: state.KindObserved, Agent: ev.Agent, Session: ev.Session, Event: ev.Name, Actor: open.Actor,
-		AgentID: open.AgentID, Branch: branch, Outcome: state.OutcomeEnded}
-	_ = r.appendEntry(e, e.Valid())
+// writeEnded notes the ended observation of the open subagent of the started observation open: its key names the type
+// and the id of that subagent (see state.EndedKey), not the actor of the event, and it carries no hash.
+func (r *pass) writeEnded(open state.Match) {
+	_ = r.note(0, state.OutcomeEnded, open.EndedKey(), "")
 }
 
-// unlisted returns the started lines of open whose subagent inFlight does not list: a line with an id is listed by
-// a subagent of that id; then each line without id by a subagent of its type not taken yet, in order.
-func unlisted(open []state.Entry, inFlight []agent.Subagent) []state.Entry {
+// unlisted returns the started observations of open whose subagent inFlight does not list: one with an id is listed
+// by a subagent of that id; then each one without id by a subagent of its type not taken yet, in order.
+func unlisted(open []state.Match, inFlight []agent.Subagent) []state.Match {
 	taken := make([]bool, len(inFlight))
 	listed := make([]bool, len(open))
-	for i, e := range open {
-		j := slices.IndexFunc(inFlight, func(s agent.Subagent) bool { return e.AgentID != "" && s.ID == e.AgentID })
+	for i, m := range open {
+		id := m.Record.AgentID
+		j := slices.IndexFunc(inFlight, func(s agent.Subagent) bool { return id != "" && s.ID == id })
 		if j >= 0 {
 			listed[i], taken[j] = true, true
 		}
 	}
-	for i, e := range open {
+	for i, m := range open {
 		j := -1
 		for k, s := range inFlight {
-			if j < 0 && e.AgentID == "" && !taken[k] && s.Type == e.Actor {
+			if j < 0 && m.Record.AgentID == "" && !taken[k] && s.Type == m.Record.Actor {
 				j = k
 			}
 		}
@@ -185,10 +179,10 @@ func unlisted(open []state.Entry, inFlight []agent.Subagent) []state.Entry {
 			listed[i], taken[j] = true, true
 		}
 	}
-	var out []state.Entry
-	for i, e := range open {
+	var out []state.Match
+	for i, m := range open {
 		if !listed[i] {
-			out = append(out, e)
+			out = append(out, m)
 		}
 	}
 	return out

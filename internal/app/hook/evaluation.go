@@ -28,6 +28,9 @@ type Evaluation struct {
 	GitDir   string // git directory of the working tree, where the log lives
 	System   string // the system polix runs on (GOOS), whose file names may ignore case
 	Event    agent.Event
+	// Started is the time the evaluation of the event started, RFC 3339 with the offset of the clock, taken by the
+	// shell, which the logic sets as the at of the record of the event; empty when the shell gives none.
+	Started string
 	// Remaining is the number of events of the call after this one (Hook.Remaining): 0 for the last one, which
 	// knows the answer of the whole call (see Last).
 	Remaining int
@@ -51,8 +54,9 @@ func (e Evaluation) Valid() error {
 	return errors.Join(errs...)
 }
 
-// Last reports whether the event is the last of its call: once it is answered the answer of the whole call is
-// known, so what is written only when the call does not block (Facts.Pending) is written then.
+// Last reports whether the event is the last of the call that was queued when it started: once it is answered, and
+// derives no event that the shell evaluates next, the answer of the whole call is known, so the records of its events
+// (Facts.Pending) are written then.
 func (e Evaluation) Last() bool { return e.Remaining == 0 }
 
 // StateDir returns the folder of the state of polix, below the git directory.
@@ -111,10 +115,10 @@ func (e Evaluation) KnowRules(rules []rule.Rule, err error) Evaluation {
 	return e
 }
 
-// KnowState returns the evaluation knowing the log, or why it could not be read. The entries appended by the
-// steps of the journal so far are in it.
+// KnowState returns the evaluation knowing the log, or why it could not be read: the records of the earlier calls,
+// none of this one (see Facts.Pending).
 func (e Evaluation) KnowState(s state.State, err error) Evaluation {
-	e.Facts = e.Facts.learnState(s, err, len(e.Journal))
+	e.Facts = e.Facts.learnState(s, err)
 	return e
 }
 

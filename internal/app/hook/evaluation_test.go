@@ -92,10 +92,10 @@ func TestEvaluationKnowHashError(t *testing.T) {
 	}
 }
 
-// The log is read after the steps of the journal so far, and Note adds to the journal.
+// The log is read as the file holds it, and Note adds to the journal.
 func TestEvaluationKnowStateAndNote(t *testing.T) {
 	ev := Evaluation{}.Note("out", nil).KnowState(state.State{Skipped: 1}, nil).Note("", errors.New("x"))
-	if ev.Facts.StateAt != 1 || ev.Facts.State.Skipped != 1 || len(ev.Journal) != 2 || ev.Journal[1].Err == nil {
+	if !ev.Facts.HasState || ev.Facts.State.Skipped != 1 || len(ev.Journal) != 2 || ev.Journal[1].Err == nil {
 		t.Fatalf("%+v", ev)
 	}
 	broken := Evaluation{}.KnowState(state.State{Skipped: 1}, errors.New("denied"))

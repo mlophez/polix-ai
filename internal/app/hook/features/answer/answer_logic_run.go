@@ -55,7 +55,7 @@ func (r *pass) runEntry(e workflow.Entry, ans agent.Answer) (agent.Answer, bool)
 			return ans, false // the content before the run is unknown: the one after it would prove nothing
 		}
 		if after, knownAfter := r.hash(); knownAfter && after == hash {
-			_ = r.write(state.KindObserved, "", e.Line, state.OutcomePassed, "", key, hash)
+			_ = r.note(e.Line, state.OutcomePassed, key, hash)
 		}
 		return ans, false
 	}

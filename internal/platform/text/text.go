@@ -1,5 +1,5 @@
-// Package text shortens texts for logs and reports: a string cut to a byte limit with a marker, and the last
-// lines of a text, each one cut.
+// Package text shortens texts for logs and reports: a string cut to a byte limit with a marker, one cut to a number of
+// characters with three dots, and the last lines of a text, each one cut.
 package text
 
 import (
@@ -20,6 +20,23 @@ func Cut(s string, limit int) string {
 		n--
 	}
 	return s[:n] + Mark
+}
+
+// Dots end a text that Shorten shortened.
+const Dots = "..."
+
+// Shorten shortens s to at most n characters, on a rune boundary, ending in Dots: a text of n characters or fewer
+// stays whole, and a longer one is cut so that it is exactly n characters long, the dots included. Below the length
+// of Dots it is the first n of them, and nothing for n of 0 or less.
+func Shorten(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	if n <= len(Dots) {
+		return Dots[:max(n, 0)]
+	}
+	return string(runes[:n-len(Dots)]) + Dots
 }
 
 // Tail keeps the last n non-empty lines of s, each cut to width bytes.

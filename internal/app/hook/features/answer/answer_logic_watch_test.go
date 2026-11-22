@@ -46,8 +46,8 @@ func invalid(ev hook.Evaluation) hook.Evaluation {
 }
 
 // snapshotLine is the observed snapshot line of the main session for key, on the tree hash and the commit c1.
-func snapshotLine(key, hash string) state.Entry {
-	return state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeSnapshot, Agent: "claude", Session: "s1",
+func snapshotLine(key, hash string) entry {
+	return entry{Kind: kindObserved, Outcome: state.OutcomeSnapshot, Agent: "claude", Session: "s1",
 		Event: workflow.PreCommand, Actor: "session", Branch: "main", Key: key, Hash: hash, Head: "c1"}
 }
 
@@ -77,7 +77,7 @@ func TestWatchSnapshot(t *testing.T) {
 	} {
 		out, steps := walk(t, command(t, c.yaml, workflow.PreCommand, c.line, c.toolUse), f)
 		obs := observed(steps)
-		want := state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeSnapshot, Agent: "claude", Session: "s1",
+		want := entry{Kind: kindObserved, Outcome: state.OutcomeSnapshot, Agent: "claude", Session: "s1",
 			Event: workflow.PreCommand, Actor: "session", Branch: "main", Key: c.key, Hash: "h0", Head: "c1"}
 		if out.Answer.Block || len(obs) != 1 || obs[0] != want {
 			t.Errorf("%s: answer %+v, observed %+v", name, out.Answer, obs)
@@ -108,7 +108,7 @@ func TestWatchSnapshot(t *testing.T) {
 func TestWatchRestore(t *testing.T) {
 	ev := command(t, watchYAML, workflow.PostCommand, "python3 script.py", "toolu_1")
 	f := facts{branch: "main", head: "c1", hashes: []string{"new"}, trees: []string{"AGENTS.md", "main.go"},
-		state: state.State{Entries: []state.Entry{snapshotLine("toolu_1", "old")}}}
+		state: stateOf(snapshotLine("toolu_1", "old"))}
 	out, steps := walk(t, ev, f)
 
 	compares := asked(steps, func(s hook.Step) bool { return s.Compare != "" })
@@ -127,9 +127,11 @@ func TestWatchRestore(t *testing.T) {
 	if out.Facts.Epoch != 1 {
 		t.Fatalf("the restore did not start a new epoch: %d", out.Facts.Epoch)
 	}
-	var denials []state.Entry
-	for _, e := range appended(steps) {
-		if e.Kind == state.KindDecision && e.Outcome == "deny" {
+	// The command also changed main.go, whose edits the call evaluates next: the record of the post_command waits for
+	// the end of the call.
+	var denials []entry
+	for _, e := range pending(out) {
+		if e.Kind == kindDecision && e.Outcome == "deny" {
 			denials = append(denials, e)
 		}
 	}
@@ -143,7 +145,7 @@ func TestWatchRestore(t *testing.T) {
 func TestWatchRestoreFails(t *testing.T) {
 	ev := command(t, watchYAML, workflow.PostCommand, "python3 script.py", "toolu_1")
 	f := facts{branch: "main", head: "c1", hashes: []string{"new"}, trees: []string{"AGENTS.md"},
-		state:      state.State{Entries: []state.Entry{snapshotLine("toolu_1", "old")}},
+		state:      stateOf(snapshotLine("toolu_1", "old")),
 		restoreErr: errors.New("AGENTS.md: permission denied")}
 	out, steps := walk(t, ev, f)
 	reason := "AGENTS.md is protected in polix.yaml: a command changed it and polix could not put it back " +
@@ -153,7 +155,7 @@ func TestWatchRestoreFails(t *testing.T) {
 		t.Fatalf("answer %+v", out.Answer)
 	}
 	for _, e := range appended(steps) {
-		if e.Kind == state.KindDecision && e.Outcome == "deny" && e.Reason != reason {
+		if e.Kind == kindDecision && e.Outcome == "deny" && e.Reason != reason {
 			t.Fatalf("denial %+v", e)
 		}
 	}
@@ -164,7 +166,7 @@ func TestWatchRestoreFails(t *testing.T) {
 func TestWatchHeadMoved(t *testing.T) {
 	ev := command(t, watchYAML, workflow.PostCommand, "git pull", "toolu_1")
 	f := facts{branch: "main", head: "c2", hashes: []string{"new"}, trees: []string{"AGENTS.md"},
-		state: state.State{Entries: []state.Entry{snapshotLine("toolu_1", "old")}}}
+		state: stateOf(snapshotLine("toolu_1", "old"))}
 	out, steps := walk(t, ev, f)
 	if acts := asked(steps, func(s hook.Step) bool { return s.Compare != "" || s.Restore != nil || s.Hash }); len(acts) > 0 {
 		t.Fatalf("steps %+v", acts)
@@ -172,9 +174,9 @@ func TestWatchHeadMoved(t *testing.T) {
 	if out.Answer.Block {
 		t.Fatalf("answer %+v", out.Answer)
 	}
-	var skips []state.Entry
+	var skips []entry
 	for _, e := range appended(steps) {
-		if e.Kind == state.KindDecision {
+		if e.Kind == kindDecision {
 			skips = append(skips, e)
 		}
 	}
@@ -186,14 +188,14 @@ func TestWatchHeadMoved(t *testing.T) {
 // AC7: without a snapshot nothing is compared, with an unknown hash nothing is compared nor refused, and two trees
 // that cannot be compared refuse nothing and warn the user.
 func TestWatchNothingToCompare(t *testing.T) {
-	snap := state.State{Entries: []state.Entry{snapshotLine("toolu_1", "old")}}
+	snap := stateOf(snapshotLine("toolu_1", "old"))
 	for name, c := range map[string]struct {
 		f       facts
 		compare bool
 		warning string
 	}{
 		"no snapshot":  {facts{branch: "main", head: "c1", hashes: []string{"new"}, trees: []string{"AGENTS.md"}}, false, ""},
-		"other key":    {facts{branch: "main", head: "c1", hashes: []string{"new"}, trees: []string{"AGENTS.md"}, state: state.State{Entries: []state.Entry{snapshotLine("toolu_9", "old")}}}, false, ""},
+		"other key":    {facts{branch: "main", head: "c1", hashes: []string{"new"}, trees: []string{"AGENTS.md"}, state: stateOf(snapshotLine("toolu_9", "old"))}, false, ""},
 		"unknown hash": {facts{branch: "main", head: "c1", trees: []string{"AGENTS.md"}, state: snap}, false, ""},
 		"unreadable":   {facts{branch: "main", head: "c1", hashes: []string{"new"}, stateErr: errors.New("broken"), state: snap}, false, ""},
 		"compare fails": {facts{branch: "main", head: "c1", hashes: []string{"new"}, treeErr: errors.New("bad object"),
@@ -218,7 +220,7 @@ func TestWatchNothingToCompare(t *testing.T) {
 func TestWatchFollows(t *testing.T) {
 	ev := command(t, watchYAML, workflow.PostCommand, "python3 gen.py", "toolu_1")
 	f := facts{branch: "main", head: "c1", hashes: []string{"new"}, trees: []string{"main.go", "AGENTS.md", "docs/a.md"},
-		state: state.State{Entries: []state.Entry{snapshotLine("toolu_1", "old")}}}
+		state: stateOf(snapshotLine("toolu_1", "old"))}
 	out, steps := walk(t, ev, f)
 	var want []agent.Event
 	for _, p := range []string{"main.go", "docs/a.md"} {
@@ -251,7 +253,7 @@ func TestWatchTooManyEdits(t *testing.T) {
 		}
 		return out
 	}
-	snap := state.State{Entries: []state.Entry{snapshotLine("toolu_1", "old")}}
+	snap := stateOf(snapshotLine("toolu_1", "old"))
 	ev := command(t, watchYAML, workflow.PostCommand, "make gen", "toolu_1")
 
 	out, steps := walk(t, ev, facts{branch: "main", head: "c1", hashes: []string{"new"}, trees: paths(26), state: snap})
@@ -293,7 +295,7 @@ func followed(t *testing.T, yaml, name, path string) hook.Evaluation {
 	t.Helper()
 	ev := command(t, yaml, workflow.PostCommand, "python3 gen.py", "toolu_1")
 	out, _ := walk(t, ev, facts{branch: "main", head: "c1", hashes: []string{"new"}, trees: []string{path},
-		state: state.State{Entries: []state.Entry{snapshotLine("toolu_1", "old")}}})
+		state: stateOf(snapshotLine("toolu_1", "old"))})
 	for _, e := range out.Follow {
 		if e.Name == name {
 			return with(t, ev, func(ev *agent.Event) { *ev = e })
@@ -361,8 +363,8 @@ func TestWatchDerivedRuns(t *testing.T) {
 // AC9: two snapshots of different keys pair with their own post_command, and without an id the command line pairs
 // them.
 func TestWatchPairs(t *testing.T) {
-	st := state.State{Entries: []state.Entry{snapshotLine("toolu_1", "a"), snapshotLine("toolu_2", "b"),
-		snapshotLine("make gen", "c")}}
+	st := stateOf(snapshotLine("toolu_1", "a"), snapshotLine("toolu_2", "b"),
+		snapshotLine("make gen", "c"))
 	f := facts{branch: "main", head: "c1", hashes: []string{"new"}, state: st}
 	for key, want := range map[string]string{"toolu_1": "a", "toolu_2": "b", "": "c"} {
 		_, steps := walk(t, command(t, watchYAML, workflow.PostCommand, "make gen", key), f)
@@ -378,7 +380,7 @@ func TestWatchPairs(t *testing.T) {
 func TestWatchRemoved(t *testing.T) {
 	ev := command(t, watchYAML, workflow.PostCommand, "git mv a.go b.go", "toolu_1")
 	f := facts{branch: "main", head: "c1", hashes: []string{"new"}, trees: []string{"AGENTS.md", "a.go", "b.go"},
-		removed: []string{"AGENTS.md", "a.go"}, state: state.State{Entries: []state.Entry{snapshotLine("toolu_1", "old")}}}
+		removed: []string{"AGENTS.md", "a.go"}, state: stateOf(snapshotLine("toolu_1", "old"))}
 	out, steps := walk(t, ev, f)
 	var paths []string
 	for _, e := range out.Follow {
@@ -397,25 +399,25 @@ func TestWatchRemoved(t *testing.T) {
 // line of its key is not compared again: a post_command of the same command line without a snapshot of its own
 // compares nothing; a newer snapshot of the key is compared.
 func TestWatchSnapshotUsedOnce(t *testing.T) {
-	watched := state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeWatched, Agent: "claude", Session: "s1",
-		Event: workflow.PostCommand, Actor: "session", Branch: "main", Key: "make gen"}
+	watched := entry{Kind: kindObserved, Outcome: state.OutcomeWatched, Agent: "claude", Session: "s1",
+		Event: workflow.PostCommand, Actor: "session", Branch: "main", Head: "c1", Key: "make gen"}
 	ev := command(t, watchYAML, workflow.PostCommand, "make gen", "")
 	f := facts{branch: "main", head: "c1", hashes: []string{"new"}, trees: []string{"AGENTS.md"},
-		state: state.State{Entries: []state.Entry{snapshotLine("make gen", "old")}}}
+		state: stateOf(snapshotLine("make gen", "old"))}
 	_, steps := walk(t, ev, f)
 	if obs := observed(steps); len(obs) != 1 || obs[0] != watched {
 		t.Fatalf("observed %+v, want %+v", obs, watched)
 	}
 
 	for name, c := range map[string]struct {
-		entries []state.Entry
+		entries []entry
 		compare bool
 	}{
-		"used":              {[]state.Entry{snapshotLine("make gen", "old"), watched}, false},
-		"newer snapshot":    {[]state.Entry{snapshotLine("make gen", "a"), watched, snapshotLine("make gen", "b")}, true},
-		"watched other key": {[]state.Entry{snapshotLine("make gen", "old"), func() state.Entry { w := watched; w.Key = "ls"; return w }()}, true},
+		"used":              {[]entry{snapshotLine("make gen", "old"), watched}, false},
+		"newer snapshot":    {[]entry{snapshotLine("make gen", "a"), watched, snapshotLine("make gen", "b")}, true},
+		"watched other key": {[]entry{snapshotLine("make gen", "old"), func() entry { w := watched; w.Key = "ls"; return w }()}, true},
 	} {
-		f.state = state.State{Entries: c.entries}
+		f.state = stateOf(c.entries...)
 		out, steps := walk(t, ev, f)
 		compares := asked(steps, func(s hook.Step) bool { return s.Compare != "" })
 		if (len(compares) > 0) != c.compare || !c.compare && (out.Answer.Block || len(observed(steps)) > 0) {
@@ -437,7 +439,7 @@ func TestWatchStashMoved(t *testing.T) {
 	snap.Refs = "s1"
 	ev := command(t, watchYAML, workflow.PostCommand, "git stash", "toolu_1")
 	out, steps := walk(t, ev, facts{branch: "main", head: "c1", refs: "s2", hashes: []string{"new"},
-		trees: []string{"AGENTS.md"}, state: state.State{Entries: []state.Entry{snap}}})
+		trees: []string{"AGENTS.md"}, state: stateOf(snap)})
 	if acts := asked(steps, func(s hook.Step) bool { return s.Compare != "" || s.Restore != nil }); len(acts) > 0 ||
 		out.Answer.Block {
 		t.Fatalf("steps %+v, answer %+v", acts, out.Answer)
@@ -456,7 +458,7 @@ func TestWatchRestoreEachPath(t *testing.T) {
 	ev := command(t, yaml, workflow.PostCommand, "python3 x.py", "toolu_1")
 	f := facts{branch: "main", head: "c1", hashes: []string{"new"},
 		trees: []string{"AGENTS.md", "CLAUDE.md", "claude.md"}, removed: []string{"CLAUDE.md"},
-		state:       state.State{Entries: []state.Entry{snapshotLine("toolu_1", "old")}},
+		state:       stateOf(snapshotLine("toolu_1", "old")),
 		restoreErrs: map[string]error{"AGENTS.md": errors.New("permission denied")}}
 	out, steps := walk(t, ev, f)
 	var order []string
@@ -484,7 +486,7 @@ func TestWatchRestoreEachPath(t *testing.T) {
 func TestWatchOperationInProgress(t *testing.T) {
 	ev := command(t, watchYAML, workflow.PostCommand, "git merge other", "toolu_1")
 	out, steps := walk(t, ev, facts{branch: "main", head: "c1", refs: "MERGE_HEAD c9", hashes: []string{"new"},
-		trees: []string{"AGENTS.md", "main.go"}, state: state.State{Entries: []state.Entry{snapshotLine("toolu_1", "old")}}})
+		trees: []string{"AGENTS.md", "main.go"}, state: stateOf(snapshotLine("toolu_1", "old"))})
 	if acts := asked(steps, func(s hook.Step) bool { return s.Compare != "" || s.Restore != nil }); len(acts) > 0 ||
 		out.Answer.Block || len(out.Follow) > 0 {
 		t.Fatalf("steps %+v, answer %+v, follow %+v", acts, out.Answer, out.Follow)
@@ -543,7 +545,7 @@ func TestWatchSnapshotOnCommit(t *testing.T) {
 		t.Fatalf("pre_commit outside: answer %+v, observed %+v", out.Answer, obs)
 	}
 	after := command(t, ran, workflow.PreCommit, line, "toolu_1")
-	after.Facts = after.Facts.Answered(agent.Answer{Block: true}, nil)
+	after.Facts = after.Facts.Answered(agent.Answer{Block: true}, state.Record{})
 	if out, steps := walk(t, after, f); len(observed(steps)) > 0 {
 		t.Fatalf("pre_commit after a blocking pre_command: answer %+v, observed %+v", out.Answer, observed(steps))
 	}

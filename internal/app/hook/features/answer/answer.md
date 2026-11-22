@@ -66,12 +66,31 @@ logic cannot plan the event at once.
 
 `hook.Evaluation` (domain) holds the workflow, whether polix.yaml exists (`Present`), why it cannot be used
 (`Invalid`), the root, the git directory, the system, the event, how many events of the call come after it
-(`Remaining`), the `Facts` of the repository read so far and the
-`Journal`, the outcomes of the steps that acted on this event in order. The logic walks the event from its start
+(`Remaining`), the time the evaluation started (`Started`, RFC 3339, which the shell takes from the port), the `Facts` of
+the repository read so far and the `Journal`, the outcomes of the steps that acted on this event in order. The logic walks the event from its start
 every time it is asked: a fact it knows is used, a fact it lacks is the next step; a step that acts takes its
 outcome from the journal, in order, and the first one the journal lacks is the next step. `Output.Step`
 is that step; when it is none, `Output.Answer` is the answer to the event and `Output.Facts`
 what the next event of the call starts from.
+
+Each event the logic evaluates leaves at most one record of the log, its event line (`state.Record`): who and when
+(`at`, the `Started` the shell gave the event, then `agent`, `session`, `event`, `actor` and `agent_id`), where
+(`branch`, `head` and, when the call computed it, the content `hash` at the start of the event), the `input` of the event
+(the command and the tool use of a command or a commit, the path of an edit, the skill, the prompt, the source of a
+start, each cut to 200 characters by the adapter), its `actions` (`state.Action`: what an entry of polix.yaml or a
+protection did with it, with its `line`, its verb, its outcome, its reason and, when it acted on something, its `key`)
+and its `observed` list (`state.Observation`: what polix noted by itself, the memory of the session). The pass collects
+them while it evaluates (`pass.log` adds an action, `pass.note` and `pass.noteWith` an observation, which every later
+query of the call reads at once with the log, see `currentState`), and builds the record when it is answered
+(`record`, which asks for the branch and the HEAD commit the record carries). An event where nothing acted nor was
+observed leaves no record. The records of the events of one call are not written one by one: `hook.Facts.Answered` keeps
+each in `hook.Facts.Pending`, and the last event of the call, when it derives no event more (`flush`), asks one `Append`
+step for each of them, in the order of the events, so the notices a blocked call never shows are dropped from them first
+(`state.Record.Unnotified`, rule 6). A record that cannot be appended is no error of the call, except for a stop the
+loop guard counts: it is let through with the warning of rule 10. The memory of the session is read from the observations
+of these records only: the flat lines an earlier polix wrote (legacy records, `state.Record.Legacy`) are shown by `polix
+log` and ignored by every query, so a session that mixes an old and a new polix starts its memory empty. In the rules
+below, a line written for an observation is its observation in the record of its event.
 
 `Decide` is a router: it builds the pass of the event (`pass`), and `route`, a `switch` on the name of the event in
 `answer_logic.go`, gives the family that answers it, a method of `pass` in a file of its own. Each family reads
@@ -140,7 +159,7 @@ added and deleted lines of each file not committed yet, the same files as the ch
 log, whether git ignores a path, the real paths of some paths, which programs the PATH does not run (`Programs`, kept
 in the facts as `Missing` once per call), the content of a file (of an epoch), or acts: runs
 a command, runs the checks of one or several rules (`rule.Run`, with the argv of its runner of `rules.run`), puts paths
-back as a tree holds them (`Restore` and `Source`) or appends an entry to the log. A check step may decide several
+back as a tree holds them (`Restore` and `Source`) or appends a record to the log. A check step may decide several
 rules: the runs come from `rule.Rules.Plan`, and a failed
 shared run is rerun once per rule (`rule.Run.Settle`), each rerun a step of its own, so the block names only the
 rules whose own run fails. The epoch is the number of runs carried out before, a restore counting as one: any run may
@@ -217,8 +236,8 @@ The rules it follows, as before this use case:
    15), never to the AI, logged as a `notify` decision with the text, and a message that expands to nothing shows
    nothing. On an edit a command made (rule 16), which already happened, a `block` and a failing `run` reach the AI as
    context, logged as `inform`, and the evaluation goes on.
-6. Repeat rules, on the observed lines of the log of the session of the event (`state.KindObserved`, read with
-   `state.Query`): the state the hook reads is the file of that session alone, its subagents included, so a line
+6. Repeat rules, on the observations of the records of the log of the session of the event (`state.Observation`, read
+   with `state.Query`): the state the hook reads is the file of that session alone, its subagents included, so a line
    another session wrote never counts for any verb nor condition, and a new session starts from an empty state
    (`claude --resume` keeps the session, and its state). An event without a session reads no state, as a log that
    cannot be read (see below), writes no line and warns as that log does, whether it reads the state or not
@@ -231,10 +250,10 @@ The rules it follows, as before this use case:
    or an unknown current one (a repository without commits, git failing) matches only by branch; on a detached
    HEAD, whose branch is empty, the lines written on a detached HEAD count, whatever their commit, and so do the
    lines of a branch on the same commit. The lines about a content they read,
-   `finished` with a hash, `passed` and `blocked`, carry the HEAD commit (`state.Entry.Head`) when it is known, and so
-   does a `snapshot` (rule 16), whose `post_command` compares it, with what git moves without HEAD
-   (`state.Entry.Refs`) too; the decisions and the other observed lines never do. Every line of an event of a
-   subagent, decisions included, carries its id (`state.Entry.AgentID`) when the agent gives one.
+   `finished` with a hash, `passed` and `blocked`, are read by the HEAD commit of their record (`state.Record.Head`),
+   which every record carries when the call learned it, and so is a `snapshot` (rule 16), whose `post_command` compares
+   it, with what git moves without HEAD (`state.Observation.Refs`) too; no observation carries a head of its own. Every
+   record of an event of a subagent carries its id (`state.Record.AgentID`) when the agent gives one.
    - `block` blocks every time its entry applies. With `once: true` it is a reminder: it is skipped when the latest
      `blocked` line of its session, actor and line on the current branch or the same HEAD commit has a tree whose
      files in the scope of the entry did not change (see rule 8), and it writes `blocked`, with the hash, when it
@@ -275,12 +294,12 @@ The rules it follows, as before this use case:
      the user is one person. A placeholder that changes its text makes a new key. The `notified` lines, without hash,
      are written only when the whole call does not block (`settle`, called by `Decide` once the family answered): the
      events of one call give one answer, and a blocked one shows the user no message (rule 15). So each event that does
-     not block keeps its notices, after those of the earlier events, as pending lines (`hook.Facts.Pending`, carried
-     with `hook.Facts.Answered`), and the last event of the call (`hook.Evaluation.Last`, from
-     `hook.Evaluation.Remaining`, which the shell sets with `hook.Hook.Remaining`) appends them all, in the order they
-     were shown. A block of any event, earlier (`hook.Facts.Blocked`) or later (`hook.Facts.Answered`), drops them: the
-     notices stay due and their messages are logged as not shown. A line that cannot be written leaves its notice due
-     again. With `always: true` it shows every time and writes nothing. The once-only injects keep their own rule above:
+     not block keeps its notices, after those of the earlier events, as `notified` observations of its record (`settle`),
+     which wait with the record in `hook.Facts.Pending`, carried with `hook.Facts.Answered`, and the last event of the call
+     (`hook.Evaluation.Last`, from `hook.Evaluation.Remaining`, which the shell sets with `hook.Hook.Remaining`) appends
+     them all, in the order they were shown. A block of any event, earlier (`hook.Facts.Blocked`) or later
+     (`hook.Facts.Answered`), drops them: the notices stay due and their messages are logged as not shown. A record that
+     cannot be written leaves its notices due again. With `always: true` it shows every time and writes nothing. The once-only injects keep their own rule above:
      their contexts reach the agent with a block, on stderr, except on a refused `prompt`, which is a call of one event.
    - When the log cannot be read, every verb acts every time, `finished` never holds and the call warns: `polix
      cannot use its log (<cause>): run, inject, notify and the blocks with once act every time, and finished does not
@@ -328,7 +347,9 @@ The rules it follows, as before this use case:
     the content, a block let through writes its line too, once the entries of the event are done, with the hash they
     ended on (`writeReleased`), so the chain goes on even when a later run writes again, and the warning names
     `stop_retries`. After `stop_retries` blocks, 1 by default, the agent may
-    stop with a warning and the next entries run, and when the log cannot be read or written the guard fails open.
+    stop with a warning and the next entries run, and when the log cannot be read or written the guard fails open: the
+    record of a stop that is refused is appended at the end of the call (`flush`), and when that append fails the refusal
+    becomes the release of the guard, each of its reasons a warning (`unusableLog`).
 11. The content hash is computed only when something needs it: the repeat of a `run` and its `passed` line (before
     and after the run), a `block` with `once`, the loop guard, `finished` and its observed line, and, when the
     workflow watches, the `snapshot` of the last event before a command line runs (the `pre_command`, or the
@@ -427,8 +448,8 @@ The rules it follows, as before this use case:
     (`workflow.Workflow.CountsAgents`, rules 6 and 9).
     - Reconciliation (`reconcile`): on `stop` and `subagent_stop`, before the entries, when the workflow uses the
       condition and the list is known, each subagent the log has open in the session that the list does not list,
-      the actor aside, gets an observed `ended` line (`state.OutcomeEnded`): about the event, with the type of that
-      subagent as the actor and its id, without key nor hash (`writeEnded`). A line with an id is listed by a
+      the actor aside, gets an observed `ended` (`state.OutcomeEnded`) in the record of the event, its key the type of that subagent
+      and, when it has one, a space and its id (`state.Match.EndedKey`), without hash (`writeEnded`). A line with an id is listed by a
       subagent of that id, then each line without id by a subagent of its type not taken yet (`unlisted`). So a
       subagent whose end never reached polix, interrupted, stops counting; without the list, or with one that does
       not decode, the log stays as it is and such a subagent counts until a later stop that lists, or a new session.
@@ -456,7 +477,7 @@ otherwise. The command writes them as they are and exits with `Code`.
 ## Port
 
 `Port`, declared in `answer_in.go` and implemented by `Adapter` in `answer_out.go` and, for the log,
-`answer_out_log.go`. With 22 methods it passes the maximum of 19 of `interfacebloat`, silenced on its declaration with a
+`answer_out_log.go`. With 23 methods it passes the maximum of 19 of `interfacebloat`, silenced on its declaration with a
 `//nolint` and its reason: the hook reads every fact through this one port, and the step shape needs one method per
 fact.
 
@@ -500,7 +521,7 @@ fact.
   lowercase hex sha256), read through the field `State` of the adapter, the loader `stateadapters.Log.Load`
   (`internal/app/state/adapters`) that `cmd/polix` builds once and passes to `Command`, which `polix log` shares: read
   through `internal/platform/jsonl`, the lines over `state.MaxLine` skipped and counted, every line that decodes
-  kept; a missing file is an empty log, a file that cannot be read is its error, and so is a session without an id,
+  into an event line or a legacy record (`state.Record.Valid`) kept as a `state.Record`; a missing file is an empty log, a file that cannot be read is its error, and so is a session without an id,
   which names no file. The old `<git-dir>/polix/log.jsonl` is never read.
 - `Real`: the real path of each path.
 - `Foreign`: whether a folder is inside an existing git repository other than this one (`git.Repo.Foreign`: its git
@@ -526,13 +547,17 @@ fact.
   (`git.Repo.Restore`, through a scratch index in the folder of the state, as `Hash`, so the real index of the person
   is never touched); it removes the paths the tree does not hold before writing the others, and its error names
   the first path that failed; a tree git no longer has is an error.
-- `Append`: appends an entry to the file of its session (`state.Entry.Session`, named as the loader of the log names
-  it), creating it and its folder when missing, stamped with the time (RFC 3339), encoded as one line by the unexported
-  method `encodeLine` with the encoding type `logLine` of `answer_out_log.go`, its reason cut to `state.MaxReason`: the
-  shape `stateadapters.Log` decodes, the id of a subagent as `agent_id`, left out when empty. Each line is one append call,
-  without a lock, so the main session and its subagents append to the same file. An entry that is not valid, one without
-  a session among them (`state.Entry.Valid`), is not written and is its error. Nothing is written to the old
-  `<git-dir>/polix/log.jsonl`, which is left on disk.
+- `Append`: appends a record to the file of its session (`state.Record.Session`, named as the loader of the log names
+  it), creating it and its folder when missing, stamped with the time (RFC 3339) when it has none, encoded as one event
+  line by the unexported method `encodeLine` with the encoding types `logLine`, `logInput`, `logAction` and `logObserved`
+  of `answer_out_log.go`: the keys `at`, `agent`, `session`, `event`, `actor`, `agent_id`, `branch`, `head`, `hash`,
+  `input`, `actions` and `observed` in that order, the empty ones left out; each text of the input cut to 200 characters
+  (`text.Shorten`) and each reason to `state.MaxReason`: the shape `stateadapters.Log` decodes. Each line is one append
+  call, without a lock, so the main session and its subagents append to the same file. A record that is not to be written
+  (`state.Record.Writable`: one without a session, a legacy one, one with an action or an observation that is not valid)
+  is not written and is its error. Nothing is written to the old `<git-dir>/polix/log.jsonl`, which is left on disk.
+- `Now`: the time of the clock as RFC 3339 with its offset, which the shell takes when the evaluation of each event
+  starts (`hook.Evaluation.Started`), the `at` of its record.
 
 ## Errors
 
@@ -569,7 +594,7 @@ The failure policy of the hook, so a broken polix never traps the agent:
    answers nothing.
 4. It evaluates the events from a queue, those of the hook first. For each event, it locates the path of an edit through
    the port and builds its `hook.Evaluation` with the facts the previous event left and the events left in the queue
-   (`hook.Evaluation.Remaining`), its problems told for the running polix (`hook.Evaluation.Running`); then it loops
+   (`hook.Evaluation.Remaining`), the time it starts (`hook.Evaluation.Started`, from `Now` of the port), its problems told for the running polix (`hook.Evaluation.Running`); then it loops
    from one call site: it asks `Decide` for the next step, carries it out through the port and feeds the result back to
    the evaluation (`Know*` for a fact, `Note` for an outcome), until the step is none; the unexported functions `carry`
    (the facts of git), `lookup` (the facts of a path, a folder or the programs) and `act` (the steps that act, the
@@ -577,8 +602,9 @@ The failure policy of the hook, so a broken polix never traps the agent:
    the event to its family, which walks its protections, whether git ignores an edited path (for an unusable workflow)
    or where the commits of a `pre_commit` land, and the entries, in that order (Logic, rules 1 to 5). The events of
    `Output.Follow`, the `pre_edit` and `post_edit` of each file a command changed, join the end of the queue, so they
-   are located and evaluated in the same call, their answers merged with the others; they never block, so the lines a
-   call writes only when it does not block are written by the last event of the queue.
+   are located and evaluated in the same call, their answers merged with the others; they never block, so the records of
+   the call are appended by the last event of the queue, which asks one `Append` step for each, in the order of the
+   events.
 5. It merges the answers of the events (`agent.Answer.Merge`) and renders them with the `format` of the agent
    into the `Response`.
 6. `Command` writes stdout and stderr and exits with the code.

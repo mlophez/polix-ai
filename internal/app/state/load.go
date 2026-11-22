@@ -19,13 +19,13 @@ type Loaded struct {
 // MaxLine is the longest line of the log that is read; longer lines are skipped.
 const MaxLine = 4 * 1024 * 1024
 
-// MaxReason is the longest reason stored in an entry; the writer of the log cuts longer reasons, so every line stays
+// MaxReason is the longest reason stored in an action; the writer of the log cuts longer reasons, so every line stays
 // far below MaxLine.
 const MaxReason = 8 * 1024
 
 // Valid tells why l is not what the log loads: a state with the error of its reading, or a state that is not valid.
 func (l Loaded) Valid() error {
-	if l.Err != nil && (len(l.State.Entries) > 0 || l.State.Skipped != 0) {
+	if l.Err != nil && (len(l.State.Records) > 0 || l.State.Skipped != 0) {
 		return errors.New("a state loaded from a log that cannot be read")
 	}
 	return l.State.Valid()
@@ -38,7 +38,7 @@ func (l Loaded) Fail(err error) Loaded {
 	return failed
 }
 
-// Loaded builds what the log loads from s, the state of the entries of its lines that decode and the count of the
+// Loaded builds what the log loads from s, the state of the records of its lines that decode and the count of the
 // lines skipped, and err, why the log cannot be read. It validates them with the domain (State.Valid and
 // Loaded.Valid): a log that cannot be read, or a state that is not valid, loads an empty state with why.
 func (s State) Loaded(err error) Loaded {

@@ -45,7 +45,7 @@ func (r *pass) snapshot() {
 	if r.waiting() || !known {
 		return
 	}
-	_ = r.writeEntry(state.KindObserved, "", 0, state.OutcomeSnapshot, "", key, hash, refs)
+	_ = r.noteWith(0, state.OutcomeSnapshot, key, hash, refs, "")
 }
 
 // watch finds the files the command of a post_command changed, when the valid workflow watches: the latest
@@ -75,12 +75,11 @@ func (r *pass) watch() agent.Answer {
 	if q.Valid() != nil || consumed.Valid() != nil {
 		return agent.Answer{}
 	}
-	at := st.Index(q)
-	if at < 0 || st.Index(consumed) > at || st.Entries[at].Hash == "" {
+	snap, found := st.Latest(q)
+	if !found || st.Index(consumed) > snap.Seq || snap.Hash == "" {
 		return agent.Answer{}
 	}
-	snap := st.Entries[at]
-	_ = r.write(state.KindObserved, "", 0, state.OutcomeWatched, "", key, "")
+	_ = r.note(0, state.OutcomeWatched, key, "")
 	head, refs := r.head(), r.refs()
 	if r.waiting() {
 		return agent.Answer{}
@@ -104,10 +103,10 @@ func (r *pass) watch() agent.Answer {
 
 // gitMoved says what git moved since the snapshot snap, given the current HEAD commit and the refs git moves
 // without HEAD (the stash and an operation stopped halfway, see hook.Facts.Refs): "" when neither moved.
-func gitMoved(snap state.Entry, head, refs string) string {
+func gitMoved(snap state.Match, head, refs string) string {
 	switch {
-	case head != snap.Head:
-		return fmt.Sprintf("HEAD moved from %q to %q", snap.Head, head)
+	case head != snap.Record.Head:
+		return fmt.Sprintf("HEAD moved from %q to %q", snap.Record.Head, head)
 	case refs != snap.Refs:
 		return fmt.Sprintf("the stash or the operation of git in progress went from %q to %q", snap.Refs, refs)
 	}

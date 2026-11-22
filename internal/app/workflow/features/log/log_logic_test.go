@@ -7,11 +7,12 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/state"
 )
 
-// session is the state of the file of the session id, with one entry at each time of ats, in that order.
+// session is the state of the file of the session id, with one record at each time of ats, in that order.
 func session(id string, ats ...string) state.State {
 	var st state.State
 	for _, at := range ats {
-		st.Entries = append(st.Entries, state.Entry{At: at, Kind: state.KindDecision, Session: id})
+		st.Records = append(st.Records, state.Record{At: at, Session: id,
+			Actions: []state.Action{{Action: "block", Outcome: "block"}}})
 	}
 	return st
 }
@@ -23,8 +24,8 @@ func ids(t *testing.T, out Output) []string {
 		t.Fatalf("%d ids for %d sessions", len(out.IDs), len(out.Sessions))
 	}
 	for i, st := range out.Sessions {
-		if st.Entries[0].Session != out.IDs[i] {
-			t.Fatalf("id %q for the session %q", out.IDs[i], st.Entries[0].Session)
+		if st.Records[0].Session != out.IDs[i] {
+			t.Fatalf("id %q for the session %q", out.IDs[i], st.Records[0].Session)
 		}
 	}
 	return out.IDs
@@ -46,7 +47,7 @@ func TestDecideOrdersTheSessions(t *testing.T) {
 			t.Fatalf("tail %d: %v", tail, got)
 		}
 		for _, st := range out.Sessions {
-			if st.Entries[0].Session == "b" && len(st.Entries) != 2 {
+			if st.Records[0].Session == "b" && len(st.Records) != 2 {
 				t.Fatalf("tail %d: the session b is not whole: %+v", tail, st)
 			}
 		}

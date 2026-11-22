@@ -8,11 +8,11 @@ import (
 )
 
 // Step is what the evaluation of an event needs from the outside before it can go on: read one fact of the
-// repository, run a command or the check of a rule, put files back, or append an entry to the log. The zero Step is
+// repository, run a command or the check of a rule, put files back, or append a record to the log. The zero Step is
 // none: the answer is ready. Exactly one of its fields asks; Epoch goes with Hash and Read, Tree with Compare, Source
 // with Restore.
 type Step struct {
-	Compare  string   // the paths that differ between this tree, of an observed line, and Tree
+	Compare  string   // the paths that differ between this tree, of an observation, and Tree
 	Tree     string   // the tree of the current content, at the epoch of the evaluation
 	Branch   bool     // the current branch and the HEAD commit
 	Refs     bool     // what git moves without moving HEAD: the stash and an operation stopped halfway
@@ -30,10 +30,10 @@ type Step struct {
 	Programs []string // which of these programs are not on the PATH
 	Contains []string // whether a file matching these patterns holds Text, at Epoch
 	Text     string
-	Read     string       // the content of this file, relative to the root with slashes, at Epoch
-	Run      []string     // run this command from the root
-	Check    *rule.Run    // run this invocation of the checks of one or several rules from the root
-	Append   *state.Entry // append this entry to the log
+	Read     string        // the content of this file, relative to the root with slashes, at Epoch
+	Run      []string      // run this command from the root
+	Check    *rule.Run     // run this invocation of the checks of one or several rules from the root
+	Append   *state.Record // append this record to the log, one line
 	// Restore puts these paths, relative to the root with slashes, back in the working tree as Source holds them,
 	// removing those it does not hold.
 	Restore []string

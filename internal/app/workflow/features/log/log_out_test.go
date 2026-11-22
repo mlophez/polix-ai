@@ -79,12 +79,12 @@ func TestAdapterReadLog(t *testing.T) {
 	if err != nil || len(sts) != 2 {
 		t.Fatalf("sessions: %+v %v", sts, err)
 	}
-	slices.SortFunc(sts, func(a, b state.State) int { return strings.Compare(a.Entries[0].At, b.Entries[0].At) })
-	if st := sts[0]; len(st.Entries) != 2 || st.Skipped != 1 || st.Entries[1].At != "t2" ||
-		st.Entries[0].Fact != "reviewed" {
+	slices.SortFunc(sts, func(a, b state.State) int { return strings.Compare(a.Records[0].At, b.Records[0].At) })
+	if st := sts[0]; len(st.Records) != 2 || st.Skipped != 1 || st.Records[1].At != "t2" ||
+		st.Records[0].Fact != "reviewed" {
 		t.Fatalf("s1: %+v", st)
 	}
-	if st := sts[1]; len(st.Entries) != 1 || st.Entries[0].Session != "s2" {
+	if st := sts[1]; len(st.Records) != 1 || st.Records[0].Session != "s2" {
 		t.Fatalf("s2: %+v", st)
 	}
 }

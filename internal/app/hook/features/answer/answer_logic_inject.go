@@ -74,7 +74,7 @@ func (r *pass) injectRules(line int, target string, once bool, ans agent.Answer)
 // session).
 func (r *pass) writeInjected() {
 	for _, in := range r.injected {
-		_ = r.write(state.KindObserved, "", in.line, state.OutcomeInjected, "", in.key, "")
+		_ = r.note(in.line, state.OutcomeInjected, in.key, "")
 		if r.waiting() {
 			return
 		}

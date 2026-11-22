@@ -434,9 +434,9 @@ on:
 	commit("commit before the review", 2)
 	code, _, stderr := r.subagentStop("polix:reviewer")
 	expect(t, "the reviewer stops", code, 0, stderr)
-	if !strings.Contains(r.log(), `"kind":"observed","agent":"claude","session":"s1","event":"subagent_stop",`+
-		`"actor":"polix:reviewer","branch":"main","hash":`) || !strings.Contains(r.log(), `"key":"polix:reviewer",`+
-		`"outcome":"finished"`) {
+	if r.lines("kind=observed", "agent=claude", "session=s1", "event=subagent_stop", "actor=polix:reviewer",
+		"branch=main", "outcome=finished", "key=polix:reviewer") != 1 ||
+		r.lines("outcome=finished", "key=polix:reviewer", "hash=<nil>") != 0 {
 		t.Fatalf("the end of the reviewer is observed: %s", r.log())
 	}
 	commit("commit after the review", 0)
@@ -448,8 +448,9 @@ on:
 
 	r.subagentStop("polix:reviewer")
 	commit("commit after a new review", 0)
-	r.write(".git/polix/sessions/s1.jsonl", `{"kind":"observed","outcome":"finished","key":"polix:reviewer",`+
-		`"session":"s1","branch":"main","hash":"`+strings.Repeat("1", 40)+`"}`+"\n")
+	r.write(".git/polix/sessions/s1.jsonl", `{"at":"2026-11-22T10:00:00+01:00","session":"s1","event":"subagent_stop",`+
+		`"actor":"polix:reviewer","branch":"main","observed":[{"outcome":"finished","key":"polix:reviewer","hash":"`+
+		strings.Repeat("1", 40)+`"}]}`+"\n")
 	commit("commit with the tree of the review missing", 2)
 	if !strings.Contains(r.log(), "the content polix:reviewer finished on cannot be compared") {
 		t.Fatalf("the failed comparison is logged: %s", r.log())
@@ -479,8 +480,9 @@ on:
 	}
 	code, _, stderr := r.subagentStop("polix:builder")
 	expect(t, "the builder stops", code, 0, stderr)
-	if !strings.Contains(r.log(), `"actor":"polix:builder","branch":"main","hash":`) ||
-		!strings.Contains(r.log(), `"key":"polix:builder","outcome":"finished"`) || !strings.Contains(r.log(), `"head":"`) {
+	if r.lines("actor=polix:builder", "branch=main", "outcome=finished", "key=polix:builder") != 1 ||
+		r.lines("outcome=finished", "key=polix:builder", "hash=<nil>") != 0 ||
+		r.lines("outcome=finished", "key=polix:builder", "head=<nil>") != 0 {
 		t.Fatalf("the end of the builder is observed with its hash and head: %s", r.log())
 	}
 	commit("commit after the builder", 0)
@@ -570,10 +572,10 @@ func TestRunRepeatOnTheContent(t *testing.T) {
 	r.write("polix.yaml", "version: 1\non:\n  stop:\n    - action: { run: [git, status, --short] }\n")
 	r.write("src/app.go", "package app\n")
 	r.stops("", 0, 0)
-	if n := strings.Count(r.log(), `"key":"git status --short","outcome":"passed"`); n != 1 {
+	if n := r.lines("outcome=passed", "key=git status --short"); n != 1 {
 		t.Fatalf("passed %d times: %s", n, r.log())
 	}
-	if !strings.Contains(r.log(), `"action":"run","line":4,"outcome":"skip"`) {
+	if r.lines("action=run", "line=4", "outcome=skip") != 1 {
 		t.Fatalf("the skip is logged: %s", r.log())
 	}
 	r.write("src/app.go", "package app\n\nfunc A() {}\n")
@@ -608,14 +610,14 @@ on:
 	expect(t, "the reviewer of s1 stops", code, 0, stderr)
 	code, stderr = stop("s1")
 	expect(t, "s1 stops after its review", code, 0, stderr)
-	if !strings.Contains(r.log(), `"action":"run","line":4,"outcome":"skip"`) {
+	if r.lines("action=run", "line=4", "outcome=skip") != 1 {
 		t.Fatalf("s1 skips the run that passed in s1: %s", r.log())
 	}
 	code, stderr = stop("s2")
 	expect(t, "s2 stops on the content s1 reviewed", code, 2, stderr)
 	s2 := r.logOf("s2")
-	if strings.Count(s2, `"key":"git status --short","outcome":"passed"`) != 1 ||
-		strings.Contains(s2, `"outcome":"skip"`) || strings.Contains(s2, `"session":"s1"`) {
+	if r.linesOf("s2", "outcome=passed", "key=git status --short") != 1 || r.linesOf("s2", "outcome=skip") != 0 ||
+		strings.Contains(s2, `"session":"s1"`) {
 		t.Fatalf("s2 runs again what passed in s1: %s", s2)
 	}
 	if strings.Contains(r.log(), `"session":"s2"`) {
@@ -1196,7 +1198,7 @@ func TestDecisionsSkipTheHash(t *testing.T) {
 	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - action: { block: x }\n")
 	r.edit("src/a.go", "")
 	data := r.log()
-	if !strings.Contains(data, `"action":"block","line":4`) || strings.Contains(data, `"hash"`) {
+	if r.lines("kind=decision", "action=block", "line=4") != 1 || strings.Contains(data, `"hash"`) {
 		t.Fatalf("log: %s", data)
 	}
 }
@@ -1289,7 +1291,7 @@ on:
 	if !strings.Contains(systemMessage(t, stdout), "hash the content") {
 		t.Fatalf("stdout should warn about the hash: %q", stdout)
 	}
-	if strings.Contains(r.log(), `"kind":"observed"`) {
+	if r.lines("kind=observed") != 0 {
 		t.Fatalf("log: %s", r.log())
 	}
 	r.write("src/a.go", "package a\n")
@@ -1482,17 +1484,17 @@ func TestAdapter(t *testing.T) {
 	if out, err := a.Run(ctx, []string{"git", "rev-parse", "--abbrev-ref", "HEAD"}); err != nil || out != "feature\n" {
 		t.Fatalf("Run = %q %v", out, err)
 	}
-	if err := a.Append(ctx, state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeFinished, Session: "s1",
-		Key: "polix:reviewer"}); err != nil {
+	if err := a.Append(ctx, state.Record{Session: "s1", Observations: []state.Observation{
+		{Outcome: state.OutcomeFinished, Key: "polix:reviewer"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Append(ctx, state.Entry{Kind: state.KindObserved, Outcome: state.OutcomePassed,
-		Session: "s1"}); err == nil {
+	if err := a.Append(ctx, state.Record{Session: "s1", Observations: []state.Observation{
+		{Outcome: state.OutcomePassed}}}); err == nil {
 		t.Fatal("an observed passed without hash is appended")
 	}
 	s, err := a.LoadState(ctx, "s1")
-	if err != nil || len(s.Entries) != 1 || s.Entries[0].At == "" ||
-		!strings.Contains(r.log(), `"key":"polix:reviewer","outcome":"finished"`) {
+	if err != nil || len(s.Records) != 1 || s.Records[0].At == "" ||
+		!strings.Contains(r.log(), `"observed":[{"outcome":"finished","key":"polix:reviewer"}]`) {
 		t.Fatalf("LoadState = %+v %v", s, err)
 	}
 	if reals := a.Real(ctx, []string{r.dir}); len(reals) != 1 || reals[0] == "" {
@@ -1636,15 +1638,41 @@ func (r *repo) sessionStart(source string) (int, string, string) {
 	return r.hook("claude", map[string]any{"hook_event_name": "SessionStart", "source": source})
 }
 
-// lines counts the lines of the log that hold every field of fields with its value, written as a "key=value".
-func (r *repo) lines(fields ...string) int {
+// flatOf returns the entries of the log of session as the key and value of each field it has, written as a "key=value"
+// in lines: the actions and the observations of its event lines, flattened (see entriesOf) with the keys the log gives
+// them, the fields that are empty left out.
+func (r *repo) flatOf(session string) []map[string]any {
+	r.t.Helper()
+	loaded := (&stateadapters.Log{}).Load(context.Background(), sessionLog(filepath.Join(r.dir, ".git"), session))
+	var out []map[string]any
+	for _, rec := range loaded.State.Records {
+		for _, e := range entriesOf(rec) {
+			l := map[string]any{"kind": e.Kind, "agent": e.Agent, "action": e.Action, "event": e.Event, "actor": e.Actor,
+				"agent_id": e.AgentID, "session": e.Session, "branch": e.Branch, "head": e.Head, "hash": e.Hash,
+				"before": e.Before, "refs": e.Refs, "key": e.Key, "outcome": e.Outcome, "reason": e.Reason}
+			for k, v := range l {
+				if v == "" {
+					delete(l, k)
+				}
+			}
+			if e.Line != 0 {
+				l["line"] = e.Line
+			}
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// lines counts the entries of the log that hold every field of fields with its value, written as a "key=value"
+// ("key=<nil>" for a field the entry does not have).
+func (r *repo) lines(fields ...string) int { return r.linesOf("s1", fields...) }
+
+// linesOf is lines for the log of session.
+func (r *repo) linesOf(session string, fields ...string) int {
 	r.t.Helper()
 	n := 0
-	for line := range strings.SplitSeq(strings.TrimSpace(r.log()), "\n") {
-		var l map[string]any
-		if json.Unmarshal([]byte(line), &l) != nil {
-			continue
-		}
+	for _, l := range r.flatOf(session) {
 		all := true
 		for _, f := range fields {
 			k, v, _ := strings.Cut(f, "=")
@@ -1814,7 +1842,7 @@ func TestAgentsAreRunningReconciled(t *testing.T) {
 	}
 	code, _, stderr = r.stopWith("", []any{map[string]any{"id": "b1", "type": "shell"}})
 	expect(t, "stop without a1 listed", code, 0, stderr)
-	if r.lines("kind=observed", "outcome=ended", "event=stop", "actor=builder", "agent_id=a1", "key=<nil>",
+	if r.lines("kind=observed", "outcome=ended", "event=stop", "actor=session", "agent_id=<nil>", "key=builder a1",
 		"hash=<nil>") != 1 || r.lines("outcome=ended") != 1 {
 		t.Fatalf("one ended line for a1: %s", r.log())
 	}
@@ -1856,7 +1884,7 @@ on:
 	r.subagent("a2", false)
 	code, _, stderr := r.stopWith("a1", []any{task("a1")})
 	expect(t, "a1 stops, listed alone", code, 2, stderr)
-	if r.lines("outcome=ended", "agent_id=a2", "actor=builder", "event=subagent_stop") != 1 ||
+	if r.lines("outcome=ended", "key=builder a2", "agent_id=a1", "actor=builder", "event=subagent_stop") != 1 ||
 		r.lines("outcome=ended") != 1 {
 		t.Fatalf("a2 ended, a1 not: %s", r.log())
 	}

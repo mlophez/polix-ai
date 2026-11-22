@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/diff"
@@ -43,7 +44,8 @@ type fakePort struct {
 	absent    map[string]bool // the programs the PATH does not run
 	rules     []rule.Rule
 	calls     []string
-	appended  []state.Entry
+	appended  []state.Record
+	clock     func() time.Time // the time Now gives; the time of the machine when nil
 }
 
 var _ Port = (*fakePort)(nil)
@@ -186,16 +188,34 @@ func (p *fakePort) Restore(_ context.Context, source string, paths []string) err
 	return p.restErr
 }
 
-// Append appends e unless it is not valid, as the adapter, or the fake is told to fail.
-func (p *fakePort) Append(_ context.Context, e state.Entry) error {
-	if err := e.Valid(); err != nil {
+// Append appends r unless it is not valid, as the adapter, or the fake is told to fail.
+func (p *fakePort) Append(_ context.Context, r state.Record) error {
+	p.calls = append(p.calls, "Append "+r.Event)
+	if err := r.Valid(); err != nil {
 		return err
 	}
 	if p.appendErr != nil {
 		return p.appendErr
 	}
-	p.appended = append(p.appended, e)
+	p.appended = append(p.appended, r)
 	return nil
+}
+
+// Now gives the time of the clock of the fake, or the time of the machine without one.
+func (p *fakePort) Now(context.Context) string {
+	if p.clock == nil {
+		return time.Now().Format(time.RFC3339)
+	}
+	return p.clock().Format(time.RFC3339)
+}
+
+// entries returns the entries of the records the fake appended, in order.
+func (p *fakePort) entries() []entry {
+	var out []entry
+	for _, r := range p.appended {
+		out = append(out, entriesOf(r)...)
+	}
+	return out
 }
 
 // claudeRequest returns the request of a hook call of Claude Code with input.
@@ -236,7 +256,7 @@ func TestNotifiedOnceTheCallIsKnown(t *testing.T) {
 			t.Fatal(err)
 		}
 		notified := 0
-		for _, e := range port.appended {
+		for _, e := range port.entries() {
 			if e.Outcome == state.OutcomeNotified {
 				notified++
 			}
@@ -352,12 +372,12 @@ func TestDir(t *testing.T) {
 func TestStateOfTheSession(t *testing.T) {
 	const yaml = "version: 1\non:\n  pre_command:\n    - action: { run: [just, test] }\n" +
 		"    - action: { block: { message: x, once: true } }\n"
-	st := state.State{Entries: []state.Entry{
-		{Kind: state.KindObserved, Session: "s1", Actor: agent.ActorSession, Branch: "main", Head: "c0ffee", Hash: "h",
+	st := stateOf(
+		entry{Kind: kindObserved, Session: "s1", Actor: agent.ActorSession, Branch: "main", Head: "c0ffee", Hash: "h",
 			Key: "just test", Line: 4, Outcome: state.OutcomePassed},
-		{Kind: state.KindObserved, Session: "s1", Actor: agent.ActorSession, Branch: "main", Head: "c0ffee", Hash: "h",
+		entry{Kind: kindObserved, Session: "s1", Actor: agent.ActorSession, Branch: "main", Head: "c0ffee", Hash: "h",
 			Line: 5, Outcome: state.OutcomeBlocked},
-	}}
+	)
 	const command = `"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","tool_input":{"command":"ls"}`
 	port := &fakePort{yaml: yaml, state: st}
 	res, err := run(context.Background(), port, claudeRequest(`{`+command+`,"session_id":"s1"}`))
@@ -478,6 +498,165 @@ func TestRunsAPassingGroupOnce(t *testing.T) {
 	}
 }
 
+// CUJ-07, AC-07: an event where nothing acts writes nothing: a prompt no entry matches asks no Append step and leaves
+// the log as it was, and so does an event of a workflow without entries.
+func TestNothingActsWritesNothing(t *testing.T) {
+	port := &fakePort{yaml: "version: 1\non:\n  prompt:\n    - when: { branch: \"^never$\" }\n" +
+		"      action: { inject: \"Remember\" }\n  pre_edit:\n    - action: { block: \"no\" }\n",
+		state: stateOf(entry{Kind: kindObserved, Outcome: state.OutcomeStarted, Session: "s1", Event: workflow.Start,
+			Actor: agent.ActorSession, Key: "startup"})}
+	res, err := run(context.Background(), port, claudeRequest(promptCall(t, "hola")))
+	if err != nil || res.Code != 0 || additionalContext(t, res.Stdout) != "" || len(port.appended) != 0 {
+		t.Fatalf("a prompt nothing acts on: %+v %v %+v", res, err, port.appended)
+	}
+	if len(port.state.Records) != 1 {
+		t.Fatalf("the log changed: %+v", port.state)
+	}
+	bare := &fakePort{yaml: "version: 1\n"}
+	res, err = run(context.Background(), bare, claudeRequest(promptCall(t, "hola")))
+	if err != nil || res.Code != 0 || len(bare.appended) != 0 {
+		t.Fatalf("a workflow without entries: %+v %v %+v", res, err, bare.appended)
+	}
+}
+
+// eventNames returns the event of each record, in order.
+func eventNames(records []state.Record) []string {
+	var out []string
+	for _, r := range records {
+		out = append(out, r.Event)
+	}
+	return out
+}
+
+// CUJ-18, AC-06, AC-19: the events of one call each get their own record, one Append per event that acted, in the
+// order of the events and all of them at the end of the call: a command whose watch derives two edits of a.txt gives
+// the records of the post_command and of each edit; a block of a later event of the call drops the notified
+// observations of the earlier ones.
+func TestOneRecordPerEventOfTheCall(t *testing.T) {
+	const yaml = "version: 1\non:\n  post_command:\n    - action: { notify: \"Aviso\" }\n  pre_edit:\n" +
+		"    - action: { block: \"No editar\" }\n  post_edit:\n    - action: { notify: \"Editado\" }\n"
+	snapshot := stateOf(entry{Kind: kindObserved, Outcome: state.OutcomeSnapshot, Session: "s1",
+		Event: workflow.PreCommand, Actor: agent.ActorSession, Branch: "main", Head: "c0ffee", Key: "toolu_1", Hash: "old"})
+	port := &fakePort{yaml: yaml, state: snapshot, trees: []string{"a.txt"}}
+	const post = `{"hook_event_name":"PostToolUse","tool_name":"Bash","cwd":"/repo","session_id":"s1",` +
+		`"tool_use_id":"toolu_1","tool_input":{"command":"echo x > a.txt"},"tool_response":{}}`
+	res, err := run(context.Background(), port, claudeRequest(post))
+	if err != nil || res.Code != 0 {
+		t.Fatalf("the call: %+v %v", res, err)
+	}
+	if got, want := eventNames(port.appended), []string{"post_command", "pre_edit", "post_edit"}; !slices.Equal(got, want) {
+		t.Fatalf("records %v, want %v", got, want)
+	}
+	last := -1
+	for i, c := range port.calls {
+		if !strings.HasPrefix(c, "Append") {
+			last = i
+		}
+	}
+	if appends := port.calls[last+1:]; len(appends) != 3 {
+		t.Fatalf("every record is appended after the last event: %v", port.calls)
+	}
+	post0, edit := port.appended[0], port.appended[1]
+	if len(post0.Observations) != 2 || post0.Observations[0].Outcome != state.OutcomeWatched ||
+		post0.Observations[1].Outcome != state.OutcomeNotified || post0.Observations[1].Key != "Aviso" ||
+		len(edit.Actions) != 1 || edit.Actions[0].Outcome != "inform" || edit.Input.Path != "a.txt" ||
+		edit.Actor != agent.ActorSession || len(edit.Observations) != 0 {
+		t.Fatalf("the records: %+v %+v", post0, edit)
+	}
+
+	// A commit whose pre_commit blocks: the notice of the pre_command is not shown, so it is never noted.
+	blocked := &fakePort{yaml: "version: 1\non:\n  pre_command:\n    - action: { notify: \"Aviso\" }\n  pre_commit:\n" +
+		"    - action: { block: \"no\" }\n"}
+	res, err = run(context.Background(), blocked, claudeRequest(
+		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","session_id":"s1",`+
+			`"tool_input":{"command":"git commit -m x"}}`))
+	if err != nil || res.Code != 2 {
+		t.Fatalf("the blocked call: %+v %v", res, err)
+	}
+	if got, want := eventNames(blocked.appended), []string{"pre_command", "pre_commit"}; !slices.Equal(got, want) {
+		t.Fatalf("records %v, want %v", got, want)
+	}
+	for _, r := range blocked.appended {
+		if slices.ContainsFunc(r.Observations, func(o state.Observation) bool { return o.Outcome == state.OutcomeNotified }) {
+			t.Fatalf("a notice of a blocked call is noted: %+v", r)
+		}
+	}
+	if len(blocked.appended[0].Actions) != 1 || blocked.appended[0].Actions[0].Outcome != "notify" {
+		t.Fatalf("the record of the pre_command keeps its action: %+v", blocked.appended[0])
+	}
+}
+
+// CUJ-18, AC-19: each record carries the time the shell gave the evaluation of its event, not the time it is
+// appended: two events of a call get the two times of the clock, in order.
+func TestRecordAtIsStartOfEvent(t *testing.T) {
+	port := &fakePort{yaml: "version: 1\non:\n  pre_command:\n    - action: { notify: \"Aviso\" }\n  pre_commit:\n" +
+		"    - action: { block: \"no\" }\n"}
+	tick := time.Date(2026, 11, 22, 13, 50, 0, 0, time.FixedZone("CET", 3600))
+	req := claudeRequest(`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","session_id":"s1",` +
+		`"tool_input":{"command":"git commit -m x"}}`)
+	port.clock = func() time.Time {
+		tick = tick.Add(5 * time.Second)
+		return tick
+	}
+	if _, err := run(context.Background(), port, req); err != nil {
+		t.Fatal(err)
+	}
+	if len(port.appended) != 2 || port.appended[0].At != "2026-11-22T13:50:05+01:00" ||
+		port.appended[1].At != "2026-11-22T13:50:10+01:00" {
+		t.Fatalf("records: %+v", port.appended)
+	}
+}
+
+// CUJ-11, AC-11: a stop the loop guard counts is let through when its record cannot be appended at the end of the
+// call, with the warning of a log polix cannot use, and never answered with a block the guard could not count.
+func TestLoopGuardFailsOpenOnFinalWrite(t *testing.T) {
+	port := &fakePort{yaml: "version: 1\non:\n  stop:\n    - action: { block: \"revisa\" }\n",
+		appendErr: errors.New("permission denied")}
+	res, err := run(context.Background(), port, claudeRequest(`{"hook_event_name":"Stop","cwd":"/repo","session_id":"s1"}`))
+	if err != nil || res.Code != 0 || res.Stderr != "" ||
+		!strings.Contains(systemMessage(t, res.Stdout), "cannot use its log (permission denied): revisa") {
+		t.Fatalf("a stop whose record cannot be appended: %+v %v", res, err)
+	}
+	port.appendErr = nil
+	res, err = run(context.Background(), port, claudeRequest(`{"hook_event_name":"Stop","cwd":"/repo","session_id":"s1"}`))
+	if err != nil || res.Code != 2 || len(port.appended) != 1 {
+		t.Fatalf("a stop whose record is appended: %+v %v %+v", res, err, port.appended)
+	}
+}
+
+// CUJ-12, AC-12: a legacy line of a run that passed on the current content does not skip the run, since the memory of
+// the session ignores legacy lines; the run runs and its record has the passed observation.
+func TestLegacyLinesIgnoredByState(t *testing.T) {
+	legacy := state.Record{At: "t0", Session: "s1", Event: workflow.PreCommit, Actor: agent.ActorSession, Branch: "main",
+		Head: "c0ffee", Legacy: state.LegacyObserved, Observations: []state.Observation{{Line: 4,
+			Outcome: state.OutcomePassed, Key: "just test", Hash: "h"}}}
+	decision := state.Record{At: "t1", Session: "s1", Event: workflow.Stop, Actor: agent.ActorSession, Legacy: state.LegacyDecision,
+		Actions: []state.Action{{Line: 5, Action: "block", Outcome: "block"}}}
+	port := &fakePort{yaml: "version: 1\non:\n  pre_commit:\n    - action: { run: just test }\n",
+		state: state.State{Records: []state.Record{legacy, decision}}}
+	res, err := run(context.Background(), port, claudeRequest(
+		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","session_id":"s1",`+
+			`"tool_input":{"command":"git commit -m x"}}`))
+	if err != nil || res.Code != 0 || res.Stderr != "" || !slices.Contains(port.calls, "Run just test") {
+		t.Fatalf("the run runs again: %+v %v %q", res, err, port.calls)
+	}
+	if len(port.appended) != 1 || port.appended[0].Event != workflow.PreCommit ||
+		!slices.ContainsFunc(port.appended[0].Observations, func(o state.Observation) bool {
+			return o.Outcome == state.OutcomePassed && o.Key == "just test" && o.Hash == "h"
+		}) {
+		t.Fatalf("the new record: %+v", port.appended)
+	}
+	// The same record as an event line is what the memory of the session reads: the run is skipped.
+	event := legacy
+	event.Legacy = ""
+	again := &fakePort{yaml: port.yaml, state: state.State{Records: []state.Record{event}}}
+	if _, err := run(context.Background(), again, claudeRequest(
+		`{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","session_id":"s1",`+
+			`"tool_input":{"command":"git commit -m x"}}`)); err != nil || slices.Contains(again.calls, "Run just test") {
+		t.Fatalf("the event line skips the run: %v %q", err, again.calls)
+	}
+}
+
 // A workflow that cannot be used fails closed on edits and commands, with the hint of a newer polix when its
 // problems may come from one, and only warns on a stop.
 func TestUnusableWorkflow(t *testing.T) {
@@ -510,8 +689,8 @@ func TestComparesTrees(t *testing.T) {
 		"      unless: { finished: polix:reviewer }\n      action: { block: \"revisa\" }\n"
 	commit := `{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/repo","session_id":"s1",` +
 		`"tool_input":{"command":"git commit -m x"}}`
-	reviewed := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeFinished,
-		Session: "s1", Key: "polix:reviewer", Branch: "main", Hash: "old"}}}
+	reviewed := stateOf(entry{Kind: kindObserved, Outcome: state.OutcomeFinished,
+		Session: "s1", Key: "polix:reviewer", Branch: "main", Hash: "old"})
 	for name, c := range map[string]struct {
 		trees []string
 		err   error
@@ -532,9 +711,9 @@ func TestComparesTrees(t *testing.T) {
 // snapshotState is a log with the snapshot of the command of the call toolUse, taken on the tree old and the commit
 // HEAD of the fake points to.
 func snapshotState(toolUse string) state.State {
-	return state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeSnapshot,
+	return stateOf(entry{Kind: kindObserved, Outcome: state.OutcomeSnapshot,
 		Agent: agent.Claude, Session: "s1", Event: workflow.PreCommand, Actor: agent.ActorSession, Branch: "main",
-		Key: toolUse, Hash: "old", Head: "c0ffee"}}}
+		Key: toolUse, Hash: "old", Head: "c0ffee"})
 }
 
 // postCommand is the input of Claude Code after the command line ran, in the call toolUse of the session s1.
@@ -903,7 +1082,7 @@ func TestSkillEventInjectsEveryTime(t *testing.T) {
 	port := &fakePort{yaml: skillInject(`{ skill: "polix:spec" }`) +
 		"  prompt:\n    - action: { inject: \"Prompt received.\" }\n"}
 	for i := range 2 {
-		port.state = state.State{Entries: port.appended}
+		port.state = state.State{Records: port.appended}
 		res, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:spec"}`, "")))
 		if err != nil || res.Code != 0 || additionalContext(t, res.Stdout) != "Skill polix:spec started." {
 			t.Fatalf("call %d: %+v %v", i+1, res, err)
@@ -911,7 +1090,7 @@ func TestSkillEventInjectsEveryTime(t *testing.T) {
 	}
 	var contexts []string
 	for range 2 {
-		port.state = state.State{Entries: port.appended}
+		port.state = state.State{Records: port.appended}
 		res, err := run(context.Background(), port, claudeRequest(
 			`{"hook_event_name":"UserPromptSubmit","cwd":"/repo","session_id":"s1","prompt":"hola"}`))
 		if err != nil || res.Code != 0 {

@@ -1,8 +1,9 @@
 # LogWorkflow
 
 Prints the last session of the state log, or those `--tail`, `--all` and `--session` select, one file per session in
-`<git-dir>/polix/sessions/`, grouped by session: the sanctioned way to read it, since the commands that name the state folder and write files are denied. The old
-`<git-dir>/polix/log.jsonl` is never read.
+`<git-dir>/polix/sessions/`, grouped by session: the sanctioned way to read it, since the commands that name the state folder and write files are denied. Each
+line of a file is the record of one event of the agent, with what polix did with it and what it observed on it (see
+`docs/polix.md`), or a legacy line an earlier polix wrote, which is shown too. The old `<git-dir>/polix/log.jsonl` is never read.
 
 ## Trigger
 
@@ -14,7 +15,7 @@ polix log [--dir <dir>] [--tail <n>] [--all] [--session <id>] [--json]
 - `--tail` (`-n`): how many of the last sessions, each shown whole; 1 by default, and a value below 1 is an error.
 - `--all`: every session. With `--tail` it is refused by cobra, as flags of one exclusive group.
 - `--session`: only the session whose id equals the value, else the only one whose id starts with it.
-- `--json`: print only the entries of those sessions, as JSON lines with the known fields of an entry.
+- `--json`: print only the lines of those sessions, each exactly as it is in the file, one JSON line each.
 
 ## Request
 
@@ -27,12 +28,12 @@ polix log [--dir <dir>] [--tail <n>] [--all] [--session <id>] [--json]
 state of the file of each session as the shell read it through the port, in no given order, and `tail`, `all` and
 `session` from the request.
 
-`Output.Sessions` holds the sessions that have entries, each whole and in file order, ordered by their last
-activity, the most recent last: by the latest `at` of their entries, parsed as RFC 3339, so the offsets of the clock
+`Output.Sessions` holds the sessions that have records, each whole and in file order, ordered by their last
+activity, the most recent last: by the latest `at` of their records, parsed as RFC 3339, so the offsets of the clock
 compare right; a session without an `at` that parses comes first, and the ties go by id. Only the last `tail` are
 kept, or all of them when `all` is set, `tail` is 0 or less or there are no more. `Output.IDs` holds the id of each, at the same
-index: the session of its first entry. `Output.Skipped` sums the lines skipped in the file of every session, those
-not shown and those without entries included.
+index: the session of its first record. `Output.Skipped` sums the lines skipped in the file of every session, those
+not shown and those without records included.
 
 When `session` is set, `Decide` keeps only the session whose id equals it, else the only one whose id starts with it,
 and ignores `tail` and `all`. With no match `Output.Sessions` is empty and `Output.NoMatch` is set; with several,
@@ -40,32 +41,28 @@ and ignores `tail` and `all`. With no match `Output.Sessions` is empty and `Outp
 
 The loader of the log and the domain decide the rest:
 
-- `stateadapters.Log` (`internal/app/state/adapters`): every line that decodes is an entry, kept as it is; a line that does not
-  decode is left out.
+- `stateadapters.Log` (`internal/app/state/adapters`): every line of a file is a `state.Record`, kept with the line as it was
+  read (`Raw`): a line with the key `kind` is a legacy record (a flat line an earlier polix wrote, with one action or
+  one observation, the rule or the fact of an old kind), one without it an event line, with its `input`, its `actions`
+  and its `observed` list. A line that does not decode, or is neither (no session, or an event line with no action nor
+  observation), is left out.
 - `state.State.Skipped`: the lines over `state.MaxLine` (4 MiB), skipped as they are read.
 
 ## Response
 
-`Response`: `Sessions`, each session to show as a `Session`, with its `ID` and its `Entries` in file order, each
-entry an `Entry` with the fields of a line of the log (`At`, `Kind`, `Agent`, `Session`, `Event`, `Actor`,
-`AgentID`, `Branch`, `Hash`, `Before`, `Head`, `Refs`, `Rule`, `Fact`, `Action`, `Line`, `Key`, `Outcome` and
-`Reason`; `AgentID`, the id of the subagent that acted, only on the lines of a subagent whose agent gives one;
-`Head`, the HEAD commit, only on the observed lines finished with a hash, passed, blocked and snapshot that know it;
-`Refs`, what git moved without HEAD (the stash and an operation stopped halfway), only on a snapshot line written
-while there was one; `Before`, the content hash the event started from, only on a blocked line of a stop whose runs
-changed the content; `Rule` and `Fact` only come from the lines an older polix wrote, never from a new one), and
-`Skipped`, the lines of the files of every session skipped for being too long.
+`Response`: `Sessions`, each session to show as a `Session`, with its `ID`, the session of its first record, and its
+`Records` in file order, each a `state.Record`: the line of the log decoded, with its `Raw` line, and `Skipped`, the lines
+of the files of every session skipped for being too long.
 
 The command writes to stderr `polix: <n> lines of the log are longer than <max> bytes and were skipped` once when
-`Skipped` is not 0, then the sessions to stdout. With `--json` it writes only the entries, each as a JSON line, in
-the same order and without headers. Else it writes, for each session, the line `== session <id> ==` and then each of
-its entries as one line with the time, the kind, the event, the actor, what happened (the outcome with the verb of a
-decision, such as `skip run` for a verb its repeat rules spared and `notify notify` for a notice shown to the user,
-with its text as the reason, or with the key of an observed line: `finished polix:reviewer`, `passed just test`,
-`injected <text, file or rule id>`, `notified <text>`, or just `blocked` and `started`), the first 8 characters of
-the hash and the first line of the reason. A line of a kind polix no longer writes (`fact`, `injected`,
-`stop_block`) shows its kind and the fields it shares with the current lines, the rule of an old `injected` line and
-the name of an old `fact` line included. Without sessions it prints nothing. It exits with 0.
+`Skipped` is not 0, then the sessions to stdout. With `--json` it writes only the `Raw` line of each record, exactly as it
+is in the file, in the same order and without headers. Else it writes, for each session, the line `== session <id> ==`
+and then one row for each action and each observation of each record, with its time (`at`), its event and its actor,
+then what it is. This layout is provisional, until the table of `polix log` replaces it: an action shows as
+`action <verb>: <outcome> <key or the first line of the reason>`, an observation as `observed <outcome> <the first line of
+its key>`, a legacy decision as `decision <verb>: <outcome> ...` and a legacy observed line as an observation; a legacy
+line of a kind polix no longer writes (`fact`, `injected`, `stop_block`) as its kind and its fact, its rule or the first
+line of its key or reason. Without sessions it prints nothing. It exits with 0.
 
 ## Port
 
@@ -98,5 +95,6 @@ The use case fails, printing the error and exiting with 1, when:
    of the log it was given, as the `Port`.
 2. The shell reads the file of every session through the port.
 3. `Decide` picks the sessions to show, by `--tail`, `--all` or `--session`, and their order: `Output`.
-4. The shell builds the response from the output: each session with its id and its entries, and the skipped lines.
-5. `Command` prints the warning of the skipped lines and the sessions, with their headers or as JSON lines.
+4. The shell builds the response from the output: each session with its id and its records, and the skipped lines.
+5. `Command` prints the warning of the skipped lines and the sessions, with their headers and rows or, with `--json`, the
+   lines of their records as they are in the file.

@@ -18,8 +18,8 @@ func TestIndent(t *testing.T) {
 // runs on a branch on another commit; the passed line it writes carries the head.
 func TestRunRepeatByHead(t *testing.T) {
 	ev := eval(t, "version: 1\non:\n  stop:\n    - action: { run: just test }\n", workflow.Stop)
-	passed := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomePassed,
-		Session: "s1", Event: workflow.Stop, Key: "just test", Line: 4, Branch: "main", Hash: "h", Head: "c1"}}}
+	passed := stateOf(entry{Kind: kindObserved, Outcome: state.OutcomePassed,
+		Session: "s1", Event: workflow.Stop, Key: "just test", Line: 4, Branch: "main", Hash: "h", Head: "c1"})
 	out, steps := walk(t, ev, facts{branch: "feat/x", head: "c1", hashes: []string{"h", "h"}, state: passed})
 	if skips := decided(steps, "skip"); out.Answer.Block || len(runs(steps)) != 0 || len(skips) != 1 {
 		t.Fatalf("same head: %q %+v", runs(steps), appended(steps))

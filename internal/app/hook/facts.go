@@ -33,16 +33,17 @@ type Facts struct {
 	HasDiff    bool
 	// Commit is the commit just made, the one HEAD points to, which post_commit looks at; CommitErr tells that it
 	// could not be read: changed and the measures then hold.
-	Commit     Commit
-	CommitErr  error
-	HasCommit  bool
-	Rules      []rule.Rule
-	RulesErr   error
-	HasRules   bool
+	Commit    Commit
+	CommitErr error
+	HasCommit bool
+	Rules     []rule.Rule
+	RulesErr  error
+	HasRules  bool
+	// State is the log of the session as the file holds it: the records of the earlier calls, none of this call, which
+	// are written when it ends (see Pending).
 	State      state.State
 	StateErr   error // the log could not be read: the loop guard fails open
 	HasState   bool
-	StateAt    int // the steps of the journal that acted before the log was read: their entries are in it
 	Ignored    map[string]bool
 	Reals      map[string]string
 	Foreign    map[string]bool   // per absolute folder, whether it is inside another git repository
@@ -62,10 +63,12 @@ type Facts struct {
 	// Blocked tells that an earlier event of the call blocked: the answer of the call is a block, so none of its
 	// messages for the user is shown (see Answered).
 	Blocked bool
-	// Pending are the observed lines of the earlier events of the call that are written only when the whole call
-	// does not block, by its last event (see Evaluation.Last): the notices of notify, which a blocked call never
-	// shows to the user. A block of the call drops them (see Answered).
-	Pending []state.Entry
+	// Pending are the records of the earlier events of the call, which wait for the end of the call: its last event
+	// appends them all (see Evaluation.Last), one line each, once the answer of the whole call is known. Until then
+	// the events of the call read their observations as part of the log. A block of the call drops the notified
+	// observations of the records, the notices of notify, which a blocked call never shows to the user (see
+	// Answered).
+	Pending []state.Record
 }
 
 // Commit is a commit as post_commit sees it: the size of its change against its first parent, or against the empty
@@ -94,45 +97,55 @@ func (c Commit) Paths() []string {
 	return paths
 }
 
-// Valid tells why the facts are not facts: negative counts, or a pending line that could not be appended.
+// Valid tells why the facts are not facts: a negative epoch, or a pending record that could not be appended.
 func (f Facts) Valid() error {
-	if f.Epoch < 0 || f.StateAt < 0 {
-		return errors.New("the epoch and the steps of the facts cannot be negative")
+	if f.Epoch < 0 {
+		return errors.New("the epoch of the facts cannot be negative")
 	}
 	errs := []error{f.State.Valid()}
-	for _, e := range f.Pending {
-		errs = append(errs, e.Valid())
+	for _, r := range f.Pending {
+		errs = append(errs, r.Writable())
 	}
 	return errors.Join(errs...)
 }
 
-// Carry returns the facts the next event of the call starts from: after epoch runs, with the log s as this event
-// left it when it was read.
-func (f Facts) Carry(epoch int, s state.State) Facts {
-	f.Epoch = epoch
-	if f.HasState && f.StateErr == nil {
-		f.State = s
-	}
-	f.StateAt = 0
+// Carry returns the facts the next event of the call starts from: after epoch runs, which never go back.
+func (f Facts) Carry(epoch int) Facts {
+	f.Epoch = max(f.Epoch, epoch)
 	return f
 }
 
-// Answered returns the facts after an event of the call answered a with the lines pending to write, for the next
+// Answered returns the facts after an event of the call answered a, with r the record of the event, for the next
 // event: the answers of the events are merged into one, so a block marks the call as blocked, and the messages for
 // the user of an answer that does not block become warnings of the call. A later event then knows the messages of
-// the call its block hides, and whether the block of an earlier one hides its own. An answer that does not block
-// keeps a copy of pending, in place of the lines the facts held (see Pending); a block drops them, since the user
-// never sees their notices.
-func (f Facts) Answered(a agent.Answer, pending []state.Entry) Facts {
-	if a.Block {
-		f.Blocked = true
-		f.Pending = nil
+// the call its block hides, and whether the block of an earlier one hides its own. The record joins the pending ones
+// (see Pending), unless nothing acted nor was observed on its event; a block drops the notified observations of all
+// of them, and the records left with nothing, since the user never sees their notices.
+func (f Facts) Answered(a agent.Answer, r state.Record) Facts {
+	pending := slices.Clone(f.Pending)
+	if r.Acts() {
+		pending = append(pending, r)
+	}
+	f.Pending = pending
+	if !a.Block {
+		for _, w := range a.Warnings {
+			f = f.warned(w)
+		}
 		return f
 	}
-	f.Pending = slices.Clone(pending)
-	for _, w := range a.Warnings {
-		f = f.warned(w)
+	f.Blocked = true
+	f.Pending = nil
+	for _, p := range pending {
+		if p = p.Unnotified(); p.Acts() {
+			f.Pending = append(f.Pending, p)
+		}
 	}
+	return f
+}
+
+// Written returns the facts of a call whose records were appended: none is pending any more.
+func (f Facts) Written() Facts {
+	f.Pending = nil
 	return f
 }
 
@@ -269,11 +282,11 @@ func (f Facts) learnRules(rules []rule.Rule, err error) Facts {
 	return f
 }
 
-func (f Facts) learnState(s state.State, err error, at int) Facts {
+func (f Facts) learnState(s state.State, err error) Facts {
 	if err != nil {
 		s = state.State{}
 	}
-	f.State, f.StateErr, f.HasState, f.StateAt = s, err, true, at
+	f.State, f.StateErr, f.HasState = s, err, true
 	return f
 }
 

@@ -56,7 +56,7 @@ polix graph                # print the workflow as a Mermaid diagram
 polix log                  # print the last session of the state log, whole under `== session <id> ==`
                            # (-n counts sessions, 1 by default and 1 or more; --all for every session;
                            # --session ID for the one whose id is ID or starts with it; --json prints only the
-                           # raw lines)
+                           # lines as they are in the files)
 polix risk                 # print the lines, files and risk score of the uncommitted change, file by file
                            # (--changed GLOB, repeatable; --commit REV for the changes of one commit)
 polix doctor               # check that this machine and repository are ready (--hook, --offline)
@@ -1076,17 +1076,19 @@ an edit of `README.md` or `docs/` keeps a review of `changed: ["*.go"]` and a re
 
 ### What polix observes, and finished
 
-polix does not keep facts declared by the workflow. It writes to its log an `observed` line only for what the
-workflow, or the evidence, asks about, each with the session, the agent, the actor, the event, the branch, the
-line of the entry, a key and one outcome. The lines about a content that are read by branch, a `finished` with a
-content hash, a `passed` and a `blocked`, also carry `head`, the commit HEAD pointed to when they were written, left
-out when the repository has no commit yet, and so does a `snapshot`, so its `post_command` sees HEAD moved; the
-decisions and the other outcomes never carry it. A `snapshot` also carries `refs`, what git moves without HEAD (the
-commit of `refs/stash` and an operation stopped halfway), when there is one. A `blocked` line of a stop whose runs
-changed the content before the block also carries `before`, the content hash the event started from, which the
-[loop guard](#loop-guard) chains its blocks through. Every line of an event of a subagent,
-the decisions included, also carries `agent_id`, the id the agent gives that subagent, left out when it gives none
-(Codex, an older Claude Code) and on the lines of the main session, so two subagents of one type are told apart:
+polix does not keep facts declared by the workflow. It writes to the `observed` list of the line of an event only what
+the workflow, or the evidence, asks about, each with the line of the entry, a key and one outcome, within the session,
+the agent, the actor, the event and the branch of its line. The observations about a content that are read by branch,
+a `finished` with a content hash, a `passed` and a `blocked`, are read by the `head` of their line, the commit HEAD
+pointed to when the call learned it, left out when the repository has no commit yet, and so is a `snapshot`, so its
+`post_command` sees HEAD moved; no observation carries a `head` of its own. A `snapshot` also carries `refs`, what git
+moves without HEAD (the commit of `refs/stash` and an operation stopped halfway), when there is one. A `blocked` of a
+stop whose runs changed the content before the block also carries `before`, the content hash the event started from,
+which the [loop guard](#loop-guard) chains its blocks through. Every line of an event of a subagent also carries
+`agent_id`, the id the agent gives that subagent, left out when it gives none (Codex, an older Claude Code) and on the
+lines of the main session, so two subagents of one type are told apart; the `ended` of a subagent the log had open is
+the exception, since it is about another subagent than the one that acts: its key is the type of that subagent and,
+when it has one, a space and its id:
 
 - `finished`: a subagent ended and the answer to its `subagent_stop` did not refuse. It is written, with the
   content hash and the subagent type as key, when a `finished` or a `finished_since_commit` of the workflow names
@@ -1113,13 +1115,14 @@ the decisions included, also carries `agent_id`, the id the agent gives that sub
   the line of a subagent only for its type.
 - `ended`: a subagent the log had open was missing from the list of work in flight that Claude Code sends on a
   `stop` or a `subagent_stop` (its `background_tasks`), so it ended without its end reaching polix, as an
-  interrupted one does; with the type of that subagent as the actor and its `agent_id`, without key nor hash.
+  interrupted one does; its key names the type of that subagent and its `agent_id` (the type, and a space and the id
+  when it has one), without hash.
 - `notified`: a `notify` without `always` reached the user, keyed by its entry and the text it expanded to, without
   hash. The events of one hook call give one answer, and a blocked one shows the user no message, so it is written
   only when the whole call does not block, by its last event: the notice of the `pre_command` of a commit whose
   `pre_commit` blocks is logged as not shown and stays due, and shows again on the next call. Within one call a
   notice shows once: the second path of an edit of several does not show it again. Nothing makes it due again in
-  the session. A line that cannot be written leaves the notice due again, never an error of the call.
+  the session. A line that cannot be appended leaves the notice due again, never an error of the call.
 - `snapshot`: a command is about to run and the workflow watches the edits, with the content hash before it and, as
   key, the `tool_use_id` of the call or else the command line. Its `post_command` compares it with the content after
   the command (see [Files a command changed](#files-a-command-changed)); no condition reads it.
@@ -1304,7 +1307,8 @@ with the content they ended on, so the next
 stop with nothing changed is let through as well, a `block` with `once` included, even when a later `run` of the
 stop wrote files again; an edit of the agent breaks the chain and the entry blocks again. The warning names `stop_retries`, whatever the stops let through.
 When the log cannot be read, or the block cannot be written to it (a read only state folder), the guard cannot
-count: it fails open, lets the agent stop with a warning and records a `loop_guard` decision when it can.
+count: it fails open, lets the agent stop with a warning and records a `loop_guard` action when it can. The line of a
+stop is appended once the answer is known, so a stop whose line cannot be appended is let through the same way.
 
 ## The gates of git: githooks
 
@@ -1445,11 +1449,12 @@ the agent meets both, `on.pre_commit` first. `on.pre_commit` has the whole vocab
 ## State
 
 One file per session of the agent, `<git-dir>/polix/sessions/<name>.jsonl`, one JSON object per line, only written
-by polix. The file of a session holds every line of its events, those of its subagents included, which carry the
+by polix. The file of a session holds the line of each of its events, those of its subagents included, which carry the
 session id of the main session. Its name is the session id as it is when the id is made only of `A-Z`, `a-z`, `0-9`,
 `.`, `_` and `-`, has at most 128 characters and is not only dots; otherwise it is the lowercase hex sha256 of the
 id, so an id never reaches a path with a separator, `.` or `..`. Each line is written with one append, without a
-lock: the main session and its parallel subagents append to the same file.
+lock: the main session and its parallel subagents append to the same file. The lines of the events of one hook call
+are appended when the call ends, in the order of its events, once its answer is known.
 
 A hook reads only the file of its own session, for every verb and condition: what another session wrote never
 counts, `finished` and the repeat of a `run` included, so a new session starts from an empty state and runs its
@@ -1466,32 +1471,49 @@ session. `-n` (`--tail`) counts sessions, 1 by default, and a value below 1 is a
 `--all` shows every session, and `--all` with `-n` is refused. `--session <id>` shows only the session whose id equals
 the value, else the only one whose id starts with it: no match and several matches (their ids sorted) are errors, and
 so is an empty value or `--session` together with `-n` or `--all`. `--json` prints only the lines of the chosen
-sessions, in the same order and without headers.
+sessions exactly as they are in the files, one JSON line each, in the same order and without headers. Without it, each
+session shows one row for each action and each observation of its lines, with the time, the event and the actor of the
+line, then what it is (a provisional layout).
 
-Each line is of one of two kinds:
+Each line is the record of one event of the agent, an event line: what the event was, what polix did with it and what
+polix noted by itself on it, written once the event is evaluated and only when something acted or was observed on it, so
+an event where nothing acted leaves no line. It is one JSON object with these keys, in this order, the empty ones and
+the lists with nothing left out:
 
-- `decision`: what it answered (`block`, `deny` for a protection, `inform`, `notify` for a notice shown to the user,
-  `warn`, `skip` or `loop_guard`), the
-  action (the verb of the entry, `builtin` for the protection of the state and for a command whose changes polix
-  did not evaluate, after HEAD, the stash or an operation of git moved or past 25 paths, `guardrails.protected_files` or
-  `guardrails.forbidden_commands` for those protections,
-  `invalid` for an invalid workflow, `message` for a message for the user a blocked event did not show, and
-  `finished` for the end of a subagent it could not observe or a tree it could not compare), the `line` of the entry
-  and the reason, the evidence of the process each change followed. It carries the content hash only when the call already
-  computed it, since computing it costs a pass over the whole tree.
-- `observed`: what polix saw by itself and the workflow asks about, with its outcome (`finished`, `passed`,
-  `blocked`, `injected`, `started`, `notified`, `snapshot`, `watched` or `ended`), its key and, on a `finished` with
-  hash, a `passed`, a `blocked` and a `snapshot`, the `head` commit, plus the `refs` on a `snapshot`; see
-  [What polix observes](#what-polix-observes-and-finished). Nothing else is recorded: an edit of the AI leaves no
-  observed line, a command leaves at most its `snapshot` and `watched`, when the workflow watches the edits, and the
-  end of a subagent no `finished` names leaves none when no `inject` acts once and nothing uses
+- `at`: the time the evaluation of the event started, RFC 3339 with the offset of the clock. Each event of a call has
+  its own, though every line of the call is appended when it ends.
+- `agent`, `session`, `event` and `actor`, and `agent_id`, the id the agent gives the subagent that acted, only on the
+  line of an event of a subagent whose agent gives one (Codex and an older Claude Code give none, and then the lines pair
+  by the type of the subagent).
+- `branch`, `head` (the commit HEAD pointed to when the call learned it, left out when the repository has no commit
+  yet) and `hash` (the content hash at the start of the event, only when the call already computed it, since computing
+  it costs a pass over the whole tree).
+- `input`: the data of the event that applies, each text cut to 200 characters, the three dots included: `command` and
+  `tool_use` on `pre_command`, `post_command`, `pre_commit` and `post_commit`; `path` on `pre_edit` and `post_edit`;
+  `skill` on `skill`; `prompt` on `prompt`; `source` on `start`.
+- `actions`: what an entry of the workflow or a protection did with the event, the evidence of the process each change
+  followed. Each is an object with `line` (the line of the entry in polix.yaml, left out for a protection built into
+  polix), `action` (the verb of the entry, `builtin` for the protection of the state and for a command whose changes
+  polix did not evaluate, after HEAD, the stash or an operation of git moved or past 25 paths,
+  `guardrails.protected_files` or `guardrails.forbidden_commands` for those protections, `invalid` for an invalid
+  workflow, `message` for a message for the user a blocked event did not show, and `finished` for the end of a subagent
+  it could not observe or a tree it could not compare), `outcome` (`block`, `deny` for a protection, `inform`, `notify`
+  for a notice shown to the user, `warn`, `skip` or `loop_guard`) and `reason`, and may carry `key`, what the action
+  acted on, and `duration_ms`, the milliseconds a run took.
+- `observed`: what polix saw by itself and the workflow asks about, the memory of the session. Each is an object with
+  `line`, its `outcome` (`finished`, `passed`, `blocked`, `injected`, `started`, `notified`, `snapshot`, `watched` or
+  `ended`), its `key` and, for the outcomes about a content, its `hash`, plus the `refs` on a `snapshot` and the `before`
+  of a `blocked`; see [What polix observes](#what-polix-observes-and-finished). Nothing else is recorded: an edit of
+  the AI leaves no observation, a command leaves at most its `snapshot` and `watched`, when the workflow watches the
+  edits, and the end of a subagent no `finished` names leaves none when no `inject` acts once and nothing uses
   `agents_are_running`.
 
-Both kinds carry `agent_id` on the lines of an event of a subagent whose agent gives one; a polix older than it reads
-those lines and ignores the key, and a line without it, written by an older polix, pairs by the type of the subagent.
-
-Lines of the kinds `fact`, `injected` and `stop_block`, written by earlier builds, stay in the log, are ignored by
-every query and are shown by `polix log` with their kind (and the name of a `fact`).
+The queries of the memory of the session (the repeat of a `run`, the reminders of a `block` with `once`, `finished`, the
+loop guard, the once-only injects and notices and the subagents still running) read the observations of the event lines
+only. A line written by an earlier polix is a legacy line: a flat object with the key `kind` (`decision`, `observed`,
+`fact`, `injected` or `stop_block`) and the fields of one action or one observation. It stays in the file, is shown by
+`polix log` (with its kind, and the name of a `fact`) and is ignored by every query, so a session that mixes an old and a
+new polix starts its memory empty: the reminders, the injects and the loop guard start from zero.
 
 The reason of an entry is capped at 8 KiB and each line kept from the output of a `run` or a check at 500 bytes,
 both marked where cut, so no line of the log nears the read limit of 4 MiB.
@@ -1783,7 +1805,7 @@ may outlive the budget, since polix does not kill the whole process tree.
   with two commits measures only the last one, and `git commit --amend` measures the amended commit: the commit just
   made is the one HEAD points to when the event is evaluated, compared with its first parent.
 - Every hook call reads the whole file of its session, which grows with the session: one decision per answer, and
-  one `passed` line per run of polix that passed. The files of old sessions, and the old `log.jsonl`, stay on disk
+  one line per event where something acted or was observed. The files of old sessions, and the old `log.jsonl`, stay on disk
   until removed by hand.
 - The state lives in the session: a new session, rather than `claude --resume`, runs again the checks that passed
   and asks again for the reviews that finished, even on the same content.

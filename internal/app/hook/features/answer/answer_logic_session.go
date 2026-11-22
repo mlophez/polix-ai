@@ -62,7 +62,7 @@ func (r *pass) session() agent.Answer {
 		return ans
 	}
 	if start && r.ev.Workflow.ObservesStart() {
-		_ = r.write(state.KindObserved, "", 0, state.OutcomeStarted, "", r.ev.Event.Source, "")
+		_ = r.note(0, state.OutcomeStarted, r.ev.Event.Source, "")
 	}
 	if r.waiting() {
 		return ans

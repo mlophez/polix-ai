@@ -13,8 +13,8 @@ import (
 )
 
 // notifiedLines returns the observed notified lines the steps appended to the log, in order.
-func notifiedLines(steps []hook.Step) []state.Entry {
-	var out []state.Entry
+func notifiedLines(steps []hook.Step) []entry {
+	var out []entry
 	for _, e := range observed(steps) {
 		if e.Outcome == state.OutcomeNotified {
 			out = append(out, e)
@@ -180,9 +180,12 @@ func TestNotifyCallOfSeveralEdits(t *testing.T) {
 	b.Facts = first.Facts
 	second, s2 := walk(t, b, facts{branch: "main"})
 	notified := notifiedLines(s2)
-	if !slices.Equal(first.Answer.Warnings, []string{"Aviso"}) || len(notifiedLines(s1)) != 0 ||
-		len(second.Answer.Warnings) != 1 || len(decided(s2, workflow.VerbNotify)) != 0 || len(notified) != 1 ||
-		notified[0].Key != "Aviso" {
+	// The last event appends the record of each event of the call: the first shows the notice and notes it, the
+	// second skips it.
+	skips := decided(s2, "skip")
+	if !slices.Equal(first.Answer.Warnings, []string{"Aviso"}) || len(records(s1)) != 0 ||
+		len(second.Answer.Warnings) != 1 || len(records(s2)) != 2 || len(decided(s2, workflow.VerbNotify)) != 1 ||
+		len(skips) != 1 || skips[0].Action != workflow.VerbNotify || len(notified) != 1 || notified[0].Key != "Aviso" {
 		t.Fatalf("%+v %+v %+v", first.Answer, second.Answer, notified)
 	}
 }

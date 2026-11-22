@@ -155,14 +155,28 @@ func (r *pass) rules() ([]rule.Rule, error) {
 	return nil, nil
 }
 
-// currentState returns the log as this pass left it, or why it cannot be read (then it is empty).
+// currentState returns the log as this pass sees it, or why it cannot be read (then it is empty): the records of the
+// file, the pending records of the earlier events of the call and the record this event is building, none of which is
+// in the file yet (see flush). So a later entry or event of the call reads what an earlier one observed, as it did
+// when each line was appended as soon as it was written.
 func (r *pass) currentState() (state.State, error) {
-	if r.ev.Facts.HasState {
-		return r.state, r.ev.Facts.StateErr
+	f := r.ev.Facts
+	if !f.HasState {
+		s := hook.Step{State: true}
+		r.ask(s, s.Valid())
+		return state.State{}, nil
 	}
-	s := hook.Step{State: true}
-	r.ask(s, s.Valid())
-	return state.State{}, nil
+	if f.StateErr != nil {
+		return state.State{}, f.StateErr
+	}
+	records := make([]state.Record, 0, len(f.State.Records)+len(f.Pending)+1)
+	records = append(records, f.State.Records...)
+	records = append(records, f.Pending...)
+	if cur, err := r.recordOf(); err == nil && len(cur.Observations) > 0 {
+		records = append(records, cur)
+	}
+	view := state.State{Records: records, Skipped: f.State.Skipped}
+	return view, view.Valid()
 }
 
 // warnLog warns the user, once per pass, that the log cannot be read: the verbs that repeat by it act every time, and

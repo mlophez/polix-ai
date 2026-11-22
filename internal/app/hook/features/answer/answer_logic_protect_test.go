@@ -8,7 +8,6 @@ import (
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/hook"
-	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 )
 
@@ -150,7 +149,7 @@ func TestForbiddenNested(t *testing.T) {
 
 // denial walks the pre_command of line by actor on the workflow of ev and returns the reasons of its answer and the
 // lines it logged.
-func denial(t *testing.T, ev hook.Evaluation, line, actor string) ([]string, []state.Entry) {
+func denial(t *testing.T, ev hook.Evaluation, line, actor string) ([]string, []entry) {
 	t.Helper()
 	e := with(t, ev, func(e *agent.Event) { e.Actor, e.Command = actor, line })
 	out, steps := walk(t, e, facts{branch: "main"})

@@ -3,6 +3,7 @@ package text
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestCut(t *testing.T) {
@@ -41,5 +42,30 @@ func TestLastLines(t *testing.T) {
 	}
 	if got := LastLines("abcdef", 3, 2); got != Mark {
 		t.Fatalf("LastLines cut = %q", got)
+	}
+}
+
+// Shorten keeps a text of up to n characters whole and cuts a longer one to n characters, the three dots included,
+// on a rune.
+func TestShorten(t *testing.T) {
+	for _, c := range []struct {
+		name, in string
+		n        int
+		want     string
+	}{
+		{"199", strings.Repeat("a", 199), 200, strings.Repeat("a", 199)},
+		{"200", strings.Repeat("a", 200), 200, strings.Repeat("a", 200)},
+		{"201", strings.Repeat("a", 201), 200, strings.Repeat("a", 197) + "..."},
+		{"multibyte", strings.Repeat("é", 10), 8, strings.Repeat("é", 5) + "..."},
+		{"multibyte whole", strings.Repeat("é", 8), 8, strings.Repeat("é", 8)},
+		{"text", "Remember to follow the rules of ai/rules before editing", 32, "Remember to follow the rules ..."},
+		{"only the dots", "abcdef", 3, "..."},
+		{"below the dots", "abcdef", 2, ".."},
+		{"nothing", "abcdef", 0, ""},
+	} {
+		got := Shorten(c.in, c.n)
+		if got != c.want || utf8.RuneCountInString(got) > c.n {
+			t.Errorf("%s: Shorten(%q, %d) = %q, want %q", c.name, c.in, c.n, got, c.want)
+		}
 	}
 }

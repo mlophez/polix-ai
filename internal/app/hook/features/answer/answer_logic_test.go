@@ -59,6 +59,129 @@ type facts struct {
 	checkFails map[string]bool
 }
 
+// entry is an action or an observation with the fields of its record.
+type entry struct {
+	Kind    string
+	At      string
+	Agent   string
+	Session string
+	Event   string
+	Actor   string
+	AgentID string
+	Branch  string
+	Head    string // the HEAD commit of its record
+	Hash    string // of an observation its hash; of an action the content hash at the start of its record
+	Before  string
+	Refs    string
+	Action  string
+	Line    int
+	Key     string
+	Outcome string
+	Reason  string
+}
+
+// The tests of the logic read the log as flat entries: each action and each observation of a record, with the fields
+// of its record, as they were one line each before the event line. entry is such a flat entry, and the helpers turn
+// the records the steps append into entries (appended, observed, decided) and entries into the state a walk reads
+// (stateOf, logged).
+
+// Kinds of the entries the tests read.
+const (
+	kindObserved = "observed" // one observation of a record
+	kindDecision = "decision" // one action of a record
+)
+
+// record returns the record of the entry: an event line with its one observation or its one action.
+func (e entry) record() state.Record {
+	r := state.Record{At: e.At, Agent: e.Agent, Session: e.Session, Event: e.Event, Actor: e.Actor, AgentID: e.AgentID,
+		Branch: e.Branch, Head: e.Head}
+	if e.Kind == kindDecision {
+		r.Hash = e.Hash
+		r.Actions = []state.Action{{Line: e.Line, Action: e.Action, Outcome: e.Outcome, Key: e.Key, Reason: e.Reason}}
+		return r
+	}
+	r.Observations = []state.Observation{{Line: e.Line, Outcome: e.Outcome, Key: e.Key, Hash: e.Hash, Refs: e.Refs,
+		Before: e.Before}}
+	return r
+}
+
+// entriesOf returns the entries of the record: its actions, then its observations.
+func entriesOf(r state.Record) []entry {
+	var out []entry
+	for _, a := range r.Actions {
+		out = append(out, entry{Kind: kindDecision, At: r.At, Agent: r.Agent, Session: r.Session, Event: r.Event,
+			Actor: r.Actor, AgentID: r.AgentID, Branch: r.Branch, Head: r.Head, Hash: r.Hash, Action: a.Action,
+			Line: a.Line, Key: a.Key, Outcome: a.Outcome, Reason: a.Reason})
+	}
+	for _, o := range r.Observations {
+		out = append(out, entry{Kind: kindObserved, At: r.At, Agent: r.Agent, Session: r.Session, Event: r.Event,
+			Actor: r.Actor, AgentID: r.AgentID, Branch: r.Branch, Head: r.Head, Hash: o.Hash, Before: o.Before,
+			Refs: o.Refs, Line: o.Line, Key: o.Key, Outcome: o.Outcome})
+	}
+	return out
+}
+
+// stateOf returns the log of the entries, one record each, in order.
+func stateOf(entries ...entry) state.State {
+	var s state.State
+	for _, e := range entries {
+		s.Records = append(s.Records, e.record())
+	}
+	return s
+}
+
+// records returns the records the steps appended to the log, in order.
+func records(steps []hook.Step) []state.Record {
+	var out []state.Record
+	for _, s := range steps {
+		if s.Append != nil {
+			out = append(out, *s.Append)
+		}
+	}
+	return out
+}
+
+// appended returns the entries of the records the steps appended to the log, in order.
+func appended(steps []hook.Step) []entry {
+	var out []entry
+	for _, r := range records(steps) {
+		out = append(out, entriesOf(r)...)
+	}
+	return out
+}
+
+// observed returns the observations the steps appended to the log, in order.
+func observed(steps []hook.Step) []entry {
+	var out []entry
+	for _, e := range appended(steps) {
+		if e.Kind == kindObserved {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// decided returns the actions the steps appended with outcome, in order.
+func decided(steps []hook.Step, outcome string) []entry {
+	var out []entry
+	for _, e := range appended(steps) {
+		if e.Kind == kindDecision && e.Outcome == outcome {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// pending returns the entries of the records of the call that wait for its end in the facts the output gives the next
+// event, in order.
+func pending(out Output) []entry {
+	var entries []entry
+	for _, r := range out.Facts.Pending {
+		entries = append(entries, entriesOf(r)...)
+	}
+	return entries
+}
+
 // walk asks the logic for steps until it answers, feeding each one from f, and returns the output and
 // the steps asked, in order.
 func walk(t *testing.T, ev hook.Evaluation, f facts) (Output, []hook.Step) {
@@ -192,34 +315,14 @@ func as(t *testing.T, ev hook.Evaluation, actor string) hook.Evaluation {
 	return out
 }
 
-// appended returns the entries the steps appended to the log.
-func appended(steps []hook.Step) []state.Entry {
-	var out []state.Entry
-	for _, s := range steps {
-		if s.Append != nil {
-			out = append(out, *s.Append)
-		}
-	}
-	return out
-}
-
-// observed returns the observed entries the steps appended to the log, in order.
-func observed(steps []hook.Step) []state.Entry {
-	var out []state.Entry
-	for _, e := range appended(steps) {
-		if e.Kind == state.KindObserved {
-			out = append(out, e)
-		}
-	}
-	return out
+// finishedEntry is the entry of the subagent polix:reviewer finishing on the content hash.
+func finishedEntry(hash string) entry {
+	return entry{Kind: kindObserved, Outcome: state.OutcomeFinished, Session: "s1", Event: workflow.SubagentStop,
+		Actor: "polix:reviewer", Key: "polix:reviewer", Branch: "main", Hash: hash}
 }
 
 // finished is the log after the subagent polix:reviewer finished on the content hash.
-func finished(hash string) state.State {
-	return state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeFinished,
-		Session: "s1", Event: workflow.SubagentStop, Actor: "polix:reviewer", Key: "polix:reviewer", Branch: "main",
-		Hash: hash}}}
-}
+func finished(hash string) state.State { return stateOf(finishedEntry(hash)) }
 
 // A run that rewrites files changes the content: a later finished is decided on the hash of the new content.
 func TestFinishedAfterRunUsesNewContent(t *testing.T) {
@@ -306,9 +409,9 @@ on:
 		!strings.HasPrefix(out.Answer.Reasons[0], "just lint failed: exit status 1") {
 		t.Fatalf("answer: %+v", out.Answer)
 	}
-	logged := appended(steps)
-	if last := logged[len(logged)-1]; last.Action != workflow.VerbRun || last.Outcome != "block" || last.Line != 4 {
-		t.Fatalf("logged: %+v", logged)
+	logged := decided(steps, "block")
+	if len(logged) != 1 || logged[0].Action != workflow.VerbRun || logged[0].Line != 4 {
+		t.Fatalf("logged: %+v", appended(steps))
 	}
 	// A passing run lets the evaluation go on: the second one runs and blocks on its own.
 	f := facts{branch: "main", hashes: []string{"h", "h", "h"}}
@@ -329,8 +432,8 @@ on:
     - action: { %s }
     - action: { run: just test }
 `
-	guarded := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeBlocked,
-		Session: "s1", Event: workflow.Stop, Actor: agent.ActorSession, Line: 5, Hash: "h"}}}
+	guarded := stateOf(entry{Kind: kindObserved, Outcome: state.OutcomeBlocked,
+		Session: "s1", Event: workflow.Stop, Actor: agent.ActorSession, Line: 5, Hash: "h"})
 	for name, verb := range map[string]string{"run": "run: just lint", "block": `block: "revisa"`} {
 		t.Run(name, func(t *testing.T) {
 			ev := eval(t, strings.Replace(yaml, "%s", verb, 1), workflow.Stop)
@@ -422,19 +525,19 @@ on:
 func TestLoopGuard(t *testing.T) {
 	ev := eval(t, "version: 1\nstop_retries: 2\non:\n  stop:\n    - action: { block: \"revisa\" }\n",
 		workflow.Stop)
-	block := state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeBlocked, Session: "s1",
+	block := entry{Kind: kindObserved, Outcome: state.OutcomeBlocked, Session: "s1",
 		Event: workflow.Stop, Actor: agent.ActorSession, Line: 5, Hash: "h"}
-	one := state.State{Entries: []state.Entry{block}}
+	one := stateOf(block)
 	out, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h"}, state: one})
 	if !out.Answer.Block {
 		t.Fatal("one block of two: the stop is blocked")
 	}
-	if logged := appended(steps); len(logged) != 2 || logged[0].Kind != state.KindObserved ||
-		logged[0].Outcome != state.OutcomeBlocked || logged[0].Hash != "h" || logged[0].Line != 5 ||
-		logged[1].Outcome != "block" {
+	if logged := appended(steps); len(records(steps)) != 1 || len(logged) != 2 || logged[0].Kind != kindDecision ||
+		logged[0].Outcome != "block" || logged[1].Kind != kindObserved || logged[1].Outcome != state.OutcomeBlocked ||
+		logged[1].Hash != "h" || logged[1].Line != 5 {
 		t.Fatalf("logged: %+v", logged)
 	}
-	two := state.State{Entries: []state.Entry{block, block}}
+	two := stateOf(block, block)
 	out, steps = walk(t, ev, facts{branch: "main", hashes: []string{"h"}, state: two})
 	if out.Answer.Block || len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "after 2 blocks") {
 		t.Fatalf("answer after stop_retries: %+v", out.Answer)
@@ -481,9 +584,9 @@ func unshownMessages(steps []hook.Step) []string {
 // says it was not shown: on a stop the guard let an earlier entry through, on pre_commit and on prompt a log that
 // cannot be read.
 func TestMessagesOfABlockedEvent(t *testing.T) {
-	block := state.Entry{Kind: state.KindObserved, Outcome: state.OutcomeBlocked, Session: "s1",
+	block := entry{Kind: kindObserved, Outcome: state.OutcomeBlocked, Session: "s1",
 		Event: workflow.Stop, Actor: agent.ActorSession, Line: 5, Hash: "h"}
-	guarded := state.State{Entries: []state.Entry{block}}
+	guarded := stateOf(block)
 	ev := eval(t, "version: 1\nstop_retries: 1\non:\n  stop:\n    - action: { block: \"revisa\" }\n",
 		workflow.Stop)
 	out, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h"}, state: guarded})
@@ -731,8 +834,8 @@ on:
 		t.Fatalf("refused: %+v %+v", out.Answer, got)
 	}
 	// Let through by the loop guard: the subagent stops, but it did not finish as asked.
-	guard := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeBlocked,
-		Session: "s1", Event: workflow.SubagentStop, Actor: "polix:reviewer", Line: 8, Hash: "h"}}}
+	guard := stateOf(entry{Kind: kindObserved, Outcome: state.OutcomeBlocked,
+		Session: "s1", Event: workflow.SubagentStop, Actor: "polix:reviewer", Line: 8, Hash: "h"})
 	out, steps = walk(t, reviewer, facts{branch: "refuse", hashes: []string{"h"}, state: guard})
 	if out.Answer.Block || len(observed(steps)) != 0 {
 		t.Fatalf("loop guard: %+v %+v", out.Answer, observed(steps))
@@ -811,8 +914,8 @@ on:
 		})
 	}
 	// Another type that finished on the same content does not count.
-	other := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeFinished,
-		Key: "acme:builder", Branch: "main", Hash: "h"}}}
+	other := stateOf(entry{Kind: kindObserved, Outcome: state.OutcomeFinished,
+		Key: "acme:builder", Branch: "main", Hash: "h"})
 	out, _ := walk(t, eval(t, scoped, workflow.PreCommit), facts{branch: "main",
 		hashes: []string{"h"}, state: other, changed: []string{"a.go"}})
 	if !out.Answer.Block {
@@ -820,7 +923,7 @@ on:
 	}
 	// The latest finished counts: a later one on another content replaces an earlier one on this content.
 	later := finished("h")
-	later.Entries = append(later.Entries, finished("h0").Entries...)
+	later.Records = append(later.Records, finished("h0").Records...)
 	out, _ = walk(t, eval(t, scoped, workflow.PreCommit), facts{branch: "main",
 		hashes: []string{"h"}, state: later, changed: []string{"a.go"}, trees: []string{"a.go"}})
 	if !out.Answer.Block {
@@ -1600,27 +1703,16 @@ func edit(t *testing.T, ev hook.Evaluation, name, path, actor string) hook.Evalu
 	})
 }
 
-// logged returns the log st with the entries the steps appended, as the next event reads it.
+// logged returns the log st with the records the steps appended, as the next event reads it.
 func logged(t *testing.T, st state.State, steps []hook.Step) state.State {
 	t.Helper()
-	for _, e := range appended(steps) {
+	for _, r := range records(steps) {
 		var err error
-		if st, err = st.Append(e); err != nil {
+		if st, err = st.Append(r); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return st
-}
-
-// decided returns the decisions the steps logged with outcome, in order.
-func decided(steps []hook.Step, outcome string) []state.Entry {
-	var out []state.Entry
-	for _, e := range appended(steps) {
-		if e.Kind == state.KindDecision && e.Outcome == outcome {
-			out = append(out, e)
-		}
-	}
-	return out
 }
 
 // hashed reports whether the steps asked for the content hash.
@@ -1890,9 +1982,9 @@ on:
     - when: { changed: "*.go" }
       action: { block: { message: "Actualiza la documentación", once: true } }
 `, workflow.PreCommit)
-	reminded := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeBlocked,
+	reminded := stateOf(entry{Kind: kindObserved, Outcome: state.OutcomeBlocked,
 		Session: "s1", Event: workflow.PreCommit, Actor: agent.ActorSession, Line: 4, Branch: "main", Hash: "h",
-		Head: "c1"}}}
+		Head: "c1"})
 	f := facts{branch: "feat/x", head: "c1", hashes: []string{"h2"}, state: reminded, changed: []string{"internal/a.go"},
 		trees: []string{"ai/reports/r.md"}}
 	out, steps := walk(t, ev, f)
@@ -1907,8 +1999,9 @@ on:
 	}
 }
 
-// AC6: the observed lines about a content that are read by branch, finished with a hash, passed and blocked, carry
-// the HEAD commit; a finished without hash, an injected line and the decisions do not.
+// AC6: the record of an event carries the HEAD commit the call learned, whatever it holds, so the observations about a
+// content that are read by branch, finished with a hash, passed and blocked, are read by it (DEC-21); no observation
+// carries a head of its own.
 func TestWritesHead(t *testing.T) {
 	yaml := `version: 1
 on:
@@ -1928,12 +2021,12 @@ on:
 	heads := func(steps []hook.Step) map[string]string {
 		t.Helper()
 		got := map[string]string{}
-		for _, e := range appended(steps) {
-			if e.Kind == state.KindDecision && e.Head != "" {
-				t.Fatalf("a decision carries the head: %+v", e)
+		for _, r := range records(steps) {
+			if r.Head != "c1" {
+				t.Fatalf("a record without the head: %+v", r)
 			}
-			if e.Kind == state.KindObserved {
-				got[e.Outcome+" "+e.Hash] = e.Head
+			for _, o := range r.Observations {
+				got[o.Outcome+" "+o.Hash] = r.Head
 			}
 		}
 		return got
@@ -1945,12 +2038,12 @@ on:
 		want map[string]string
 	}{
 		{"finished with a hash", as(t, stop, "polix:reviewer"), f, map[string]string{"finished h": "c1"}},
-		{"finished without hash", as(t, stop, "acme:builder"), f, map[string]string{"finished ": ""}},
+		{"finished without hash", as(t, stop, "acme:builder"), f, map[string]string{"finished ": "c1"}},
 		{"blocked", as(t, stop, "polix:reviewer"), facts{branch: "refuse", head: "c1", hashes: []string{"h"}},
 			map[string]string{"blocked h": "c1"}},
 		{"passed", eval(t, yaml, workflow.Stop), f, map[string]string{"passed h": "c1"}},
 		{"injected", edit(t, eval(t, yaml, workflow.PreEdit), workflow.PreEdit, "src/a.go", agent.ActorSession), f,
-			map[string]string{"injected ": ""}},
+			map[string]string{"injected ": "c1"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -2300,12 +2393,12 @@ on:
   subagent_stop:
     - action: { block: "Termina" }
 `
-	st := state.State{Entries: []state.Entry{
-		{Kind: state.KindObserved, Outcome: state.OutcomeInjected, Session: "s1", Actor: "polix:reviewer", Line: 5,
+	st := stateOf(
+		entry{Kind: kindObserved, Outcome: state.OutcomeInjected, Session: "s1", Actor: "polix:reviewer", Line: 5,
 			Key: "Lee el plan"},
-		{Kind: state.KindObserved, Outcome: state.OutcomeBlocked, Session: "s1", Event: workflow.SubagentStop,
+		entry{Kind: kindObserved, Outcome: state.OutcomeBlocked, Session: "s1", Event: workflow.SubagentStop,
 			Actor: "polix:reviewer", Line: 10, Hash: "h", Branch: "main"},
-	}}
+	)
 	f := facts{branch: "main", hashes: []string{"h"}, state: st}
 	reviewer := as(t, eval(t, yaml, workflow.SubagentStop), "polix:reviewer")
 	out, steps := walk(t, reviewer, f)
@@ -2459,11 +2552,11 @@ func hashes(steps []hook.Step) []int {
 func TestHashOnlyWhenNeeded(t *testing.T) {
 	gate := eval(t, "version: 1\non:\n  pre_commit:\n    - unless: { finished: polix:reviewer }\n"+
 		"      action: { block: \"Revisa\" }\n", workflow.PreCommit)
-	unhashed := state.State{Entries: []state.Entry{{Kind: state.KindObserved, Outcome: state.OutcomeFinished,
-		Key: "polix:reviewer", Branch: "main"}}}
+	unhashed := stateOf(entry{Kind: kindObserved, Outcome: state.OutcomeFinished,
+		Key: "polix:reviewer", Branch: "main"})
 	for name, st := range map[string]state.State{"empty log": {}, "finished without hash": unhashed,
-		"another branch": finishedOn("dev", "h"), "another type": {Entries: []state.Entry{{
-			Kind: state.KindObserved, Outcome: state.OutcomeFinished, Key: "acme:docs", Branch: "main", Hash: "h"}}}} {
+		"another branch": finishedOn("dev", "h"), "another type": stateOf(entry{
+			Kind: kindObserved, Outcome: state.OutcomeFinished, Key: "acme:docs", Branch: "main", Hash: "h"})} {
 		out, steps := walk(t, gate, facts{branch: "main", hashes: []string{"h"}, state: st})
 		if !out.Answer.Block || len(hashes(steps)) != 0 {
 			t.Errorf("%s: %+v %v", name, out.Answer, hashes(steps))
@@ -2486,19 +2579,19 @@ func TestHashOnlyWhenNeeded(t *testing.T) {
 // finishedOn is the log after the subagent polix:reviewer finished on branch with the content hash.
 func finishedOn(branch, hash string) state.State {
 	st := finished(hash)
-	st.Entries[0].Branch = branch
+	st.Records[0].Branch = branch
 	return st
 }
 
 // On a detached HEAD the branch is empty: what was observed on a branch never counts there, so a run that passed
 // runs again, a block with once blocks again and finished does not hold.
 func TestDetachedHead(t *testing.T) {
-	onMain := state.State{Entries: []state.Entry{
-		{Kind: state.KindObserved, Outcome: state.OutcomePassed, Branch: "main", Key: "just test", Line: 4, Hash: "h"},
-		{Kind: state.KindObserved, Outcome: state.OutcomeBlocked, Branch: "main", Session: "s1",
+	onMain := stateOf(
+		entry{Kind: kindObserved, Outcome: state.OutcomePassed, Branch: "main", Key: "just test", Line: 4, Hash: "h"},
+		entry{Kind: kindObserved, Outcome: state.OutcomeBlocked, Branch: "main", Session: "s1",
 			Actor: agent.ActorSession, Line: 4, Hash: "h"},
-		finished("h").Entries[0],
-	}}
+		finishedEntry("h"),
+	)
 	cases := map[string]struct {
 		yaml, event string
 		acted       func(Output, []hook.Step) bool

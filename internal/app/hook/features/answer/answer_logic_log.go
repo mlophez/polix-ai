@@ -1,95 +1,132 @@
 package answer
 
 import (
+	"errors"
+
+	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/hook"
 	"github.com/mlophez/polix-ai/internal/app/state"
+	"github.com/mlophez/polix-ai/internal/app/workflow"
 )
 
-// log records a decision on the event.
+// log records an action on the event: what an entry of the workflow or a protection did with it, with its result.
+// The record of the event holds it until the call ends (see record).
 func (r *pass) log(action string, line int, outcome, reason string) {
-	_ = r.write(state.KindDecision, action, line, outcome, reason, "", "")
-}
-
-// write appends to the log an entry of kind about the event (see writeEntry) and returns the error of appending it.
-func (r *pass) write(kind, action string, line int, outcome, reason, key, hash string) error {
-	return r.writeEntry(kind, action, line, outcome, reason, key, hash, "")
-}
-
-// writeEntry appends to the log an entry of kind about the event (see entryOf) and returns the error of appending
-// it.
-func (r *pass) writeEntry(kind, action string, line int, outcome, reason, key, hash, refs string) error {
-	e, valid := r.entryOf(kind, action, line, outcome, reason, key, hash, refs)
-	if r.waiting() {
-		return nil
+	a := state.Action{Line: line, Action: action, Outcome: outcome, Reason: reason}
+	if a.Valid() != nil {
+		return
 	}
-	return r.appendEntry(e, valid)
+	r.actions = append(r.actions, a)
 }
 
-// writeBlocked appends to the log the observed `blocked` line of the entry at line, with key and hash, and before,
-// the hash its event started from when the runs of the event changed it, else "" (see state.Entry.Before), and
-// returns the error of appending it.
+// note records an observation of outcome on the event, about key and, for the outcomes that are about a content,
+// hash (see noteWith), and returns why it is not valid.
+func (r *pass) note(line int, outcome, key, hash string) error {
+	return r.noteWith(line, outcome, key, hash, "", "")
+}
+
+// noteWith records the observation of outcome on the event, which every later query of the call reads (see
+// currentState), with the refs git moved without HEAD, on a snapshot, and before, the hash the event started from when
+// its runs changed it, on a blocked one (see state.Observation.Chained); it returns why it is not valid, in which case
+// it is not recorded. Only the observations of the memory of the session go through it; an inject that reached the AI,
+// for one, is recorded as injected once the answer is known (see writeInjected).
+func (r *pass) noteWith(line int, outcome, key, hash, refs, before string) error {
+	o := state.Observation{Line: line, Outcome: outcome, Key: key, Hash: hash, Refs: refs}
+	o = o.Chained(before)
+	if err := o.Valid(); err != nil {
+		return err
+	}
+	r.observed = append(r.observed, o)
+	return nil
+}
+
+// writeBlocked records the observation blocked of the entry at line, with key and hash, and before, the hash its
+// event started from when the runs of the event changed it, else "" (see state.Observation.Before), and returns why it
+// is not valid.
 func (r *pass) writeBlocked(line int, key, hash, before string) error {
-	e, _ := r.entryOf(state.KindObserved, "", line, state.OutcomeBlocked, "", key, hash, "")
-	if r.waiting() {
-		return nil
-	}
-	e = e.Chained(before)
-	return r.appendEntry(e, e.Valid())
+	return r.noteWith(line, state.OutcomeBlocked, key, hash, "", before)
 }
 
-// entryOf builds the entry of kind about the event that writeEntry appends, and the error of an entry that is not
-// valid to append; the branch it carries may be a step the pass waits for. The content hash costs a git call over
-// the whole tree, so a decision only carries the one this call already computed; an observed entry carries the hash
-// it is given, none for those that are not about a content (injected, started, notified, watched and a finished that
-// only makes injects due again). The observed entries about a content that are read by branch within the session
-// (finished with a hash, passed and blocked) also carry the HEAD commit, so another branch on the same commit reads
-// them too in the session, and so
-// does a snapshot, so its post_command sees HEAD moved; every other entry goes without it. Only a snapshot carries
-// refs, what git moves without moving HEAD, so its post_command sees a git stash or a merge stopped on its conflicts.
-// Every entry carries the id of the subagent of the event, when the agent gives one.
-func (r *pass) entryOf(kind, action string, line int, outcome, reason, key, hash, refs string) (state.Entry, error) {
+// recordOf returns the record of the event with what acted and was observed on it so far, and why it is not valid: its
+// session names no file, or nothing acted nor was observed. It carries the agent, the session, the event, the actor
+// and its agent id, the time the evaluation started, the data of the event, and the branch and the HEAD commit when
+// the call already learned them (whoever knows the branch asks for it first, see branch, so a query by branch reads
+// the one of the record). The content hash is the one at the start of the event, when the call computed it, which
+// costs a git call over the whole tree, so a record only carries the one the call already computed.
+func (r *pass) recordOf() (state.Record, error) {
 	ev := r.ev.Event
-	branch, head := r.branch(), r.head()
-	if hash == "" && kind == state.KindDecision {
-		hash, _, _ = r.ev.Facts.Hash(r.epoch)
-	}
-	if !readByHead(kind, outcome, hash) {
-		head = ""
-	}
-	e := state.Entry{Kind: kind, Agent: ev.Agent, Session: ev.Session, Event: ev.Name, Actor: ev.Actor,
-		AgentID: ev.AgentID, Branch: branch, Hash: hash, Head: head, Refs: refs, Action: action, Line: line, Key: key, Outcome: outcome,
-		Reason: reason}
-	return e, e.Valid()
+	hash, _, _ := r.ev.Facts.Hash(r.ev.Facts.Epoch)
+	in, _ := inputOf(ev)
+	rec := state.Record{At: r.ev.Started, Agent: ev.Agent, Session: ev.Session, Event: ev.Name, Actor: ev.Actor,
+		AgentID: ev.AgentID, Branch: r.ev.Facts.Branch, Head: r.ev.Facts.Head, Hash: hash, Input: in,
+		Actions: r.actions, Observations: r.observed}
+	return rec, rec.Valid()
 }
 
-// appendEntry appends e to the log and returns the error of appending it. Once the log is read, an entry
-// appended afterwards is added to it as well, so a later entry of the call sees it.
-func (r *pass) appendEntry(e state.Entry, valid error) error {
-	if valid != nil {
-		return valid
+// record returns the record of the event, to be appended at the end of the call (see flush): the empty record when
+// nothing acted nor was observed on it, or when its session names no file, so an event where nothing acted writes
+// nothing. It asks for the branch and the HEAD commit the record carries.
+func (r *pass) record() state.Record {
+	if len(r.actions) == 0 && len(r.observed) == 0 {
+		return state.Record{}
 	}
-	s := hook.Step{Append: &e}
-	o := r.act(s, s.Valid())
+	r.branch()
+	r.head()
 	if r.waiting() {
-		return nil
+		return state.Record{}
 	}
-	f := r.ev.Facts
-	if o.Err == nil && f.HasState && f.StateErr == nil && r.next > f.StateAt {
-		r.state, _ = r.state.Append(e)
+	rec, err := r.recordOf()
+	if err != nil || rec.Writable() != nil {
+		return state.Record{}
 	}
-	return o.Err
+	return rec
 }
 
-// readByHead reports whether an entry of kind and outcome with hash is an observed line about a content that is read by
-// branch or by HEAD commit within its session (finished with a hash, passed and blocked), or a snapshot, whose
-// post_command compares HEAD (see watch), so it carries the HEAD commit.
-func readByHead(kind, outcome, hash string) bool {
-	if kind != state.KindObserved || hash == "" {
-		return false
+// flush appends the records of the call, one line each, in the order of its events, once the answer ans of the whole
+// call is known: the last event asks it, with the pending records of the facts and its own. A record that cannot be
+// appended is no error of the call, as it was no error to write a line: the log is evidence and memory, and polix goes
+// on without it. On an event of the loop guard (see stop) it is: the guard could not count a block it cannot write, so
+// a refused answer becomes the release of the guard, each of its reasons a warning for the user (see unusableLog).
+func (r *pass) flush(ans agent.Answer, records []state.Record) agent.Answer {
+	var failed error
+	for i := range records {
+		s := hook.Step{Append: &records[i]}
+		o := r.act(s, s.Valid())
+		if r.waiting() {
+			return ans
+		}
+		failed = errors.Join(failed, o.Err)
 	}
-	switch outcome {
-	case state.OutcomeFinished, state.OutcomePassed, state.OutcomeBlocked, state.OutcomeSnapshot:
-		return true
+	if failed == nil || !r.loop || !ans.Block {
+		return ans
 	}
-	return false
+	released := agent.Answer{Contexts: ans.Contexts, Warnings: ans.Warnings}
+	if released.Valid() != nil {
+		return ans
+	}
+	for _, reason := range ans.Reasons {
+		released = released.Warn(unusableLog(failed, reason))
+	}
+	return released
+}
+
+// inputOf returns the data of the event the log keeps: the command and the id of the call of a command or a commit,
+// the path of an edit, the skill that starts, the prompt and the source of a start. The agent does not give the
+// arguments of a skill, so the input leaves them out.
+func inputOf(ev agent.Event) (state.Input, error) {
+	var command, toolUse, path, skill, prompt, source string
+	switch ev.Name {
+	case workflow.PreCommand, workflow.PostCommand, workflow.PreCommit, workflow.PostCommit:
+		command, toolUse = ev.Command, ev.ToolUse
+	case workflow.PreEdit, workflow.PostEdit:
+		path = ev.Path
+	case workflow.Skill:
+		skill = ev.Skill
+	case workflow.Prompt:
+		prompt = ev.Prompt
+	case workflow.Start:
+		source = ev.Source
+	}
+	in := state.Input{Command: command, ToolUse: toolUse, Path: path, Skill: skill, Prompt: prompt, Source: source}
+	return in, in.Valid()
 }

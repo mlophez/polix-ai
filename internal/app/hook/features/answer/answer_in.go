@@ -100,8 +100,11 @@ type Port interface {
 	// Restore puts the paths, relative to the root with slashes, back in the working tree as the tree source holds
 	// them, removing those it does not hold, without touching the index; the error names the first path that failed.
 	Restore(ctx context.Context, source string, paths []string) error
-	// Append appends an entry to the log of its session, stamped with the time.
-	Append(ctx context.Context, e state.Entry) error
+	// Append appends a record to the log of its session as one line, stamped with the time when it has none.
+	Append(ctx context.Context, r state.Record) error
+	// Now returns the time of the clock as RFC 3339 with its offset: the shell takes it when the evaluation of each
+	// event starts, which is the at of its record in the log.
+	Now(ctx context.Context) string
 }
 
 // format is the format of the hooks of one agent, the transport the entry reads and writes: claude in
@@ -201,7 +204,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 			e = e.Locate(port.Locate(ctx, e.AbsPath, e.Cwd))
 		}
 		ev := hook.Evaluation{Workflow: wf, Present: present, Invalid: problem, Root: root, GitDir: gitDir,
-			System: req.System, Event: e, Remaining: len(queue), Facts: facts}
+			System: req.System, Event: e, Started: port.Now(ctx), Remaining: len(queue), Facts: facts}
 		if err := ev.Valid(); err != nil {
 			return Response{}, err
 		}

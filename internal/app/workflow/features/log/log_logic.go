@@ -14,13 +14,13 @@ import (
 // A session asked for by its id that cannot be chosen is refused as data: NoMatch, or Matches.
 type Output struct {
 	Sessions []state.State
-	IDs      []string // the id of each session of Sessions, the session of its first entry
+	IDs      []string // the id of each session of Sessions, the session of its first record
 	NoMatch  bool     // the session asked for matches no session
 	Matches  []string // the ids, sorted, of the several sessions the session asked for matches; else empty
 	Skipped  int      // the lines over state.MaxLine skipped in the file of every session, shown or not
 }
 
-// ranked is a session with what orders it: its id and the latest time of its entries, when one parses.
+// ranked is a session with what orders it: its id and the latest time of its records, when one parses.
 type ranked struct {
 	st     state.State
 	id     string
@@ -28,22 +28,22 @@ type ranked struct {
 	known  bool
 }
 
-// Decide picks the sessions of the log to show, given the state of the file of each session: those with entries,
-// ordered by the latest time of their entries (RFC 3339, so the offsets of the clock compare right), the most recent
+// Decide picks the sessions of the log to show, given the state of the file of each session: those with records,
+// ordered by the latest time of their records (RFC 3339, so the offsets of the clock compare right), the most recent
 // last, a session without a time that parses first and the ties by id.
 // With session it keeps only the session whose id equals it, else the only one whose id starts with it; with none
 // Output.NoMatch is set, with several Output.Matches holds their ids sorted, and no session is shown.
 // Else it keeps the last tail of them, or all of them when all is set, tail is 0 or less or there are no more.
-// A file without entries shows no session, but its skipped lines count.
+// A file without records shows no session, but its skipped lines count.
 func Decide(sessions []state.State, tail int, all bool, session string) Output {
 	var out Output
 	var ranking []ranked
 	for _, st := range sessions {
 		out.Skipped += st.Skipped
-		if len(st.Entries) == 0 {
+		if len(st.Records) == 0 {
 			continue
 		}
-		r := ranked{st: st, id: st.Entries[0].Session}
+		r := ranked{st: st, id: st.Records[0].Session}
 		r.latest, r.known = latest(st)
 		ranking = append(ranking, r)
 	}
@@ -86,11 +86,11 @@ func selectSession(out *Output, ranking []ranked, id string) []ranked {
 	return nil
 }
 
-// latest returns the latest time of the entries of st that parses as RFC 3339, and whether one does.
+// latest returns the latest time of the records of st that parses as RFC 3339, and whether one does.
 func latest(st state.State) (time.Time, bool) {
 	var last time.Time
 	known := false
-	for _, e := range st.Entries {
+	for _, e := range st.Records {
 		at, err := time.Parse(time.RFC3339, e.At)
 		if err != nil {
 			continue
