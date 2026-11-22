@@ -11,6 +11,9 @@ import (
 	"github.com/mlophez/polix-ai/internal/app/setup"
 )
 
+// skillTool is the tool of Claude Code the agent calls to start a skill.
+const skillTool = "Skill"
+
 // hooks checks that Claude Code runs `polix hook claude` on every event polix needs, for every tool
 // it governs, with a timeout above the run budget of a call, and only once. The hooks come from the settings of
 // the project, the local ones and the ones of the user, which Claude Code merges.
@@ -105,7 +108,13 @@ func event(name string, tools []string, groups []setup.HookGroup) []setup.Findin
 	var f []setup.Finding
 	var missing []string
 	for _, tool := range tools {
-		if !matches(polix, tool) {
+		switch {
+		case matches(polix, tool):
+		case tool == skillTool:
+			// Settings of an earlier polix do not watch the tool Skill: only the event skill is lost, so it is a warning.
+			f = append(f, foundFix(setup.LevelWarn, "hooks", fmt.Sprintf("the matcher of %s does not cover %s", name, tool),
+				"run polix install")...)
+		default:
 			missing = append(missing, tool)
 		}
 	}

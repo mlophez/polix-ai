@@ -54,6 +54,9 @@ const (
 	updateTimeout = 180
 	// claudeTools are the tools whose use polix governs in Claude Code.
 	claudeTools = "Edit|Write|MultiEdit|NotebookEdit|Bash"
+	// claudePreTools are the tools of PreToolUse in Claude Code: claudeTools and the tool Skill, whose call fires the
+	// event skill. No event follows a skill, so PostToolUse and PostToolUseFailure leave it out.
+	claudePreTools = claudeTools + "|Skill"
 )
 
 // UpdateCommand is the session start command that keeps polix up to date and reports the problems of the machine:
@@ -91,7 +94,7 @@ var ClaudeHookEvents = []struct {
 	{"SessionStart", nil},
 	{"UserPromptSubmit", nil},
 	{"SubagentStart", nil},
-	{"PreToolUse", []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}},
+	{"PreToolUse", []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "Skill"}},
 	{"PostToolUse", []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}},
 	{"PostToolUseFailure", []string{"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}},
 	{"SubagentStop", nil},
@@ -143,7 +146,8 @@ func (f HooksFile) Valid() error {
 
 // Hooks returns the hooks polix registers for agent, by event: `polix hook <agent>` on every event, on the tools
 // polix governs (every tool on Codex, which names its tools differently), and the session start command of
-// UpdateCommand on startup, each with the status StatusMessage.
+// UpdateCommand on startup, each with the status StatusMessage. Claude Code also watches the tool Skill on
+// PreToolUse.
 func (s Setup) Hooks(agent string) map[string][]HookGroup {
 	call := HookHandler{Command: "polix hook " + agent, Timeout: HookTimeout, Status: StatusMessage}
 	update := HookHandler{Command: UpdateCommand, Timeout: updateTimeout, Status: StatusMessage}
@@ -154,11 +158,15 @@ func (s Setup) Hooks(agent string) map[string][]HookGroup {
 	if agent == Codex {
 		tools = "" // Codex names its tools differently (shell, apply_patch...): polix reads every call
 	}
+	preTools := tools
+	if agent == Claude {
+		preTools = claudePreTools
+	}
 	out := map[string][]HookGroup{
 		"SessionStart":     append(call.Alone(""), update.Alone("startup")...),
 		"UserPromptSubmit": call.Alone(""),
 		"SubagentStart":    call.Alone(""),
-		"PreToolUse":       call.Alone(tools),
+		"PreToolUse":       call.Alone(preTools),
 		"PostToolUse":      call.Alone(tools),
 		"SubagentStop":     call.Alone(""),
 		"Stop":             call.Alone(""),

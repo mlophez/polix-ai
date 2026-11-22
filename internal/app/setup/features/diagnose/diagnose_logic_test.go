@@ -414,7 +414,7 @@ func TestDecideFixes(t *testing.T) {
 			i.ClaudeHooks[i.Setup.HooksFile(setup.Claude)] = settingsWithout(t, "Stop")
 		}, "hooks", "Stop does not run polix hook claude", "run polix install"},
 		{"matcher", func(i *setup.Inspection) {
-			i.ClaudeHooks[i.Setup.HooksFile(setup.Claude)] = hooksOf([]byte(strings.Replace(settings, `"matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash"`,
+			i.ClaudeHooks[i.Setup.HooksFile(setup.Claude)] = hooksOf([]byte(strings.Replace(settings, `"matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Skill"`,
 				`"matcher": "Edit"`, 1)))
 		}, "hooks", "the matcher of PreToolUse does not cover ...", "run polix install"},
 		{"git hook missing", func(i *setup.Inspection) {
