@@ -36,10 +36,10 @@
 # Cheat sheet (each one is explained where it is first used below):
 # - Shortcuts of guardrails, each in its one form: protected_files and protected_branches take a list of strings;
 #   forbidden_commands, exec_on_start, format_on_edit, format_on_save, check_on_stop and check_on_save a list of maps.
-# - Events, in lifecycle order: start, prompt, subagent_start, pre_edit, post_edit, pre_command, post_command,
+# - Events, in lifecycle order: start, prompt, skill, subagent_start, pre_edit, post_edit, pre_command, post_command,
 #   pre_commit, post_commit, subagent_stop, stop.
 # - Verbs, exactly one per action, only where Claude Code and Codex both support them:
-#   - block: on prompt, pre_edit, pre_command, pre_commit, subagent_stop and stop (rejected on start,
+#   - block: on prompt, skill, pre_edit, pre_command, pre_commit, subagent_stop and stop (rejected on start,
 #     subagent_start, post_edit, post_command and post_commit, which already happened);
 #   - inject: on every event but subagent_stop and stop (an agent that stops cannot receive context);
 #   - run: on every event; it blocks where block is valid, and elsewhere a failure reaches the AI as context;
@@ -47,7 +47,8 @@
 # - Conditions that hold only on some events (`polix config check` rejects them elsewhere):
 #   - path: pre_edit, post_edit;
 #   - command, writes: pre_command, post_command, pre_commit, post_commit;
-#   - exit: post_command.
+#   - exit: post_command;
+#   - skill: skill.
 #   Every other condition (actor, finished, finished_since_commit, agents_are_running, branch, var, changed, file, contains, changed_lines,
 #   changed_files, risk_score, not, any) holds on any event.
 # - githooks, apart from `on`: the events pre_commit and commit_msg, the verbs block and run, and the conditions
@@ -76,7 +77,8 @@ path: ai
 # enough for this file: it knows `base_branch`, `subagent_start` and `notify`, but not the lifecycle shortcuts
 # `exec_on_start`, `format_on_save`, `check_on_stop` and `check_on_save` of guardrails, which need the release that
 # brings them, the first after 0.9.0, nor `stop_retries`, which needs the first release after 0.10.0. Set requires
-# to the release you install.
+# to the release you install. The event `skill`, its condition `skill` and `{skill}` need the first release after
+# 0.12.1.
 requires: 0.3.0
 
 # Optional, default main. The branch the change merges into, or a list of candidates, used only by
@@ -376,6 +378,7 @@ guardrails:
 # - {path}: the edited path, relative to the root (pre_edit and post_edit; empty elsewhere);
 # - {command}: the whole command line (pre_command, post_command, pre_commit and post_commit; empty elsewhere);
 # - {commit}, {subject}: the short hash and the subject of the commit just made (post_commit; empty elsewhere);
+# - {skill}: the name of the skill that starts, as it came, with the prefix of its plugin (skill; empty elsewhere);
 # - {branch}: the current branch;
 # - {changed_lines}, {changed_files}, {risk_score}: the measures of the change not committed yet (on post_commit,
 #   of the commit just made), over the files of the `changed` of the `when` of the entry, else the whole change; `?` when git cannot measure it. The change is
@@ -540,6 +543,28 @@ on:
     - when: { var: release }
       action:
         notify: "Rama de release {release}: avisa a QA antes de publicar."
+
+  # skill: a skill starts, typed by the user (/spec, /tmp is full) or invoked by the agent through the tool Skill. It
+  # comes right after the prompt of a typed skill, and a block refuses the skill (a typed one, with its prompt). Its
+  # conditions: skill, a name or a list of names, literal and not globs, that holds when one equals the name of the
+  # skill as it came (polix:spec) or its bare name after the last colon (spec), so `spec` also matches other:spec; a
+  # blank name never holds. {skill} expands to the name as it came, and to an empty text on any other event. Every
+  # inject acts every time the skill starts, as on start and post_commit, so always has no effect and a skill run many
+  # times repeats its context.
+  # Two limits. A typed skill is detected by the shape of the prompt, never by looking skills up on disk: a slash,
+  # then a name without slashes, then a space or the end, so a prompt such as `/tmp is full` fires the event as the
+  # skill tmp. And a forked skill (context: fork) fires the event like any other, but its inject reaches the caller,
+  # not the skill: the context of a forked skill belongs on subagent_start. Codex is not implemented.
+  # It is commented out because a polix older than the event reports `skill` as an unknown event: a file that uses it
+  # sets `requires` to a release that knows it (the first after 0.12.1).
+  #
+  # skill:
+  #   - when: { skill: polix:spec }
+  #     action:
+  #       inject: "Se inicia {skill}: el plan va en ai/plans/ y lo valida el skill build."
+  #   - when: { skill: [deploy, release] }
+  #     action:
+  #       block: "No se lanza {skill} desde esta rama."
 
   # subagent_start: a subagent starts, with a new context; actor is its type. It cannot be blocked: block is rejected,
   # and a failing run reaches the subagent as context. As on start, every inject acts every time. It gets neither the
