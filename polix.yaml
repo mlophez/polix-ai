@@ -65,6 +65,17 @@ on:
           - This repository plans, builds, reviews and audits with the skills of polix: polix:spec, polix:build, polix:review and polix:audit.
           - The generic skills that overlap them (engineering:code-review, engineering:architecture, engineering:system-design, engineering:testing-strategy, engineering:tech-debt, code-review, simplify) are not used here.
 
+  # The model of a skill holds only for the turn that invokes it: each notification of a background subagent of
+  # /polix:build opens a new turn on the model of the session. Remind once per session to start the build on Sonnet.
+  skill:
+    - when: { skill: polix:build }
+      action:
+        block:
+          once: true
+          message: |
+            Start the build in a clean session on Sonnet: `claude --model sonnet`, or `/model sonnet` and then `/clear`.
+            Then type /polix:build again; this reminder does not block it a second time.
+
   # The builders and the verifier start with a clean context: give them the habits each build needs.
   # The reviewer runs nothing but git, so it needs none.
   subagent_start:
