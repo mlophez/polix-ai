@@ -567,6 +567,34 @@ func TestLoopGuardFailsOpen(t *testing.T) {
 	}
 }
 
+// A record that cannot be written changes no answer outside the loop guard: a block of pre_commit, pre_edit or
+// pre_command stays a block, with no notice of the log, and a stop the guard already let pass keeps its answer.
+func TestUnwritableLogKeepsTheAnswer(t *testing.T) {
+	broken := errors.New("permission denied")
+	for _, c := range []struct{ name, yaml, event string }{
+		{"pre_commit", "version: 1\non:\n  pre_commit:\n    - action: { block: \"revisa\" }\n", workflow.PreCommit},
+		{"pre_edit", "version: 1\non:\n  pre_edit:\n    - action: { block: \"revisa\" }\n", workflow.PreEdit},
+		{"pre_command", "version: 1\non:\n  pre_command:\n    - action: { block: \"revisa\" }\n", workflow.PreCommand},
+	} {
+		ev := eval(t, c.yaml, c.event)
+		if c.event == workflow.PreEdit {
+			ev = edit(t, ev, c.event, "src/a.go", agent.ActorSession)
+		}
+		out, _ := walk(t, ev, facts{branch: "main", hashes: []string{"h"}, appendErr: broken})
+		if !out.Answer.Block || !slices.Equal(out.Answer.Reasons, []string{"revisa"}) || len(out.Answer.Warnings) != 0 {
+			t.Errorf("%s: %+v", c.name, out.Answer)
+		}
+	}
+	block := entry{Kind: kindObserved, Outcome: state.OutcomeBlocked, Session: "s1",
+		Event: workflow.Stop, Actor: agent.ActorSession, Line: 5, Hash: "h"}
+	ev := eval(t, "version: 1\nstop_retries: 1\non:\n  stop:\n    - action: { block: \"revisa\" }\n", workflow.Stop)
+	out, _ := walk(t, ev, facts{branch: "main", hashes: []string{"h"}, state: stateOf(block), appendErr: broken})
+	if out.Answer.Block || len(out.Answer.Warnings) != 1 || !strings.Contains(out.Answer.Warnings[0], "after 1 blocks") ||
+		strings.Contains(out.Answer.Warnings[0], "cannot use its log") {
+		t.Errorf("stop released by the guard: %+v", out.Answer)
+	}
+}
+
 // unshownMessages returns the reasons of the skip decisions of actionMessage the steps logged, in order: the
 // messages for the user of a blocked event, which are not shown.
 func unshownMessages(steps []hook.Step) []string {
