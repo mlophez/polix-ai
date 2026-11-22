@@ -53,9 +53,10 @@ polix rules check --changed  # only the rules whose scope matches the files chan
 polix rules fmt            # format every rules file of rules/ below path in place, retired.yaml included
                            # (--check only tells whether they are formatted, exiting with 1 when not)
 polix graph                # print the workflow as a Mermaid diagram
-polix log --tail 5         # print the last sessions of the state log, each whole under `== session <id> ==`,
-                           # the most recently active last (-n counts sessions, 5 by default, 0 for all;
-                           # --json prints only the raw lines)
+polix log                  # print the last session of the state log, whole under `== session <id> ==`
+                           # (-n counts sessions, 1 by default and 1 or more; --all for every session;
+                           # --session ID for the one whose id is ID or starts with it; --json prints only the
+                           # raw lines)
 polix risk                 # print the lines, files and risk score of the uncommitted change, file by file
                            # (--changed GLOB, repeatable; --commit REV for the changes of one commit)
 polix doctor               # check that this machine and repository are ready (--hook, --offline)
@@ -1460,9 +1461,12 @@ when the log cannot be read, with the warning of a log polix cannot use. The sin
 history is no longer wanted.
 
 `polix log` prints the sessions grouped, each whole and in file order under the line `== session <id> ==`, ordered
-by their last activity (the latest `at` of their lines), the most recent last. `-n` (`--tail`) counts sessions, the
-last 5 by default and all of them with `0`, and `--json` prints only the lines of those sessions, in the same order
-and without headers.
+by their last activity (the latest `at` of their lines), the most recent last. By default it shows only the last
+session. `-n` (`--tail`) counts sessions, 1 by default, and a value below 1 is an error that points to `--all`;
+`--all` shows every session, and `--all` with `-n` is refused. `--session <id>` shows only the session whose id equals
+the value, else the only one whose id starts with it: no match and several matches (their ids sorted) are errors, and
+so is an empty value or `--session` together with `-n` or `--all`. `--json` prints only the lines of the chosen
+sessions, in the same order and without headers.
 
 Each line is of one of two kinds:
 

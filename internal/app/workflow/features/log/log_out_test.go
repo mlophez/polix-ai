@@ -111,7 +111,7 @@ func TestCommand(t *testing.T) {
 	log := `{"at":"t1","kind":"stop_block","session":"s1","reason":"loop_guard"}` + "\n" +
 		`{"kind":"decision","reason":"` + strings.Repeat("x", 5*1024*1024) + "\"}\n"
 	repo := newRepo(t, map[string]string{sessions + "s1.jsonl": log})
-	code, stdout, stderr := runCommand(t, repo, "log", "-n", "0")
+	code, stdout, stderr := runCommand(t, repo, "log", "--all")
 	if code != 0 || !strings.Contains(stdout, "loop_guard") || !strings.Contains(stderr, "1 lines") {
 		t.Fatalf("log: %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
@@ -121,8 +121,8 @@ func TestCommand(t *testing.T) {
 	}
 }
 
-// AC7 to AC10: polix log shows the last 5 sessions by default, the most recently active last, each whole under its
-// header; -n 1 the last one, -n 0 all of them, and --json only their lines. Without sessions it prints nothing.
+// AC7 to AC10: polix log shows the last session by default, -n 5 the last five, the most recently active last, each
+// whole under its header; --all all of them, and --json only their lines. Without sessions it prints nothing.
 func TestCommandSessions(t *testing.T) {
 	code, stdout, stderr := runCommand(t, newRepo(t, nil), "log")
 	if code != 0 || stdout != "" || stderr != "" {
@@ -145,17 +145,22 @@ func TestCommandSessions(t *testing.T) {
 		return got
 	}
 	code, stdout, _ = runCommand(t, repo, "log")
+	if got := headers(stdout); code != 0 || !slices.Equal(got, []string{"== session s6 =="}) ||
+		strings.Count(stdout, "\n") != 3 {
+		t.Fatalf("default: %d %q", code, stdout)
+	}
+	code, stdout, _ = runCommand(t, repo, "log", "-n", "5")
 	want := []string{"== session s2 ==", "== session s3 ==", "== session s4 ==", "== session s5 ==",
 		"== session s6 =="}
 	if got := headers(stdout); code != 0 || !slices.Equal(got, want) || strings.Count(stdout, "\n") != 15 {
-		t.Fatalf("default: %d %q", code, stdout)
+		t.Fatalf("-n 5: %d %q", code, stdout)
 	}
 	code, stdout, _ = runCommand(t, repo, "log", "-n", "1")
 	if got := headers(stdout); code != 0 || !slices.Equal(got, []string{"== session s6 =="}) ||
 		strings.Count(stdout, "\n") != 3 {
 		t.Fatalf("-n 1: %d %q", code, stdout)
 	}
-	code, stdout, _ = runCommand(t, repo, "log", "-n", "0")
+	code, stdout, _ = runCommand(t, repo, "log", "--all")
 	if got := headers(stdout); code != 0 || len(got) != 7 || got[0] != "== session s0 ==" {
 		t.Fatalf("-n 0: %d %q", code, stdout)
 	}

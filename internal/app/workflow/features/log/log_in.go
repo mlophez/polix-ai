@@ -1,10 +1,11 @@
-// Package log is the use case LogWorkflow, the command `polix log`: it prints the last sessions of the state log,
-// one file per session. It never imports the standard log, whose name it takes.
+// Package log is the use case LogWorkflow, the command `polix log`: it prints the last session of the state log, or
+// those it selects, one file per session. It never imports the standard log, whose name it takes.
 package log
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -18,9 +19,11 @@ import (
 
 // Request is what the caller asks of the use case LogWorkflow: the command fills it from its flags.
 type Request struct {
-	Dir  string // any folder of the repository
-	Tail int    // how many of the last sessions, 0 or less for all
-	JSON bool   // print only the entries, as JSON lines
+	Dir     string // any folder of the repository
+	Tail    int    // how many of the last sessions, 0 or less for all
+	All     bool   // every session, whatever Tail says
+	Session string // the one session to show, by its id or a prefix of it; empty for the sessions of Tail or All
+	JSON    bool   // print only the entries, as JSON lines
 }
 
 // Response is what the use case LogWorkflow gives back: the command prints it.
@@ -71,11 +74,27 @@ func Command(loadState state.Load) *cobra.Command {
 	var req Request
 	c := &cobra.Command{
 		Use:   "log",
-		Short: "Print the last sessions of the state log",
-		Long: "Print the last sessions of the state log, one file per session, each whole under a header " +
+		Short: "Print the last session of the state log, or the sessions --tail, --all or --session select",
+		Long: "Print the last session of the state log, one file per session, each whole under a header " +
 			"`== session <id> ==`, the most recently active last: the sanctioned way to read it, since commands " +
-			"that name the state folder and write files are denied.",
+			"that name the state folder and write files are denied. --tail shows the last n sessions, --all every " +
+			"session and --session the one whose id is the value or starts with it.",
 		Args: cobra.NoArgs,
+		// The checks run before cobra checks the exclusive group of --all and --tail, so --session wins over it.
+		PreRunE: func(c *cobra.Command, _ []string) error {
+			switch {
+			case c.Flags().Changed("session"):
+				if req.Session == "" {
+					return errors.New("--session needs a session id")
+				}
+				if c.Flags().Changed("tail") || c.Flags().Changed("all") {
+					return errors.New("--session selects one session: drop --tail and --all")
+				}
+			case req.Tail < 1:
+				return errors.New("--tail must be 1 or more; use --all for every session")
+			}
+			return nil
+		},
 		RunE: func(c *cobra.Command, _ []string) error {
 			repo, err := git.Open(c.Context(), req.Dir)
 			if err != nil {
@@ -90,8 +109,11 @@ func Command(loadState state.Load) *cobra.Command {
 		},
 	}
 	cli.DirFlag(c, &req.Dir, ".")
-	c.Flags().IntVarP(&req.Tail, "tail", "n", 5, "number of sessions, each shown whole, 0 for all")
+	c.Flags().IntVarP(&req.Tail, "tail", "n", 1, "number of the last sessions, each shown whole, 1 or more")
+	c.Flags().BoolVar(&req.All, "all", false, "show every session")
+	c.Flags().StringVar(&req.Session, "session", "", "show only the session whose id is this or starts with it")
 	c.Flags().BoolVar(&req.JSON, "json", false, "print only the entries, as JSON lines")
+	c.MarkFlagsMutuallyExclusive("all", "tail")
 	return c
 }
 
@@ -102,7 +124,14 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	if err != nil {
 		return Response{}, err
 	}
-	out := Decide(sessions, req.Tail)
+	out := Decide(sessions, req.Tail, req.All, req.Session)
+	if out.NoMatch {
+		return Response{}, fmt.Errorf("--session %q matches no session", req.Session)
+	}
+	if len(out.Matches) != 0 {
+		return Response{}, fmt.Errorf("--session %q matches several sessions: %s", req.Session,
+			strings.Join(out.Matches, ", "))
+	}
 	res := Response{Skipped: out.Skipped}
 	for i, st := range out.Sessions {
 		s := Session{ID: out.IDs[i]}

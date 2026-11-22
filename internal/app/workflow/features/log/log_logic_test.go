@@ -41,7 +41,7 @@ func TestDecideOrdersTheSessions(t *testing.T) {
 	}
 	for tail, want := range map[int][]string{0: {"a", "b", "c"}, -1: {"a", "b", "c"}, 2: {"b", "c"}, 1: {"c"},
 		3: {"a", "b", "c"}, 9: {"a", "b", "c"}} {
-		out := Decide(sessions, tail)
+		out := Decide(sessions, tail, false, "")
 		if got := ids(t, out); !reflect.DeepEqual(got, want) {
 			t.Fatalf("tail %d: %v", tail, got)
 		}
@@ -51,7 +51,7 @@ func TestDecideOrdersTheSessions(t *testing.T) {
 			}
 		}
 	}
-	if out := Decide(nil, 5); len(out.Sessions) != 0 || len(out.IDs) != 0 || out.Skipped != 0 {
+	if out := Decide(nil, 5, false, ""); len(out.Sessions) != 0 || len(out.IDs) != 0 || out.Skipped != 0 {
 		t.Fatalf("no sessions: %+v", out)
 	}
 }
@@ -69,11 +69,43 @@ func TestDecideUnknownTimesAndTies(t *testing.T) {
 		session("x", "2026-11-12T09:00:00+01:00"),
 		session("old", "t0", "not a time"),
 	}
-	out := Decide(sessions, 0)
+	out := Decide(sessions, 0, false, "")
 	if got, want := ids(t, out), []string{"old", "x", "y", "late"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("order: %v", got)
 	}
 	if out.Skipped != 3 {
 		t.Fatalf("skipped %d", out.Skipped)
+	}
+}
+
+// AC-04: an exact id wins over a prefix, a unique prefix selects its session, and none or several matches are data
+// of the output, the ids sorted.
+func TestDecideSession(t *testing.T) {
+	sessions := []state.State{
+		session("ab", "2026-11-12T08:00:00Z"),
+		session("abc", "2026-11-12T09:00:00Z"),
+		session("xyz2", "2026-11-12T10:00:00Z"),
+		session("xyz1", "2026-11-12T07:00:00Z"),
+		session("qrst", "2026-11-12T06:00:00Z"),
+	}
+	out := Decide(sessions, 0, false, "ab")
+	if got := ids(t, out); !reflect.DeepEqual(got, []string{"ab"}) || len(out.Matches) != 0 {
+		t.Fatalf("exact: %v %v", got, out.Matches)
+	}
+	out = Decide(sessions, 0, false, "qr")
+	if got := ids(t, out); !reflect.DeepEqual(got, []string{"qrst"}) {
+		t.Fatalf("unique prefix: %v", got)
+	}
+	out = Decide(sessions, 0, false, "xyz")
+	if len(out.Sessions) != 0 || !reflect.DeepEqual(out.Matches, []string{"xyz1", "xyz2"}) {
+		t.Fatalf("several: %+v", out)
+	}
+	out = Decide(sessions, 0, false, "zz")
+	if len(out.Sessions) != 0 || len(out.Matches) != 0 || !out.NoMatch {
+		t.Fatalf("none: %+v", out)
+	}
+	sessions[0].Skipped = 2
+	if out = Decide(sessions, 0, false, "zz"); out.Skipped != 2 {
+		t.Fatalf("skipped: %+v", out)
 	}
 }

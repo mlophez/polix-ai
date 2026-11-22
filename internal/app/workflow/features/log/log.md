@@ -1,34 +1,42 @@
 # LogWorkflow
 
-Prints the last sessions of the state log, one file per session in `<git-dir>/polix/sessions/`, grouped by session:
-the sanctioned way to read it, since the commands that name the state folder and write files are denied. The old
+Prints the last session of the state log, or those `--tail`, `--all` and `--session` select, one file per session in
+`<git-dir>/polix/sessions/`, grouped by session: the sanctioned way to read it, since the commands that name the state folder and write files are denied. The old
 `<git-dir>/polix/log.jsonl` is never read.
 
 ## Trigger
 
 ```
-polix log [--dir <dir>] [--tail <n>] [--json]
+polix log [--dir <dir>] [--tail <n>] [--all] [--session <id>] [--json]
 ```
 
 - `--dir`: any folder of the repository; defaults to the current one.
-- `--tail` (`-n`): how many of the last sessions, each shown whole; 5 by default, 0 for all.
+- `--tail` (`-n`): how many of the last sessions, each shown whole; 1 by default, and a value below 1 is an error.
+- `--all`: every session. With `--tail` it is refused by cobra, as flags of one exclusive group.
+- `--session`: only the session whose id equals the value, else the only one whose id starts with it.
 - `--json`: print only the entries of those sessions, as JSON lines with the known fields of an entry.
 
 ## Request
 
-`Request`, filled by the command from its flags: `Dir`, `Tail` and `JSON`, from `--dir`, `--tail` and `--json`.
+`Request`, filled by the command from its flags: `Dir`, `Tail`, `All`, `Session` and `JSON`, from `--dir`, `--tail`,
+`--all`, `--session` and `--json`.
 
 ## Logic
 
-`Decide(sessions []state.State, tail int) Output` picks the sessions to show. It takes the state of the file of each
-session as the shell read it through the port, in no given order, and `tail` from the request.
+`Decide(sessions []state.State, tail int, all bool, session string) Output` picks the sessions to show. It takes the
+state of the file of each session as the shell read it through the port, in no given order, and `tail`, `all` and
+`session` from the request.
 
 `Output.Sessions` holds the sessions that have entries, each whole and in file order, ordered by their last
 activity, the most recent last: by the latest `at` of their entries, parsed as RFC 3339, so the offsets of the clock
 compare right; a session without an `at` that parses comes first, and the ties go by id. Only the last `tail` are
-kept, or all of them when `tail` is 0 or less or there are no more. `Output.IDs` holds the id of each, at the same
+kept, or all of them when `all` is set, `tail` is 0 or less or there are no more. `Output.IDs` holds the id of each, at the same
 index: the session of its first entry. `Output.Skipped` sums the lines skipped in the file of every session, those
 not shown and those without entries included.
+
+When `session` is set, `Decide` keeps only the session whose id equals it, else the only one whose id starts with it,
+and ignores `tail` and `all`. With no match `Output.Sessions` is empty and `Output.NoMatch` is set; with several,
+`Output.Sessions` is empty and `Output.Matches` holds their ids sorted. The shell turns both into errors.
 
 The loader of the log and the domain decide the rest:
 
@@ -75,6 +83,13 @@ the name of an old `fact` line included. Without sessions it prints nothing. It 
 The use case fails, printing the error and exiting with 1, when:
 
 - `--dir` is not inside a git repository.
+- `--tail` is below 1: `--tail must be 1 or more; use --all for every session`.
+- `--session` is empty: `--session needs a session id`.
+- `--session` comes with `--tail` or `--all`: `--session selects one session: drop --tail and --all`. The entry checks
+  `--session` before cobra checks the exclusive group of `--all` and `--tail`, so this error wins over the one of cobra.
+- `--session` matches no session: `--session "<value>" matches no session`.
+- `--session` matches several sessions: `--session "<value>" matches several sessions: <ids>`, the full ids sorted
+  alphabetically.
 - The sessions folder exists and cannot be listed, or the file of a session exists and cannot be read.
 
 ## Flow
@@ -82,6 +97,6 @@ The use case fails, printing the error and exiting with 1, when:
 1. `Command` turns the flags into a `Request` and injects `Adapter{Repo: repo, State: loadState}`, with the loader
    of the log it was given, as the `Port`.
 2. The shell reads the file of every session through the port.
-3. `Decide` picks the sessions to show and their order: `Output`.
+3. `Decide` picks the sessions to show, by `--tail`, `--all` or `--session`, and their order: `Output`.
 4. The shell builds the response from the output: each session with its id and its entries, and the skipped lines.
 5. `Command` prints the warning of the skipped lines and the sessions, with their headers or as JSON lines.

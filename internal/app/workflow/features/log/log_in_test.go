@@ -5,9 +5,13 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/state"
+	"github.com/mlophez/polix-ai/internal/platform/git"
 	"github.com/mlophez/polix-ai/internal/platform/testenv"
 )
 
@@ -122,12 +126,117 @@ func TestShellPrintsSessions(t *testing.T) {
 	}
 }
 
-// AC8: --tail counts sessions, 5 by default.
+// AC-01: --tail counts sessions, 1 by default.
 func TestCommandTailDefault(t *testing.T) {
 	c := Command(nil)
 	f := c.Flags().Lookup("tail")
-	if f == nil || f.DefValue != "5" || f.Shorthand != "n" {
+	if f == nil || f.DefValue != "1" || f.Shorthand != "n" {
 		t.Fatalf("flag tail: %+v", f)
+	}
+}
+
+// threeSessions is a repository whose sessions folder holds three sessions, the most recently active first by name.
+func threeSessions(t *testing.T) *git.Repo {
+	t.Helper()
+	line := func(id, at string) string {
+		return `{"at":"` + at + `","kind":"decision","session":"` + id + `","outcome":"a"}` + "\n"
+	}
+	return newRepo(t, map[string]string{
+		sessions + "a.jsonl": line("4037ea3d-b191-4a27-970d-92ce6488cd63", "2026-11-22T13:00:00Z"),
+		sessions + "b.jsonl": line("bf6d55cb-3725-4ee0-aa97-551114a740f0", "2026-11-22T11:00:00Z"),
+		sessions + "c.jsonl": line("8e90182c-cf0e-43ea-b3f1-f6f94bc6ad2f", "2026-11-22T12:00:00Z"),
+	})
+}
+
+// shown returns the ids of the sessions the text output names, in order.
+func shown(out string) []string {
+	var ids []string
+	for l := range strings.SplitSeq(out, "\n") {
+		if id, ok := strings.CutPrefix(l, "== session "); ok {
+			ids = append(ids, strings.TrimSuffix(id, " =="))
+		}
+	}
+	return ids
+}
+
+// CUJ-01: without flags only the most recently active session is printed.
+func TestShellShowsLastSessionByDefault(t *testing.T) {
+	code, out, errb := runCommand(t, threeSessions(t), "log")
+	if code != 0 || errb != "" {
+		t.Fatalf("exit %d, stderr %q", code, errb)
+	}
+	if got, want := shown(out), []string{"4037ea3d-b191-4a27-970d-92ce6488cd63"}; !slices.Equal(got, want) {
+		t.Fatalf("sessions %v:\n%s", got, out)
+	}
+}
+
+// CUJ-02: -n 2 prints the two most recent sessions and --all the three, the most recent last; --all with -n fails.
+func TestShellTailAndAll(t *testing.T) {
+	repo := threeSessions(t)
+	code, out, _ := runCommand(t, repo, "log", "-n", "2")
+	want := []string{"8e90182c-cf0e-43ea-b3f1-f6f94bc6ad2f", "4037ea3d-b191-4a27-970d-92ce6488cd63"}
+	if got := shown(out); code != 0 || !slices.Equal(got, want) {
+		t.Fatalf("-n 2: exit %d, sessions %v", code, got)
+	}
+	code, out, _ = runCommand(t, repo, "log", "--all")
+	want = []string{"bf6d55cb-3725-4ee0-aa97-551114a740f0", want[0], want[1]}
+	if got := shown(out); code != 0 || !slices.Equal(got, want) {
+		t.Fatalf("--all: exit %d, sessions %v", code, got)
+	}
+	code, out, errb := runCommand(t, repo, "log", "--all", "-n", "2")
+	if code != 1 || out != "" || !strings.Contains(errb, "if any flags in the group [all tail] are set") {
+		t.Fatalf("--all -n 2: exit %d, stdout %q, stderr %q", code, out, errb)
+	}
+}
+
+// CUJ-03: a --tail below 1 fails with LIT-01 and prints nothing to stdout.
+func TestCommandRejectsTailBelowOne(t *testing.T) {
+	repo := threeSessions(t)
+	for _, n := range []string{"0", "-1"} {
+		code, out, errb := runCommand(t, repo, "log", "-n", n)
+		if code != 1 || out != "" || !strings.Contains(errb, "--tail must be 1 or more; use --all for every session") {
+			t.Fatalf("-n %s: exit %d, stdout %q, stderr %q", n, code, out, errb)
+		}
+	}
+}
+
+// CUJ-04: a prefix and a full id each print only their session, an older one included.
+func TestShellSessionPrefix(t *testing.T) {
+	repo := threeSessions(t)
+	for arg, want := range map[string]string{"bf6d": "bf6d55cb-3725-4ee0-aa97-551114a740f0",
+		"8e90182c-cf0e-43ea-b3f1-f6f94bc6ad2f": "8e90182c-cf0e-43ea-b3f1-f6f94bc6ad2f"} {
+		code, out, errb := runCommand(t, repo, "log", "--session", arg)
+		if got := shown(out); code != 0 || errb != "" || !slices.Equal(got, []string{want}) {
+			t.Fatalf("--session %s: exit %d, sessions %v, stderr %q", arg, code, got, errb)
+		}
+	}
+}
+
+// CUJ-05: each --session that selects no single session, or comes with --tail or --all, fails and prints nothing.
+func TestShellSessionErrors(t *testing.T) {
+	repo := threeSessions(t)
+	extra := `{"at":"2026-11-22T10:00:00Z","kind":"decision","session":"4a1b0c2d-0000-4000-8000-000000000000"}` + "\n"
+	if err := os.WriteFile(filepath.Join(repo.Root, filepath.FromSlash(sessions+"d.jsonl")), []byte(extra), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"no match", []string{"--session", "zz"}, `--session "zz" matches no session`},
+		{"several", []string{"--session", "4"}, `--session "4" matches several sessions: ` +
+			"4037ea3d-b191-4a27-970d-92ce6488cd63, 4a1b0c2d-0000-4000-8000-000000000000"},
+		{"with tail", []string{"--session", "bf6d", "-n", "2"}, "--session selects one session: drop --tail and --all"},
+		{"with all", []string{"--session", "bf6d", "--all"}, "--session selects one session: drop --tail and --all"},
+		{"with both", []string{"--session", "bf6d", "--all", "-n", "2"},
+			"--session selects one session: drop --tail and --all"},
+		{"empty", []string{"--session", ""}, "--session needs a session id"},
+	} {
+		code, out, errb := runCommand(t, repo, append([]string{"log"}, tc.args...)...)
+		if code != 1 || out != "" || !strings.Contains(errb, tc.want) {
+			t.Fatalf("%s: exit %d, stdout %q, stderr %q", tc.name, code, out, errb)
+		}
 	}
 }
 
