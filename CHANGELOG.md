@@ -7,6 +7,13 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- `/polix:brainstorming` explores the project and proposes new ideas to evolve it, and saves the ideas the user
+  picks as tasks of type `idea` in the folder of tasks.
+- `/polix:probe` explores one idea and returns a verdict on its viability (`viable`, `viable with conditions` or
+  `not viable`) from its hypotheses, their cheap tests, its risks and its alternatives, editing nothing.
+
 ### Changed
 
 - The skills of the plugin declare neither `effort` nor `model`: Claude Code held them only for the turn that
