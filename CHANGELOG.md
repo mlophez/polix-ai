@@ -7,6 +7,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-22
+
 ### Added
 
 - `/polix:brainstorming` explores the project and proposes new ideas to evolve it, and saves the ideas the user
