@@ -38,7 +38,10 @@ rejects; a `post_command` whose exit code is 0 and whose line holds a `git commi
 the command made, and a `PostToolUseFailure` never does; the `SubagentStart` of either agent gives one `subagent_start`
 whose actor is its `agent_type`; a `PreToolUse` of the tool `Skill` gives one `skill` with the name in
 `tool_input.skill`, as the agent gave it, in `agent.Event.Skill`, and none when the name is blank, and a `PostToolUse` of
-it gives none), and `render`, which turns an `agent.Answer` into stdout, stderr and the exit code for
+it gives none; a `UserPromptSubmit` of Claude Code whose prompt has the shape of a typed skill, a slash first, then a
+name that is not empty and holds no slash, then whitespace or the end (`hookInput.typedSkill`, by the text alone, so
+`/tmp is full` counts and `/tmp/foo` does not), gives `prompt` and, right after it, `skill` with the name as typed
+(`hookInput.prompts`), and both are evaluated as the events of one command line are), and `render`, which turns an `agent.Answer` into stdout, stderr and the exit code for
 the native event. It has one implementation per agent: `claude` in `answer_in_claude.go` and `codex` in
 `answer_in_codex.go`, which share the fields of the input both agents write and the rendering of an answer, in
 `answer_in.go` and `answer_in_input.go`. Both read `agent_id`, the id of the subagent that acts, into

@@ -40,7 +40,7 @@ func (c claude) parse(input []byte) (string, []agent.Event, error) {
 	case "SessionStart":
 		events, err = in.single(agent.Claude, workflow.Start)
 	case "UserPromptSubmit":
-		events, err = in.single(agent.Claude, workflow.Prompt)
+		events, err = in.prompts(agent.Claude)
 	case "SubagentStart":
 		events, err = in.single(agent.Claude, workflow.SubagentStart)
 	case "Stop":

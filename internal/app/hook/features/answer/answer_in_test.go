@@ -942,6 +942,94 @@ func TestSkillEventNotifyAndRun(t *testing.T) {
 	}
 }
 
+// promptCall returns the input of a UserPromptSubmit of Claude Code in the session s1 with the prompt text.
+func promptCall(t *testing.T, text string) string {
+	t.Helper()
+	raw, err := json.Marshal(map[string]string{"hook_event_name": "UserPromptSubmit", "cwd": "/repo",
+		"session_id": "s1", "prompt": text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// CUJ-02 and AC-02: a typed skill gives the context of its entry of skill once, and the text of the entry of prompt
+// once, on exit 0.
+func TestSkillEventTypedPrompt(t *testing.T) {
+	port := &fakePort{yaml: skillInject(`{ skill: "polix:spec" }`) +
+		"  prompt:\n    - action: { inject: \"Prompt received.\" }\n"}
+	res, err := run(context.Background(), port, claudeRequest(promptCall(t, "/polix:spec add a login")))
+	if err != nil || res.Code != 0 {
+		t.Fatalf("typed: %+v %v", res, err)
+	}
+	got := additionalContext(t, res.Stdout)
+	if strings.Count(got, "Skill polix:spec started.") != 1 || strings.Count(got, "Prompt received.") != 1 {
+		t.Fatalf("context: %q", got)
+	}
+}
+
+// CUJ-04 and AC-02: a prompt without the shape of a typed skill gives only the text of the entry of prompt; the
+// prompt /tmp is full has the shape, so it also gives the context of the skill tmp, the known limit of the detection.
+func TestSkillEventNotASkill(t *testing.T) {
+	yaml := "version: 1\non:\n  skill:\n    - action: { inject: \"Skill {skill} started.\" }\n" +
+		"  prompt:\n    - action: { inject: \"Prompt received.\" }\n"
+	for _, prompt := range []string{"please run /polix:spec", "/tmp/foo is full", "/", " /polix:spec", "hola"} {
+		port := &fakePort{yaml: yaml}
+		res, err := run(context.Background(), port, claudeRequest(promptCall(t, prompt)))
+		if err != nil || res.Code != 0 || additionalContext(t, res.Stdout) != "Prompt received." {
+			t.Errorf("%q: %+v %v", prompt, res, err)
+		}
+	}
+	port := &fakePort{yaml: yaml}
+	res, err := run(context.Background(), port, claudeRequest(promptCall(t, "/tmp is full")))
+	got := additionalContext(t, res.Stdout)
+	if err != nil || res.Code != 0 || !strings.Contains(got, "Skill tmp started.") ||
+		!strings.Contains(got, "Prompt received.") {
+		t.Fatalf("/tmp is full: %+v %v", res, err)
+	}
+}
+
+// CUJ-03 and AC-03: through a typed prompt, the condition skill matches the name as typed, and a name with a prefix
+// does not match the bare name typed.
+func TestSkillEventTypedMatchesBareName(t *testing.T) {
+	port := &fakePort{yaml: skillInject("{ skill: spec }")}
+	res, err := run(context.Background(), port, claudeRequest(promptCall(t, "/spec")))
+	if err != nil || res.Code != 0 || additionalContext(t, res.Stdout) != "Skill spec started." {
+		t.Fatalf("spec: %+v %v", res, err)
+	}
+	port = &fakePort{yaml: skillInject(`{ skill: "polix:spec" }`)}
+	res, err = run(context.Background(), port, claudeRequest(promptCall(t, "/spec")))
+	if err != nil || res.Code != 0 || res.Stdout != "" {
+		t.Fatalf("polix:spec: %+v %v", res, err)
+	}
+}
+
+// CUJ-05 and AC-04 and DEC-13: a block of skill rejects the typed prompt with exit 2 and its message on stderr, and
+// another skill goes through; a block of prompt rejects it too, and the run of a skill entry still runs.
+func TestSkillEventTypedBlock(t *testing.T) {
+	port := &fakePort{yaml: "version: 1\non:\n  skill:\n    - when: { skill: \"polix:spec\" }\n" +
+		"      action: { block: \"Run polix:spec on a plan branch.\" }\n"}
+	res, err := run(context.Background(), port, claudeRequest(promptCall(t, "/polix:spec add a login")))
+	if err != nil || res.Code != 2 || res.Stderr != "Run polix:spec on a plan branch.\n" || res.Stdout != "" {
+		t.Fatalf("polix:spec: %+v %v", res, err)
+	}
+	res, err = run(context.Background(), port, claudeRequest(promptCall(t, "/polix:build add a login")))
+	if err != nil || res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("polix:build: %+v %v", res, err)
+	}
+	port = &fakePort{yaml: "version: 1\non:\n  prompt:\n    - action: { block: \"No prompts.\" }\n" +
+		"  skill:\n    - action: { run: \"echo {skill}\" }\n"}
+	res, err = run(context.Background(), port, claudeRequest(promptCall(t, "/polix:spec add a login")))
+	if err != nil || res.Code != 2 || !strings.Contains(res.Stderr, "No prompts.") {
+		t.Fatalf("block on prompt: %+v %v", res, err)
+	}
+	if !slices.ContainsFunc(port.calls, func(c string) bool {
+		return strings.HasPrefix(c, "Run ") && strings.HasSuffix(c, "echo polix:spec")
+	}) {
+		t.Fatalf("run: %q", port.calls)
+	}
+}
+
 // The exit code of a command is read from any of the names the agents use, 0 when it says none.
 func TestExitCode(t *testing.T) {
 	for raw, want := range map[string]int{`{"exit_code":3}`: 3, `{"exitCode":4}`: 4, `{"returncode":5}`: 5,

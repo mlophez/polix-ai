@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"unicode"
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
@@ -156,6 +157,42 @@ func (in hookInput) skill(ag, name string) ([]agent.Event, error) {
 		return nil, err
 	}
 	return []agent.Event{ev}, nil
+}
+
+// typedSkill returns the name of the skill the prompt of the input types, as typed, and whether it has that shape: a
+// slash as the first character, then a name that is not empty and holds no slash, then whitespace or the end of the
+// prompt. The shape is decided by the text alone, never by looking up skills, so a prompt such as "/tmp is full" counts.
+func (in hookInput) typedSkill() (string, bool) {
+	rest, ok := strings.CutPrefix(in.Prompt, "/")
+	if !ok {
+		return "", false
+	}
+	name := rest
+	if i := strings.IndexFunc(rest, unicode.IsSpace); i >= 0 {
+		name = rest[:i]
+	}
+	if name == "" || strings.Contains(name, "/") {
+		return "", false
+	}
+	return name, true
+}
+
+// prompts returns the event prompt of the agent ag and, after it, the event skill when the prompt has the shape of a
+// typed skill (see typedSkill), both from the one input.
+func (in hookInput) prompts(ag string) ([]agent.Event, error) {
+	events, err := in.single(ag, workflow.Prompt)
+	if err != nil {
+		return nil, err
+	}
+	name, ok := in.typedSkill()
+	if !ok {
+		return events, nil
+	}
+	typed, err := in.skill(ag, name)
+	if err != nil {
+		return nil, err
+	}
+	return append(events, typed...), nil
 }
 
 // edits returns one event name of the agent ag per edited path. A relative path (apply_patch gives them) is taken

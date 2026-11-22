@@ -1,6 +1,7 @@
 package answer
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -196,6 +197,49 @@ func TestParseClaudeSkill(t *testing.T) {
 	} {
 		if _, evs, err := (claude{}).parse([]byte(input)); err != nil || len(evs) != 0 {
 			t.Errorf("%s: %+v %v", input, evs, err)
+		}
+	}
+}
+
+// AC-02: a prompt with the shape of a typed skill, a slash, a name without slash and whitespace or the end, gives the
+// events prompt and skill in that order, with the name as typed, prefix included; any other prompt gives only prompt.
+func TestParseClaudePromptSkill(t *testing.T) {
+	cases := []struct {
+		prompt, skill string
+	}{
+		{"/polix:spec add a login", "polix:spec"},
+		{"/spec", "spec"},
+		{"/spec\nadd a login", "spec"},
+		{"/tmp is full", "tmp"},
+		{"please run /polix:spec", ""},
+		{"/tmp/foo is full", ""},
+		{"/", ""},
+		{"/ spec", ""},
+		{" /polix:spec", ""},
+		{"hola", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		input, err := json.Marshal(map[string]string{"hook_event_name": "UserPromptSubmit", "session_id": "s1",
+			"prompt": c.prompt})
+		if err != nil {
+			t.Fatal(err)
+		}
+		native, evs, err := claude{}.parse(input)
+		want := 1
+		if c.skill != "" {
+			want = 2
+		}
+		if err != nil || native != "UserPromptSubmit" || len(evs) != want || evs[0].Name != workflow.Prompt {
+			t.Errorf("%q: %q %+v %v", c.prompt, native, evs, err)
+			continue
+		}
+		if c.skill == "" {
+			continue
+		}
+		if ev := evs[1]; ev.Name != workflow.Skill || ev.Skill != c.skill || ev.Actor != agent.ActorSession ||
+			ev.Session != "s1" || ev.Agent != agent.Claude || ev.Valid() != nil {
+			t.Errorf("%q: event %+v", c.prompt, ev)
 		}
 	}
 }
