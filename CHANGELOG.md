@@ -7,6 +7,15 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- `/polix:synthesize` condenses a Markdown file in place: it cuts filler, repetition and what its reader does not
+  need, keeps the frontmatter, headings, code blocks, links, layout and every instruction and fact, writes whole
+  sentences as readable as the original, and checks against a copy of the original that nothing was lost.
+  It writes the text following the good practices of Markdown of its `markdown.md`, and lists, without fixing them,
+  the places where the original breaks them and fixing would change its layout.
+  Only the user runs it, and it is the one skill that declares `effort: high` and `model: opus`.
+
 ## [0.13.0] - 2026-11-22
 
 ### Added

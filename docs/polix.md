@@ -1608,7 +1608,9 @@ also prints that Codex support is not implemented in this release and the setup 
   iterations of each task, `review` reviews the code of a change without a plan with the agent `reviewer` and saves
   the report
   in the folder of reports, `audit` audits the repository with several `auditor` agents in parallel and saves the
-  report in the folder of reports, `writing-skills` and `writing-agents` write a skill or a subagent in one format,
+  report in the folder of reports, `synthesize` condenses a Markdown file in place, cutting filler and repetition
+  while keeping its format, its readability and every instruction and fact, `writing-skills` and `writing-agents` write a skill or a
+  subagent in one format,
   whose `Limits` hold only what applies across its steps) and, for Claude Code, agents (`builder`, which
   builds one task of a plan in the way that best fits its work, code, docs, configuration or data, in the method
   its project injects at its start, if any, or fixes the findings of its checks, without committing, and
@@ -1624,7 +1626,7 @@ also prints that Codex support is not implemented in this release and the setup 
     (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
     `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
     skills are `/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`, `/polix:task`,
-    `/polix:brainstorming`, `/polix:probe`, `/polix:grill-me`, `/polix:spec`, `/polix:build`, `/polix:review`, `/polix:audit`, `/polix:writing-skills` and
+    `/polix:brainstorming`, `/polix:probe`, `/polix:grill-me`, `/polix:spec`, `/polix:build`, `/polix:review`, `/polix:audit`, `/polix:synthesize`, `/polix:writing-skills` and
     `/polix:writing-agents`, its agents `polix:builder`, `polix:verifier`, `polix:reviewer`, `polix:critic` and
     `polix:auditor`. The skills `spec`, `build`, `review` and `audit` launch the agents; Codex, which has no agents of
     plugins and whose support is not
@@ -1633,7 +1635,9 @@ also prints that Codex support is not implemented in this release and the setup 
     or the workflow of the project asks for it, as its description says, and the frontmatter enforces it; a skill
     the model cannot invoke says it runs only when the user asks for it. No skill declares `effort` nor `model`:
     Claude Code holds them only for the turn that invokes the skill and then resumes the ones of the session, so a
-    skill runs on the effort and model of the session. The agents keep both in their frontmatter, as the default
+    skill runs on the effort and model of the session. The exception is `synthesize`, with `effort: high` and
+    `model: opus`: only the user runs it and it rewrites the whole file in the turn that invokes it, unless it stops
+    to ask before overwriting a file git cannot restore. The agents keep both in their frontmatter, as the default
     for a launch without them, since a subagent holds them for its whole context.
     Only `doctor`, `risk` and `workflow` set up polix and name it: the other skills and every agent work in any
     project, governed by polix or not. They take the folders of plans, rules, reports and tasks from `AGENTS.md`,
@@ -1643,7 +1647,7 @@ also prints that Codex support is not implemented in this release and the setup 
     the code against it, `reviewer` and `auditor`; `critic` gets only the plan, and `builder` finds the
     folder as `AGENTS.md` or `CLAUDE.md` names it, else `ai/rules/`.
     `add-rule` checks what it writes by parsing it and running each new `check` as `AGENTS.md` runs the checks.
-    `init`, `doctor`, `risk`, `task`, `spec`, `build`, `review` and `audit` carry `disable-model-invocation: true`: only the
+    `init`, `doctor`, `risk`, `task`, `spec`, `build`, `review`, `audit` and `synthesize` carry `disable-model-invocation: true`: only the
     user runs them, typing the command; when a message of polix asks for one, as the session start does for
     `/polix:doctor` or a gate without a plan for `/polix:spec`, the model tells the user to run it. So the flow of
     the harness always starts by hand, and a gate the model must satisfy alone asks for an agent, as

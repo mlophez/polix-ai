@@ -107,9 +107,14 @@ func TestFrontmatterNames(t *testing.T) {
 }
 
 // No skill declares effort nor model: Claude Code holds them only for the turn that invokes the skill, then the
-// session resumes its own, so a skill runs on the effort and model of the session.
+// session resumes its own, so a skill runs on the effort and model of the session. synthesize is the exception: the
+// user alone runs it, and it rewrites a whole file in the turn that invokes it.
 func TestSkillsWithoutEffortNorModel(t *testing.T) {
+	exceptions := map[string]bool{"synthesize": true}
 	for _, c := range components(t, "skills") {
+		if exceptions[c.name] {
+			continue
+		}
 		for _, key := range []string{"effort", "model"} {
 			if _, ok := c.field(key); ok {
 				t.Errorf("%s: the frontmatter must not declare %s: the skill runs on the one of the session", c.path, key)
