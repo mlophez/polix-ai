@@ -551,3 +551,30 @@ func TestUseCasesAreValid(t *testing.T) {
 		t.Fatalf("only %d recipes found in docs/use-cases.md", checked)
 	}
 }
+
+// CUJ-06 and AC-05: started needs the name of a skill, a text or a list of texts, and holds on every event.
+func TestStartedProblems(t *testing.T) {
+	block := "\n      action: { block: x }\n"
+	pre := "version: 1\non:\n  pre_edit:\n    - "
+	cases := []struct {
+		name, src, want string
+	}{
+		{"empty list", pre + "when: { started: [] }" + block, "polix.yaml:4: started needs the name of a skill"},
+		{"blank", pre + `when: { started: " " }` + block, "polix.yaml:4: started needs the name of a skill"},
+		{"blank in a list", pre + `when: { started: [spec, " "] }` + block, "started needs the name of a skill"},
+		{"a map", pre + "when: { started: { a: b } }" + block, "polix.yaml:4: started: expected a string or a list of strings"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := validate(t, c.src); !strings.Contains(got, c.want) {
+				t.Fatalf("want a problem with %q, got:\n%s", c.want, got)
+			}
+		})
+	}
+	for _, event := range []string{"pre_edit", "stop", "skill"} {
+		src := "version: 1\non:\n  " + event + ":\n    - when: { started: \"polix:build\" }\n      action: { block: x }\n"
+		if got := validate(t, src); got != "" {
+			t.Errorf("%s: unexpected problems:\n%s", event, got)
+		}
+	}
+}

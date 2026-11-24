@@ -874,6 +874,14 @@ Conditions:
   heuristic as `protected_files` (see [Protections](#protections)); reading does not count. Only on `pre_command`, `post_command` and `pre_commit`.
 - `actor`: who acts, `session` or the subagent type. An agent of a plugin is named with its prefix, as
   `polix:reviewer`; an agent of `.claude/agents/` by its bare name.
+- `started`: a skill name, or a list of them (any holds), as `skill` matches it (the name as it came or its bare
+  name), literal and without globs, started earlier in this session. It holds on every event, whatever the branch,
+  HEAD or content, so a commit never resets it; the start of the current event does not count for itself. A start
+  blocked by polix never counts, but a `Skill` call polix let through and Claude Code or the user refused afterwards
+  does, since polix answers before that refusal. `polix config check` rejects an empty list, a blank name and a value
+  that is not a text nor a list of texts. A polix older than the condition reports it as unknown, and under Codex,
+  which has no event `skill`, it never holds, so a gate such as `when: { not: { started: "polix:build" } }` blocks
+  every edit there. See [What polix observes](#what-polix-observes-and-finished).
 - `finished`: a subagent type, or a list of them (all must hold), ended in this session, on this branch or on
   another one with the same HEAD commit, and the files of the scope of the entry did not change since. See
   [What polix observes](#what-polix-observes-and-finished).

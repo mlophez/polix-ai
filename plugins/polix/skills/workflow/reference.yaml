@@ -49,7 +49,7 @@
 #   - command, writes: pre_command, post_command, pre_commit, post_commit;
 #   - exit: post_command;
 #   - skill: skill.
-#   Every other condition (actor, finished, finished_since_commit, agents_are_running, branch, var, changed, file, contains, changed_lines,
+#   Every other condition (actor, started, finished, finished_since_commit, agents_are_running, branch, var, changed, file, contains, changed_lines,
 #   changed_files, risk_score, not, any) holds on any event.
 # - githooks, apart from `on`: the events pre_commit and commit_msg, the verbs block and run, and the conditions
 #   branch, changed and, in commit_msg, message.
@@ -398,7 +398,7 @@ guardrails:
 # "just test" only matches the bare command, and "just test*" also matches `just test -k x` or `just test 2>&1`.
 #
 # Conditions that take a list (path, changed, file, command, writes, actor) hold when any item matches; those of
-# finished, finished_since_commit and var hold when every item does. A single string is a list of one.
+# finished, finished_since_commit and var hold when every item does; started, as skill, when any does. A single string is a list of one.
 #
 # agents_are_running: true or false, whether subagents of the session, of any type, are still running, the one that
 # acts aside (on subagent_stop the subagent that stops does not count itself). It holds on any event, so a commit or
@@ -593,6 +593,13 @@ on:
     - unless: { var: key }
       action:
         block: "No hay ticket: crea la rama con /ticket"
+
+    # started: a skill, or a list of them, started earlier in the session, on any event, branch and HEAD, so a commit
+    # never resets it; names as `skill`. A start a block refused never counts, one Claude Code or the user refuses after
+    # polix answered does, and the start of the event itself neither. Codex has no skill event, so it never holds there.
+    # It is commented out because a polix older than the condition reports `started` as unknown:
+    # - when: { not: { started: "polix:build" } }
+    #   action: { block: "Start polix:build before editing the code." }
 
     # An exception is a `not` in `when`, or a condition in `unless`: the plan is written before it exists.
     # path: the edited path matches a glob, or one of a list. Never holds outside pre_edit and post_edit.

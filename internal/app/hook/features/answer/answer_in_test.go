@@ -1331,3 +1331,111 @@ func TestShellMeasuresRunDuration(t *testing.T) {
 		t.Fatalf("a run that took nothing still has 0: %v", got)
 	}
 }
+
+const startedGate = "version: 1\non:\n  pre_edit:\n    - when: { not: { started: \"polix:build\" } }\n" +
+	"      action: { block: \"Start polix:build before editing the code.\" }\n"
+
+// editCall returns the input of a PreToolUse of the tool Edit on a file of the repository in the session s.
+func editCall(s string) string {
+	return `{"hook_event_name":"PreToolUse","tool_name":"Edit","cwd":"/repo","session_id":"` + s + `",` +
+		`"tool_input":{"file_path":"/repo/internal/app/x.go","old_string":"a","new_string":"b"}}`
+}
+
+// editInS1 runs an edit in the session s1 on port, with the log of the records it appended so far.
+func editInS1(t *testing.T, port *fakePort) Response {
+	t.Helper()
+	port.state = state.State{Records: port.appended}
+	res, err := run(context.Background(), port, claudeRequest(editCall("s1")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
+// CUJ-03, CUJ-04 and AC-03: the gate of started refuses the edit before a start of polix:build and lets it through
+// after it, even once HEAD moved; the start in progress never counts for its own event (DEC-08), the bare name
+// matches, and started holds on another branch inside an any.
+func TestStartedCondition(t *testing.T) {
+	port := &fakePort{yaml: startedGate}
+	if res := editInS1(t, port); res.Code != 2 || res.Stderr != "Start polix:build before editing the code.\n" {
+		t.Fatalf("before the start: %+v", res)
+	}
+	if _, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:build"}`, ""))); err != nil {
+		t.Fatal(err)
+	}
+	if res := editInS1(t, port); res.Code != 0 || res.Stderr != "" || res.Stdout != "" {
+		t.Fatalf("after the start: %+v", res)
+	}
+	for i := range port.appended {
+		port.appended[i].Head = "deadbeef"
+		port.appended[i].Branch = "feature"
+	}
+	if res := editInS1(t, port); res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("after a commit and another branch: %+v", res)
+	}
+
+	t.Run("the current start does not count", func(t *testing.T) {
+		port := &fakePort{yaml: "version: 1\non:\n  skill:\n    - when: { started: \"polix:build\" }\n" +
+			"      action: { block: \"second\" }\n"}
+		for i, code := range []int{0, 2} {
+			port.state = state.State{Records: port.appended}
+			res, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:build"}`, "")))
+			if err != nil || res.Code != code {
+				t.Fatalf("start %d: %+v %v", i+1, res, err)
+			}
+		}
+	})
+	t.Run("the bare name matches", func(t *testing.T) {
+		port := &fakePort{yaml: "version: 1\non:\n  pre_edit:\n    - when: { not: { started: build } }\n" +
+			"      action: { block: \"no\" }\n"}
+		if _, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:build"}`, ""))); err != nil {
+			t.Fatal(err)
+		}
+		if res := editInS1(t, port); res.Code != 0 {
+			t.Fatalf("bare name: %+v", res)
+		}
+	})
+	t.Run("any holds after the start on another branch", func(t *testing.T) {
+		port := &fakePort{yaml: "version: 1\non:\n  pre_edit:\n    - unless: { any: { started: \"polix:build\", " +
+			"branch: \"^feature$\" } }\n      action: { block: \"no\" }\n"}
+		if res := editInS1(t, port); res.Code != 2 {
+			t.Fatalf("before: %+v", res)
+		}
+		if _, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:build"}`, ""))); err != nil {
+			t.Fatal(err)
+		}
+		if res := editInS1(t, port); res.Code != 0 {
+			t.Fatalf("after: %+v", res)
+		}
+	})
+}
+
+// CUJ-05 and AC-04: a start in another session, or one a block refused, never opens the gate.
+func TestStartedOtherSessionOrBlocked(t *testing.T) {
+	other := &fakePort{yaml: startedGate}
+	if _, err := run(context.Background(), other, claudeRequest(strings.Replace(
+		skillCall(`{"skill":"polix:build"}`, ""), `"s1"`, `"s0"`, 1))); err != nil {
+		t.Fatal(err)
+	}
+	if got := startedOf(other.appended); !slices.Equal(got, []string{"polix:build"}) {
+		t.Fatalf("log of s0: %q", got)
+	}
+	// The log of s1 is another file: the fake of s1 holds none of the records of s0.
+	port := &fakePort{yaml: startedGate}
+	if res := editInS1(t, port); res.Code != 2 || res.Stderr != "Start polix:build before editing the code.\n" {
+		t.Fatalf("other session: %+v", res)
+	}
+
+	blocked := &fakePort{yaml: startedGate + "  skill:\n    - when: { branch: \"^main$\" }\n" +
+		"      action: { block: \"Do not build on main.\" }\n"}
+	res, err := run(context.Background(), blocked, claudeRequest(skillCall(`{"skill":"polix:build"}`, "")))
+	if err != nil || res.Code != 2 {
+		t.Fatalf("blocked start: %+v %v", res, err)
+	}
+	if res := editInS1(t, blocked); res.Code != 2 || res.Stderr != "Start polix:build before editing the code.\n" {
+		t.Fatalf("after a blocked start: %+v", res)
+	}
+	if got := startedOf(blocked.appended); len(got) != 0 {
+		t.Fatalf("started %q after a block", got)
+	}
+}

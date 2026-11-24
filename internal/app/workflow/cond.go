@@ -116,6 +116,7 @@ var namedConditions = map[string]string{
 	"finished":              "the type of a subagent",
 	"finished_since_commit": "the type of a subagent",
 	"skill":                 "the name of a skill",
+	"started":               "the name of a skill",
 }
 
 // cond reports the problems of the conditions c on event ev, in the order of their names; an empty ev skips the
@@ -226,7 +227,7 @@ func (v *validator) condContains(c Cond, line int, inAny bool) {
 
 // condStrings reports the problems of the condition k of c whose value is a string or a list of strings: another
 // value, a placeholder that is not known, an empty finished or finished_since_commit (an empty list or a blank type),
-// an empty skill (an empty list or a blank name) or a var not defined in vars.
+// an empty skill or started (an empty list or a blank name) or a var not defined in vars.
 func (v *validator) condStrings(c Cond, k string, line int) {
 	list, err := c.Strings(k)
 	if err != nil {

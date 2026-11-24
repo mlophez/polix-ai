@@ -8,6 +8,7 @@ import (
 
 	"github.com/mlophez/polix-ai/internal/app/agent"
 	"github.com/mlophez/polix-ai/internal/app/diff"
+	"github.com/mlophez/polix-ai/internal/app/state"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 	"github.com/mlophez/polix-ai/internal/platform/glob"
 )
@@ -60,7 +61,7 @@ func (r *pass) condition(k string, all workflow.Cond, scope []string) bool {
 	return r.condAgents(k, all, scope)
 }
 
-// condAgents evaluates the condition k of all that is about the agents: the actor, the skill that starts, the
+// condAgents evaluates the condition k of all that is about the agents: the actor, the skill that starts, the skills that started, the
 // subagents that finished and those still running; any other k does not hold.
 func (r *pass) condAgents(k string, all workflow.Cond, scope []string) bool {
 	switch k {
@@ -68,6 +69,8 @@ func (r *pass) condAgents(k string, all workflow.Cond, scope []string) bool {
 		return slices.Contains(r.list(all, k), r.ev.Event.Actor)
 	case "skill":
 		return skillMatches(r.list(all, k), r.ev.Event.Skill)
+	case "started":
+		return r.condStarted(all)
 	case "finished":
 		return r.condFinished(all, scope)
 	case "finished_since_commit":
@@ -93,6 +96,27 @@ func skillMatches(names []string, skill string) bool {
 		}
 	}
 	return false
+}
+
+// condStarted holds when one of the skills of the started of all started earlier in the session, on any event, branch
+// and HEAD: an observation started of the event skill, whose key matches a name as skillMatches does. The log is read
+// as it was before the event, since the start of this event is noted after its entries run. A log that cannot be read
+// never holds, with a warning.
+func (r *pass) condStarted(all workflow.Cond) bool {
+	names := r.list(all, "started")
+	st, err := r.currentState()
+	if r.waiting() {
+		return false
+	}
+	if err != nil {
+		r.warnLog(err)
+		return false
+	}
+	q := state.Query{Outcome: state.OutcomeStarted, Event: workflow.Skill}
+	if q.Valid() != nil {
+		return false
+	}
+	return slices.ContainsFunc(st.Observed(q), func(m state.Match) bool { return skillMatches(names, m.Key) })
 }
 
 // condNot holds when the nested conditions of the not of all do not.
@@ -294,7 +318,7 @@ func cost(k string) int {
 		return 3
 	case "changed_lines", "changed_files", "risk_score":
 		return 4
-	case "finished", "finished_since_commit", "agents_are_running":
+	case "started", "finished", "finished_since_commit", "agents_are_running":
 		return 5
 	}
 	return 6 // not and any, which may read anything
