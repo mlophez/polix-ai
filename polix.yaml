@@ -79,6 +79,16 @@ on:
         inject: |
           - Name the plan file `<NNN>-<slug>.md` and its branch `<NNN>-<slug>`: `<NNN>` is the next number after the highest one in the branches and the history of git, with three digits; a date yyyy-mm-dd is not a number.
 
+    # Spec and build never share a session: the plan is built from a clean context. This gate comes first, so it
+    # blocks every time, and the reminder below never reaches a session that wrote the plan.
+    - when: { skill: polix:build, started: polix:spec }
+      action:
+        block: |
+          This session wrote the plan with polix:spec: the build never runs in it.
+          Do not run /polix:build here. Give the user these commands to copy, and tell them to run one of the two in a clean session on Sonnet:
+          - New session: `claude --model sonnet "/polix:build"`
+          - Same terminal: `/model sonnet`, then `/clear`, then `/polix:build`
+
     - when: { skill: polix:build }
       action:
         block:
