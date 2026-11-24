@@ -1125,6 +1125,54 @@ func TestSkillEventNotifyAndRun(t *testing.T) {
 	}
 }
 
+// startedOf returns the keys of the observations started of the event skill that the records hold.
+func startedOf(records []state.Record) []string {
+	var keys []string
+	for _, rec := range records {
+		if rec.Event != workflow.Skill {
+			continue
+		}
+		for _, o := range rec.Observations {
+			if o.Outcome == state.OutcomeStarted {
+				keys = append(keys, o.Key)
+			}
+		}
+	}
+	return keys
+}
+
+// CUJ-01, CUJ-02 and AC-01: every skill start, typed or invoked, leaves an observation started of the event skill
+// keyed by its name, with no entry on skill, and its answer is unchanged.
+func TestSkillStartRecorded(t *testing.T) {
+	yaml := "version: 1\non:\n  pre_commit:\n    - action: { block: \"no\" }\n"
+	for name, input := range map[string]string{
+		"typed":   promptCall(t, "/polix:spec add a login"),
+		"invoked": skillCall(`{"skill":"polix:spec"}`, ""),
+	} {
+		port := &fakePort{yaml: yaml}
+		res, err := run(context.Background(), port, claudeRequest(input))
+		if err != nil || res.Code != 0 || res.Stdout != "" || res.Stderr != "" {
+			t.Fatalf("%s: %+v %v", name, res, err)
+		}
+		if got := startedOf(port.appended); !slices.Equal(got, []string{"polix:spec"}) {
+			t.Errorf("%s: started %q in %+v", name, got, port.appended)
+		}
+	}
+}
+
+// CUJ-05 and AC-02: a skill start blocked by an entry of skill leaves no observation started.
+func TestSkillStartBlockedNotRecorded(t *testing.T) {
+	port := &fakePort{yaml: "version: 1\non:\n  skill:\n    - when: { skill: \"polix:build\" }\n" +
+		"      action: { block: \"Do not build.\" }\n"}
+	res, err := run(context.Background(), port, claudeRequest(skillCall(`{"skill":"polix:build"}`, "")))
+	if err != nil || res.Code != 2 {
+		t.Fatalf("blocked: %+v %v", res, err)
+	}
+	if got := startedOf(port.appended); len(got) != 0 {
+		t.Fatalf("started %q after a block", got)
+	}
+}
+
 // promptCall returns the input of a UserPromptSubmit of Claude Code in the session s1 with the prompt text.
 func promptCall(t *testing.T, text string) string {
 	t.Helper()

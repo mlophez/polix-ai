@@ -25,7 +25,8 @@ const (
 // with the answer known, they write that the session, keyed by the source of the start, or the subagent of the type
 // of the actor, with its id, started when the workflow observes it (workflow.Workflow.ObservesStart), so its
 // once-only injects are due again (see due) and the subagents still running are known (see agentsRunning).
-// subagent_start and skill get neither the start context nor the requirements, which are told to the main session on
+// On skill, with the answer known and not a block, it writes that the skill started, keyed by its name, for the
+// condition started. subagent_start and skill get neither the start context nor the requirements, which are told to the main session on
 // a prompt, and a block on skill refuses the skill. On prompt a refusal rejects the prompt, so its contexts never
 // reach the AI: its once-only injects are written as injected only when the answer does not refuse. On prompt, before the entries, the programs of requirements the PATH does not run
 // are told to the AI once (see requirements).
@@ -63,13 +64,23 @@ func (r *pass) session() agent.Answer {
 	if r.waiting() {
 		return ans
 	}
-	if start && r.ev.Workflow.ObservesStart() {
-		_ = r.note(0, state.OutcomeStarted, r.ev.Event.Source, "")
-	}
+	r.observeStart(start, ans)
 	if r.waiting() {
 		return ans
 	}
 	return r.warn(ans)
+}
+
+// observeStart notes that the session or the subagent started, when start and the workflow observes it, and that the
+// skill started when the event is skill and its answer ans does not block, keyed by the name as it came, so the
+// condition started can read it on any later event whether or not an entry acted on this one.
+func (r *pass) observeStart(start bool, ans agent.Answer) {
+	if start && r.ev.Workflow.ObservesStart() {
+		_ = r.note(0, state.OutcomeStarted, r.ev.Event.Source, "")
+	}
+	if r.ev.Event.Name == workflow.Skill && !ans.Block {
+		_ = r.note(0, state.OutcomeStarted, r.ev.Event.Skill, "")
+	}
 }
 
 // requirements adds to ans the context of the programs of requirements, git included (workflow.Programs), the PATH does

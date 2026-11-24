@@ -112,7 +112,8 @@ const (
 	// OutcomeStarted: a session started or its context was compacted, so its once-only injects are due again for
 	// every actor, Key the source the agent gives (startup, resume, clear, compact), empty when it gives none; or, on
 	// subagent_start, a subagent started, its type the actor, so they are due again for that type and it runs until
-	// it finishes (see Running).
+	// it finishes (see Running); or, on skill, a skill started and its answer did not block, Key the skill name as
+	// it came, without hash. Every reader filters by the event of the record.
 	OutcomeStarted = "started"
 	// OutcomeNotified: a notice of the verb notify reached the user, in an answer that did not block; Key is its
 	// expanded text. It is never due again in the session, whatever the actor and the starts.
