@@ -31,13 +31,15 @@ context:
 
 - **Plan**: the path of the plan file.
 - **Task**: the id of the task whose change you review, or `final` for the fixes of the final verification.
-- **Previous**: the `ITER-NN` of the plan the builder just worked on, or "none".
+- **Previous**: the path of the file of the iteration the builder just worked on, or "none".
   A `Previous` other than none makes the review a re-review of that iteration (see `Plan mode`).
 - **Skipped**: the `FND-NN` of that iteration the builder skipped, with why, or "none".
 - **Repeats**: the `FND-NN` of the plan whose root cause came back in a later iteration, or "none".
   The second pass sweeps the class of each one (see Step 10).
 
-The builder's work is in the `evidence` of each task, and the findings of earlier checks in `iterations`.
+The builder's work and the findings of earlier checks are in the files of the passes of the plan, next to it: their
+name is the plan's without `.md`, then a task or `final` and a round, as `<plan>.t3.md` or `<plan>.t3.rev1.md`.
+The plan is Markdown with a YAML frontmatter: read its body as prose and find each item by its id.
 
 Change mode, from the skill review, reviews a change without a plan:
 
@@ -90,7 +92,7 @@ Review progress:
 ### Step 7: Attack the guarantees
 
 1. List the guarantees the change gives: what its new comments, docs and messages promise.
-   In plan mode, add the `constraints` and `cross_cutting` of the plan.
+   In plan mode, add the constraints and the cross-cutting concerns of the plan.
    For example "never reads outside the root", "a link is never followed", "the old format still loads".
 2. Name the kind of each changed piece of code, and take its cases from `Hostile cases`.
 3. Try each case against each guarantee it can break, by following the code path it takes.
@@ -134,35 +136,34 @@ The base is the base branch `AGENTS.md` or `CLAUDE.md` names.
 Without one, the branch `git symbolic-ref --short refs/remotes/origin/HEAD` names without `origin/`, else `main`.
 Review `git diff $(git merge-base HEAD <base>)`, plus the untracked files of `git status --porcelain`.
 In plan mode, review `git diff HEAD` and the untracked files instead.
-Leave out the plan file and the task file its `reference` names: the build carries them, and they are not the change.
-The build committed the earlier tasks, and commits each round of a task once its checks ran.
-So the uncommitted change is the round's: the whole task in a first review, whose `Previous` is none.
-In a re-review, whose `Previous` names an iteration, it is the change of that iteration.
-With `final`, every task is committed, so it is the fixes of the last round of the final verification.
+Leave out the plan file, the files of its passes and the task file its `reference` names: the build carries them,
+and they are not the change.
+The build committed the earlier tasks, and commits a task once its review ran.
+So with a task, the uncommitted change is the whole task, and its `Previous` is none.
+With `final`, every task is committed, so it is the fixes of the last round of the final verification, whose
+`Previous` names its iteration.
 
 ### Plan mode
 
 The plan is context, never the measure: the verifier checks the change against it.
 
 - A design that a decision of the plan settles is never a finding, nor what a constraint imposes.
-- A departure that a line `Departure:` of the `evidence` of a task or finding records is not a finding.
+- A departure that a line `Departure:` of the files of the passes records, for a task or finding, is not a finding.
   List it in `Pending`.
   It is a finding when it breaks a rule or brings a bug.
-- With `Previous`, say in `Pending` which of its findings, by `FND-NN`, are fixed.
-  Do not report again a finding in `Skipped` or recorded as skipped in the `iterations` of the plan.
-  Report it only when its reason is wrong, and say why.
-- A finding that reports again one of the `iterations`, or breaks its guarantee by another path, names its `FND-NN`.
+- Your findings are noted for the user, who decides which become new tasks: report them all, none held back.
+- Do not report again a finding the files of the passes already hold, as `noted` or `skipped`, nor one in `Skipped`.
+  Report it only when the change makes it worse, or a skipped one's reason is wrong, and say why.
+- A finding that reports again one of the files of the passes, or breaks its guarantee by another path, names its
+  `FND-NN`.
 - A test of a task `departed` or `blocked` that is skipped, removed or failing is not a finding: list it in `Pending`.
 - The earlier tasks, and the earlier rounds of this task, are committed and were reviewed.
   Report on their code only when the change breaks it.
 
-A re-review, whose `Previous` names an iteration, checks the fix of that iteration, not the whole task again:
+A re-review, whose `Previous` names an iteration of `final`, reviews the fix of that iteration, not the whole plan:
 
-- Check that each finding of `Previous` with `source: review` is fixed.
-  The verifier checks those with `source: verification`, and one with `source: commit` is fixed once the next
-  commit passes: leave both out.
-- A finding of `Previous` that is not fixed goes in `Findings` again, with its `FND-NN` in `Repeats` and
-  `Origin: none`.
+- The findings of `Previous` come from the verifier or from a rejected commit.
+  The verifier checks the former, and the next commit the latter: leave both out.
 - Report only on the lines the iteration changed, the uncommitted change (see `Change`), and on the code of earlier
   rounds those lines break, such as a caller of a function whose contract the iteration changed.
   Read the rest of each touched file, and `HEAD`, as context, never as the measure.

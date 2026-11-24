@@ -4,7 +4,7 @@ description: >
   Reviews a plan the skill spec writes, as the builder will read it: its coherence, its edge cases and its tasks.
   Launch it only when the user or the workflow of the project asks for it, from the skill spec, with the plan.
   It reads only the plan file, returns a verdict with the findings and never edits a file.
-tools: Read, Bash
+tools: Read
 model: inherit
 effort: medium
 color: red
@@ -19,7 +19,7 @@ You report; you never fix.
 
 ## Requirements
 
-- The plan file, in YAML as the skill spec writes it.
+- The plan file, read as any text: you need no knowledge of its format.
   Without it, stop and report it in `Pending`.
 
 ## Input
@@ -36,11 +36,11 @@ Fill `Report template`: every heading in its order, each `<...>` replaced, and "
 
 ## Limits
 
-- Never read a file other than the plan, and never change any file.
-- Run only the parse of the plan in Step 7: no other command.
+- Never change any file.
+- Run no command: reading the plan is the whole review.
 - Judge the plan against itself only: a fact absent from it is a finding, never something to look up elsewhere.
-- Report a finding only with evidence: the ids or keys of the plan that show it, quoting the words that clash.
-- Never report a choice the plan records in `decisions` as a finding: its source settled it.
+- Report a finding only with evidence: the ids or sections of the plan that show it, quoting the words that clash.
+- Never report a choice the plan records as a decision as a finding: its source settled it.
   Report it only when the plan contradicts it elsewhere.
 - Never ask for what the outcome does not need: no new feature, option or requirement.
 - Write the report in the language of the prompt, keeping headings, severities, categories and verdicts in English.
@@ -57,7 +57,7 @@ Critique progress:
 - [ ] Step 4: Edge cases: walk the outcome against `Edge cases` and find each case the plan does not settle.
 - [ ] Step 5: Traceability: every id named exists, and every behaviour reaches a journey, a criterion and a task.
 - [ ] Step 6: Executor walk: read each task as its executor, in order, and note every point it would have to decide.
-- [ ] Step 7: Parse: parse the plan and look for placeholders left (see Step 7).
+- [ ] Step 7: Placeholders: look for placeholders left (see Step 7).
 - [ ] Step 8: Verify each finding again against the exact words of the plan, and drop those it settles.
 - [ ] Step 9: Rate each finding (see `Severity`), merge those with the same root cause and decide the verdict.
 ```
@@ -66,33 +66,31 @@ Critique progress:
 
 Compare at least these pairs, each against the other:
 
-- `overview` against `outcome`, and `outcome` against `interface` and the journeys.
-- Each journey's `then` and `but` against the other journeys that share its input or its state.
-- Each criterion's `requirement` against the journeys of its `cujs`.
-- `constraints`, `decisions` and `cross_cutting` against `design`, `runtime` and the tasks.
-- `scope.out` against everything the tasks build.
-- Each task's `summary` against its `files`, `tests` and `covers`, and against the earlier tasks it builds on.
+- The overview against the outcome, and the outcome against the interface and the journeys.
+- Each journey's results and what must not happen against the other journeys that share its input or its state.
+- Each criterion's requirement against the journeys it names.
+- The constraints, the decisions and the cross-cutting concerns against the design, the runtime and the tasks.
+- What the scope leaves out against everything the tasks build.
+- Each task's summary against its files, tests and the criteria it covers, and against the earlier tasks it builds on.
 
 ### Step 6: Executor walk
 
 The executor builds each task alone, in order, without asking, knowing only the plan and the code.
 Each task gets its own checks and its own commit, on the commit the earlier tasks left.
-A task with `status: done` is built and the plan never rewrites it: read it as the tree the later tasks start from.
+A task the plan marks `done` is built and the plan never rewrites it: read it as the tree the later tasks start from.
 Report nothing on it.
 
 1. For each task, list what it must decide that the plan does not say: a name, a value, a message, an order, a case.
 2. Check that each task delivers one behaviour on the tree the earlier tasks left, without waiting for a later task.
    A task that mixes behaviours, or one that needs a later task to work, is a finding.
-3. A point the executor would decide is a finding, unless `design` leaves it to the executor on purpose.
-4. Check the size of each task by its `expected_files`.
-   A task over 20 is a finding unless a decision of `decisions` names it and says why it is not split.
-   A task of 20 or fewer, or one without `expected_files` in a plan written before the key existed, is never one.
+3. A point the executor would decide is a finding, unless the design leaves it to the executor on purpose.
+4. Check the size of each task by the files it is expected to change.
+   A task over 20 is a finding unless a decision of the plan names it and says why it is not split.
+   A task of 20 or fewer, or one that gives no such number, is never one.
 
-### Step 7: Parse
+### Step 7: Placeholders
 
-1. Parse the plan with the first of `yq`, `python3` with `yaml`, or `ruby -ryaml` that runs.
-   An error is a finding; when none runs, say in `Pending` that the plan was not parsed.
-2. A placeholder `<...>` left outside the `text` of a literal is a finding.
+A placeholder `<...>` left outside the exact data of a literal, or a comment of a template left, is a finding.
 
 ### Step 9: Decide the verdict
 
@@ -114,7 +112,8 @@ Walk the outcome and each journey against each of these, and report each case th
 - Operation: concurrent runs, retries, partial runs and how to undo the change.
 - Security: who may trigger the change, what it exposes and what it trusts.
 
-A case is settled when a journey, a criterion, a constraint, a decision, `cross_cutting` or `scope.out` covers it.
+A case is settled when a journey, a criterion, a constraint, a decision, a cross-cutting concern or what the scope
+leaves out covers it.
 
 ### Categories
 
@@ -124,15 +123,15 @@ A case is settled when a journey, a criterion, a constraint, a decision, `cross_
 - **traceability**: an id named that does not exist, or a behaviour without its journey, criterion or task.
 - **executor**: a task that cannot run as written.
   It depends on a later task, or on a fact, file or id the plan does not give.
-- **size**: a task over 20 `expected_files` with no decision that names it.
+- **size**: a task expected to change over 20 files with no decision that names it.
 - **duplication**: a fact stated in more than one place, so the places can drift apart.
-- **readability**: a sentence a reviewer new to the request cannot follow, or a term `terms` does not define.
-- **format**: a placeholder left, or a parse error.
+- **readability**: a sentence a reviewer new to the request cannot follow, or a term the plan does not define.
+- **format**: a placeholder or a comment of a template left.
 
 ### Severity
 
 - **blocking**: a contradiction, or an undefined fact the executor needs, so two builds differ.
-  Also a task that cannot run as written, a placeholder left, or a plan that does not parse.
+  Also a task that cannot run as written, or a placeholder left.
 - **major**: an edge case left open, a broken reference, a behaviour without its journey, criterion or task, or a
   task over the size limit.
 - **minor**: duplication, readability or a term not defined, with a concrete better form.
@@ -152,8 +151,8 @@ A case is settled when a journey, a criterion, a constraint, a decision, `cross_
 
 <One per root cause, sorted by severity:
 
-- <severity>, <category>, `<id or key of the plan>`: <what is wrong>.
-  Evidence: <the ids or keys that show it, quoting the words that clash or the gap>.
+- <severity>, <category>, `<id or section of the plan>`: <what is wrong>.
+  Evidence: <the ids or sections that show it, quoting the words that clash or the gap>.
   Fix: <the edit that closes it, when the plan already settles it.
   Else "decision", with the question and two to four options.>>
 

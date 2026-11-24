@@ -36,19 +36,23 @@ The prompt names:
 - **Base**: the short hash of the commit the task started from, or "none" with `final`.
   The build commits each round of a task, so `git diff <Base>` is the whole task and `git diff HEAD` this round.
   Without the line, as from an older build, it is `HEAD`.
-- **Iteration**: the `ITER-NN` of the plan to work on, or "none".
-  With one, finish its `task` when it is not `done`, then fix its `findings` (see `Fixing findings`).
+- **Iteration**: the path of the file of the iteration to work on, or "none".
+  With one, finish its `task` when it is not `done`, then fix its findings (see `Fixing findings`).
   An iteration whose `task` is `final` belongs to the final verification of the whole plan: fix only its findings.
 
 The project may give its method of work in the context you start with, such as test first or a baseline.
 Follow it as part of the task: it never widens the task nor crosses a limit of this file.
 
-Read the `iterations` of the plan before the first task, when it has any.
-Its findings, with their `evidence`, say what the checks found and what the builders did with it.
+Read the files of the passes of the plan before the first task, when it has any: the files next to it whose name is
+the plan's without `.md`, then a task or `final` and a round, as `<plan>.t3.md` or `<plan>.t3.rev1.md`.
+Read only their evidence, and the findings of the iteration of the prompt: their lines `Baseline:` and `Departure:`
+say what the builders did and found.
+Never read nor fix a finding `noted`: the reviewer noted it for the user, who decides whether it becomes a task.
 
 ## Output
 
-Your output is read by the skill build, which coordinates the run: it writes your statuses in the plan and checks them.
+Your output is read by the skill build, which coordinates the run: it writes your statuses and evidence in the plan
+and the files of its passes, and checks them.
 
 - **Task**: the task by id and title, with its status and evidence (see `Task status`), or `not started` and why.
 - **Findings**: when fixing findings, each `FND-NN` `fixed` or `skipped` with its evidence (see `Fixing findings`).
@@ -65,7 +69,8 @@ Your output is read by the skill build, which coordinates the run: it writes you
 - End your turn only once that task is `done`, `departed` or `blocked`, and every finding `fixed` or `skipped`.
 - Never reopen the `decisions` nor the `approach` of the plan, and never cross a limit of its `constraints`.
 - Build only the task's `files` and the tests its `tests` name, if any: no refactor nor cleanup beyond them.
-- Never edit the plan file: report the status and evidence of the task and of each finding in `Output`.
+- Never edit the plan file nor a file of its passes: report the status and evidence of the task and of each finding
+  in `Output`.
 - Edit the files of its `files` and the test files its `tests` name.
   Also edit the callers, fixtures and comments the change of its `files` makes stale.
   Never update the docs of the project, such as the README, the folder of docs or the changelog: the build leaves
@@ -104,29 +109,31 @@ Build progress:
 
 ### Step 3: Read the task
 
-The task's data is its item of `tasks`, found by its `id` (see `Task data`).
-Read each rule of its `rules` by its `id` in the `yaml` files of the folder of rules.
+The task's data is its section of the plan, found by its id, as `T3` (see `Task data`).
+Read each rule of its rules by its `id` in the `yaml` files of the folder of rules.
 The folder of rules is the one `AGENTS.md` or `CLAUDE.md` names, else `ai/rules/` below the root.
 The earlier tasks are built and committed: build on the tree they left.
-A task `departed` or `blocked` in an earlier try: read its `evidence`, and try another way, never the one that failed.
+A task `departed` or `blocked` in an earlier try: read its evidence in the files of its passes, and try another way,
+never the one that failed.
 
 ### Step 6: Review your diff
 
-Run `git diff HEAD` and list the untracked files, leaving out the plan file and the task file its `reference` names.
+Run `git diff HEAD` and list the untracked files, leaving out the plan file, the files of its passes and the task file
+its `reference` names.
 The rest is the work of this round: the build committed the earlier tasks and the earlier rounds of this one.
 The whole task is `git diff <Base>` plus the untracked files.
-Check that every entry of its `files` and `tests` is done, and nothing changed beyond them and what they made stale.
-Check that the diff does what its `summary` and the `design` it names say.
+Check that every entry of its files and tests is done, and nothing changed beyond them and what they made stale.
+Check that the diff does what its summary and the design it names say.
 Check that no debug code, leftover comment or placeholder remains.
 
 ### Step 7: Run the verification of the plan
 
 Run it once per task or iteration, at the end: never again before setting the status.
 Run only its commands, skipping those that install, generate or format and the manual steps.
-An empty `verification` runs nothing.
+An empty verification runs nothing.
 A failure is yours when your change causes it.
-One the `evidence` of an earlier task, its lines `Baseline:` or `Departure:`, or the `context` of `overview` already
-records is not yours.
+One the evidence of an earlier pass, its lines `Baseline:` or `Departure:`, or the context of the plan's overview
+already records is not yours.
 Fix the failures that are yours and rerun only the checks that failed; report the others in `Pending`.
 A failure you cannot tell apart, yours or not, holds the task: report it in `Departures`.
 You and the hooks of the project are the only ones that run it: the verifier and the reviewer never do.
@@ -135,20 +142,22 @@ You and the hooks of the project are the only ones that run it: the verifier and
 
 ### Task data
 
-Each item of `tasks` holds the data of one task, and every collection in it is a list of objects:
+The plan is Markdown with a YAML frontmatter, as the skill spec writes it.
+Read its body as prose and find each item by its id, never by the exact form of a heading.
+The section of the task, under its id `T<N>`, holds the data of one task:
 
-- `summary`: what the task delivers and how; `risk`: its items of high risk, when it has any.
-- `covers`: the ids of the criteria the task fulfils; find each by `id` in `acceptance`, and its `cujs` in `journeys`.
-  The task closes the criteria of its `covers` that no later task covers too: only their `verify` must pass now.
-  A criterion a later task also covers waits for that task, so its `verify` may still fail.
-- A literal named by its id, `LIT-NN`, is the `literal` of a journey's step: reproduce its `text` as `match` says.
-- `files`: under `create` and `modify`, the paths the behaviour lives in; the `design` says what changes in them.
-- `tests`: per `file`, the `new` tests with `name`, `covers` and `checks`, and the `kept` names; `[]` when none.
-  A `new` test is one the task writes; a `kept` test exists already and must still pass after the change.
-- `rules`: the ids of the rules that apply; `reuse`: `what` to reuse, `where` and `why`.
-- `differential`: the steps of its differential check, for a high-risk task; the task has no other checks of its own.
+- Its summary: what the task delivers and how; its risk: its items of high risk, when it has any.
+- Its covers: the ids of the criteria the task fulfils; find each by its id, `AC-NN`, and its journeys by theirs.
+  The task closes the criteria it covers that no later task covers too: only their verify must pass now.
+  A criterion a later task also covers waits for that task, so its verify may still fail.
+- A literal named by its id, `LIT-NN`, is the exact data of a journey's step: reproduce it as its `exactly` or
+  `contains` says.
+- Its files: the paths to create and to modify, where the behaviour lives; the design says what changes in them.
+- Its tests: per test file, the new tests with their name, what they cover and what they check, and the kept ones.
+  A new test is one the task writes; a kept test exists already and must still pass after the change.
+- Its rules: the ids of the rules that apply; its reuse: what to reuse, where and why.
+- Its differential: the steps of its differential check, for a high-risk task; the task has no other checks of its own.
   Where a step names `HEAD` as the base version, as `git archive HEAD`, use `Base`, so it compares the whole task.
-  An iteration of `final` runs no differential check.
 
 ### Departures
 
@@ -168,43 +177,43 @@ A departure is any point where the work differs from the plan or the plan did no
   A failing check, a bug or a hard change is never `blocked`: keep working on it, and at worst it is `departed`.
 
 Record each one with the task or the `FND-NN` it belongs to, what you did and why.
-The skill build writes it in the plan, so the checks and later builders know it.
+The skill build writes it in the file of the pass, so the checks and later builders know it.
 
 ### Task status
 
-Decide the `status` and `evidence` of the task once Step 5 and Step 7 ran, and report them in `Task` of `Output`:
+Decide the status and evidence of the task once Step 5 and Step 7 ran, and report them in `Task` of `Output`:
 
-- `status: done`, only when its checks pass.
-  They are its `tests`, the `verify` of each criterion it closes, and the plan's `verification`.
+- `done`, only when its checks pass.
+  They are its tests, the verify of each criterion it closes, and the plan's verification.
   A failure that is not yours (see Step 7) does not hold the task.
-  Its `evidence` names the checks run and their result.
-- A task without checks, with `tests: []`, no criterion to close and an empty `verification`, is `done` once Step 6
-  finds the diff does what its `summary` and the `design` say.
-  Its `evidence` says it had no checks and what you reviewed.
-- `status: departed` otherwise, with what was not done or still fails, and why, as its `evidence`.
-- `status: blocked` when only a person can unblock it, with what a person must do, and why, as its `evidence`.
+  Its evidence names the checks run and their result.
+- A task without checks, with no tests, no criterion to close and an empty verification, is `done` once Step 6
+  finds the diff does what its summary and the design say.
+  Its evidence says it had no checks and what you reviewed.
+- `departed` otherwise, with what was not done or still fails, and why, as its evidence.
+- `blocked` when only a person can unblock it, with what a person must do, and why, as its evidence.
 
-Write the `evidence` in one sentence per line, so the skill build copies it as a literal block `|`.
+Write the evidence in one sentence per line, so the skill build copies it as it is.
 Never give a status to a task whose checks you did not run.
-The skill build writes the status and evidence you report in the plan; the plan belongs to it.
 
 ### Fixing findings
 
-- Read the `iterations` of the plan first: the earlier findings and the `evidence` the builders left.
+- Read the files of the passes of the plan first: the earlier findings fixed or skipped, and the evidence the builders
+  left; never the ones `noted`.
   Never undo the fix of an earlier finding nor a departure of a task unless a finding asks for it.
-- Fix only the `findings` of the iteration of the prompt, in order, each within the plan.
-  A finding that `repeats` an earlier one was fixed or skipped before: read why, and never repeat what failed.
+- Fix only the findings of the iteration of the prompt, in order, each within the plan.
+  A finding that repeats an earlier one was fixed or skipped before: read why, and never repeat what failed.
 - A finding of the verification says what the plan asks and the change misses: build it as a task would.
-  A criterion not met is one: its `verify` is the check that exposes it, and the evidence says why it fails.
+  A criterion not met is one: its verify is the check that exposes it, and the evidence says why it fails.
 - A finding of the review says what is wrong in the change: fix it without changing what the plan asks.
-- A finding is the task: its `fix` is what to change, and the files its `where` names and their tests are its files.
+- A finding is the task: its fix is what to change, and the files its where names and their tests are its files.
   The check that exposes it is its verification.
 - Fix the root cause, never only the instance the finding names.
   Name the guarantee it breaks, such as "nothing is read outside the root".
-  Find every path in the change that breaks it: the instances its `problem` lists are a start, never the whole list.
+  Find every path in the change that breaks it: the instances its problem lists are a start, never the whole list.
   Close them with one fix at the point every path crosses, within the plan, rather than one condition per instance.
 - When the finding is a bug and the project has tests, add one that fails without the fix, one case per instance.
   Name the instances it covers in the evidence of the finding.
 - Skip a finding that is wrong or asks for what the plan does not, and record why in `Departures`.
 - Report each finding `fixed`, with the check that shows it fixed as its evidence, once that check ran.
-  Report it `skipped` otherwise, with why as its evidence; the skill build writes both in the plan.
+  Report it `skipped` otherwise, with why as its evidence.

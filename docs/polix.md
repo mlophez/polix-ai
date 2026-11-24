@@ -1588,23 +1588,24 @@ also prints that Codex support is not implemented in this release and the setup 
   before writing the plan, asks the user when the branch already exists, and records it in `branch`; before the
   approval the read-only agent `critic` receives only the plan file, as the builder reads it, and reviews it for
   undefined facts, contradictions, edge cases left open, tasks an executor could not build without deciding and
-  tasks over the size limit, and parses it, once; each task states its `expected_files`, the files it is expected
+  tasks over the size limit, reading it as any text, once; each task states its `expected_files`, the files it is expected
   to change with the callers that follow, and `spec` splits a task over 20 by behaviour, with a refactor first or
   by expand-contract, or records in `decisions` why it cannot; the skill fixes what the plan settles and asks the rest through `grill-me`, and `spec`
   never runs in plan mode), `build` switches to the `branch` of an approved plan, which needs a clean working tree,
-  and implements it unattended, one task at a time: a `builder` agent builds the task, the agent `reviewer`
-  (the code's quality) checks that task alone, the findings go back to
-  the builder in iterations of the task, up to three, and once the review closes it `build` commits it as
-  `T<N>: <title>` with the plan, unless git ignores the plan; each round whose checks leave something open is
-  committed first as `T<N> ITER-NN: <title>`, listing the `FND-NN` of its iteration and `Plan: <path>`, so the
-  re-review of the next round reads only what its fix changed; a task that does not close leaves the plan
-  `blocked`, with its last round uncommitted and no later task built, and `build` resumes it with that round once
-  a person clears it. After the last task it has the `verifier` check the
+  and implements it unattended, one task at a time: a `builder` agent builds the task, retried once when it is not
+  `done`, the agent `reviewer` (the code's quality) reviews that task once and its findings are only noted for the
+  user, never sent back to the builder, and `build` commits it as `T<N>: <title>` with the plan, unless git ignores
+  the plan; a hook that rejects that commit gets one fix of the builder, without a review; a task still not `done`
+  after its retry, or whose commit fails again, leaves the plan `blocked`, with its work uncommitted and no later
+  task built, and `build` resumes it once a person clears it. After the last task it has the `verifier` check the
   whole plan against it, the only check against the plan, since no verifier runs in a task, and the first that
-  sets the acceptance criteria, which stay `pending` until then; it fixes what it finds in up to three iterations,
-  each round left open committed as
-  `Final ITER-NN: <title of the plan>`, which the `reviewer` also reviews, commits them as
-  `Final:`, never pushes nor updates the docs of the project, and reports the stats of the build, with the time and
+  sets the acceptance criteria, which stay `pending` until then; it fixes what the verifier finds in up to three
+  iterations, each round left open committed as
+  `Final rev<R>: <title of the plan>`, whose fixes the `reviewer` also reviews, only noting its findings, commits
+  them as `Final:`, and leaves the plan in `review`, never `done`: its report gives the `blocking` and `major`
+  findings of the reviewer grouped by root cause and counts the `minor` ones, and the user runs `spec` on the plan
+  to close it, which sets it `done`, or to add tasks from the findings they choose, which `build` then builds. It
+  never pushes nor updates the docs of the project, and reports the stats of the build, with the time and
   iterations of each task, `review` reviews the code of a change without a plan with the agent `reviewer` and saves
   the report
   in the folder of reports, `audit` audits the repository with several `auditor` agents in parallel and saves the
@@ -1661,30 +1662,33 @@ also prints that Codex support is not implemented in this release and the setup 
     open to the model, so a rule that asks for `polix:reviewer` still works.
     The read-only agents (`critic`, `verifier`, `reviewer`, `auditor`) fill the report template inside their own file. The skills `audit` and `review`
     save their report in the folder of reports from the `template.md` next to them; a `polix:reviewer` launched
-    without a skill answers in the chat and saves no file. `spec` writes the plan as a YAML file from the
-    `template.yaml` next to it, where each fact lives in one place and the others name it by its id (`LIT-NN`,
-    `CUJ-NN`, `AC-NN`, `TN`); a plan in Markdown, written before, is no longer adjusted nor built. A task is one
+    without a skill answers in the chat and saves no file. `spec` writes the plan as a Markdown file from the
+    `spec.md` next to it, where each fact lives in one place and the others name it by its id (`LIT-NN`,
+    `CUJ-NN`, `AC-NN`, `TN`); its YAML frontmatter is the contract `build` reads and writes (`status`, `agents`,
+    `stats` and the maps `tasks` and `acceptance` of the status of each task and criterion), while the agents read its
+    body as prose and find each item by its id. `build` writes each pass on a task or on the final verification in a
+    file next to the plan from the `pass.md` next to it, `<plan>.t3.md` for the first pass of T3, `<plan>.t3.rev1.md`
+    for its first iteration, `<plan>.final.md` and `<plan>.final.rev1.md` for the final verification, with the
+    evidence of the builder, the findings and the evidence of the criteria; the plan never holds them. A task is one
     behaviour that its own checks show, with no size in lines, and its `tests` are optional: `[]` for a task no
     test can observe, such as one that changes only docs; `spec` imposes no method of testing, which the project
     injects. `build` coordinates the run and is the only one that edits the plan and commits: for each task the
-    builder builds it and reports its `status` and `evidence`, `build` writes them in the plan, with the builder's
+    builder builds it and reports its status and evidence, `build` writes them in the file of its pass, with the builder's
     departures and, when the method of its project runs one, the failures of its baseline as lines `Departure:` and
-    `Baseline:` of the `evidence`, which the checks and the builders of its iterations read, then the reviewer
-    checks that task, while the builder gets the task base, the commit the task started from, as `Base:`, and uses
+    `Baseline:` of the evidence, which the checks and the builders of its later passes read, then the reviewer
+    reviews that task, while the builder gets the task base, the commit the task started from, as `Base:`, and uses
     it as the base version of a differential check; the reviewer reviews the uncommitted change against `HEAD`,
-    reading only the diff and running nothing but `git`: the
-    whole task in its first review, and in a re-review, whose `Previous` names an iteration, only the lines that
-    iteration changed, checking that the findings of `Previous` are fixed and marking each new finding with its
-    `Origin`, `fix` when `HEAD` does not have the problem and `earlier` when it does; the plan's `verification` is
-    run by the builder alone, once per task or iteration, and by the hooks of the project; when they leave something
-    to fix, it adds an iteration (`ITER-NN`) of that task, or of `final`, to `iterations` with the findings to fix
-    (`FND-NN`), commits the round, and launches the builder on it; in a re-review only an unfixed finding of
-    `Previous`, a `blocking` finding or a `major` one of origin `fix` reopen the task, and the others wait in the
-    `Pending` of its report with their severity, `file:line`, origin and why, without keeping the plan from ending
-    `done`; a hook that rejects a round commit is a finding of that iteration, with the round left uncommitted; a
-    task or `final` stops after three iterations of the run, or two that fixed nothing; in every review a bug on an
+    reading only the diff and running nothing but `git`: the whole task, or in a re-review of `final`, whose
+    `Previous` names an iteration, only the lines that iteration changed, marking each new finding with its
+    `Origin`, `fix` when `HEAD` does not have the problem and `earlier` when it does; its findings are noted in the
+    file of the pass with the status `noted`, and no builder reads nor fixes them; the plan's `verification` is
+    run by the builder alone, once per pass, and by the hooks of the project; when the verifier leaves something
+    to fix, it adds an iteration (`<plan>.final.rev<R>.md`) with the findings to fix (`FND-NN`), commits the round,
+    and launches the builder on it; a hook that rejects a round commit is a finding of that iteration, with the
+    round left uncommitted; `final` stops after three iterations of the run, or two that fixed nothing; in every
+    review a bug on an
     edge case is `major` only when the reviewer names a realistic input that reaches it, else `minor`; it sets in
-    `stats` at the root of the plan its `start`, `end`, `duration`,
+    `stats` of the frontmatter of the plan its `start`, `end`, `duration`,
     the `iterations`, its runs, the `timeline`, the start, end and duration of each run on a task or on `final`, with
     the `files` and `lines` the whole task changed in the entry of its commit,
     written right before its commit, and the `code` it changed; it launches the builder, the verifier and the reviewer each with the `model`

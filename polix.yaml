@@ -77,7 +77,7 @@ on:
     - when: { skill: polix:spec }
       action:
         inject: |
-          - Name the plan file `<NNN>-<slug>.yaml` and its branch `<NNN>-<slug>`: `<NNN>` is the next number after the highest one in the branches and the history of git, with three digits; a date yyyy-mm-dd is not a number.
+          - Name the plan file `<NNN>-<slug>.md` and its branch `<NNN>-<slug>`: `<NNN>` is the next number after the highest one in the branches and the history of git, with three digits; a date yyyy-mm-dd is not a number.
 
     - when: { skill: polix:build }
       action:

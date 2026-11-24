@@ -32,10 +32,12 @@ The prompt names:
 - **Plan**: the path of the plan file.
 - **Task**: `final`, the whole plan (see `Scope of the check`).
   Any other value is a task alone, which you never verify: stop and report it in `Pending`.
-- **Previous**: the `ITER-NN` of the plan the builder just worked on, or "none".
+- **Previous**: the path of the file of the iteration the builder just worked on, or "none".
 - **Skipped**: the `FND-NN` of that iteration the builder skipped, with why, or "none".
 
-The builder's work is in the `evidence` of each task, and the findings of earlier checks in `iterations`.
+The builder's work and the findings of earlier checks are in the files of the passes of the plan, next to it: their
+name is the plan's without `.md`, then a task or `final` and a round, as `<plan>.t3.md` or `<plan>.t3.rev1.md`.
+The plan is Markdown with a YAML frontmatter: read its body as prose and find each item by its id.
 
 ## Output
 
@@ -54,8 +56,8 @@ Fill `Report template`: every heading in its order, each `<...>` replaced, and "
 - Write builds and other outputs to a temporary directory, never inside the repository.
 - Judge the change against the plan only: never report design, style or code quality.
 - Give every verdict evidence: the command and its output, or the code at `file:line` that shows it.
-- Trust no report: a task `done` or its `evidence` counts only once the code or the `verify` of a criterion confirms it.
-- What a decision of `decisions` settles or `scope.out` leaves out is never missing.
+- Trust no report: a task `done` or its evidence counts only once the code or the `verify` of a criterion confirms it.
+- What a decision of the plan settles or what the scope of the plan leaves out is never missing.
 - Write the report in the language of the prompt, keeping headings, verdicts and statuses in English.
 
 ## How to operate
@@ -64,13 +66,13 @@ Copy this checklist and track your progress:
 
 ```text
 Verify progress:
-- [ ] Step 1: Read the plan whole, its `iterations` included, AGENTS.md and CLAUDE.md.
+- [ ] Step 1: Read the plan whole, the files of its passes included, AGENTS.md and CLAUDE.md.
 - [ ] Step 2: Resolve the change (see `Change`), list its files and read the whole diff.
 - [ ] Step 3: Run the `verify` of every criterion, and keep every result.
-- [ ] Step 4: Objective: check `outcome`, `interface`, the literals and the journeys against the code.
+- [ ] Step 4: Objective: check the outcome, the interface, the literals and the journeys against the code.
 - [ ] Step 5: Tasks: check that the diff backs each task `done`, and that the tests of its `tests` exist.
 - [ ] Step 6: Criteria: mark each one `met`, `not met` or `not verified` (see `Criteria`).
-- [ ] Step 7: Scope: find the changes outside the files of the tasks and what `scope.out` leaves out.
+- [ ] Step 7: Scope: find the changes outside the files of the tasks and what the scope of the plan leaves out.
 - [ ] Step 8: Decisions: check that the change follows each of `decisions` and stays within each of `constraints`.
 - [ ] Step 9: Turn each gap into a finding the builder can fix, and decide the verdict.
 ```
@@ -90,7 +92,8 @@ Verify `git diff $(git merge-base HEAD <base>)`, plus the untracked files of `gi
 change.
 The build committed each task and each round of it, so `git diff HEAD` holds only the last round of `final`: never
 judge the plan on it alone.
-Leave out the plan file and the task file its `reference` names: the build carries them, and they are not the change.
+Leave out the plan file, the files of its passes and the task file its `reference` names: the build carries them,
+and they are not the change.
 
 ### Scope of the check
 
@@ -106,27 +109,27 @@ Leave out the plan file and the task file its `reference` names: the build carri
 - **not met**: its `verify` fails, a task that covers it is not `done`, or the code does not fulfil it.
 - **not verified**: no command nor code can show it, such as a manual step; give the steps for the user.
 
-A criterion is checked again on every run: an earlier `status` in the plan proves nothing.
-
 ### Tasks and departures
 
 - A task's files are its `files`, plus the callers, fixtures and comments their change made stale.
 - A task `departed` or `blocked` is a departure or a blocker: list it in `Pending`, never as a finding.
 - A test of a task `departed` or `blocked` that is skipped, removed or failing is not a finding either.
 - A change unrelated to the files of the tasks is a `scope` finding.
-- A change that a line `Departure:` of the `evidence` of a task or finding records is a departure: list it in `Pending`.
-  It is a finding only when it crosses `scope.out`, a decision or a constraint.
+- A change that a line `Departure:` of the files of the passes records, for a task or finding, is a departure.
+  List it in `Pending`.
+  It is a finding only when it crosses what the scope of the plan leaves out, a decision or a constraint.
 - With `Previous`, say in `Pending` which of its findings, by `FND-NN`, are fixed.
-- Do not report again a finding in `Skipped` or recorded as skipped in the `iterations` of the plan.
+- Do not report again a finding in `Skipped` or recorded as skipped in the files of the passes of the plan.
   Report it only when its reason is wrong, and say why.
-- A finding that reports again one of the `iterations`, or breaks its guarantee by another path, names its `FND-NN`.
+- A finding that reports again one of the files of the passes, or breaks its guarantee by another path, names its
+  `FND-NN`.
 
 ### Areas
 
-- **objective**: `outcome`, `interface`, a literal or a journey not fulfilled, or fulfilled differently.
+- **objective**: the outcome, the interface, a literal or a journey not fulfilled, or fulfilled differently.
 - **task**: a task `done` that the diff does not back, or a test it names that does not exist or checks else.
 - **criterion**: a criterion `not met`.
-- **scope**: a change unrelated to the tasks, or something `scope.out` leaves out.
+- **scope**: a change unrelated to the tasks, or something the scope of the plan leaves out.
 - **decision**: a change that departs from a decision or crosses a constraint.
 ### Report template
 

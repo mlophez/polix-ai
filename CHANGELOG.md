@@ -7,6 +7,35 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- `/polix:spec` writes the plan in Markdown again, `<plans>/<name>.md` from the `spec.md` next to it, instead of
+  YAML: a YAML frontmatter holds the contract the build reads and writes (`branch`, `status`, `reference`,
+  `artifacts`, `created`, `risk`, `agents`, `stats` and the maps `tasks` and `acceptance` with the status of each
+  task and criterion), the heading `#` of the body is the title of the plan, and the body keeps every section and id of the plan (`LIT`, `CUJ`, `AC`, `CON`, `DEC`, `T`)
+  as headings and lists, each journey opening with its story and each literal in a fenced block.
+- `/polix:build` no longer writes evidence nor iterations in the plan: each pass on a task or on the final
+  verification has its own file next to the plan, from the `pass.md` next to the skill, `<plan>.t3.md` for the first
+  pass of T3, `<plan>.t3.rev1.md` for its first iteration, and `<plan>.final.md` and `<plan>.final.rev1.md` for the
+  final verification, with the builder's evidence, the findings with their status and the evidence of the criteria.
+  Its round commits are `T<N> rev<R>: ` and `Final rev<R>: ` instead of `T<N> ITER-NN: ` and `Final ITER-NN: `.
+- `polix:builder`, `polix:verifier` and `polix:reviewer` read the plan's body as prose and find each item by its
+  id, and read the files of the passes for the earlier findings and evidence; `polix:critic` reads the plan as any
+  text and no longer parses it.
+- A plan in YAML is no longer adjusted nor built: write it again with `/polix:spec`.
+- `/polix:build` no longer iterates on the review of a task, the loop that kept stopping unattended builds:
+  `polix:reviewer` reviews each task once and its findings are noted for the user (`noted` in the file of the
+  pass), never sent back to the builder, and the task is committed.
+  A task the builder leaves `not started` or `departed` gets one retry, and a commit the hooks reject gets one fix
+  of the builder without a review; when either fails again, the plan stops `blocked`.
+  The final verification keeps its loop of up to three iterations on the findings of `polix:verifier`, and the
+  reviewer of its fixes only notes its findings too.
+  The round commits of a task (`T<N> rev<R>: `) go away; only `Final rev<R>: ` remains.
+- A built plan ends in the new status `review` instead of `done`: the report of `/polix:build` gives the
+  `blocking` and `major` findings of the reviewer grouped by root cause and counts the `minor` ones, and
+  `/polix:spec` on a plan in `review` closes it, setting it `done`, or adds tasks from the findings the user
+  chooses, which `/polix:build` then builds.
+
 ### Added
 
 - `/polix:synthesize` condenses a Markdown file in place: it cuts filler, repetition and what its reader does not
