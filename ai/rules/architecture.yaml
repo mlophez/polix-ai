@@ -482,3 +482,14 @@ rules:
       the domain or to the use case, which the package calls or returns to.
     scope: ["internal/app/*/adapters/*.go"]
     deterministic: false
+
+  - id: GOARCH-48
+    description: >-
+      A library internal/platform/<lib>/ never imports another library of internal/platform/: each one depends only
+      on the standard library and third parties, so the platform stays a flat set of independent pieces. What two
+      libraries share is composed by their caller (an adapters package or cmd/), which passes the value as a
+      parameter, as GOARCH-42 asks (cmd/polix sets root.Version from build.Current before cli.Run). The test files
+      are left out; GOARCH-43 decides testenv. The list GOARCH-48 of depguard in .golangci.yml holds it.
+    scope: ["internal/platform/**/*.go", ".golangci.yml"]
+    deterministic: true
+    check: tests/architecture/goarch48_test.go

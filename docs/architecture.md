@@ -115,7 +115,8 @@ The direction of every import follows from the depth (GOARCH-9, unless another r
   adapters package.
 - `internal/platform/` never imports `internal/app/` (GOARCH-42); the domain and the logic import only the pure
   libraries of `internal/platform/` (GOARCH-41), and only test files import `internal/platform/testenv`
-  (GOARCH-43).
+  (GOARCH-43). A library of `internal/platform/` never imports another one: its caller passes the value it needs
+  (GOARCH-48).
 - No import cycle anywhere (GOARCH-7).
 
 The test files count as their package.

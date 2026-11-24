@@ -16,8 +16,6 @@ import (
 	"github.com/charmbracelet/fang"
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
-
-	"github.com/mlophez/polix-ai/internal/platform/build"
 )
 
 // UI writes the output meant for people: colors and symbols on a terminal, plain text elsewhere (a pipe, a file,
@@ -162,8 +160,8 @@ func Root(use, short, long, example string) *cobra.Command {
 }
 
 // Run executes root with args (without the program name) over stdin, stdout and stderr, with the styles of fang
-// and the version of build.Current, and returns the exit code: 0, the code of an ExitCodeError, or 1 for any other
-// error, printed in one line. A nil stdin reads os.Stdin.
+// and the version the caller sets in root.Version, and returns the exit code: 0, the code of an ExitCodeError, or 1
+// for any other error, printed in one line. A nil stdin reads os.Stdin.
 func Run(root *cobra.Command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if stdin == nil {
 		stdin = os.Stdin
@@ -173,7 +171,7 @@ func Run(root *cobra.Command, args []string, stdin io.Reader, stdout, stderr io.
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	err := fang.Execute(context.Background(), root,
-		fang.WithVersion(build.Current()),
+		fang.WithVersion(root.Version),
 		fang.WithoutManpage(),
 		fang.WithErrorHandler(errorHandler(root.Name())),
 	)

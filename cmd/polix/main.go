@@ -27,6 +27,7 @@ import (
 	workflowformat "github.com/mlophez/polix-ai/internal/app/workflow/features/format"
 	workflowgraph "github.com/mlophez/polix-ai/internal/app/workflow/features/graph"
 	workflowlog "github.com/mlophez/polix-ai/internal/app/workflow/features/log"
+	"github.com/mlophez/polix-ai/internal/platform/build"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
 )
 
@@ -77,5 +78,6 @@ func main() {
 	rules.AddCommand(rulecheck.Command(loadRules, loadWorkflow), ruleformat.Command(loadRules, loadWorkflow))
 	root.AddCommand(rules)
 
+	root.Version = build.Current()
 	os.Exit(cli.Run(root, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }

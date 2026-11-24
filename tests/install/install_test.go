@@ -320,4 +320,7 @@ func TestUpdateHookRunsTheNewDoctor(t *testing.T) {
 	if v, err := exec.Command(exe, "version").Output(); err != nil || strings.TrimSpace(string(v)) != "0.2.0" {
 		t.Fatalf("the new binary: %q %v", v, err)
 	}
+	if v, err := exec.Command(exe, "--version").Output(); err != nil || !strings.Contains(string(v), "0.2.0") {
+		t.Fatalf("the new binary --version: %q %v", v, err)
+	}
 }

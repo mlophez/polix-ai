@@ -9,13 +9,13 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-
-	"github.com/mlophez/polix-ai/internal/platform/build"
 )
 
-// root returns a root command with one subcommand, run, that returns err and records the --dir it got.
+// root returns a root command of version 1.2.3 with one subcommand, run, that returns err and records the --dir it
+// got.
 func root(err error, dir *string) *cobra.Command {
 	r := Root("polix", "short", "long", "example")
+	r.Version = "1.2.3"
 	run := &cobra.Command{
 		Use:  "run",
 		Args: cobra.NoArgs,
@@ -76,7 +76,7 @@ func TestRunUsageErrors(t *testing.T) {
 
 func TestRunVersion(t *testing.T) {
 	_, _, stdout, _ := execute(nil, "--version")
-	if !strings.Contains(stdout, build.Current()) {
+	if !strings.Contains(stdout, "1.2.3") {
 		t.Fatalf("--version = %q", stdout)
 	}
 }
