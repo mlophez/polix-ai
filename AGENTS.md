@@ -39,28 +39,36 @@ Only the init skill or a human changes this file: any other skill or agent repor
 - **ai/**: instructions for the AI only; without it the repository is a plain project.
 - **ai/plans/**: one plan per file, written by the `plan` skill.
 - **ai/rules/**: rules on how to write the code, one `yaml` file per topic.
-- **cmd/**: the entry point, `cmd/polix`.
 - **docs/**: design, commands and limits (`polix.md`), recipes (`use-cases.md`) and assets.
 - **docs/architecture.md**: the layout by depth, the names of a use case and how each GOARCH rule is decided.
 - **examples/**: reference `polix.yaml`, hook settings for Claude Code and Codex, AGENTS.md fragment for governed repos.
-- **internal/app/**: what polix does, by depth: `<noun>/` is a domain (agent, diff, hook, rule, setup, state, version, workflow), `<noun>/<verb>/` a use case with `in.go`, `logic.go`, `out.go` and `<verb>.md`, and `<noun>/<verb>/<helper>/` a part of one use case.
-- **internal/platform/**: technical libraries without domain, one level (build, cli, file, git, github, glob, jsonl, proc, semver, shell, testenv, text, yamlfmt).
 - **tests/**: architecture tests of the GOARCH rules (`tests/architecture`), install scripts (`tests/install`) and end-to-end tests of setup (`tests/setup`).
 - **plugins/**: the plugin `polix` (skills, agents) and the Go package `plugins` that embeds it in the binary.
 - **polix.yaml**: the workflow of the agents, enforced by polix through the hooks.
 - **scripts/**: `dist.sh`, which builds the release assets.
 
+## Code Layout
+
+- **cmd/polix/**: the entry point; wires the adapters into the use cases and sets the version (`build.Current`).
+- **internal/app/**: what polix does, by depth (`docs/architecture.md`, GOARCH-1):
+  - `<noun>/`: a domain (agent, diff, githook, hook, rule, setup, state, version, workflow), with its entity
+    `<noun>.go` and one `<topic>.go` per part.
+  - `<noun>/features/<verb>/`: a use case, with `<verb>_in.go` (shell), `<verb>_logic.go` (pure logic),
+    `<verb>_out.go` (output) and its document `<verb>.md`.
+  - `<noun>/features/<verb>/<helper>/`: a part of one use case, imported only by it.
+  - `<noun>/adapters/`: the loaders of the files of the noun, imported as `<noun>adapters`.
+- **internal/platform/**: technical libraries without domain, one level, no subfolders (agentconf, build, cli, file,
+  git, github, glob, jsonl, proc, semver, shell, testenv, text, yamlfmt):
+  - never import `internal/app/` (GOARCH-42);
+  - never import another library of `internal/platform/`: the caller passes the value (GOARCH-48);
+  - `testenv` is imported only from `_test.go` files (GOARCH-43);
+  - the domain and the logic import only the pure ones: glob, semver, shell, text, yamlfmt (GOARCH-41).
+- **Imports follow the depth** (GOARCH-9): a use case imports domains and its own helpers, never another use case;
+  a domain imports only domains; only `cmd/` and `tests/` import use cases and adapters.
+
 ## Testing
 
 - **Unit**: Go testing, in `*_test.go` next to the file they test, in internal/ and plugins/; support for tests in `internal/platform/testenv`.
 - **End to end**: tests that compose several commands in `tests/<noun>/` (`tests/setup`).
-- **Architecture**: `tests/architecture`, one `TestGOARCH<N>` per rule of `ai/rules/architecture.yaml`; GOARCH-41 to 43 run golangci-lint with depguard.
+- **Architecture**: `tests/architecture`, one `TestGOARCH<N>` per rule of `ai/rules/architecture.yaml`; GOARCH-41 to 43 and 48 run golangci-lint with depguard.
 - **Install scripts**: Go tests in `tests/install/`, also under PowerShell 5.1 and 7 on Windows CI.
-
-## Rules
-
-- The rules for the AI are in `ai/rules/*.yaml`.
-
-## Documentation
-
-- The documentation of the project is in docs/ (`polix.md`, `use-cases.md`), not published as a website.
