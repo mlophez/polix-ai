@@ -1420,8 +1420,9 @@ func TestStartedOtherSessionOrBlocked(t *testing.T) {
 	if got := startedOf(other.appended); !slices.Equal(got, []string{"polix:build"}) {
 		t.Fatalf("log of s0: %q", got)
 	}
-	// The log of s1 is another file: the fake of s1 holds none of the records of s0.
+	// The log of s1 holds the records of s0, as a shared file would: the query must filter by session.
 	port := &fakePort{yaml: startedGate}
+	port.appended = other.appended
 	if res := editInS1(t, port); res.Code != 2 || res.Stderr != "Start polix:build before editing the code.\n" {
 		t.Fatalf("other session: %+v", res)
 	}
@@ -1437,5 +1438,17 @@ func TestStartedOtherSessionOrBlocked(t *testing.T) {
 	}
 	if got := startedOf(blocked.appended); len(got) != 0 {
 		t.Fatalf("started %q after a block", got)
+	}
+}
+
+// FND-05: a prompt blocked by an entry of prompt followed by the skill it types leaves no observation started.
+func TestSkillStartBlockedPromptNotRecorded(t *testing.T) {
+	port := &fakePort{yaml: "version: 1\non:\n  prompt:\n    - action: { block: \"No prompts.\" }\n"}
+	res, err := run(context.Background(), port, claudeRequest(promptCall(t, "/polix:build go")))
+	if err != nil || res.Code != 2 {
+		t.Fatalf("blocked prompt: %+v %v", res, err)
+	}
+	if got := startedOf(port.appended); len(got) != 0 {
+		t.Fatalf("started %q after a blocked prompt", got)
 	}
 }

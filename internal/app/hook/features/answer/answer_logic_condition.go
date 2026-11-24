@@ -112,7 +112,7 @@ func (r *pass) condStarted(all workflow.Cond) bool {
 		r.warnLog(err)
 		return false
 	}
-	q := state.Query{Outcome: state.OutcomeStarted, Event: workflow.Skill}
+	q := state.Query{Outcome: state.OutcomeStarted, Session: r.ev.Event.Session, Event: workflow.Skill}
 	if q.Valid() != nil {
 		return false
 	}

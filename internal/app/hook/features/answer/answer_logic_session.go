@@ -72,13 +72,13 @@ func (r *pass) session() agent.Answer {
 }
 
 // observeStart notes that the session or the subagent started, when start and the workflow observes it, and that the
-// skill started when the event is skill and its answer ans does not block, keyed by the name as it came, so the
+// skill started when the event is skill and its call does not block (neither ans nor an earlier event of the call), keyed by the name as it came, so the
 // condition started can read it on any later event whether or not an entry acted on this one.
 func (r *pass) observeStart(start bool, ans agent.Answer) {
 	if start && r.ev.Workflow.ObservesStart() {
 		_ = r.note(0, state.OutcomeStarted, r.ev.Event.Source, "")
 	}
-	if r.ev.Event.Name == workflow.Skill && !ans.Block {
+	if r.ev.Event.Name == workflow.Skill && !ans.Block && !r.ev.Facts.Blocked {
 		_ = r.note(0, state.OutcomeStarted, r.ev.Event.Skill, "")
 	}
 }

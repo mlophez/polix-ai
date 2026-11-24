@@ -97,7 +97,7 @@ below, a line written for an observation is its observation in the record of its
 top-down, holds only what its events do and calls the engine as a library:
 
 - `session` (`answer_logic_session.go`), for `start`, `prompt`, `skill` and `subagent_start`: the session context of `start`
-  (rule 4), the `started` line of `start` and `subagent_start` (rule 6), the context of the missing programs of
+  (rule 4), the `started` line of `start` and `subagent_start` and of a `skill` whose call does not block (rule 6), the context of the missing programs of
   `requirements` on `prompt` (rule 14), and the discard of the once-only injects of a refused `prompt` (rule 6).
   `subagent_start` and `skill` get neither the session context nor the requirements, which are told to the main
   session, and a `block` on `skill` refuses the skill.
@@ -307,7 +307,11 @@ The rules it follows, as before this use case:
      (`hook.Facts.Answered`), drops them: the notices stay due and their messages are logged as not shown. A record that
      cannot be written leaves its notices due again. With `always: true` it shows every time and writes nothing. The once-only injects keep their own rule above:
      their contexts reach the agent with a block, on stderr, except on a refused `prompt`, which is a call of one event.
-   - When the log cannot be read, every verb acts every time, `finished` never holds and the call warns: `polix
+   - On `skill`, after the entries, polix writes `started`, keyed by the skill name as it came, without hash, on every
+     skill start whose call does not block (neither the answer nor an earlier event of the call, as a refused `prompt`
+     before the typed skill), whether or not an entry acted on it, so the condition `started` (rule 8) can read it on
+     any later event.
+   - When the log cannot be read, every verb acts every time, `finished` and `started` never hold and the call warns: `polix
      cannot use its log (<cause>): run, inject, notify and the blocks with once act every time, and finished does not
      hold`.
 7. One stop rule, whatever the verb: the first entry that actually blocks, a `block` or a failing `run` on an event
@@ -331,6 +335,11 @@ The rules it follows, as before this use case:
    ignores the scope, never computes the content hash nor compares trees, and never holds with an unknown HEAD, without
    such a line or with a log that cannot be read (with the warning of rule 6). It is ranked with `finished` among the
    conditions.
+   `started: <skill>` (or a list, any holds) holds when the log of the current session has a `started` of the event
+   `skill` whose key matches a name as the condition `skill` does (`skillMatches`: the name as it came or its bare name),
+   on any event, branch and HEAD (`condStarted`). It reads the log as it was before the event, so the start in
+   progress never counts for itself, and never holds with a log that cannot be read (with the warning of rule 6). It is
+   ranked with `finished` among the conditions.
 9. On `subagent_stop`, after the entries, when the answer does not refuse and no block was let through by the loop
    guard, polix writes an observed line `finished`, the key the type of the subagent: with the content hash when a
    `finished` or a `finished_since_commit` of the workflow names the type (`workflow.Workflow.ObservedSubagents`), so

@@ -1118,8 +1118,8 @@ when it has one, a space and its id:
 - `started`: a session started, resumed, was cleared or was compacted, on `start`, with the `source` the agent gives
   (`startup`, `resume`, `clear` or `compact`) as key, empty when it gives none, or a subagent started, on
   `subagent_start`, with its type as the actor, or a skill started, on `skill`, with the skill name as it came as
-  key, without hash, written on every skill start whose answer does not block, whether or not an entry acted on
-  it, and never when the answer blocks. The lines of `start` and `subagent_start` are written only when the workflow has an `inject` without `always` on
+  key, without hash, written on every skill start whose call does not block, whether or not an entry acted on
+  it, and never when the call blocks. The lines of `start` and `subagent_start` are written only when the workflow has an `inject` without `always` on
   an event other than `start`, `skill` and `subagent_start` (one that acts once, an `inject` of `rules` included),
   `requirements` or `agents_are_running`. The line of `start` makes the once-only injects due again for every actor;
   the line of a subagent only for its type.
