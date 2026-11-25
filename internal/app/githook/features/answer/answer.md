@@ -63,7 +63,8 @@ the outcomes of the runs carried out so far, `githook.Githook.Outcomes`):
    the evaluation goes on with the next entry. Every run runs on every commit: githooks keep no log.
 6. The first entry that aborts ends the evaluation; with none, the commit goes on.
 
-The placeholders `{branch}`, `{message}` on `commit_msg` (the first line of the message) and the variables of `vars`
+The placeholders `{branch}`, `{root}` (the absolute path of the root of the repository, native form, which the shell fills
+from the repository it opens), `{message}` on `commit_msg` (the first line of the message) and the variables of `vars`
 (the first group of their expression on the branch, or the whole match; one that does not match stays as written) expand
 in the message of `block`, the command and the message of `run`, and the patterns of `changed` and `message`; in the
 regular expressions of `message` their values are quoted (`regexp.QuoteMeta`) and matched literally, so a branch such as
@@ -87,6 +88,7 @@ the writers of the terminal of the commit:
 - `Open`: opens the repository that contains the folder through `internal/platform/git`.
 - `LoadWorkflow`: loads polix.yaml through `workflowadapters.File.Load`, for the version of polix running: whether it
   exists, and the error of a file that cannot be used.
+- `Root`: the absolute path of the root of the repository as git gives it, once open; the shell cleans it into the native form (`filepath.Clean(filepath.FromSlash(...))`) for `{root}`.
 - `Branch`: the current branch (`git symbolic-ref`), also on a branch without commits, "" on a detached HEAD.
 - `Staged`: the files staged for the commit, the index against HEAD, every file of the index on a repository without
   commits, deleted ones included and the files modified and not staged left out; git reads the index the hook is

@@ -194,6 +194,26 @@ func TestDecidePlaceholders(t *testing.T) {
 	}
 }
 
+// CUJ-05, AC-01: {root} expands to the root as one argument, whatever its path holds, on pre_commit and commit_msg.
+func TestGithookRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "my repo")
+	wf := gates(workflow.Entry{Action: runs("En {root}", "tool", "--dir", "{root}")})
+	wf.Githooks[workflow.CommitMsg] = wf.Githooks[workflow.PreCommit]
+	for _, ev := range workflow.GithookEvents {
+		g := githook.Githook{Event: ev, Root: root, Message: ""}
+		if ev == workflow.CommitMsg {
+			g.Message = "fix: x\n"
+		}
+		if out := Decide(g, wf, true, nil); !slices.Equal(out.Run, []string{"tool", "--dir", root}) {
+			t.Fatalf("%s: %+v", ev, out)
+		}
+		out := Decide(g.Ran(errors.New("exit status 1")), wf, true, nil)
+		if !slices.Equal(out.Reasons, []string{"En " + root, "tool --dir " + root + " failed: exit status 1"}) {
+			t.Fatalf("%s failed: %+v", ev, out)
+		}
+	}
+}
+
 // AC9: without polix.yaml, or without entries for the event, the commit goes on; a polix.yaml that cannot be used
 // blocks it with its problems.
 func TestDecideWorkflow(t *testing.T) {

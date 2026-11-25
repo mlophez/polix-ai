@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -41,6 +42,8 @@ type Port interface {
 	// LoadWorkflow reads polix.yaml for the polix of version running: whether it exists, and the error of a file
 	// that cannot be read, parsed or used.
 	LoadWorkflow(ctx context.Context, running string) (wf workflow.Workflow, present bool, err error)
+	// Root returns the absolute path of the root of the repository as git gives it, once open.
+	Root(ctx context.Context) string
 	// Branch returns the current branch, "" on a detached HEAD.
 	Branch(ctx context.Context) string
 	// Staged returns the files staged for the commit, relative to the root with slashes; the error tells why git
@@ -119,6 +122,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	if err := port.Open(ctx, req.Dir); err != nil {
 		return Response{}, nil //nolint:nilerr // outside a repository there is nothing to gate
 	}
+	root := filepath.Clean(filepath.FromSlash(port.Root(ctx))) // git gives forward slashes on Windows
 	wf, present, problem := port.LoadWorkflow(ctx, req.Version)
 	branch := port.Branch(ctx)
 	staged, err := port.Staged(ctx)
@@ -132,7 +136,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		}
 		comment = port.CommentChar(ctx)
 	}
-	g = githook.Githook{Event: req.Event, Branch: branch, Staged: staged, Message: message, Comment: comment}
+	g = githook.Githook{Event: req.Event, Branch: branch, Root: root, Staged: staged, Message: message, Comment: comment}
 	if err := g.Valid(); err != nil {
 		return Response{}, err
 	}

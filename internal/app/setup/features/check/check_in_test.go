@@ -185,16 +185,16 @@ func TestCheckCheckOnSave(t *testing.T) {
 		newer   bool
 	}{
 		"guardrails:\n  check_on_save:\n    - run: gofmt -l {path}\n": {"polix.yaml:4: guardrails.check_on_save: " +
-			"unknown placeholder {path} (githooks allow {branch}, or a variable of vars)", false},
+			"unknown placeholder {path} (githooks allow {branch}, {root}, or a variable of vars)", false},
 		"guardrails:\n  check_on_save:\n    - { run: go test, wait_agents: false }\n": {`polix.yaml:4: unknown key ` +
 			`"wait_agents" in guardrails.check_on_save (run, changed, message)`, false},
 		"guardrails:\n  check_on_save:\n    - { run: go test, message: \"{changed_lines} lines\" }\n": {"polix.yaml:4: " +
-			"guardrails.check_on_save: unknown placeholder {changed_lines} (githooks allow {branch}, or a variable of vars)",
+			"guardrails.check_on_save: unknown placeholder {changed_lines} (githooks allow {branch}, {root}, or a variable of vars)",
 			true},
 		"githooks:\n  pre_commit:\n    - action: { run: \"echo {changed_files}\" }\n": {"polix.yaml:4: " +
-			"githooks.pre_commit: unknown placeholder {changed_files} (githooks allow {branch}, or a variable of vars)", true},
+			"githooks.pre_commit: unknown placeholder {changed_files} (githooks allow {branch}, {root}, or a variable of vars)", true},
 		"githooks:\n  pre_commit:\n    - action: { run: \"gofmt -l {path}\" }\n": {"polix.yaml:4: githooks.pre_commit: " +
-			"unknown placeholder {path} (githooks allow {branch}, or a variable of vars)", true},
+			"unknown placeholder {path} (githooks allow {branch}, {root}, or a variable of vars)", true},
 	} {
 		testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\n"+src)
 		code, _, stderr := runCommand(r)

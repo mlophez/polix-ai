@@ -113,6 +113,37 @@ func TestGithookCheckOnSave(t *testing.T) {
 	}
 }
 
+// CUJ-05, AC-05: with the hooks of git installed, a real commit runs a command of githooks.pre_commit that receives
+// the absolute root of the repository, in its native form, as one argument: the failing command shows it in the
+// line of its failure. It skips, naming the version of git, when git does not run the hooks of its configuration.
+func TestGithookRootRun(t *testing.T) {
+	bin := buildPolix(t)
+	testenv.Machine(t, false, false)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	r := testenv.GitRepo(t)
+	if code, stdout, stderr := runSetup("install", "--githooks", "--dir", r); code != 0 {
+		if out, _ := gitOut(r, "hook", "list", "pre-commit"); !strings.Contains(out, "polix-pre-commit") {
+			version, _ := gitOut(r, "--version")
+			t.Skipf("%s does not run the hooks of its configuration (git hook list: %q)", strings.TrimSpace(version), out)
+		}
+		t.Fatalf("install: %d\n%s%s", code, stdout, stderr)
+	}
+	top, _ := gitOut(r, "rev-parse", "--show-toplevel")
+	root := filepath.Clean(filepath.FromSlash(strings.TrimSpace(top)))
+	// git is the only program on the PATH of the test; the command fails with exit 1 and its line holds the root.
+	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\ngithooks:\n  pre_commit:\n    - action:\n"+
+		"        run: git -C {root} rev-parse --verify --quiet refs/heads/none\n")
+	testenv.Write(t, filepath.Join(r, "README.md"), "x\n")
+	mustGit(t, r, "add", "README.md")
+	out, err := gitOut(r, "commit", "-m", "x")
+	want := "polix: git -C " + root + " rev-parse --verify --quiet refs/heads/none failed: exit status 1"
+	if err == nil || !strings.Contains(out, want) {
+		t.Fatalf("the commit: %v\n%s\nwant %q", err, out, want)
+	}
+}
+
 // CUJ-03, AC-02: with the hooks of git installed and a polix.yaml without githooks nor check_on_save, a real commit
 // that stages a broken polix files is aborted by guardrails.builtin.check_polix_files with HEAD unchanged: a
 // polix.yaml with an unknown top-level key, and a rule without description, which only polix config check finds;

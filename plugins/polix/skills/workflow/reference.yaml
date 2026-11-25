@@ -904,7 +904,9 @@ on:
 #   staged for the commit, the index against HEAD) and, only in commit_msg, message (regular expressions of the
 #   first line of the message, without the comment lines of git nor what follows the scissors line). A list holds
 #   when one item matches; a negation goes in unless; any, not and every other condition are rejected.
-# - Placeholders: {branch}, {message} (only in commit_msg) and the variables of vars.
+# - Placeholders: {branch}, {message} (only in commit_msg), {root} (the absolute path of the root of the repository,
+#   native form, one argument of a run) and the variables of vars; the placeholders of the AI ({path}, {session}...)
+#   are rejected.
 # Without polix.yaml or without entries for the event the commit goes on; a polix.yaml that cannot be used aborts
 # every commit with its problems. `git commit --no-verify` skips the hooks: guardrails.builtin.forbid_commit_no_verify
 # refuses it to the agent by default.

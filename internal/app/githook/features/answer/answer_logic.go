@@ -146,7 +146,7 @@ func (e evaluation) failed(message string, argv []string, o githook.Outcome) []s
 	return append(reasons, fmt.Sprintf("%s failed: %v", strings.Join(argv, " "), o.Err))
 }
 
-// expand replaces {branch}, {message} on commit_msg and the variables of vars in s with their values as they are; a
+// expand replaces {branch}, {root}, {message} on commit_msg and the variables of vars in s with their values as they are; a
 // variable whose expression does not match the branch stays as written.
 func (e evaluation) expand(s string) string {
 	return e.replace(s, func(v string) string { return v })
@@ -158,13 +158,13 @@ func (e evaluation) pattern(s string) string {
 	return e.replace(s, regexp.QuoteMeta)
 }
 
-// replace replaces {branch}, {message} on commit_msg and the variables of vars in s with their values passed through
+// replace replaces {branch}, {root}, {message} on commit_msg and the variables of vars in s with their values passed through
 // value.
 func (e evaluation) replace(s string, value func(string) string) string {
 	if !strings.Contains(s, "{") {
 		return s
 	}
-	repl := []string{"{branch}", value(e.g.Branch)}
+	repl := []string{"{branch}", value(e.g.Branch), "{root}", value(e.g.Root)}
 	if e.g.Event == workflow.CommitMsg {
 		repl = append(repl, "{message}", value(e.subject))
 	}

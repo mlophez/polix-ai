@@ -588,7 +588,7 @@ func TestShortcutsProblems(t *testing.T) {
 		"exec always":       `polix.yaml:4: unknown key "always" in guardrails.exec_on_start (run, message)`,
 		"exec changed":      `polix.yaml:4: unknown key "changed" in guardrails.exec_on_start (run, message)`,
 		"exec no run":       "polix.yaml:4: guardrails.exec_on_start: an item needs run",
-		"save placeholder":  "polix.yaml:4: guardrails.check_on_save: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)",
+		"save placeholder":  "polix.yaml:4: guardrails.check_on_save: unknown placeholder {path} (githooks allow {branch}, {root}, or a variable of vars)",
 		"save wait_agents":  `polix.yaml:4: unknown key "wait_agents" in guardrails.check_on_save (run, changed, message)`,
 		"save no run":       "polix.yaml:4: guardrails.check_on_save: an item needs run",
 	}
@@ -784,7 +784,7 @@ func TestAlsoOnSaveProblems(t *testing.T) {
 	for src, want := range map[string]string{
 		fmt.Sprintf(item, "go vet ./...", "3"): "polix.yaml:4: guardrails.check_on_stop: also_on_save must be true or false",
 		fmt.Sprintf(item, "echo {path}", "true"): "polix.yaml:4: placeholder {path} never expands on stop (only on pre_edit, post_edit)\n" +
-			"polix.yaml:4: guardrails.check_on_stop: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)",
+			"polix.yaml:4: guardrails.check_on_stop: unknown placeholder {path} (githooks allow {branch}, {root}, or a variable of vars)",
 	} {
 		_, err := parse(t, src, "dev")
 		var invalid workflow.InvalidError

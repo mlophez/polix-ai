@@ -43,6 +43,9 @@ func (a *Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Wo
 	return loaded.Workflow, true, loaded.Err
 }
 
+// Root returns the root of the repository, as git gives it.
+func (a *Adapter) Root(_ context.Context) string { return a.Repo.Root }
+
 // Branch returns the current branch through git, also on a branch without commits.
 func (a *Adapter) Branch(ctx context.Context) string { return a.Repo.Branch(ctx) }
 

@@ -100,9 +100,9 @@ func TestGithooksProblems(t *testing.T) {
 		{"{message} on pre_commit", PreCommit, entry(nil, githookBlock("{message}")),
 			`polix.yaml:5: githooks.pre_commit: placeholder {message} only expands on commit_msg`},
 		{"{path} on pre_commit", PreCommit, entry(Cond{"changed": "{path}"}, ok),
-			`polix.yaml:5: githooks.pre_commit: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)`},
+			`polix.yaml:5: githooks.pre_commit: unknown placeholder {path} (githooks allow {branch}, {root}, or a variable of vars)`},
 		{"{path} on commit_msg", CommitMsg, entry(nil, run(Run{Command: []string{"echo", "{path}"}})),
-			`polix.yaml:5: githooks.commit_msg: unknown placeholder {path} (githooks allow {branch}, {message}, or a variable of vars)`},
+			`polix.yaml:5: githooks.commit_msg: unknown placeholder {path} (githooks allow {branch}, {message}, {root}, or a variable of vars)`},
 		{"empty changed", PreCommit, entry(Cond{"changed": ""}, ok),
 			`polix.yaml:5: githooks.pre_commit: changed: a pattern cannot be empty`},
 		{"empty message list", CommitMsg, entry(Cond{"message": []any{}}, ok),
@@ -121,7 +121,7 @@ func TestGithooksProblems(t *testing.T) {
 		{"{path} from check_on_save", PreCommit, Entry{When: Cond{"changed": "*.go"},
 			Action: run(Run{Command: []string{"gofmt", "-l", "{path}"}, Keys: []string{"command"}}),
 			From:   "guardrails.check_on_save", Keys: []string{"when", "action"}, Line: 5},
-			`polix.yaml:5: guardrails.check_on_save: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)`},
+			`polix.yaml:5: guardrails.check_on_save: unknown placeholder {path} (githooks allow {branch}, {root}, or a variable of vars)`},
 		{"empty changed from check_on_save", PreCommit, Entry{When: Cond{"changed": ""},
 			Action: run(Run{Command: []string{"go", "vet"}, Keys: []string{"command"}}),
 			From:   "guardrails.check_on_save", Keys: []string{"when", "action"}, Line: 5},
@@ -135,12 +135,41 @@ func TestGithooksProblems(t *testing.T) {
 	}
 }
 
+// CUJ-05, AC-05: {root} expands on each githooks event, and an agent-only placeholder is the githooks problem of an
+// unknown placeholder.
+func TestGithookRootPlaceholder(t *testing.T) {
+	run := func(arg string) Action {
+		return Action{Run: &Run{Command: []string{"tool", arg}, Keys: []string{"command"}}, Keys: []string{VerbRun}}
+	}
+	for _, ev := range GithookEvents {
+		w := githooksWorkflow(map[string][]Entry{ev: {{Action: run("{root}"), Keys: []string{"action"}, Line: 5}}})
+		if p := w.Problems(); len(p) > 0 {
+			t.Errorf("%s: {root}: %q", ev, p)
+		}
+	}
+	want := map[string]string{
+		PreCommit: "polix.yaml:5: githooks.pre_commit: unknown placeholder {session} (githooks allow {branch}, {root}, or a variable of vars)",
+		CommitMsg: "polix.yaml:5: githooks.commit_msg: unknown placeholder {session} (githooks allow {branch}, {message}, {root}, or a variable of vars)",
+	}
+	for ev, text := range want {
+		w := githooksWorkflow(map[string][]Entry{ev: {{Action: run("{session}"), Keys: []string{"action"}, Line: 5}}})
+		p := w.Problems()
+		if len(p) != 1 || p[0] != text {
+			t.Fatalf("%s: %q", ev, p)
+		}
+		// As {path} today, the problem of an entry written in githooks is not Known: only a shortcut's is (renamed.go).
+		if Problem(p[0]).Known() {
+			t.Errorf("%s: the problem of a written entry stays as it was", ev)
+		}
+	}
+}
+
 // With entries in githooks, a variable cannot take the name of the built-in {message} of githooks, which would
 // shadow it on commit_msg, and {message} stays unknown in on.
 func TestGithooksReservedVarName(t *testing.T) {
 	w := githooksWorkflow(map[string][]Entry{PreCommit: {{Action: githookBlock("b"), Keys: []string{"action"}, Line: 5}}})
 	w.Vars["message"] = Var{Branch: "^(.*)$", Keys: []string{"branch"}}
-	want := "polix.yaml: var message: the name is a built-in placeholder of githooks (branch, message)"
+	want := "polix.yaml: var message: the name is a built-in placeholder of githooks (branch, message, root)"
 	if got := w.Problems(); len(got) != 1 || got[0] != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}

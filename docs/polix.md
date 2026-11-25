@@ -654,7 +654,7 @@ entry.
   `check_on_save` and before those written there, from `guardrails.check_on_stop` at the line of the item;
   `wait_agents` applies only to its entry on `stop`. Its strings are then also checked with the vocabulary of
   `githooks`, so a placeholder git can never give (`{path}`) is the problem `guardrails.check_on_stop: unknown
-  placeholder {path} (githooks allow {branch}, or a variable of vars)`, never with the hint of a newer polix. It is
+  placeholder {path} (githooks allow {branch}, {root}, or a variable of vars)`, never with the hint of a newer polix. It is
   `false` when left out, and another value is the problem `guardrails.check_on_stop: also_on_save must be true or
   false`. A polix older than it reports `also_on_save` as an unknown key of the item, so set `requires`.
 - `check_on_save`, a list of items with `run`, `changed` and `message`: a regular entry on `githooks.pre_commit` per
@@ -1428,8 +1428,9 @@ The vocabulary is small and its own, checked by `polix config check` at the line
   a list of them of which one matches a file staged for the commit; and, only in `commit_msg`, `message`, a regular
   expression or a list of them of which one matches the first line of the message. A list holds when one item
   matches; a negation is written in `unless`. `any`, `not` and every other condition are rejected.
-- Placeholders: `{branch}`, `{message}` (the first line of the message, only in `commit_msg`) and the variables of
-  `vars`, in the messages and the command of the verbs and in the patterns of `changed` and `message`. In the
+- Placeholders: `{branch}`, `{message}` (the first line of the message, only in `commit_msg`), `{root}` (the absolute
+  path of the root of the repository, in the native form of the system, one argument of a `run` whatever it holds)
+  and the variables of `vars`, in the messages and the command of the verbs and in the patterns of `changed` and `message`. In the
   regular expressions of `message` their values are matched literally: on branch `fix/c++`, `^{branch}: ` matches
   `fix/c++: ` as written. Once `githooks` has an entry, a variable cannot be named `message`; without entries the
   name stays valid, so `{message}` in `on` keeps expanding such a variable.

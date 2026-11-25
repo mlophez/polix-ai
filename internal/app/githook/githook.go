@@ -24,6 +24,7 @@ import (
 type Githook struct {
 	Event  string   // the event of githooks, one of workflow.GithookEvents
 	Branch string   // the current branch, "" on a detached HEAD
+	Root   string   // the absolute path of the root of the repository, in the native form of the system
 	Staged []string // the files staged for the commit, relative to the root with slashes
 	// Message is the message of the commit as git wrote it to the file of commit-msg, comments included; only on
 	// workflow.CommitMsg. The logic takes its first line, without the lines that start with Comment.

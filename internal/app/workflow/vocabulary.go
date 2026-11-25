@@ -116,7 +116,7 @@ var GithookConditions = []string{"branch", "changed", "message"}
 
 // GithookBuiltins are the placeholders the strings of githooks may use besides the variables of vars; message
 // expands only on CommitMsg (githookOnly).
-var GithookBuiltins = []string{"branch", "message"}
+var GithookBuiltins = []string{"branch", "message", "root"}
 
 // GithookRunKeys and GithookBlockKeys are the keys of the long form of run and block in githooks, in the order of
 // RunKeys and BlockKeys: githooks keep no log, so a run runs on every commit (no always) and a block blocks every

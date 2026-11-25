@@ -31,6 +31,7 @@ type fake struct {
 	message   string           // the content of the message file
 	msgErr    error            // why the message file cannot be read
 	comment   string           // the comment string of git
+	root      string           // the root of the repository, as git gives it
 }
 
 // TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
@@ -63,6 +64,11 @@ func (f *fake) LoadWorkflow(_ context.Context, _ string) (workflow.Workflow, boo
 	return f.wf, f.present, f.problem
 }
 
+func (f *fake) Root(_ context.Context) string {
+	f.asked = append(f.asked, "root")
+	return f.root
+}
+
 func (f *fake) Branch(_ context.Context) string {
 	f.asked = append(f.asked, "branch")
 	return f.branch
@@ -88,7 +94,7 @@ func TestRunExitCodes(t *testing.T) {
 	if err != nil || res.Code != 1 || !slices.Equal(res.Reasons, []string{"No se commitea en main"}) {
 		t.Fatalf("on main: %+v %v", res, err)
 	}
-	if !slices.Equal(f.asked, []string{"open", "workflow", "branch", "staged"}) {
+	if !slices.Equal(f.asked, []string{"open", "root", "workflow", "branch", "staged"}) {
 		t.Fatalf("asked: %q", f.asked)
 	}
 	f = &fake{present: true, branch: "feature", wf: f.wf}
@@ -137,7 +143,7 @@ func TestRunCommitMsg(t *testing.T) {
 	if err != nil || res.Code != 1 || !slices.Equal(res.Reasons, []string{"Empieza por fix: arregla"}) {
 		t.Fatalf("got %+v %v", res, err)
 	}
-	if !slices.Equal(f.asked, []string{"open", "workflow", "branch", "staged", "message .git/COMMIT_EDITMSG",
+	if !slices.Equal(f.asked, []string{"open", "root", "workflow", "branch", "staged", "message .git/COMMIT_EDITMSG",
 		"comment"}) {
 		t.Fatalf("asked: %q", f.asked)
 	}
@@ -151,7 +157,7 @@ func TestRunCommitMsg(t *testing.T) {
 	}
 	f = &fake{present: true, wf: wf}
 	if _, err := run(ctx, f, Request{Event: workflow.PreCommit}); err != nil ||
-		!slices.Equal(f.asked, []string{"open", "workflow", "branch", "staged"}) {
+		!slices.Equal(f.asked, []string{"open", "root", "workflow", "branch", "staged"}) {
 		t.Fatalf("pre_commit: %v %q", err, f.asked)
 	}
 }
@@ -202,5 +208,17 @@ func TestCommand(t *testing.T) {
 	if code := cli.Run(root, []string{"githook", "commit-msg", missing, "--dir", repo}, strings.NewReader(""), &stdout,
 		&stderr); code != 1 || !strings.HasPrefix(stderr.String(), "polix githook: ") {
 		t.Fatalf("unreadable message: exit %d, stderr %q", code, stderr.String())
+	}
+}
+
+// CUJ-05, AC-01: the shell fills the root of the repository in its native form, so {root} reaches the run as one
+// argument, also with a space in the path and the forward slashes git gives on Windows.
+func TestRunRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "my repo")
+	wf := gates(workflow.Entry{Action: runs("", "tool", "--dir", "{root}")})
+	f := &fake{present: true, wf: wf, root: filepath.ToSlash(root)}
+	if _, err := run(context.Background(), f, Request{Event: workflow.PreCommit}); err != nil ||
+		!slices.Equal(f.ran, []string{"tool --dir " + root}) {
+		t.Fatalf("ran: %q %v", f.ran, err)
 	}
 }
