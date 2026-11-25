@@ -48,7 +48,7 @@ func TestExpand(t *testing.T) {
 }
 
 // CUJ-07: {commit} and {subject} give the hash and the subject of the commit just made on post_commit, read only
-// when a string holds one of them, and an empty text on any other event, without asking for the commit.
+// when a string holds one of them; on any other event the validator rejects them (placeholderEvents).
 func TestExpandCommitByEvent(t *testing.T) {
 	const entry = "    - action: { inject: \"Comment commit {commit} ({subject}) on {branch}.\" }\n"
 	commit := hook.Commit{Hash: "abc1234", Subject: "feat: login form"}
@@ -60,16 +60,6 @@ func TestExpandCommitByEvent(t *testing.T) {
 	if n := len(asked(steps, func(s hook.Step) bool { return s.Commit })); n != 1 {
 		t.Fatalf("post_commit asked for the commit %d times", n)
 	}
-	for _, event := range []string{workflow.PreCommit, workflow.PostCommand} {
-		before := eval(t, "version: 1\non:\n  "+event+":\n"+entry, event)
-		out, steps := walk(t, before, facts{branch: "main", commit: commit})
-		if !slices.Equal(out.Answer.Contexts, []string{"Comment commit  () on main."}) {
-			t.Fatalf("%s: %+v", event, out.Answer)
-		}
-		if asked(steps, func(s hook.Step) bool { return s.Commit }) != nil {
-			t.Fatalf("%s asked for the commit", event)
-		}
-	}
 	plain := eval(t, "version: 1\non:\n  post_commit:\n    - action: { inject: \"Done on {branch}\" }\n", workflow.PostCommit)
 	if _, steps := walk(t, plain, facts{branch: "main"}); asked(steps, func(s hook.Step) bool { return s.Commit }) != nil {
 		t.Fatal("a string without {commit} or {subject} asked for the commit")
@@ -77,7 +67,7 @@ func TestExpandCommitByEvent(t *testing.T) {
 }
 
 // AC-06: {skill} expands to the name of the skill as it came, its prefix included, on the event skill, and to an
-// empty text on any other event.
+// empty text when the event holds none.
 func TestExpandSkill(t *testing.T) {
 	ev := agent.Event{Name: workflow.Skill, Skill: "polix:spec"}
 	if got := expandPlaceholders("Skill {skill} started.", ev, "main", nil, nil, hook.Commit{}); got != "Skill polix:spec started." {
@@ -91,10 +81,6 @@ func TestExpandSkill(t *testing.T) {
 	out, _ := walk(t, skillEval(t, "version: 1\non:\n  skill:\n"+entry, "polix:spec"), facts{branch: "main"})
 	if !slices.Equal(out.Answer.Contexts, []string{"Skill polix:spec started."}) {
 		t.Fatalf("skill: %+v", out.Answer)
-	}
-	out, _ = walk(t, eval(t, "version: 1\non:\n  prompt:\n"+entry, workflow.Prompt), facts{branch: "main"})
-	if !slices.Equal(out.Answer.Contexts, []string{"Skill  started."}) {
-		t.Fatalf("prompt: %+v", out.Answer)
 	}
 }
 

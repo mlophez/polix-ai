@@ -114,11 +114,11 @@ on:
 		// FND-03: an empty list, or a type that expands to an empty text, never holds, even on a line of another type.
 		{"an empty list", "[]", "main", "c1",
 			[]entry{line("polix:reviewer", "main", "c1", "h")}, true},
-		{"a placeholder empty on the event", `"{path}"`, "main", "c1",
+		{"a placeholder empty on the event", `"{command}"`, "main", "c1",
 			[]entry{line("polix:reviewer", "main", "c1", "h")}, true},
 		{"a var empty on the branch", `"{key}"`, "main", "c1",
 			[]entry{line("polix:reviewer", "main", "c1", "h")}, true},
-		{"an empty type in a list", `[polix:builder, "{path}"]`, "main", "c1",
+		{"an empty type in a list", `[polix:builder, "{command}"]`, "main", "c1",
 			[]entry{line("polix:builder", "main", "c1", "h")}, true},
 	}
 	for _, c := range cases {
@@ -168,7 +168,7 @@ on:
 	reviewed := stateOf(entry{Kind: kindObserved, Outcome: state.OutcomeFinished,
 		Session: "s1", Event: workflow.SubagentStop, Actor: "polix:reviewer", Key: "polix:reviewer",
 		Branch: "main", Hash: "h", Head: "c1"})
-	for _, types := range []string{"polix:reviewer", "[]", `"{path}"`, `"{key}"`, `[polix:reviewer, "{path}"]`} {
+	for _, types := range []string{"polix:reviewer", "[]", `"{command}"`, `"{key}"`, `[polix:reviewer, "{command}"]`} {
 		t.Run(types, func(t *testing.T) {
 			f := facts{branch: "main", head: "c1", hashes: []string{"h"}, state: reviewed,
 				changed: []string{"internal/a.go"}}

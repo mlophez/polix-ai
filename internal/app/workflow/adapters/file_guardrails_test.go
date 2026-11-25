@@ -782,8 +782,9 @@ func TestBuiltinInvalidPath(t *testing.T) {
 func TestAlsoOnSaveProblems(t *testing.T) {
 	const item = "version: 1\nguardrails:\n  check_on_stop:\n    - run: %s\n      also_on_save: %s\n"
 	for src, want := range map[string]string{
-		fmt.Sprintf(item, "go vet ./...", "3"):   "polix.yaml:4: guardrails.check_on_stop: also_on_save must be true or false",
-		fmt.Sprintf(item, "echo {path}", "true"): "polix.yaml:4: guardrails.check_on_stop: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)",
+		fmt.Sprintf(item, "go vet ./...", "3"): "polix.yaml:4: guardrails.check_on_stop: also_on_save must be true or false",
+		fmt.Sprintf(item, "echo {path}", "true"): "polix.yaml:4: placeholder {path} never expands on stop (only on pre_edit, post_edit)\n" +
+			"polix.yaml:4: guardrails.check_on_stop: unknown placeholder {path} (githooks allow {branch}, or a variable of vars)",
 	} {
 		_, err := parse(t, src, "dev")
 		var invalid workflow.InvalidError
@@ -791,11 +792,13 @@ func TestAlsoOnSaveProblems(t *testing.T) {
 			t.Errorf("%q: got %v, want %s", src, err, want)
 			continue
 		}
-		if strings.Contains(want, "unknown") && !workflow.Problem(want).Known() {
-			t.Errorf("%q: the problem would suggest a newer polix", src)
+		for p := range strings.SplitSeq(want, "\n") {
+			if strings.Contains(p, "placeholder") && !workflow.Problem(p).Known() {
+				t.Errorf("%q: the problem would suggest a newer polix", src)
+			}
 		}
 	}
-	if _, err := parse(t, fmt.Sprintf(item, "echo {path}", "false"), "dev"); err != nil {
+	if _, err := parse(t, fmt.Sprintf(item, "echo {risk_score}", "false"), "dev"); err != nil {
 		t.Errorf("also_on_save false: %v", err)
 	}
 	w, err := parse(t, fmt.Sprintf(item, "go vet ./...", "true"), "dev")

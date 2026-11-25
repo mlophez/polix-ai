@@ -84,7 +84,7 @@ func TestInjectsOnce(t *testing.T) {
 		once  bool
 	}{
 		{PreEdit, Entry{Action: inject(Inject{Text: "x"})}, true},
-		{Prompt, Entry{Action: inject(Inject{Rules: "{path}", Keys: []string{"rules"}})}, true},
+		{Prompt, Entry{Action: inject(Inject{Rules: "{branch}", Keys: []string{"rules"}})}, true},
 		{PreEdit, Entry{Action: inject(Inject{Text: "x", Always: true, Keys: []string{"text", "always"}})}, false},
 		{Start, Entry{Action: inject(Inject{Text: "x"})}, false},
 		{PostCommit, Entry{Action: inject(Inject{Text: "x"})}, false},
@@ -223,5 +223,75 @@ func TestForbiddenCommandValid(t *testing.T) {
 		"polix.yaml:4: guardrails.forbidden_commands: an item needs a pattern"
 	if got := strings.Join(w.Problems(), "\n"); got != want {
 		t.Fatalf("problems: %q", got)
+	}
+}
+
+// placeholderEntry builds an entry of one verb with the text s, at line.
+func placeholderEntry(verb, s string, line int) Entry {
+	a := Action{Keys: []string{verb}}
+	switch verb {
+	case VerbRun:
+		a.Run = &Run{Command: []string{"tool", s}}
+	case VerbInject:
+		a.Inject = &Inject{Text: s}
+	case VerbBlock:
+		a.Block = &Block{Message: s}
+	default:
+		a.Notify = &Notify{Message: s}
+	}
+	return Entry{Action: a, Keys: []string{"action"}, Line: line}
+}
+
+// CUJ-03, AC-03: a built-in placeholder written on an event outside its applicable events is a problem at the line of
+// its entry, one per occurrence; on its events, or without an event, it is none.
+func TestPlaceholderEvents(t *testing.T) {
+	cases := []struct{ ph, ev, verb, want string }{
+		{"commit", PreEdit, VerbBlock, "placeholder {commit} never expands on pre_edit (only on post_commit)"},
+		{"skill", Start, VerbInject, "placeholder {skill} never expands on start (only on skill)"},
+		{"path", Stop, VerbNotify, "placeholder {path} never expands on stop (only on pre_edit, post_edit)"},
+		{"command", PostEdit, VerbRun,
+			"placeholder {command} never expands on post_edit (only on pre_command, post_command, pre_commit, post_commit)"},
+		{"subject", PostEdit, VerbNotify, "placeholder {subject} never expands on post_edit (only on post_commit)"},
+	}
+	for _, c := range cases {
+		w := Workflow{Version: 1, On: map[string][]Entry{c.ev: {placeholderEntry(c.verb, "x {"+c.ph+"}", 7)}}}
+		got := w.Problems()
+		if len(got) != 1 || got[0] != "polix.yaml:7: "+c.want {
+			t.Errorf("{%s} on %s: %q", c.ph, c.ev, got)
+		}
+	}
+	two := Workflow{Version: 1, On: map[string][]Entry{Stop: {placeholderEntry(VerbNotify, "{path} {path}", 3)}}}
+	if got := two.Problems(); len(got) != 2 {
+		t.Errorf("one problem per occurrence: %q", got)
+	}
+	for ev, ph := range map[string]string{PostEdit: "path", PreEdit: "path", PostCommand: "command", PreCommit: "command",
+		PostCommit: "commit", Skill: "skill", Stop: "branch", Start: "risk_score"} {
+		w := Workflow{Version: 1, On: map[string][]Entry{ev: {placeholderEntry(VerbRun, "{"+ph+"}", 4)}}}
+		if got := w.Problems(); len(got) != 0 {
+			t.Errorf("{%s} on %s: %q", ph, ev, got)
+		}
+	}
+	if err := placeholderEntry(VerbNotify, "{commit} {skill}", 2).Valid(); err != nil {
+		t.Errorf("an entry without an event: %v", err)
+	}
+	w := Workflow{Version: 1, On: map[string][]Entry{Stop: {{
+		When: Cond{"contains": "{path}", "file": "a"}, Action: placeholderEntry(VerbBlock, "x", 5).Action, Line: 5}}}}
+	if got := w.Problems(); len(got) != 1 || !strings.Contains(got[0], "placeholder {path} never expands on stop") {
+		t.Errorf("a placeholder of a condition: %q", got)
+	}
+}
+
+// AC-03: the entries a shortcut expands into are checked on the event they expand into.
+func TestPlaceholderEventsShortcut(t *testing.T) {
+	item := func(run string) []GuardrailCheck { return []GuardrailCheck{{Run: []string{"tool", run}, Line: 6}} }
+	check := (Workflow{Version: 1}).Guard(Guardrails{CheckOnStop: item("{path}")})
+	got := check.Problems()
+	want := "polix.yaml:6: placeholder {path} never expands on stop (only on pre_edit, post_edit)"
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("check_on_stop: %q", got)
+	}
+	format := (Workflow{Version: 1}).Guard(Guardrails{FormatOnEdit: item("{path}")})
+	if got := format.Problems(); len(got) != 0 {
+		t.Errorf("format_on_edit: %q", got)
 	}
 }

@@ -343,17 +343,24 @@ func (v *validator) unknownKeys(line int, what string, keys, allowed []string) {
 	}
 }
 
-// placeholders reports the placeholders of s that are neither built in nor a variable, which would otherwise
-// stay in the text as is. Without a workflow the variables are unknown and nothing is reported.
-func (v *validator) placeholders(line int, s string) {
+// placeholders reports the placeholders of s, written on event ev, that are neither built in nor a variable, which
+// would otherwise stay in the text as is, and the built-in ones outside their events (placeholderEvents), which
+// would always expand to an empty text; an empty ev skips the events. Without a workflow the variables are unknown
+// and nothing is reported.
+func (v *validator) placeholders(ev string, line int, s string) {
 	if v.w == nil {
 		return
 	}
 	for _, m := range placeholder.FindAllStringSubmatch(s, -1) {
-		if name := m[1]; !slices.Contains(Builtins, name) {
-			if _, ok := v.w.Vars[name]; !ok {
-				v.add(line, "unknown placeholder {%s} (built in: %s; or a variable of vars)", name, strings.Join(Builtins, ", "))
+		name := m[1]
+		if slices.Contains(Builtins, name) {
+			if only, ok := placeholderEvents[name]; ok && ev != "" && !slices.Contains(only, ev) {
+				v.add(line, "placeholder {%s} never expands on %s (only on %s)", name, ev, strings.Join(only, ", "))
 			}
+			continue
+		}
+		if _, ok := v.w.Vars[name]; !ok {
+			v.add(line, "unknown placeholder {%s} (built in: %s; or a variable of vars)", name, strings.Join(Builtins, ", "))
 		}
 	}
 }

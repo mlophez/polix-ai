@@ -374,11 +374,11 @@ guardrails:
       message: "TypeScript no compila: no se commitea."
 
 # Placeholders, replaced in the strings of conditions (except `branch`), verbs and `contains`; an unknown one
-# is rejected by `polix config check`:
-# - {path}: the edited path, relative to the root (pre_edit and post_edit; empty elsewhere);
-# - {command}: the whole command line (pre_command, post_command, pre_commit and post_commit; empty elsewhere);
-# - {commit}, {subject}: the short hash and the subject of the commit just made (post_commit; empty elsewhere);
-# - {skill}: the name of the skill that starts, as it came, with the prefix of its plugin (skill; empty elsewhere);
+# is rejected by `polix config check`, and so is one written on an event that never gives it:
+# - {path}: the edited path, relative to the root (only pre_edit and post_edit);
+# - {command}: the whole command line (only pre_command, post_command, pre_commit and post_commit);
+# - {commit}, {subject}: the short hash and the subject of the commit just made (only post_commit);
+# - {skill}: the name of the skill that starts, as it came, with the prefix of its plugin (only skill);
 # - {branch}: the current branch;
 # - {changed_lines}, {changed_files}, {risk_score}: the measures of the change not committed yet (on post_commit,
 #   of the commit just made), over the files of the `changed` of the `when` of the entry, else the whole change; `?` when git cannot measure it. The change is

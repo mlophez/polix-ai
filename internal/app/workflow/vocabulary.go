@@ -59,6 +59,16 @@ var conditionEvents = map[string][]string{
 	"skill":   {Skill},
 }
 
+// placeholderEvents limits the built-in placeholders that only expand on some agent events; the rest hold on every
+// one. A placeholder written on another event would always be empty, so the validator rejects it.
+var placeholderEvents = map[string][]string{
+	"path":    {PreEdit, PostEdit},
+	"command": {PreCommand, PostCommand, PreCommit, PostCommit},
+	"commit":  {PostCommit},
+	"subject": {PostCommit},
+	"skill":   {Skill},
+}
+
 // Informed are the events that already happened when polix hears of them: a block cannot stop them, and a failing
 // run only reaches the AI as context. Neither agent can stop the start of a subagent; the start of a skill comes
 // before it runs, so a block refuses it.

@@ -73,14 +73,20 @@ var (
 	saveKey = regexp.MustCompile(`unknown key "([^"]*)" in guardrails\.check_on_save \(`)
 )
 
+// wrongEvent finds the problem of a built-in placeholder written on an event that never gives it.
+var wrongEvent = regexp.MustCompile(`placeholder \{[A-Za-z_][A-Za-z0-9_]*\} never expands on [a-z_]+ \(only on `)
+
 // Known reports whether the problem is about a name this polix knows, never an option of a newer polix: a name of the
-// old vocabulary (Renamed), or, in an item of check_on_save or of check_on_stop with also_on_save, a name of on that
+// old vocabulary (Renamed), a built-in placeholder written on an event that never gives it (placeholderEvents), or, in an item of check_on_save or of check_on_stop with also_on_save, a name of on that
 // git can never give its hooks, since it runs them without a session and before the commit: a placeholder only an
 // event of an agent gives (AgentOnlyBuiltins), or, in check_on_save, a key of check_on_stop (wait_agents,
 // also_on_save). A measure of the diff, which git can compute, may be an option of a newer polix there, as any
 // unknown name in an entry written in githooks.
 func (p Problem) Known() bool {
 	if p.Renamed() {
+		return true
+	}
+	if wrongEvent.MatchString(string(p)) {
 		return true
 	}
 	if m := savePlaceholder.FindStringSubmatch(string(p)); m != nil {

@@ -166,9 +166,9 @@ func (v *validator) condition(ev string, c Cond, k string, line int, inAny bool)
 			v.add(line, "agents_are_running needs true or false")
 		}
 	case "contains":
-		v.condContains(c, line, inAny)
+		v.condContains(ev, c, line, inAny)
 	default:
-		v.condStrings(c, k, line)
+		v.condStrings(ev, c, k, line)
 	}
 }
 
@@ -210,7 +210,7 @@ func (v *validator) condBranch(c Cond, line int) {
 
 // condContains reports the problems of the `contains` of c: a value that is not a text, no file next to it, or a
 // place inside an any (inAny).
-func (v *validator) condContains(c Cond, line int, inAny bool) {
+func (v *validator) condContains(ev string, c Cond, line int, inAny bool) {
 	s, ok := c["contains"].(string)
 	if !ok {
 		v.add(line, "contains needs a text")
@@ -222,13 +222,13 @@ func (v *validator) condContains(c Cond, line int, inAny bool) {
 		v.add(line, "contains cannot go inside any, where it holds on its own: put file and contains "+
 			"next to the any, or in a not inside it")
 	}
-	v.placeholders(line, s)
+	v.placeholders(ev, line, s)
 }
 
 // condStrings reports the problems of the condition k of c whose value is a string or a list of strings: another
 // value, a placeholder that is not known, an empty finished or finished_since_commit (an empty list or a blank type),
 // an empty skill or started (an empty list or a blank name) or a var not defined in vars.
-func (v *validator) condStrings(c Cond, k string, line int) {
+func (v *validator) condStrings(ev string, c Cond, k string, line int) {
 	list, err := c.Strings(k)
 	if err != nil {
 		v.add(line, "%s: %v", k, err)
@@ -239,7 +239,7 @@ func (v *validator) condStrings(c Cond, k string, line int) {
 		v.add(line, "%s needs %s", k, need)
 	}
 	for _, s := range list {
-		v.placeholders(line, s)
+		v.placeholders(ev, line, s)
 		if named && strings.TrimSpace(s) == "" {
 			v.add(line, "%s needs %s", k, need)
 		}

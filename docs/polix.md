@@ -922,10 +922,15 @@ without `/` matches the base name anywhere (`*.md`), and a leading `/` anchors i
 (`/polix.yaml` is the file of the root, not `examples/polix.yaml`).
 Strings may use `{path}`, `{command}`, `{branch}`, `{changed_lines}`, `{changed_files}`, `{risk_score}`, `{commit}`,
 `{subject}`, `{skill}` and the variables, which cannot take those built-in names. `{skill}` is the name of the skill
-that starts, as it came and with the prefix of its plugin, on `skill`, and an empty text on any other event; the
-arguments of the skill have no placeholder. `{commit}` and `{subject}` are the short hash
-and the subject of the commit just made (`git log -1 --format=%h` and `--format=%s`) on `post_commit`, and an empty
-text on any other event.
+that starts, as it came and with the prefix of its plugin, on `skill`; the arguments of the skill have no
+placeholder. `{commit}` and `{subject}` are the short hash and the subject of the commit just made
+(`git log -1 --format=%h` and `--format=%s`) on `post_commit`.
+`{path}` is only for `pre_edit` and `post_edit`, and `{command}` only for `pre_command`, `post_command`,
+`pre_commit` and `post_commit`. `polix config check` rejects a placeholder written on an event that never gives it,
+instead of expanding it to an empty text, with one problem per occurrence at the line of its entry:
+`placeholder {commit} never expands on pre_edit (only on post_commit)`. It also checks the entries a shortcut expands
+into on the event they expand into (`{path}` in a `check_on_stop` item is rejected). A problem of this kind never
+suggests a newer polix. A file that wrote a placeholder on another event stops validating: move it to its events.
 
 ### Measures of the change
 
@@ -1196,8 +1201,8 @@ before a failing check.
 `notify` and `vars` too), an entry without `action`, an `action` without a verb or with two, a verb the event does
 not allow (see [Verbs](#verbs)), a `run` without exactly one of `command` and `rules`, an `inject` without exactly one
 of `file`, `text` and `rules`, a `block` or a `notify` without `message`, a `once` or `always` that is not a boolean or sits in the
-wrong verb, `contains` inside `any`, variables and placeholders that are not defined, and conditions on events where
-they never hold, so a typo never turns into an entry that silently stops applying. It also rejects an entry that
+wrong verb, `contains` inside `any`, variables and placeholders that are not defined, placeholders and conditions on
+events where they never hold, so a typo never turns into an entry that silently stops applying. It also rejects an entry that
 never runs: one that follows, in the same event, a `block` without `when`, `unless` or `once`, which blocks every
 time and ends the evaluation (see [How the entries of an event are evaluated](#how-the-entries-of-an-event-are-evaluated)).
 The problem is at the line of the later entry, as `never runs: the entry of line M always blocks the event`, and an

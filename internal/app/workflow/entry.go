@@ -134,7 +134,7 @@ func (a Action) verbs() []string {
 // Valid tells why the run is not valid: an unknown key, not exactly one of command or rules.
 func (r Run) Valid() error {
 	v := &validator{}
-	v.run(0, r)
+	v.run("", 0, r)
 	if len(v.problems) > 0 {
 		return InvalidError(v.problems)
 	}
@@ -144,7 +144,7 @@ func (r Run) Valid() error {
 // Valid tells why the inject is not valid: an unknown key or not exactly one of file, text or rules.
 func (c Inject) Valid() error {
 	v := &validator{}
-	v.inject(0, c)
+	v.inject("", 0, c)
 	if len(v.problems) > 0 {
 		return InvalidError(v.problems)
 	}
@@ -154,7 +154,7 @@ func (c Inject) Valid() error {
 // Valid tells why the block is not valid: an unknown key or no message.
 func (b Block) Valid() error {
 	v := &validator{}
-	v.block(0, b)
+	v.block("", 0, b)
 	if len(v.problems) > 0 {
 		return InvalidError(v.problems)
 	}
@@ -164,7 +164,7 @@ func (b Block) Valid() error {
 // Valid tells why the notify is not valid: an unknown key or no message.
 func (n Notify) Valid() error {
 	v := &validator{}
-	v.notify(0, n)
+	v.notify("", 0, n)
 	if len(v.problems) > 0 {
 		return InvalidError(v.problems)
 	}
@@ -213,16 +213,16 @@ func (v *validator) action(ev string, line int, a Action, old bool) {
 		v.add(line, "the action has several verbs (%s): use one entry per verb", strings.Join(verbs, ", "))
 	}
 	if a.Run != nil {
-		v.run(line, *a.Run)
+		v.run(ev, line, *a.Run)
 	}
 	if a.Inject != nil {
-		v.inject(line, *a.Inject)
+		v.inject(ev, line, *a.Inject)
 	}
 	if a.Block != nil {
-		v.block(line, *a.Block)
+		v.block(ev, line, *a.Block)
 	}
 	if a.Notify != nil {
-		v.notify(line, *a.Notify)
+		v.notify(ev, line, *a.Notify)
 	}
 	v.allowed(ev, line, verbs)
 }
@@ -265,48 +265,48 @@ func (v *validator) actionKeys(line int, a Action) bool {
 	return oldVerbs
 }
 
-// run reports the problems of the run r at line.
-func (v *validator) run(line int, r Run) {
+// run reports the problems of the run r of event ev at line.
+func (v *validator) run(ev string, line int, r Run) {
 	v.unknownKeys(line, "run", r.Keys, RunKeys)
 	if (len(r.Command) == 0) == (r.Rules == "") {
 		v.add(line, "run needs exactly one of command or rules")
 	}
 	for _, a := range r.Command {
-		v.placeholders(line, a)
+		v.placeholders(ev, line, a)
 	}
-	v.placeholders(line, r.Rules)
-	v.placeholders(line, r.Message)
+	v.placeholders(ev, line, r.Rules)
+	v.placeholders(ev, line, r.Message)
 }
 
-// inject reports the problems of c at line, its keys first; the event is checked by allowed.
-func (v *validator) inject(line int, c Inject) {
+// inject reports the problems of c of event ev at line, its keys first; the event is checked by allowed.
+func (v *validator) inject(ev string, line int, c Inject) {
 	v.unknownKeys(line, "inject", c.Keys, InjectKeys)
 	n := 0
 	for _, s := range []string{c.File, c.Text, c.Rules} {
 		if s != "" {
 			n++
 		}
-		v.placeholders(line, s)
+		v.placeholders(ev, line, s)
 	}
 	if n != 1 {
 		v.add(line, "inject needs exactly one of file, text or rules")
 	}
 }
 
-// block reports the problems of b at line, its keys first; the event is checked by allowed.
-func (v *validator) block(line int, b Block) {
+// block reports the problems of b of event ev at line, its keys first; the event is checked by allowed.
+func (v *validator) block(ev string, line int, b Block) {
 	v.unknownKeys(line, "block", b.Keys, BlockKeys)
 	if strings.TrimSpace(b.Message) == "" {
 		v.add(line, "block needs a message")
 	}
-	v.placeholders(line, b.Message)
+	v.placeholders(ev, line, b.Message)
 }
 
-// notify reports the problems of n at line, its keys first; the event is checked by allowed.
-func (v *validator) notify(line int, n Notify) {
+// notify reports the problems of n of event ev at line, its keys first; the event is checked by allowed.
+func (v *validator) notify(ev string, line int, n Notify) {
 	v.unknownKeys(line, "notify", n.Keys, NotifyKeys)
 	if strings.TrimSpace(n.Message) == "" {
 		v.add(line, "notify needs a message")
 	}
-	v.placeholders(line, n.Message)
+	v.placeholders(ev, line, n.Message)
 }

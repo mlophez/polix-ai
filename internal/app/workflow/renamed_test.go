@@ -75,3 +75,15 @@ func TestProblemKnown(t *testing.T) {
 		}
 	}
 }
+
+// AC-03: the problem of a placeholder on an event that never gives it is known, never an option of a newer polix.
+func TestPlaceholderEventsKnown(t *testing.T) {
+	p := "polix.yaml:4: placeholder {commit} never expands on pre_edit (only on post_commit)"
+	if !Problem(p).Known() {
+		t.Errorf("Known(%s) = false", p)
+	}
+	q := "polix.yaml:4: placeholder {path} never expands on stop (only on pre_edit, post_edit)"
+	if !Problem(q).Known() {
+		t.Errorf("Known(%s) = false", q)
+	}
+}

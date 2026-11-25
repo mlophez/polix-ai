@@ -1531,9 +1531,11 @@ func TestWithoutOrInvalidWorkflow(t *testing.T) {
 // answered, and the step that asks for nothing is never returned.
 func TestEmptyRead(t *testing.T) {
 	ev := eval(t, `version: 1
+vars:
+  key: { branch: "^([A-Z]+-[0-9]+)?" }
 on:
   pre_command:
-    - action: { inject: { file: "{path}" } }
+    - action: { inject: { file: "{key}" } }
     - action: { block: "no" }
 `, workflow.PreCommand)
 	out, steps := walk(t, ev, facts{branch: "main"})
