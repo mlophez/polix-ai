@@ -89,14 +89,6 @@ on:
           - New session: `claude --model sonnet "/polix:build"`
           - Same terminal: `/model sonnet`, then `/clear`, then `/polix:build`
 
-    - when: { skill: polix:build }
-      action:
-        block:
-          once: true
-          message: |
-            Start the build in a clean session on Sonnet: `claude --model sonnet`, or `/model sonnet` and then `/clear`.
-            Then type /polix:build again; this reminder does not block it a second time.
-
   # The builders and the verifier start with a clean context: give them the habits each build needs.
   # The reviewer runs nothing but git, so it needs none.
   subagent_start:
