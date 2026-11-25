@@ -285,7 +285,7 @@ func TestRootNativeForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "[" + filepath.Clean(filepath.FromSlash(given)) + "]"; !strings.Contains(res.Stdout, want) {
+	if want := "[" + filepath.Clean(filepath.FromSlash(given)) + "]"; !strings.Contains(systemMessage(t, res.Stdout), want) {
 		t.Fatalf("want %q in %+v", want, res)
 	}
 }
