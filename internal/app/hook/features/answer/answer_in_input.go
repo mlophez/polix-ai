@@ -73,18 +73,18 @@ func (in hookInput) str(key string) string {
 	return s
 }
 
-// exitCode reads the exit code of a command from the tool response, 0 when it does not say.
-func (in hookInput) exitCode() int {
+// exitCode reads the exit code of a command from the tool response, 0 when it does not say; given tells whether it did.
+func (in hookInput) exitCode() (code int, given bool) {
 	var resp map[string]any
 	if json.Unmarshal(in.ToolResponse, &resp) != nil {
-		return 0
+		return 0, false
 	}
 	for _, k := range []string{"exit_code", "exitCode", "returncode"} {
 		if n, ok := resp[k].(float64); ok {
-			return int(n)
+			return int(n), true
 		}
 	}
-	return 0
+	return 0, false
 }
 
 // event returns the event name of the agent ag for the input, with abs, the path of an edit, and with command and
@@ -92,7 +92,7 @@ func (in hookInput) exitCode() int {
 // of the tool when the format set it; the error tells why it is not valid. The stop of a turn (stop) is always of the
 // main session: a subagent stops with subagent_stop. The id of the subagent goes only with a subagent as the actor,
 // the source only with a start, and the subagents in flight only with stop and subagent_stop.
-func (in hookInput) event(ag, name, abs, command, skill string, code int) (agent.Event, error) {
+func (in hookInput) event(ag, name, abs, command, skill string, code int, given bool) (agent.Event, error) {
 	actor := in.actor()
 	if name == workflow.Stop {
 		actor = agent.ActorSession
@@ -110,7 +110,7 @@ func (in hookInput) event(ag, name, abs, command, skill string, code int) (agent
 		inFlight, known = in.inFlight()
 	}
 	ev := agent.Event{Name: name, Agent: ag, Session: in.SessionID, Actor: actor, AgentID: id, Source: source,
-		AbsPath: abs, Command: command, ExitCode: code, Prompt: in.Prompt, Skill: skill, Cwd: in.Cwd,
+		AbsPath: abs, Command: command, ExitCode: code, HasExitCode: given, Prompt: in.Prompt, Skill: skill, Cwd: in.Cwd,
 		ToolUse: in.ToolUse, InFlight: inFlight, InFlightKnown: known}
 	return ev, ev.Valid()
 }
@@ -139,7 +139,7 @@ func (in hookInput) inFlight() ([]agent.Subagent, bool) {
 
 // single returns the one event name of the agent ag for an input that is neither an edit nor a command.
 func (in hookInput) single(ag, name string) ([]agent.Event, error) {
-	ev, err := in.event(ag, name, "", "", "", 0)
+	ev, err := in.event(ag, name, "", "", "", 0, false)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func (in hookInput) skill(ag, name string) ([]agent.Event, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, nil
 	}
-	ev, err := in.event(ag, workflow.Skill, "", "", name, 0)
+	ev, err := in.event(ag, workflow.Skill, "", "", name, 0, false)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +203,7 @@ func (in hookInput) edits(ag, name string, paths []string) ([]agent.Event, error
 		if !filepath.IsAbs(p) && in.Cwd != "" {
 			p = filepath.Join(in.Cwd, p)
 		}
-		ev, err := in.event(ag, name, p, "", "", 0)
+		ev, err := in.event(ag, name, p, "", "", 0, false)
 		if err != nil {
 			return nil, err
 		}
@@ -217,9 +217,9 @@ func (in hookInput) edits(ag, name string, paths []string) ([]agent.Event, error
 // exit code 0 and a git commit decides that code (see commitSucceeds); about to run (pre_command), plus pre_commit
 // when it commits.
 func (in hookInput) commands(ag, name, command string, failed bool) ([]agent.Event, error) {
-	code := 0
+	code, given := 0, false
 	if name == workflow.PostCommand {
-		code = in.exitCode()
+		code, given = in.exitCode()
 		if failed && code == 0 {
 			code = 1
 		}
@@ -233,7 +233,7 @@ func (in hookInput) commands(ag, name, command string, failed bool) ([]agent.Eve
 	}
 	var events []agent.Event
 	for _, n := range names {
-		ev, err := in.event(ag, n, "", command, "", code)
+		ev, err := in.event(ag, n, "", command, "", code, given)
 		if err != nil {
 			return nil, err
 		}

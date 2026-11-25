@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -195,6 +196,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	if err != nil {
 		return Response{}, nil //nolint:nilerr // outside a repository there is nothing to govern
 	}
+	root = filepath.Clean(filepath.FromSlash(root)) // git gives forward slashes on Windows
 	wf, present, problem := port.LoadWorkflow(ctx, req.Version)
 	var facts hook.Facts
 	var answer agent.Answer

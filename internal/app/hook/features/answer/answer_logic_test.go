@@ -3110,3 +3110,59 @@ func TestRunRecordsEveryOutcome(t *testing.T) {
 		}
 	})
 }
+
+// CUJ-01, AC-01: {root} in a run is the root, native and absolute, and a root with a space stays one argument.
+func TestExpandRoot(t *testing.T) {
+	base := eval(t, "version: 1\non:\n  stop:\n    - action: { run: [tool, --dir, \"{root}\"] }\n", workflow.Stop)
+	root, err := filepath.Abs(filepath.FromSlash("/my repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := hook.Evaluation{Workflow: base.Workflow, Present: true, Root: root, GitDir: filepath.Join(root, ".git"),
+		System: "linux", Event: base.Event}
+	if err := ev.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	_, steps := walk(t, ev, facts{branch: "main", hashes: []string{"h", "h"}})
+	got := runs(steps)
+	if len(got) != 1 || !slices.Equal(got[0], []string{"tool", "--dir", root}) || !filepath.IsAbs(got[0][2]) {
+		t.Fatalf("the root is one absolute argument: %q", got)
+	}
+}
+
+// CUJ-02, AC-02: the context of the event expands on its events, and an empty text when the agent left the value out.
+func TestExpandEventContext(t *testing.T) {
+	root := filepath.FromSlash("/repo")
+	abs := filepath.Join(root, "src", "a.go")
+	given := agent.Event{Name: workflow.PostEdit, Agent: agent.Claude, Session: "s1", Actor: "builder", Path: "src/a.go",
+		AbsPath: abs}
+	post := agent.Event{Name: workflow.PostCommand, Agent: agent.Codex, Session: "s2", Actor: agent.ActorSession,
+		Command: "just test", ExitCode: 2, HasExitCode: true}
+	cases := []struct {
+		name, text string
+		ev         agent.Event
+		want       string
+	}{
+		{"root", "{root}", given, root},
+		{"abs_path", "{abs_path}", given, abs},
+		{"agent", "{agent}", given, "claude"},
+		{"session", "{session}", given, "s1"},
+		{"actor", "{actor}", given, "builder"},
+		{"event", "{event}", given, "post_edit"},
+		{"exit_code", "{exit_code}", post, "2"},
+		{"exit_code zero", "{exit_code}", agent.Event{Name: workflow.PostCommand, HasExitCode: true}, "0"},
+		{"all", "{agent} {actor} {event} {abs_path}", given, "claude builder post_edit " + abs},
+		{"missing exit_code", "[{exit_code}]", agent.Event{Name: workflow.PostCommand, Command: "x"}, "[]"},
+		{"missing session", "[{session}]", agent.Event{Name: workflow.Stop}, "[]"},
+		{"missing actor", "[{actor}]", agent.Event{Name: workflow.Stop}, "[]"},
+		{"missing agent", "[{agent}]", agent.Event{Name: workflow.Stop}, "[]"},
+		{"missing abs_path", "[{abs_path}]", agent.Event{Name: workflow.PostEdit}, "[]"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := expandPlaceholders(c.text, c.ev, root, "main", nil, nil, hook.Commit{}); got != c.want {
+				t.Errorf("expand(%q) = %q, want %q", c.text, got, c.want)
+			}
+		})
+	}
+}

@@ -3,6 +3,7 @@ package agent
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -26,7 +27,9 @@ type Event struct {
 	Outside  bool   // the edited path is outside the repository
 	Command  string // pre_command, post_command, pre_commit, post_commit
 	ExitCode int    // post_command, post_commit
-	Prompt   string // prompt
+	// HasExitCode tells that the agent gave ExitCode, so a missing one is told from 0.
+	HasExitCode bool
+	Prompt      string // prompt
 	// Skill is the name of the skill that starts, as the agent gave it, the prefix of its plugin included: only on
 	// skill, where it is never blank.
 	Skill   string
@@ -108,9 +111,12 @@ func (e Event) Edits() bool {
 }
 
 // Locate returns the event with its path located in the repository: rel, relative to the root, when inside is
-// true; outside of it otherwise.
+// true; outside of it otherwise. Its AbsPath takes the native form of the system, which {abs_path} expands to.
 func (e Event) Locate(rel string, inside bool) Event {
 	e.Outside = !inside
+	if e.AbsPath != "" {
+		e.AbsPath = filepath.Clean(filepath.FromSlash(e.AbsPath))
+	}
 	if inside {
 		e.Path = rel
 	}

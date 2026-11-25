@@ -295,3 +295,28 @@ func TestPlaceholderEventsShortcut(t *testing.T) {
 		t.Errorf("format_on_edit: %q", got)
 	}
 }
+
+// CUJ-03, AC-03: the new placeholders of the event are rejected outside their events, hold on the others, and their
+// names are taken from the variables.
+func TestPlaceholderEventsNew(t *testing.T) {
+	for _, c := range []struct{ ph, ev, verb, want string }{
+		{"abs_path", PreCommand, VerbRun, "placeholder {abs_path} never expands on pre_command (only on pre_edit, post_edit)"},
+		{"exit_code", Stop, VerbNotify, "placeholder {exit_code} never expands on stop (only on post_command, post_commit)"},
+	} {
+		w := Workflow{Version: 1, On: map[string][]Entry{c.ev: {placeholderEntry(c.verb, "x {"+c.ph+"}", 7)}}}
+		if got := w.Problems(); len(got) != 1 || got[0] != "polix.yaml:7: "+c.want {
+			t.Errorf("{%s} on %s: %q", c.ph, c.ev, got)
+		}
+	}
+	for ev, ph := range map[string]string{PostEdit: "abs_path", PreEdit: "abs_path", PostCommand: "exit_code",
+		PostCommit: "exit_code", Stop: "root", Start: "agent", Skill: "session", SubagentStart: "actor", Prompt: "event"} {
+		w := Workflow{Version: 1, On: map[string][]Entry{ev: {placeholderEntry(VerbRun, "{"+ph+"}", 4)}}}
+		if got := w.Problems(); len(got) != 0 {
+			t.Errorf("{%s} on %s: %q", ph, ev, got)
+		}
+	}
+	w := Workflow{Version: 1, Vars: map[string]Var{"root": {Branch: "x"}}}
+	if got := w.Problems(); len(got) != 1 || !strings.Contains(got[0], "var root: the name is a built-in placeholder") {
+		t.Errorf("a variable named root: %q", got)
+	}
+}

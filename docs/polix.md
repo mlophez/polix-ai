@@ -921,7 +921,15 @@ Globs are relative to the root and use `/`: `*` stays inside a segment, `**` cro
 without `/` matches the base name anywhere (`*.md`), and a leading `/` anchors it to the root, as in `.gitignore`
 (`/polix.yaml` is the file of the root, not `examples/polix.yaml`).
 Strings may use `{path}`, `{command}`, `{branch}`, `{changed_lines}`, `{changed_files}`, `{risk_score}`, `{commit}`,
-`{subject}`, `{skill}` and the variables, which cannot take those built-in names. `{skill}` is the name of the skill
+`{subject}`, `{skill}`, `{root}`, `{abs_path}`, `{agent}`, `{session}`, `{actor}`, `{event}`, `{exit_code}` and the
+variables, which cannot take those built-in names. `{root}` is the absolute path of the repository root and
+`{abs_path}` the edited path as an absolute path (`pre_edit` and `post_edit`), both in the native form of the system:
+drive letter and backslashes on Windows, forward slashes elsewhere; `{path}` stays relative with forward slashes.
+`{agent}` is `claude` or `codex`, `{session}` the session id the agent gives, `{actor}` the main session or the type
+of the subagent, and `{event}` the neutral name of the event, such as `post_edit`; all four hold on every event of
+the agent. `{exit_code}` is the exit code of the command as a decimal integer, on `post_command` and `post_commit`.
+When the agent does not give `{session}`, `{actor}`, `{agent}`, `{abs_path}` or `{exit_code}` they expand to an empty
+text, never to `0`. A value never splits an argument of `run`. `{skill}` is the name of the skill
 that starts, as it came and with the prefix of its plugin, on `skill`; the arguments of the skill have no
 placeholder. `{commit}` and `{subject}` are the short hash and the subject of the commit just made
 (`git log -1 --format=%h` and `--format=%s`) on `post_commit`.
@@ -931,6 +939,8 @@ instead of expanding it to an empty text, with one problem per occurrence at the
 `placeholder {commit} never expands on pre_edit (only on post_commit)`. It also checks the entries a shortcut expands
 into on the event they expand into (`{path}` in a `check_on_stop` item is rejected). A problem of this kind never
 suggests a newer polix. A file that wrote a placeholder on another event stops validating: move it to its events.
+The new placeholders are unknown to an older polix, which suggests a newer one: set `requires` to the first release
+after 0.14.0 when you use them.
 
 ### Measures of the change
 

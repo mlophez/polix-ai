@@ -1265,9 +1265,13 @@ func TestSkillEventTypedBlock(t *testing.T) {
 func TestExitCode(t *testing.T) {
 	for raw, want := range map[string]int{`{"exit_code":3}`: 3, `{"exitCode":4}`: 4, `{"returncode":5}`: 5,
 		`{"stdout":"ok"}`: 0, `not json`: 0} {
-		if got := (hookInput{ToolResponse: json.RawMessage(raw)}).exitCode(); got != want {
-			t.Errorf("exitCode(%s) = %d, want %d", raw, got, want)
+		got, given := (hookInput{ToolResponse: json.RawMessage(raw)}).exitCode()
+		if got != want || given != (want != 0) {
+			t.Errorf("exitCode(%s) = %d, %v, want %d", raw, got, given, want)
 		}
+	}
+	if _, given := (hookInput{ToolResponse: json.RawMessage(`{"exit_code":0}`)}).exitCode(); !given {
+		t.Error("a zero exit code the agent gave is given")
 	}
 }
 

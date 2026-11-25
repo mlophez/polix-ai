@@ -78,7 +78,9 @@ path: ai
 # `exec_on_start`, `format_on_save`, `check_on_stop` and `check_on_save` of guardrails, which need the release that
 # brings them, the first after 0.9.0, nor `stop_retries`, which needs the first release after 0.10.0. Set requires
 # to the release you install. The event `skill`, its condition `skill` and `{skill}` need the first release after
-# 0.12.1.
+# 0.12.1. The placeholders {root}, {abs_path}, {agent}, {session}, {actor}, {event} and {exit_code} need the first
+# release after 0.14.0: an older polix reports them as unknown placeholders and suggests a newer polix, so set
+# requires when you use them.
 requires: 0.3.0
 
 # Optional, default main. The branch the change merges into, or a list of candidates, used only by
@@ -379,6 +381,14 @@ guardrails:
 # - {command}: the whole command line (only pre_command, post_command, pre_commit and post_commit);
 # - {commit}, {subject}: the short hash and the subject of the commit just made (only post_commit);
 # - {skill}: the name of the skill that starts, as it came, with the prefix of its plugin (only skill);
+# - {root}: the absolute path of the repository root, in the native form of the system (backslashes on Windows); on
+#   every event, githooks included;
+# - {abs_path}: the edited path as an absolute path, native (only pre_edit and post_edit);
+# - {agent}, {session}, {actor}, {event}: the agent (claude or codex), the session id it gives, the actor (session or
+#   the type of the subagent) and the neutral name of the event, such as post_edit; on every event of the agent, never
+#   in githooks;
+# - {exit_code}: the exit code of the command, a decimal integer (only post_command and post_commit); an empty text
+#   when the agent does not give it, never 0;
 # - {branch}: the current branch;
 # - {changed_lines}, {changed_files}, {risk_score}: the measures of the change not committed yet (on post_commit,
 #   of the commit just made), over the files of the `changed` of the `when` of the entry, else the whole change; `?` when git cannot measure it. The change is
@@ -548,7 +558,7 @@ on:
   # comes right after the prompt of a typed skill, and a block refuses the skill (a typed one, with its prompt). Its
   # conditions: skill, a name or a list of names, literal and not globs, that holds when one equals the name of the
   # skill as it came (polix:spec) or its bare name after the last colon (spec), so `spec` also matches other:spec; a
-  # blank name never holds. {skill} expands to the name as it came, and to an empty text on any other event. Every
+  # blank name never holds. {skill} expands to the name as it came, and polix config check rejects it on any other event. Every
   # inject acts every time the skill starts, as on start and post_commit, so always has no effect and a skill run many
   # times repeats its context.
   # Two limits. A typed skill is detected by the shape of the prompt, never by looking skills up on disk: a slash,

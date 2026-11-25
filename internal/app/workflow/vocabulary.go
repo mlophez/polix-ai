@@ -40,15 +40,19 @@ var Measures = []string{"changed_lines", "changed_files", "risk_score"}
 
 // Builtins are the placeholders every string may use; a variable cannot take their names. commit and subject, the
 // short hash and the subject of the commit just made, expand only on post_commit, and skill, the name of the skill
-// that starts, only on skill; each to an empty text elsewhere.
+// that starts, only on skill. root, the absolute path of the repository root, holds on every event; abs_path, the
+// edited path as an absolute path, on the edits; agent, session, actor and event, the context of the event, on every
+// agent event; and exit_code, the exit code of a command, on post_command and post_commit. placeholderEvents limits
+// each to its events.
 var Builtins = []string{"path", "command", "branch", "changed_lines", "changed_files", "risk_score", "commit",
-	"subject", "skill"}
+	"subject", "skill", "root", "abs_path", "agent", "session", "actor", "event", "exit_code"}
 
 // AgentOnlyBuiltins are the placeholders of Builtins that only an event of an agent can give, never a hook of git:
-// path and command, of the edit or the command line of an agent, commit and subject, of a commit already made
-// (post_commit), and skill, of a skill that starts. The others, the branch and the measures of the diff, git can
-// compute.
-var AgentOnlyBuiltins = []string{"path", "command", "commit", "subject", "skill"}
+// path, command and abs_path, of the edit or the command line of an agent, commit and subject, of a commit already
+// made (post_commit), skill, of a skill that starts, and agent, session, actor, event and exit_code, of the event
+// itself. The others, the root, the branch and the measures of the diff, git can compute.
+var AgentOnlyBuiltins = []string{"path", "command", "commit", "subject", "skill", "abs_path", "agent", "session",
+	"actor", "event", "exit_code"}
 
 // conditionEvents limits the conditions that only make sense on some events; the rest hold on any event.
 var conditionEvents = map[string][]string{
@@ -62,11 +66,13 @@ var conditionEvents = map[string][]string{
 // placeholderEvents limits the built-in placeholders that only expand on some agent events; the rest hold on every
 // one. A placeholder written on another event would always be empty, so the validator rejects it.
 var placeholderEvents = map[string][]string{
-	"path":    {PreEdit, PostEdit},
-	"command": {PreCommand, PostCommand, PreCommit, PostCommit},
-	"commit":  {PostCommit},
-	"subject": {PostCommit},
-	"skill":   {Skill},
+	"path":      {PreEdit, PostEdit},
+	"command":   {PreCommand, PostCommand, PreCommit, PostCommit},
+	"commit":    {PostCommit},
+	"subject":   {PostCommit},
+	"skill":     {Skill},
+	"abs_path":  {PreEdit, PostEdit},
+	"exit_code": {PostCommand, PostCommit},
 }
 
 // Informed are the events that already happened when polix hears of them: a block cannot stop them, and a failing

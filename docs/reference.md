@@ -1265,13 +1265,20 @@ every commit with its problems. `git commit --no-verify` skips the hooks. The de
 
 ## Placeholders
 
-Expanded in the strings of conditions (except `branch`), verbs and `contains`. An unknown one is a problem.
+Expanded in the strings of conditions (except `branch`), verbs and `contains`. An unknown one is a problem, and so is
+one written on an event that never gives it. A value the agent does not give (`{session}`, `{actor}`, `{agent}`,
+`{abs_path}`, `{exit_code}`) expands to an empty text, never to `0`. The new ones need `requires` set to the first
+release after 0.14.0.
 
-- `{path}`: the edited path, relative to the root; on `pre_edit` and `post_edit`, empty elsewhere.
-- `{command}`: the whole command line; on `pre_command`, `post_command`, `pre_commit` and `post_commit`, empty
-  elsewhere.
+- `{path}`: the edited path, relative to the root; only on `pre_edit` and `post_edit`.
+- `{command}`: the whole command line; only on `pre_command`, `post_command`, `pre_commit` and `post_commit`.
 - `{commit}`, `{subject}`: the short hash and the subject of the commit just made, as `git log -1 --format=%h` and
-  `--format=%s` print them; on `post_commit`, empty elsewhere and when polix cannot read the commit.
+  `--format=%s` print them; only on `post_commit`, empty when polix cannot read the commit.
+- `{root}`: the absolute path of the repository root, in the native form of the system; on every event.
+- `{abs_path}`: the edited path as an absolute path, native; on `pre_edit` and `post_edit`.
+- `{agent}`, `{session}`, `{actor}`, `{event}`: the agent (`claude` or `codex`), the session id it gives, the actor
+  (the main session or the type of the subagent) and the neutral name of the event; on every event of the agent.
+- `{exit_code}`: the exit code of the command, a decimal integer; on `post_command` and `post_commit`.
 - `{branch}`: the current branch.
 - `{changed_lines}`, `{changed_files}`, `{risk_score}`: the measures of the change not committed yet (on
   `post_commit`, of the commit just made), over the `changed` of the `when` of the entry, else the whole change; `?`

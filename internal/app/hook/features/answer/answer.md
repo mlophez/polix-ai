@@ -389,9 +389,13 @@ The rules it follows, as before this use case:
 13. The placeholders `{changed_lines}`, `{changed_files}` and `{risk_score}` of every string of an entry expand to
     the measures over the `changed` of its `when`, else the whole diff, or to `?` when it cannot be measured
     (`measureValues`). On `post_commit`, `{commit}` and `{subject}` expand to the short hash and the subject of the
-    commit just made, to an empty text when it cannot be read, and on any other event to an empty text, without
-    asking for the commit; they are read only when a string holds one of them. `{skill}` expands to the name of the
-    skill of the event, prefix of its plugin included, and to an empty text outside `skill`.
+    commit just made, to an empty text when it cannot be read; they are read only when a string holds one of them.
+    `{skill}` expands to the name of the skill of the event, prefix of its plugin included. The validator rejects
+    each of them on the other events (`workflow.placeholderEvents`). `{root}`, the root `Open` returns, and
+    `{abs_path}`, the path of an edit, expand as native absolute paths (the shell cleans them with
+    `filepath.FromSlash`), `{agent}`, `{session}`, `{actor}` and `{event}` from `agent.Event`, and `{exit_code}` from
+    its exit code only when the agent gave it (`agent.Event.HasExitCode`); a value the agent did not give is an empty
+    text, never `0`.
 14. On `prompt`, before the entries, when the workflow declares `requirements` (`workflow.Workflow.Requirements`), its
     programs followed by git (`workflow.Workflow.Programs`) are looked up once per call (`hook.Step.Programs`, answered
     by `Missing`) and, when some are not on the PATH, the AI gets one context: `These programs that polix.yaml requires
