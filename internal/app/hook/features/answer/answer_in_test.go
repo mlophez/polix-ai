@@ -27,6 +27,7 @@ import (
 type fakePort struct {
 	yaml      string // polix.yaml; empty for none
 	openErr   error
+	root      string // the root Open gives, as git writes it; /repo when empty
 	hashErr   error
 	rulesErr  error
 	stateErr  error
@@ -63,6 +64,9 @@ func (p *fakePort) Open(_ context.Context, dir string) (string, string, error) {
 	p.calls = append(p.calls, "Open "+dir)
 	if p.openErr != nil {
 		return "", "", p.openErr
+	}
+	if p.root != "" {
+		return p.root, filepath.Join(p.root, ".git"), nil
 	}
 	root := filepath.FromSlash("/repo")
 	return root, filepath.Join(root, ".git"), nil
@@ -269,6 +273,20 @@ func TestNotifiedOnceTheCallIsKnown(t *testing.T) {
 		if res.Code != c.code || notified != c.notified || shown != (c.code == 0) {
 			t.Errorf("block on %s: response %+v, %d notified", c.branch, res, notified)
 		}
+	}
+}
+
+// CUJ-01, AC-01: git gives the root with forward slashes, even on Windows; {root} reaches the message in the native,
+// cleaned form of the system.
+func TestRootNativeForm(t *testing.T) {
+	const given = "/my repo/./sub//"
+	port := &fakePort{root: given, yaml: "version: 1\non:\n  stop:\n    - action: { notify: \"[{root}]\" }\n"}
+	res, err := run(context.Background(), port, claudeRequest(`{"hook_event_name":"Stop","cwd":"/my repo"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "[" + filepath.Clean(filepath.FromSlash(given)) + "]"; !strings.Contains(res.Stdout, want) {
+		t.Fatalf("want %q in %+v", want, res)
 	}
 }
 

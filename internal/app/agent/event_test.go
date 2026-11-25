@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/mlophez/polix-ai/internal/app/workflow"
@@ -14,6 +15,10 @@ func TestEventLocate(t *testing.T) {
 	}
 	if got := ev.Locate("../x", false); got.Path != "" || !got.Outside {
 		t.Fatalf("outside: %+v", got)
+	}
+	native := Event{Name: workflow.PostEdit, Agent: Claude, AbsPath: "/my repo/./src//a.go"}
+	if got, want := native.Locate("src/a.go", true).AbsPath, filepath.Clean(filepath.FromSlash("/my repo/./src//a.go")); got != want {
+		t.Fatalf("AbsPath %q, want its native cleaned form %q", got, want)
 	}
 	if !ev.Edits() || (Event{Name: workflow.Stop}).Edits() {
 		t.Fatal("Edits")
