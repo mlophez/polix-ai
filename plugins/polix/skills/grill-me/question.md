@@ -11,7 +11,7 @@ Never use `AskUserQuestion` nor any dialog of the agent: the template works the 
 > <What you are deciding and why it matters, in one or two sentences that read without the rest of the chat.>
 > <Optional: the fact it rests on, with its `file:line`, in one line.>
 >
-> - `[A]` **<recommended option>** · (_Recommended_)
+> `[A]` **<recommended option>** · (_Recommended_)
 >
 > <What the option is and how the change behaves with it: what the user sees, what the code does, in two or three
 > sentences.>
@@ -20,7 +20,7 @@ Never use `AskUserQuestion` nor any dialog of the agent: the template works the 
 > - **Con:** <what it costs>
 > - **Cost:** effort <low|medium|high> · risk <low|medium|high> · tests <the tests it needs, or none>
 >
-> - `[B]` **<option>**
+> `[B]` **<option>**
 >
 > <What the option is and how the change behaves with it, in two or three sentences.>
 >
@@ -43,8 +43,8 @@ Never use `AskUserQuestion` nor any dialog of the agent: the template works the 
 ## Options
 
 - Two to four options, lettered from A; the recommended one goes first, marked `· (_Recommended_)`.
-- Every option title is an item of a list (`- `) with its letter in brackets and inline code (`[A]`), and the
-  option in bold; never a header.
+- Every option title is a paragraph of its own: its letter in brackets and inline code (`[A]`), and the option in
+  bold; never an item of a list, which joins the list of the option above, nor a header.
 - Under its title, a blank line and a quote (`>`): the explanation, a line `>`, and the `Pro`, `Con` and `Cost`.
   Never indent with spaces, which makes a code block.
 - The explanation says what the option is and how the change behaves with it, concrete enough to choose without
