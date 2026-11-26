@@ -44,6 +44,18 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   It writes the text following the good practices of Markdown of its `markdown.md`, and lists, without fixing them,
   the places where the original breaks them and fixing would change its layout.
   Only the user runs it, and it is the one skill that declares `effort: high` and `model: opus`.
+- `/polix:improving-agent-context` maps what an agent receives in each phase of the flow (the session, each skill, each agent a
+  skill launches and the events of the workflow) from the repository (`AGENTS.md`, `CLAUDE.md`, skills, agents, the
+  Markdown files of `ai/` the workflow injects or a skill reads, the rules and the injects and blocks of
+  `polix.yaml`) and from outside it (the global `CLAUDE.md`, the installed skills and the context of the hooks).
+  It finds the duplicates, the conflicts within a phase, the inconsistencies between phases and the facts outside
+  their home, and rewrites the repository as the user confirms: it cuts or merges each duplicate, rewrites the losing
+  side of a conflict or inconsistency to the one the code, the tests or the home of the fact support (or the user
+  picks), and moves a misplaced fact to its home. It works in copies, with the diff shown first, marking `on demand`
+  a cut whose source misses a phase the copy reaches. The places to cross can be given after `against`.
+  It touches only the sentences of a finding, never edits a source outside the repository, never cuts from a skill
+  or agent of a plugin what only the repository holds, and reads of an installed plugin only its installed version,
+  skipping the copy of a plugin the repository holds. Only the user runs it.
 
 ## [0.13.0] - 2026-11-22
 

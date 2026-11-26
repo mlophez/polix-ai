@@ -229,7 +229,8 @@ plan `polix:critic` reviews before you approve it), `/polix:build` (run by `poli
 `/polix:grill-me` to stress-test a plan or an idea one question at a time and then ask whether to plan it or implement it,
 `/polix:brainstorming` to propose new ideas from the project and save those you pick as tasks, and `/polix:probe` to
 check whether one idea is viable, `/polix:synthesize` to condense a Markdown file without losing its format nor
-its information, plus the skills that set Polix up
+its information, `/polix:improving-agent-context` to improve the context an agent receives in each phase of the flow, finding
+its duplicates, contradictions, inconsistencies and misplaced facts and rewriting the sources you confirm, plus the skills that set Polix up
 (`/polix:init`, `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:risk`) and those that write skills and subagents in one format (`/polix:writing-skills`, `/polix:writing-agents`). A
 skill of the flow runs only when you type it, and Polix enforces a phase only when your workflow says so:
 
