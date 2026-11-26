@@ -7,6 +7,14 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- `/polix:build` triages the findings with the user once the plan reaches `review`: it asks, round after round, to
+  fix all the `blocking` and `major` ones, fix the ones the user names, as an iteration of `final`, or close the
+  plan, which it sets `done` and commits as `Close: <title>`. Run on a plan in `review`, it goes straight to the
+  question.
+- `/polix:spec` no longer closes plans: it only writes and adjusts them.
+
 ## [0.16.1] - 2026-11-26
 
 ### Fixed

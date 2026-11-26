@@ -39,7 +39,8 @@ Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
   Once the plan file exists, set the task's `status: planned` and `plan: <path of the plan>`, and nothing else of it.
 - **Brief**: a brief that `grill-me` returned and the user confirmed in this session for this request, if any.
 - **Plan**: the plan file, from the arguments or the conversation.
-  A file that already exists is the plan to adjust, or to close when its `status` is `review` (see `Closing a plan`).
+  A file that already exists is the plan to adjust; one in `review` or `done` is triaged and closed by the skill
+  `build`: tell the user and stop.
   So is the plan the task's `plan` names, or one written earlier in this session, even with a new scope or title.
   A path that does not exist is where the new plan goes, used as is, outside the folder of plans too.
   A path ending in `/` is a folder: name the file inside it as `Plan file` says.
@@ -87,7 +88,6 @@ Plan progress:
 ```
 
 Never reach Step 7 before Step 6 is done: the critique is what the approval relies on.
-With a plan in `review`, follow `Closing a plan` first: it ends the skill, or goes on as an adjustment.
 Every time `grill-me` reopens the brief, update the sections it changes, then run Step 6 again whole.
 When adjusting a plan, follow `Adjusting a plan` at every step.
 
@@ -430,7 +430,7 @@ The fields of the frontmatter, beyond what their placeholders say:
 
 - `status`: `planned` when you write the plan, and `approved` once the user approves it (see Step 7).
   The build moves it to `in-progress`, then to `review` or `blocked`.
-  From `review`, this skill moves it to `done` when the user closes it (see `Closing a plan`).
+  From `review`, the build moves it to `done` once the user closes it in its triage.
 - `risk`: its `level` and the `reason` for it, in one line.
   `level` is `high` when a task touches an item of `High risk`.
   `medium` when one changes an internal contract or code that several callers share; `low` otherwise.
@@ -477,20 +477,3 @@ Recompute `risk`, never `created`, `branch` nor `stats`.
 Keep `agents` as it is, even when `risk.level` changes, since the user may have chosen them.
 Add the new `artifacts`.
 Never edit nor delete a file of a pass.
-
-### Closing a plan
-
-A plan in `review` was built and verified, and its findings wait for the user, who closes it or adds tasks to it.
-
-1. Read the files of the passes of the build next to the plan, `<name>.*.md`, and their findings `noted`.
-2. Show them, in the language of the session, as the build reports them.
-   The `blocking` and `major` ones in detail, grouped by root cause, with their `FND-NN` and `file:line`.
-   The `minor` ones only counted, with the paths of the files that hold them.
-3. Ask whether to close the plan or to add tasks, close first, as text with the template of `grill-me`
-   ([question.md](../grill-me/question.md)), saying the findings are just above it.
-4. Close: set `status: done`, and nothing else; end with `Output`.
-5. Add tasks: the user names the findings to fix, by `FND-NN` or in their words.
-   Invoke `grill-me` with them and the plan's current sections as its `Adjust`, then go on with Step 2 as
-   `Adjusting a plan` says.
-   Each new task names in its summary the `FND-NN` it fixes, and its `Files` the paths of their `Where`.
-   Never edit the files of the passes: a finding fixed by a new task stays `noted` in them.

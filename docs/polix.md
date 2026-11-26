@@ -1629,8 +1629,9 @@ also prints that Codex support is not implemented in this release and the setup 
   iterations, each round left open committed as
   `Final rev<R>: <title of the plan>`, whose fixes the `reviewer` also reviews, only noting its findings, commits
   them as `Final:`, and leaves the plan in `review`, never `done`: its report gives the `blocking` and `major`
-  findings of the reviewer grouped by root cause and counts the `minor` ones, and the user runs `spec` on the plan
-  to close it, which sets it `done`, or to add tasks from the findings they choose, which `build` then builds. It
+  findings of the reviewer grouped by root cause and counts the `minor` ones, then asks the user, round after round,
+  to fix all of them, fix the ones they name, as a new iteration of `final`, or close the plan, which it sets
+  `done` and commits as `Close:`; run on a plan in `review`, it goes straight to that question. It
   never pushes nor updates the docs of the project, and reports the stats of the build, with the time and
   iterations of each task, `review` reviews the code of a change without a plan with the agent `reviewer` and saves
   the report

@@ -2,8 +2,8 @@
 name: build
 description: >
   Implements a plan task by task, unattended: the subagent builder builds each task, reviewer notes its findings
-  without iterating, and the build commits it. Then verifier checks the whole plan, and the plan ends in review for
-  the user to triage the findings. It never pushes. It runs only when the user asks for it.
+  without iterating, and the build commits it. Then verifier checks the whole plan, and the build asks the user to
+  triage the findings until they close the plan. It never pushes. It runs only when the user asks for it.
 user-invocable: true
 disable-model-invocation: true
 argument-hint: "[plan and optional first task, e.g. add-retries.md T3; empty to take it from the conversation]"
@@ -11,7 +11,7 @@ argument-hint: "[plan and optional first task, e.g. add-retries.md T3; empty to 
 
 # Building
 
-Run a plan to its end, unattended: once it starts, it ends `review`, or `blocked` for what only a person can solve.
+Run a plan to its end, unattended: once it starts, it reaches `review`, or `blocked` for what only a person can solve.
 You coordinate and never build: each task runs its own cycle, so every agent sees one task and a small context.
 In the cycle of a task, the builder builds it and reports, you write the report in the file of its pass, and the
 reviewer reviews that task once.
@@ -19,8 +19,8 @@ The review never sends the task back: you note its findings for the user, commit
 from that commit.
 Once every task is committed, the verifier checks the whole plan: it is the only check against the plan, it runs in
 no task, and only its findings are fixed in a loop.
-The plan then waits in `review`: the user reads the findings and, with the skill `spec`, closes the plan or adds
-tasks to it.
+The plan then waits in `review` and you triage it with the user: they pick the findings to fix, which run as an
+iteration of `final`, and you ask again until they close the plan, which you set `done`.
 You never update the docs of the project: they are not part of building.
 You are the only one that edits the plan and the files of its passes, and commits: the subagents read them and
 report.
@@ -62,7 +62,7 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
   Stop and ask the user to approve it with the skill `spec`; never approve it yourself.
 - **Resume**: a plan `in-progress` was interrupted, and a plan `blocked` waited for a person.
   Resume either where it stopped (see `Resume`); the files of its earlier passes stay.
-  A plan `review` waits for the user: tell them to close it or add tasks with the skill `spec`, and stop.
+  A plan `review` waits for the user: skip Steps 2 to 8 and go to the triage of Step 9 (see `Triage`).
   A plan `done` is closed: tell the user and stop.
   A plan `approved` builds from `From`, the tasks a person added after a `review` included.
 
@@ -80,21 +80,21 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
   Once a person clears it, the skill `build` resumes the plan with those changes.
 - **Pending**: the manual checks and the failures that are not the change's.
   Also the changes `AGENTS.md`, `CLAUDE.md` or a protected file need; or "none".
-- **Next step**: with the plan `review`, tell the user to run the skill `spec` on the plan to close it or to add
-  tasks from the findings they choose.
+- **Next step**: with the plan `review`, the question of the triage, right under the report (see `Triage`).
 
 ## Limits
 
-- Ask only in `Input`, before Step 3: from then on, never ask the user nor wait for an answer.
+- Ask only in `Input`, before Step 3, and in the triage of Step 9: between them, never ask the user nor wait for an
+  answer.
   Decide what is open from the plan, the code and the rules, and record it in `Pending`.
 - Never end your turn before Step 8: a subagent that returns, a failed check or a long run is never the end.
-  The run ends only when the plan reaches `review` or a loop stops (see `Task cycle` and `Final verification`).
+  The run ends only when the user closes the plan, or a loop stops (see `Task cycle` and `Final verification`).
 - Never edit the code yourself: only the builder changes it, except in the fallback of `Requirements`.
   You edit only the frontmatter of the plan, and never its body nor a doc of the project.
   Of the frontmatter, you edit its `status`, the status of each task in `tasks` and of each criterion in
   `acceptance`, and the fields of `stats` (see `Plan stats`).
   You write the files of the passes (see `Passes`): their `status`, the status of their findings, and their body.
-  You never set the plan `done`: the skill `spec` does, once the user closes it.
+  You set the plan `done` only when the user closes it in the triage (see `Triage`).
 - Edit the frontmatter with targeted edits that keep it valid YAML, never writing the plan again whole.
 - Commit only as `Commits` says, each task and each round of `final`: never push, stash, reset, amend, rebase nor create
   branches.
@@ -125,7 +125,8 @@ Build progress:
   Set its `stats.end`, `stats.duration`, the open entry of `stats.timeline` and `stats.code` (see `Plan stats`).
   When `review`, commit the plan and what the final verification fixed (see `Commits`).
 - [ ] Step 7: Gather the stats of the build (see `Stats`).
-- [ ] Step 8: Report (see `Output`), stop and return control to the user.
+- [ ] Step 8: Report (see `Output`); when the plan is `blocked`, stop and return control to the user.
+- [ ] Step 9: With the plan `review`, triage its findings with the user until they close it (see `Triage`).
 ```
 
 ## References
@@ -292,6 +293,8 @@ It is relative to the root of the repository (`git rev-parse --show-toplevel`), 
   A round that stops its loop is never committed: it stays uncommitted for `Blockers` and `Resume`.
 - **Final**: at Step 6 when `review`: subject `Final: <title of the plan>`, a body with the `FND-NN` the final
   verification fixed, or "Nothing to fix.", and the line `Plan: <path>`.
+- **Close**: when the user closes the plan in the triage: subject `Close: <title of the plan>`, and the line
+  `Plan: <path>` as its body.
 - When `git status --porcelain` shows nothing, as with an ignored plan and nothing changed, make no round nor final
   commit, and say so in `Commits` of `Output`.
   A round without its commit adds nothing to the next review, and the loop goes on as if it had committed.
@@ -494,7 +497,26 @@ Edit only the `status` of the frontmatter of the plan:
   The final verification left nothing open: every AC `met`, or a manual `not verified` with its steps in `Pending`.
   A finding of the verifier a builder skipped twice for the same reason does not hold it.
 - `blocked` at the end otherwise.
-- Never `done`: the skill `spec` sets it once the user closes the plan in `review`.
+- `done` only when the user closes the plan in the triage (see `Triage`).
+
+### Triage
+
+With the plan `review`, ask the user what to do with its findings, and repeat until they close it:
+
+1. **Ask**: right under the report, ask one question as text with the template of `grill-me`
+   ([question.md](../grill-me/question.md)), saying the findings are just above it.
+   On a plan that was already `review` at Step 1, give first the findings as `Findings report` says.
+   The options:
+   - **Fix all**: every `blocking` and `major` finding still `noted`; recommended when there is one.
+   - **Fix some**: the user names them, by `FND-NN` or in their words.
+   - **Close**: recommended when no `blocking` nor `major` finding is still `noted`.
+   Never offer to leave the plan in `review` for later: the triage ends only when the user closes it.
+2. **Fix**: add an iteration of `final` whose findings are the ones the user chose, each copied from the file of the
+   pass that noted it, `Repeats` naming that `FND-NN` (see `Iteration`).
+   Mark each chosen finding `open` in the file that noted it, then `fixed` or `skipped` as the iteration closes it.
+   Set the plan `in-progress` and run `Final verification` from its step 6, then Steps 6 to 8 again, and ask again.
+   When the loop stops, the plan ends `blocked`, as at Step 6.
+3. **Close**: set the plan `done` (see `Status`), commit it (see `Commits`), say its hash, and stop.
 
 ### Findings report
 
