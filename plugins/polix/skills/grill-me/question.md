@@ -6,29 +6,29 @@ literals keep their spelling.
 Never use `AskUserQuestion` nor any dialog of the agent: the template works the same in every agent.
 
 ```markdown
-`[Q<n> OF <total>]` `[WHAT|HOW]` **<TITLE OF THE DECISION>**
-> 
+> `[Q<n> OF <total>]` `[WHAT|HOW]` **<TITLE OF THE DECISION>**
+>
 > <What you are deciding and why it matters, in one or two sentences that read without the rest of the chat.>
 > <Optional: the fact it rests on, with its `file:line`, in one line.>
-
-- `[A]` **<recommended option>** · (_Recommended_)
-
+>
+> - `[A]` **<recommended option>** · (_Recommended_)
+>
 > <What the option is and how the change behaves with it: what the user sees, what the code does, in two or three
 > sentences.>
-> 
+>
 > - **Pro:** <what it gains>
 > - **Con:** <what it costs>
 > - **Cost:** effort <low|medium|high> · risk <low|medium|high> · tests <the tests it needs, or none>
-
-- `[B]` **<option>**
-
+>
+> - `[B]` **<option>**
+>
 > <What the option is and how the change behaves with it, in two or three sentences.>
-> 
+>
 > - **Pro:** <what it gains>
 > - **Con:** <what it costs>
 > - **Cost:** effort <low|medium|high> · risk <low|medium|high> · tests <the tests it needs, or none>
-
-`→` **A**, <the reason of the recommendation in a few words>. Reply `yes`, a letter or your own answer.
+>
+> `→` **A**, <the reason of the recommendation in a few words>. Reply `yes`, a letter or your own answer.
 ```
 
 ## Title
