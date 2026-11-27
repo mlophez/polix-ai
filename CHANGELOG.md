@@ -7,6 +7,11 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Added
+
+- `/polix:think` thinks a doubt or a topic through with the user in free conversation, before any idea or task
+  exists; it changes nothing unless the user asks for it.
+
 ## [0.18.0] - 2026-11-27
 
 ### Changed

@@ -1606,7 +1606,8 @@ also prints that Codex support is not implemented in this release and the setup 
   `doctor` fixes the setup, `task` adds a task to the backlog `tasks/` below `path` from a template with a frontmatter, ready
   for `spec`, `brainstorming` explores the project and proposes new ideas, saving those the user picks as tasks of
   type `idea`, `probe` checks whether one idea is viable from its hypotheses, their tests and its risks, without
-  editing anything, `grill-me` interviews the user one decision at a time on what they want of a change, the what and
+  editing anything, `think` thinks a doubt or a topic through with the user in free conversation, before any idea
+  exists, changing nothing unless asked, `grill-me` interviews the user one decision at a time on what they want of a change, the what and
   the how only the user should decide, exploring the code itself, and returns a brief without editing anything, which
   feeds `spec` or the agent that edits the code directly in the flow without a plan; run on its own, once the user
   confirms the brief it asks the next step: write a plan, which it never starts but tells the user to run `spec` in
@@ -1661,7 +1662,7 @@ also prints that Codex support is not implemented in this release and the setup 
     (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
     `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
     skills are `/polix:workflow`, `/polix:rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`, `/polix:task`,
-    `/polix:brainstorming`, `/polix:probe`, `/polix:grill-me`, `/polix:spec`, `/polix:build`, `/polix:review`, `/polix:audit`, `/polix:synthesize`, `/polix:improving-agent-context`, `/polix:writing-skills` and
+    `/polix:brainstorming`, `/polix:probe`, `/polix:think`, `/polix:grill-me`, `/polix:spec`, `/polix:build`, `/polix:review`, `/polix:audit`, `/polix:synthesize`, `/polix:improving-agent-context`, `/polix:writing-skills` and
     `/polix:writing-agents`, its agents `polix:builder`, `polix:verifier`, `polix:reviewer`, `polix:critic` and
     `polix:auditor`. The skills `spec`, `build`, `review` and `audit` launch the agents; Codex, which has no agents of
     plugins and whose support is not

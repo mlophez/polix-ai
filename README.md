@@ -227,8 +227,8 @@ none: use it with your own skills, agents and conventions.
 plan `polix:critic` reviews before you approve it), `/polix:build` (run by `polix:builder`, checked against the plan by `polix:verifier` and reviewed by
 `polix:reviewer`), `/polix:review` and `/polix:audit`, with `/polix:task` to add tasks to the backlog and
 `/polix:grill-me` to stress-test a plan or an idea one question at a time and then ask whether to plan it or implement it,
-`/polix:brainstorming` to propose new ideas from the project and save those you pick as tasks, and `/polix:probe` to
-check whether one idea is viable, `/polix:synthesize` to condense a Markdown file without losing its format nor
+`/polix:brainstorming` to propose new ideas from the project and save those you pick as tasks, `/polix:probe` to
+check whether one idea is viable, `/polix:think` to think a doubt or a topic through before it is an idea, `/polix:synthesize` to condense a Markdown file without losing its format nor
 its information, `/polix:improving-agent-context` to improve the context an agent receives in each phase of the flow, finding
 its duplicates, contradictions, inconsistencies and misplaced facts and rewriting the sources you confirm, plus the skills that set Polix up
 (`/polix:init`, `/polix:workflow`, `/polix:rule`, `/polix:doctor`, `/polix:risk`) and those that write skills and subagents in one format (`/polix:writing-skills`, `/polix:writing-agents`). A
