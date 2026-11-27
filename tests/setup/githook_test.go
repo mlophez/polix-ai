@@ -175,16 +175,21 @@ func TestGithookCheckPolixFiles(t *testing.T) {
 		t.Fatalf("a broken polix.yaml: %v\n%s", err, out)
 	}
 
+	// the check that passes writes "ok: polix.yaml": it is the marker that the check ran.
+	const ran = "ok: polix.yaml"
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\n")
-	mustGit(t, r, "rm", "--quiet", "--cached", "--force", "polix.yaml")
+	mustGit(t, r, "add", "polix.yaml")
+	if out, err := gitOut(r, "commit", "-m", "valid"); err != nil || !strings.Contains(out, ran) {
+		t.Fatalf("a commit of a valid polix.yaml: %v\n%s\nwant %q", err, out, ran)
+	}
 	testenv.Write(t, filepath.Join(r, "ai", "rules", "go.yaml"), "rules:\n  - id: GO-1\n")
 	mustGit(t, r, "add", "ai/rules/go.yaml")
-	if out, err := gitOut(r, "commit", "-m", "rule"); err != nil || strings.Contains(out, "polix config check") {
+	if out, err := gitOut(r, "commit", "-m", "rule"); err != nil || strings.Contains(out, ran) {
 		t.Fatalf("a commit of a broken rule: %v\n%s", err, out)
 	}
 	testenv.Write(t, filepath.Join(r, "README.md"), "x\n")
 	mustGit(t, r, "add", "README.md")
-	if out, err := gitOut(r, "commit", "-m", "y"); err != nil {
+	if out, err := gitOut(r, "commit", "-m", "y"); err != nil || strings.Contains(out, ran) {
 		t.Fatalf("a commit of README.md: %v\n%s", err, out)
 	}
 	if subject, _ := gitOut(r, "log", "-1", "--format=%s"); strings.TrimSpace(subject) != "y" || head() == before {
