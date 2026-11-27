@@ -41,9 +41,9 @@ the choice of the request and what the runs carried out so far gave:
 - `outcomes`: the `rule.Outcome` of each run carried out so far, in order.
 
 First the format: each file that `rule.Source.Format` would change or cannot format, as `<dir>/<name>`
-(`rule.Folder.Unformatted`), goes to `Output.Unformatted`, with `Output.Fix`, `polix rules fmt` (`rule.FixCommand`),
+(`rule.Folder.Format`, its `Changed`), goes to `Output.Unformatted`, with `Output.Fix`, `polix rules fmt` (`rule.FixCommand`),
 and each file it cannot format to `Output.Problems`, as `<dir>/<name>: <error>`; with any of them, or
-without `Run`, it returns without runs. Else `Output.Ran` is true, and it plans the runs of the rules (`rule.Rules.Plan`) and walks them, and the reruns of each failed shared run, taking one
+without `Run`, it returns without runs, with `Output.NotRun`, how many rules have a check. Else `Output.Ran` is true, and it plans the runs of the rules (`rule.Rules.Plan`) and walks them, and the reruns of each failed shared run, taking one
 outcome for each. `Output.Next` is the first run without outcome, the next one the shell carries out;
 when none is left it is nil and `Output.Results` holds a `rule.Result` for every rule that ran, in the
 order of the rules. The rules it follows:
@@ -68,8 +68,10 @@ The domain decides the rest:
 
 - `Workflow.Bases`: the base is the branch of `--base` when given, else the base branches of polix.yaml, closest
   first.
-- `rule.Folder`: `Valid` requires its `Dir` and every rule valid; `Unformatted` formats each file as `polix rules fmt`
-  does (`rule.Source.Format`), splitting the files it would change from those it cannot format, with their error.
+- `rule.Folder`: `Valid` requires its `Dir`, relative to the root with slashes, its rules ordered by id and each
+  valid, and its files named without a folder; `Format` formats each file as `polix rules fmt` does
+  (`rule.Source.Format`), splitting the files it would change (`Formatted.Changed`, with their data) from those it
+  cannot format (`Formatted.Problems`, with their error).
 - `rule.Selection`: `Valid` requires `Run` for `OnlyChanged`, and `OnlyChanged` for changed files.
 - `rule.Rules`: `Matching` keeps the rules whose scope matches the changed files, and `Plan` turns the rules with a
   check into runs through `Workflow.CheckCommands`.
@@ -82,14 +84,15 @@ The domain decides the rest:
 
 ## Response
 
-`Response`, built from the output and its results: `Rules`, how many rules are valid; `Unformatted`, `Problems` and `Fix`, of the
-output; `Ran`, whether the checks ran; `Checks`, how many rules were decided; and `Failed`, each failed check (a
+`Response`, built from the output and its results: `Rules`, how many rules are valid; `Unformatted`, `Problems`,
+`Fix` and `NotRun`, of the output; `Ran`, whether the checks ran; `Checks`, how many rules were decided; and `Failed`, each failed check (a
 `Failed`) with its `ID`, `Check`, `Description` and `Output` (the `Tail` of the result). The command serializes it:
 
 - With files not formatted, each problem to stderr as it is and each other file as
   `<file> is not formatted: run <fix>`, then
-  `<rules> rules valid, <n> files not formatted` to stdout, and exits with 1.
-- Without `--run`, `<rules> rules valid and formatted` to stdout, and exits with 0.
+  `<rules> rules valid, <unformatted> files not formatted, <problems> cannot be formatted` to stdout, and exits with 1.
+- Without `--run`, `<rules> rules valid and formatted` to stdout, followed by
+  `; <notrun> checks not run: pass --run to run them` when a rule has a check, and exits with 0.
 - Else each failure to stderr as `FAIL <id> (<check>): <description>` followed by its output, then the summary
   `<checks> checks, <failed> failed` to stdout. It exits with 0 when every check passed and with 1 otherwise.
 
@@ -97,17 +100,16 @@ output; `Ran`, whether the checks ran; `Checks`, how many rules were decided; an
 
 `Port`, declared in `check_in.go` and implemented by `Adapter` in `check_out.go`:
 
-- `LoadRules`: loads the rules of the folder it is given (`Workflow.RulesPath`) through the field `Rules` of the
+- `LoadRules`: loads the folder it is given (`Workflow.RulesPath`) as a `rule.Folder` through the field `Rules` of the
   adapter, the loader `ruleadapters.Folder.Load` (`internal/app/rule/adapters`) that `cmd/polix` builds once and passes to
-  `Command`: ordered by id; without the folder, no rules. It stops where a strict reading
+  `Command`: its rules, ordered by id, and the data of its `*.yaml` by name (`rule.Loaded.Files`), subfolders left
+  out; without the folder, no rules and no files. It stops where a strict reading
   does (`rule.Loaded.Strict`): at a `retired.yaml` of the folder, else at the first invalid rule of the files in the order of their names, with
   its file, else at the first id repeated, else at a file that cannot be read or is not yaml.
 - `LoadWorkflow`: loads polix.yaml, always, for its runners and its base branches, through the field `Workflow` of the
   adapter, the loader `workflowadapters.File.Load` (`internal/app/workflow/adapters`) that `cmd/polix` builds once and passes to
   `Command`; without polix.yaml, the default workflow. Of the problems that `polix config check` reports on a workflow
   that parses, only those of `rules` stop the use case (see Errors); the rest are left to `polix config check`.
-- `ReadRuleFiles`: reads the `*.yaml` of the folder through `internal/platform/file`, by name, subfolders left out;
-  a missing folder has no files and no error.
 - `Changed`: asks git for the files changed against the first base that exists, locally or on origin; when none
   exists, its error asks to set `base_branch` in polix.yaml or to pass `--base`.
 - `RunCheck`: runs one invocation from the root, which may decide several rules, with 5 minutes to finish: the argv of
@@ -149,10 +151,9 @@ with 1.
 1. `Command` checks the flags, turns them into a `Request` and injects
    `Adapter{Repo: repo, Log: stderr, Rules: rules, Workflow: loadWorkflow}`, with the loaders of the rules and of
    polix.yaml it was given, as the `Port`.
-2. The shell reads, in `load`, the workflow, stopping on an invalid key `rules`, and then the rules of its folder of
-   rules, below its `path`, stopping on one that is not `Valid`, through the port and, with `--changed`, the changed
-   files against `--base` or else the base branches of the workflow; then the files of the folder of rules, which
-   with the rules make a `rule.Folder`, followed by `Valid`.
+2. The shell reads, in `load`, the workflow, stopping on an invalid key `rules`, and then the folder of rules below
+   its `path`, a `rule.Folder` with its rules and the data of its files, followed by `Valid`, through the port; then,
+   with `--changed`, the changed files against `--base` or else the base branches of the workflow.
 3. The shell calls `Decide` in a loop, from one call site, with the outcomes so far: while
    `Output.Next` is set (never without `--run` nor with a file not formatted), it runs it through `RunCheck`, builds a `rule.Outcome` from the run, followed by
    `Valid`, and appends it.

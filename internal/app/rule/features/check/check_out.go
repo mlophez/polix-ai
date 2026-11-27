@@ -11,7 +11,6 @@ import (
 
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
-	"github.com/mlophez/polix-ai/internal/platform/file"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 	"github.com/mlophez/polix-ai/internal/platform/proc"
 )
@@ -35,12 +34,13 @@ const logIDs = 5
 // id, and stops where a strict reading does (rule.Loaded.Strict): at a retired.yaml, else at the first invalid rule
 // of the files in the order of their names, or at a file that cannot be read or is not yaml. Without the folder
 // there are no rules.
-func (a Adapter) LoadRules(ctx context.Context, dir string) ([]rule.Rule, error) {
+func (a Adapter) LoadRules(ctx context.Context, dir string) (rule.Folder, error) {
 	loaded := a.Rules(ctx, a.Repo.Root, dir)
 	if loaded.Strict != nil {
-		return nil, loaded.Strict
+		return rule.Folder{}, loaded.Strict
 	}
-	return loaded.Rules, nil
+	folder := rule.Folder{Dir: dir, Rules: loaded.Rules, Files: loaded.Files}
+	return folder, folder.Valid()
 }
 
 // LoadWorkflow loads polix.yaml of the repository through the loader of polix.yaml. Without polix.yaml it is the
@@ -53,20 +53,6 @@ func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Wor
 		return workflow.Workflow{}, loaded.Err
 	}
 	return loaded.Workflow, nil
-}
-
-// ReadRuleFiles reads the yaml files of the folder dir through internal/platform/file, by name, subfolders left
-// out; a missing folder has no files and no error.
-func (a Adapter) ReadRuleFiles(_ context.Context, dir string) (map[string]rule.Source, error) {
-	files, err := file.ReadDir(filepath.Join(a.Repo.Root, filepath.FromSlash(dir)), ".yaml")
-	if err != nil || len(files) == 0 {
-		return nil, err
-	}
-	out := make(map[string]rule.Source, len(files))
-	for name, data := range files {
-		out[name] = data
-	}
-	return out, nil
 }
 
 // Changed asks git for the files changed against the first of candidates that exists, locally or on origin. When

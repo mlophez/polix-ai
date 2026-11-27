@@ -69,8 +69,8 @@ func (f *Folder) Load(_ context.Context, root, dir string) rule.Loaded {
 	if loaded, ok := f.seen[key]; ok {
 		return loaded
 	}
-	rules, exists, err := f.readRules(root, dir)
-	loaded := rules.Loaded(f.retiredPath(root, dir), exists, err)
+	rules, files, exists, err := f.readRules(root, dir)
+	loaded := rules.Loaded(f.retiredPath(root, dir), files, exists, err)
 	if f.seen == nil {
 		f.seen = map[folderKey]rule.Loaded{}
 	}
@@ -80,23 +80,31 @@ func (f *Folder) Load(_ context.Context, root, dir string) rule.Loaded {
 
 // readRules reads the yaml files of the folder dir of root through internal/platform/file, retired.yaml and the
 // files that are not yaml left out, and decodes them in the order of their names, until the first that cannot be
-// decoded. A missing folder has no rules and no error.
-func (f *Folder) readRules(root, dir string) (rule.Rules, bool, error) {
+// decoded. It returns the data of every yaml file too, by name, nil when there is none. A missing folder has no rules
+// and no error.
+func (f *Folder) readRules(root, dir string) (rule.Rules, map[string]rule.Source, bool, error) {
 	folder := filepath.Join(root, filepath.FromSlash(dir))
 	exists := file.IsDir(folder)
 	files, err := file.ReadDir(folder, ".yaml")
 	if err != nil {
-		return nil, exists, err
+		return nil, nil, exists, err
+	}
+	var sources map[string]rule.Source
+	for name, data := range files {
+		if sources == nil {
+			sources = make(map[string]rule.Source, len(files))
+		}
+		sources[name] = data
 	}
 	var rules rule.Rules
 	for _, name := range f.names(files) {
 		decoded, err := f.decode(dir+"/"+name, files[name])
 		if err != nil {
-			return rules, exists, err
+			return rules, sources, exists, err
 		}
 		rules = append(rules, decoded...)
 	}
-	return rules, exists, nil
+	return rules, sources, exists, nil
 }
 
 // retiredPath returns the path, relative to the root with slashes, of rule.RetiredFile in the folder dir of root,

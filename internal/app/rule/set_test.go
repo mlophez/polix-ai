@@ -96,7 +96,7 @@ func TestRulesLoaded(t *testing.T) {
 			complete(Rule{ID: "A-4", Description: "d", Deterministic: true, Check: "/abs/a.sh", File: "ai/rules/a.yaml"}),
 			complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"}),
 		}
-		got := rules.Loaded("", true, nil)
+		got := rules.Loaded("", nil, true, nil)
 		want := []string{
 			"ai/rules/a.yaml A-2: no description",
 			"ai/rules/a.yaml: a rule has no id",
@@ -122,12 +122,15 @@ func TestRulesLoaded(t *testing.T) {
 	t.Run("valid rules", func(t *testing.T) {
 		rules := Rules{complete(Rule{ID: "GO-1", Description: "gofmt", Deterministic: true, Check: "ai/checks/gofmt.sh",
 			Scope: []string{"**/*.go"}, File: "ai/rules/go.yaml"})}
-		got := rules.Loaded("", true, nil)
+		got := rules.Loaded("", nil, true, nil)
 		if len(got.Rules) != 1 || got.Rules[0].ID != "GO-1" || got.Problems != nil || got.Repeated != nil ||
 			got.Err != nil || got.Strict != nil {
 			t.Fatalf("got %+v", got)
 		}
-		if got := Rules(nil).Loaded("", false, nil); got.Rules != nil || got.Exists || got.Err != nil || got.Strict != nil {
+		if got := Rules(nil).Loaded("", map[string]Source{"a.yaml": nil}, false, nil); got.Err == nil {
+			t.Fatalf("files without their folder: %+v", got)
+		}
+		if got := Rules(nil).Loaded("", nil, false, nil); got.Rules != nil || got.Exists || got.Err != nil || got.Strict != nil {
 			t.Fatalf("no folder: %+v", got)
 		}
 	})
@@ -136,21 +139,21 @@ func TestRulesLoaded(t *testing.T) {
 	// an invalid rule of a file before it, else at the error.
 	t.Run("stops at a file that cannot be read", func(t *testing.T) {
 		broken := errors.New("ai/rules/c.yaml: yaml: did not find expected node content")
-		got := Rules(nil).Loaded("", true, broken)
+		got := Rules(nil).Loaded("", nil, true, broken)
 		if got.Rules != nil || got.Problems != nil || !errors.Is(got.Err, broken) || !errors.Is(got.Strict, broken) ||
 			!got.Exists {
 			t.Fatalf("got %+v", got)
 		}
 		before := Rules{complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"}),
 			{ID: "B-1", File: "ai/rules/b.yaml"}}
-		got = before.Loaded("", true, broken)
+		got = before.Loaded("", nil, true, broken)
 		if got.Rules != nil || !errors.Is(got.Err, broken) || got.Strict == nil ||
 			got.Strict.Error() != "ai/rules/b.yaml: rule B-1 has no description" {
 			t.Fatalf("an invalid rule before: %+v", got)
 		}
 		repeated := Rules{complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"}),
 			complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"})}
-		got = repeated.Loaded("", true, broken)
+		got = repeated.Loaded("", nil, true, broken)
 		if got.Rules != nil || got.Problems != nil || got.Repeated != nil || !errors.Is(got.Err, broken) ||
 			got.Strict == nil || got.Strict.Error() != "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml" {
 			t.Fatalf("a repeated id before: %+v", got)
@@ -166,13 +169,13 @@ func TestRulesLoaded(t *testing.T) {
 			complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"}),
 		}
 		repeat := "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml"
-		got := rules.Loaded("", true, nil)
+		got := rules.Loaded("", nil, true, nil)
 		if strings.Join(got.Problems, "\n") != repeat || strings.Join(got.Repeated, "\n") != repeat ||
 			got.Strict == nil || got.Strict.Error() != repeat || len(got.Rules) != 3 || got.Err != nil {
 			t.Fatalf("got %+v", got)
 		}
 		invalid := append(append(Rules(nil), rules...), Rule{ID: "C-1", File: "ai/rules/c.yaml"})
-		got = invalid.Loaded("", true, nil)
+		got = invalid.Loaded("", nil, true, nil)
 		want := []string{"ai/rules/c.yaml C-1: no description", repeat}
 		if strings.Join(got.Problems, "\n") != strings.Join(want, "\n") || strings.Join(got.Repeated, "\n") != repeat ||
 			got.Strict == nil || got.Strict.Error() != "ai/rules/c.yaml: rule C-1 has no description" {
@@ -186,13 +189,13 @@ func TestRulesLoaded(t *testing.T) {
 		const path = "ai/rules/retired.yaml"
 		want := path + " is no longer read: delete it, its ids are free"
 		rules := Rules{{ID: "A-1", File: "ai/rules/a.yaml"}}
-		got := rules.Loaded(path, true, nil)
+		got := rules.Loaded(path, nil, true, nil)
 		if len(got.Problems) == 0 || got.Problems[0] != want || got.Strict == nil || got.Strict.Error() != want ||
 			len(got.Rules) != 1 || got.Err != nil {
 			t.Fatalf("got %+v", got)
 		}
 		valid := Rules{complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"})}
-		if got := valid.Loaded(path, true, nil); got.Strict == nil || got.Strict.Error() != want || got.Err != nil {
+		if got := valid.Loaded(path, nil, true, nil); got.Strict == nil || got.Strict.Error() != want || got.Err != nil {
 			t.Fatalf("valid rules: %+v", got)
 		}
 	})
@@ -203,35 +206,15 @@ func TestRulesLoaded(t *testing.T) {
 func TestLoadedRetiredFile(t *testing.T) {
 	const path = "ai/rules/retired.yaml"
 	want := path + " is no longer read: delete it, its ids are free"
-	got := Rules{{ID: "GOARCH-1", Description: "d", File: "ai/rules/a.yaml"}}.Loaded(path, true, nil)
+	got := Rules{{ID: "GOARCH-1", Description: "d", File: "ai/rules/a.yaml"}}.Loaded(path, nil, true, nil)
 	if !slices.Contains(got.Problems, want) || got.Strict == nil || !strings.Contains(got.Strict.Error(), want) ||
 		got.Err != nil || len(got.Rules) != 1 {
 		t.Fatalf("got %+v", got)
 	}
 	// With a file that cannot be read, no problems: the strict reading still names the retired file first.
 	broken := errors.New("ai/rules/c.yaml: yaml: did not find expected node content")
-	got = Rules(nil).Loaded(path, true, broken)
+	got = Rules(nil).Loaded(path, nil, true, broken)
 	if got.Problems != nil || !errors.Is(got.Err, broken) || got.Strict == nil || got.Strict.Error() != want {
 		t.Fatalf("a broken file: %+v", got)
-	}
-}
-
-// A folder is valid with a path and valid rules; Unformatted names the files Source.Format would change.
-func TestFolder(t *testing.T) {
-	ok := Source("rules:\n  - id: A-1\n    description: d\n")
-	f := Folder{Dir: "ai/rules", Files: map[string]Source{"b.yaml": ok, "a.yaml": Source("rules:\n- id: A-1\n")}}
-	if err := f.Valid(); err != nil {
-		t.Fatal(err)
-	}
-	if changed, problems := f.Unformatted(); !slices.Equal(changed, []string{"ai/rules/a.yaml"}) || problems != nil {
-		t.Fatalf("Unformatted = %q %q", changed, problems)
-	}
-	f.Files["c.yaml"] = Source("rules:\n  - id: !!str C-1\n")
-	if changed, problems := f.Unformatted(); len(changed) != 1 || len(problems) != 1 ||
-		!strings.HasPrefix(problems[0], "ai/rules/c.yaml: ") {
-		t.Fatalf("a file Format rejects is a problem, not a change: %q %q", changed, problems)
-	}
-	if (Folder{}).Valid() == nil || (Folder{Dir: "ai/rules", Rules: Rules{{ID: "A-1"}}}).Valid() == nil {
-		t.Fatal("a folder without path or with an invalid rule is valid")
 	}
 }

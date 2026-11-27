@@ -87,9 +87,9 @@ func TestFolderReadRules(t *testing.T) {
     check: ai/checks/gofmt.sh
     examples: the keys polix does not read are left out
 `})
-	got, exists, err := (&Folder{}).readRules(root, "ai/rules")
-	if err != nil || !exists {
-		t.Fatal(exists, err)
+	got, files, exists, err := (&Folder{}).readRules(root, "ai/rules")
+	if err != nil || !exists || len(files) != 1 || len(files["go.yaml"]) == 0 {
+		t.Fatal(exists, err, len(files))
 	}
 	if len(got) != 1 || got[0].ID != "GO-1" || got[0].Description != "gofmt" || got[0].File != "ai/rules/go.yaml" ||
 		!got[0].HasCheck() || got[0].Check != "ai/checks/gofmt.sh" || got[0].Scope[0] != "**/*.go" {
@@ -113,7 +113,7 @@ func TestFolderReadRulesOfAFolder(t *testing.T) {
 		"docs/rules/notes.md":            "x",
 		"docs/rules/sub/nested.yaml":     "rules:\n  - id: N-1\n    description: n\n",
 	})
-	got, exists, err := (&Folder{}).readRules(root, "docs/rules")
+	got, _, exists, err := (&Folder{}).readRules(root, "docs/rules")
 	if err != nil || !exists {
 		t.Fatal(exists, err)
 	}
@@ -128,7 +128,7 @@ func TestFolderReadRulesOfAFolder(t *testing.T) {
 
 // Without the folder there are no rules, and no error.
 func TestFolderReadRulesWithoutFolder(t *testing.T) {
-	got, exists, err := (&Folder{}).readRules(t.TempDir(), "ai/rules")
+	got, _, exists, err := (&Folder{}).readRules(t.TempDir(), "ai/rules")
 	if got != nil || exists || err != nil {
 		t.Fatalf("no folder, no rules: %v %v %v", got, exists, err)
 	}
@@ -142,8 +142,9 @@ func TestFolderReadRulesBrokenYAML(t *testing.T) {
 		"ai/rules/b.yaml": "rules: [\n",
 		"ai/rules/c.yaml": "rules:\n  - id: C-1\n    description: d\n",
 	})
-	got, exists, err := (&Folder{}).readRules(root, "ai/rules")
-	if err == nil || !strings.Contains(err.Error(), "ai/rules/b.yaml") || !exists || len(got) != 1 || got[0].ID != "A-1" {
+	got, files, exists, err := (&Folder{}).readRules(root, "ai/rules")
+	if err == nil || !strings.Contains(err.Error(), "ai/rules/b.yaml") || !exists || len(got) != 1 || got[0].ID != "A-1" ||
+		len(files) != 3 {
 		t.Fatalf("got %+v %v %v", got, exists, err)
 	}
 }
@@ -160,8 +161,8 @@ func TestFolderReadRulesUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(p, 0o644) })
-	got, exists, err := (&Folder{}).readRules(root, "ai/rules")
-	if err == nil || got != nil || !exists {
+	got, files, exists, err := (&Folder{}).readRules(root, "ai/rules")
+	if err == nil || got != nil || files != nil || !exists {
 		t.Fatalf("got %+v %v %v", got, exists, err)
 	}
 }

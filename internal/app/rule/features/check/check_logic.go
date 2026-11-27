@@ -14,18 +14,21 @@ type Output struct {
 	Problems    []string // the files that cannot be formatted, as <dir>/<name>: <error>; then nothing runs
 	Fix         string   // with a file not formatted, the command that formats the files
 	Ran         bool     // whether the checks ran: with run and every file formatted
+	NotRun      int      // without Run, how many rules have a check that did not run
 	Next        *rule.Run
 	Results     []rule.Result
 }
 
-// Decide decides first whether the files of folder are formatted (rule.Folder.Unformatted): one that is not, or cannot be, stops it,
-// and so does a selection without Run. Then it decides which checks run and how, of the rules of folder: those of the deterministic rules that sel selects, all of them or only
+// Decide decides first whether the files of folder are formatted (rule.Folder.Format): one that is not, or cannot
+// be, stops it, and so does a selection without Run, which counts the checks it leaves unrun. Then it decides which
+// checks run and how, of the rules of folder: those of the deterministic rules that sel selects, all of them or only
 // those whose scope matches the changed files, grouped into runs by the runners of wf (rule.Rules.Plan). It walks the
 // runs, and the reruns of each failed shared run (rule.Run.Settle), taking one of outcomes, the runs carried out so
 // far, for each; the first run without outcome is the next one, and with none left it returns the results.
 func Decide(folder rule.Folder, wf workflow.Workflow, sel rule.Selection, outcomes []rule.Outcome) Output {
 	var out Output
-	out.Unformatted, out.Problems = folder.Unformatted()
+	formatted := folder.Format()
+	out.Unformatted, out.Problems = formatted.Changed, formatted.Problems
 	if len(out.Unformatted) > 0 {
 		out.Fix = rule.FixCommand
 	}
@@ -33,6 +36,11 @@ func Decide(folder rule.Folder, wf workflow.Workflow, sel rule.Selection, outcom
 		return out
 	}
 	if !sel.Run {
+		for _, r := range folder.Rules {
+			if r.HasCheck() {
+				out.NotRun++
+			}
+		}
 		return out
 	}
 	out.Ran = true

@@ -23,7 +23,7 @@ func TestAdapterReadRuleFiles(t *testing.T) {
 		"sub/b.yaml": "b"} {
 		testenv.Write(t, filepath.Join(root, "docs", "rules", filepath.FromSlash(name)), data)
 	}
-	files, err := Adapter{Root: root}.ReadRuleFiles(context.Background(), "docs/rules")
+	files, err := Adapter{Root: root, Rules: (&ruleadapters.Folder{}).Load}.ReadRuleFiles(context.Background(), "docs/rules")
 	names := make([]string, 0, len(files))
 	for name := range files {
 		names = append(names, name)
@@ -36,7 +36,7 @@ func TestAdapterReadRuleFiles(t *testing.T) {
 
 // Without the folder there are no files, and no error.
 func TestAdapterReadRuleFilesWithoutFolder(t *testing.T) {
-	files, err := Adapter{Root: t.TempDir()}.ReadRuleFiles(context.Background(), "ai/rules")
+	files, err := Adapter{Root: t.TempDir(), Rules: (&ruleadapters.Folder{}).Load}.ReadRuleFiles(context.Background(), "ai/rules")
 	if files != nil || err != nil {
 		t.Fatalf("got %v %v", files, err)
 	}

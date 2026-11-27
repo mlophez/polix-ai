@@ -24,14 +24,14 @@ It takes no argument.
 
 ## Logic
 
-`Decide(dir string, files map[string][]byte, repeated []string, check bool) Output` decides what to write. It takes
-what the shell read through the port: `dir`, the folder of rules (`Workflow.RulesPath`), `files`, the data of each
-`*.yaml` of it by name, and `repeated`, the ids repeated among its rules as the loader of
+`Decide(folder rule.Folder, repeated []string, check bool) Output` decides what to write. It takes what the shell
+read through the port: `folder`, the `rule.Folder`, valid, of the folder of rules (`Workflow.RulesPath`) with the
+data of each `*.yaml` of it by name, without its rules, and `repeated`, the ids repeated among its rules as the loader of
 the rules words them, or the error where the loader stops; and `check`, from the request.
 
 1. Without files (no folder, or no `*.yaml` in it) there is nothing to format: `Empty`.
-2. It formats each file, in the order of the names, with `rule.Source.Format` of the domain (`internal/app/rule/format.go`). When it
-   fails, `<dir>/<name>: <error>` is a problem of `Problems`; when the result differs from the data read,
+2. It formats each file, in the order of the names, with `rule.Folder.Format` of the domain
+   (`internal/app/rule/format.go`), the same as `polix rules check`. When it fails, `<dir>/<name>: <error>` is a problem of `Problems`; when the result differs from the data read,
    `<dir>/<name>` goes to `Changed` and the result to the data to write.
 3. Each id repeated is a problem too, after those of the files: `<file> <id>: id repeated, also in <other file>`, an
    id that an earlier rule already has. When the loader stopped at a file, its error is
@@ -85,8 +85,9 @@ and then the ids repeated or the error where the loader of the rules stops; `Cha
   polix.yaml, the default workflow. A polix.yaml that cannot be read, cannot be parsed, has an unknown top level key
   or requires a newer polix is an error; the other problems of a workflow that parses are left to
   `polix config check`.
-- `ReadRuleFiles`: reads the `*.yaml` of the folder through `internal/platform/file`, by name, subfolders
-  left out; a missing folder has no files and no error.
+- `ReadRuleFiles`: the data of the `*.yaml` of the folder by name, `retired.yaml` included and subfolders left out,
+  through the loader of the rules of the field `Rules` (`rule.Loaded.Files`); a missing folder has no files and no
+  error, and a folder that cannot be read is the error of the loader.
 - `WriteRuleFile`: writes one file of the folder through `internal/platform/file`, keeping its mode and a symlink to
   it.
 - `RepeatedIDs`: the ids repeated among the rules of the folder, through the field `Rules` of

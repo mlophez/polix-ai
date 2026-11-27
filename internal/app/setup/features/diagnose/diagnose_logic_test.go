@@ -125,7 +125,7 @@ func TestRulesInvalidFields(t *testing.T) {
 		with("A-6", func(r *rule.Rule) { r.Check = "" }),
 	}
 	i := healthy(t)
-	loaded := rules.Loaded("", true, nil)
+	loaded := rules.Loaded("", nil, true, nil)
 	i.Rules, i.Invalid = loaded.Rules, loaded.Problems
 	out := Decide(i, false)
 	got := text(out)

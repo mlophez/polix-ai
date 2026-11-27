@@ -36,6 +36,7 @@ type Response struct {
 	Problems    []string // the files that cannot be formatted, as <dir>/<name>: <error>; then nothing ran
 	Fix         string   // with a file not formatted, the command that formats the files
 	Ran         bool     // whether the checks ran, with Request.Run
+	NotRun      int      // without Request.Run, how many rules have a check that did not run
 	Checks      int      // how many checks ran
 	Failed      []Failed
 }
@@ -52,13 +53,12 @@ type Failed struct {
 // an interface so its implementation can change; the entry injects the adapter, and the logic never sees it. It
 // speaks in domain values, and every method takes the context of the caller.
 type Port interface {
-	// LoadRules returns the rules of the folder dir, relative to the root, ordered by id.
-	LoadRules(ctx context.Context, dir string) ([]rule.Rule, error)
+	// LoadRules returns the folder of rules dir, relative to the root: its rules, ordered by id, and the data of its
+	// yaml files.
+	LoadRules(ctx context.Context, dir string) (rule.Folder, error)
 	// LoadWorkflow returns the workflow of polix.yaml for the polix of version running, the default one without
 	// the file.
 	LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, error)
-	// ReadRuleFiles returns the data of each yaml file of the folder dir, relative to the root, by name.
-	ReadRuleFiles(ctx context.Context, dir string) (map[string]rule.Source, error)
 	// Changed returns the files changed against the first of candidates that exists.
 	Changed(ctx context.Context, candidates []string) ([]string, error)
 	// RunCheck runs one invocation of run from the root of the repository, which may decide several rules, and
@@ -125,16 +125,8 @@ func flags(req Request) error {
 // each run it asks for through the port and gives the logic its outcome, and builds the
 // response. It only sequences; the decisions are in the logic and the domain.
 func run(ctx context.Context, port Port, req Request) (Response, error) {
-	wf, rules, err := load(ctx, port, req)
+	wf, folder, err := load(ctx, port, req)
 	if err != nil {
-		return Response{}, err
-	}
-	files, err := port.ReadRuleFiles(ctx, wf.RulesPath())
-	if err != nil {
-		return Response{}, err
-	}
-	folder := rule.Folder{Dir: wf.RulesPath(), Rules: rules, Files: files}
-	if err := folder.Valid(); err != nil {
 		return Response{}, err
 	}
 	var changed []string
@@ -151,7 +143,7 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	for {
 		out := Decide(folder, wf, sel, outcomes)
 		if out.Next == nil {
-			return response(len(rules), out)
+			return response(len(folder.Rules), out)
 		}
 		text, err := port.RunCheck(ctx, *out.Next)
 		o := rule.Outcome{Output: text, Err: err}
@@ -162,21 +154,25 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 	}
 }
 
-// load reads through the port the workflow of polix.yaml, whose runners of rules.run must be valid, and the rules
-// of its folder of rules, every one valid; the error tells which cannot be read or is not valid.
-func load(ctx context.Context, port Port, req Request) (workflow.Workflow, []rule.Rule, error) {
+// load reads through the port the workflow of polix.yaml, whose runners of rules.run must be valid, and the folder of
+// rules below its path, with its rules and its files, which must be valid (rule.Folder.Valid); the error tells which
+// cannot be read or is not valid.
+func load(ctx context.Context, port Port, req Request) (workflow.Workflow, rule.Folder, error) {
 	wf, err := port.LoadWorkflow(ctx, req.Version)
 	if err != nil {
-		return workflow.Workflow{}, nil, err
+		return workflow.Workflow{}, rule.Folder{}, err
 	}
 	if err := wf.Rules.Valid(); err != nil {
-		return workflow.Workflow{}, nil, err
+		return workflow.Workflow{}, rule.Folder{}, err
 	}
-	rules, err := port.LoadRules(ctx, wf.RulesPath())
+	folder, err := port.LoadRules(ctx, wf.RulesPath())
 	if err != nil {
-		return workflow.Workflow{}, nil, err
+		return workflow.Workflow{}, rule.Folder{}, err
 	}
-	return wf, rules, nil
+	if err := folder.Valid(); err != nil {
+		return workflow.Workflow{}, rule.Folder{}, err
+	}
+	return wf, folder, nil
 }
 
 // response turns the output, with the results of carrying it out, each valid, and the count of the valid rules into
@@ -187,9 +183,9 @@ func response(rules int, out Output) (Response, error) {
 			return Response{}, err
 		}
 	}
-	res := Response{Rules: rules, Unformatted: out.Unformatted, Problems: out.Problems, Fix: out.Fix, Ran: out.Ran, Checks: len(out.Results)}
-	results := out.Results
-	for _, f := range rule.Results(results).Failed() {
+	res := Response{Rules: rules, Unformatted: out.Unformatted, Problems: out.Problems, Fix: out.Fix, Ran: out.Ran,
+		NotRun: out.NotRun, Checks: len(out.Results)}
+	for _, f := range rule.Results(out.Results).Failed() {
 		res.Failed = append(res.Failed, Failed{
 			ID:          f.Rule.ID,
 			Check:       f.Rule.Check,
@@ -210,8 +206,13 @@ func (res Response) print(stdout, stderr io.Writer) {
 	for _, f := range res.Unformatted {
 		ue.Fail("%s is not formatted: run %s", f, res.Fix)
 	}
-	if n := len(res.Unformatted) + len(res.Problems); n > 0 {
-		uo.Fail("%d rules valid, %d files not formatted", res.Rules, n)
+	if len(res.Unformatted)+len(res.Problems) > 0 {
+		uo.Fail("%d rules valid, %d files not formatted, %d cannot be formatted", res.Rules, len(res.Unformatted),
+			len(res.Problems))
+		return
+	}
+	if !res.Ran && res.NotRun > 0 {
+		uo.OK("%d rules valid and formatted; %d checks not run: pass --run to run them", res.Rules, res.NotRun)
 		return
 	}
 	if !res.Ran {

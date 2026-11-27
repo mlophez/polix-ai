@@ -39,12 +39,14 @@ type Load func(ctx context.Context, root, dir string) Loaded
 // their names; RetiredFile is a problem, never read. Each use case decides what an absent folder, an invalid rule or
 // a file that cannot be read means to it: it takes every rule with the problems of the invalid ones, or stops at Err, or stops at Strict.
 type Loaded struct {
-	Rules    []Rule   // every rule of the folder, invalid ones included, ordered by id, stably; none with Err
-	Exists   bool     // whether the folder exists
-	Problems []string // RetiredFile when the folder holds it, then why each invalid rule is not valid, then each id repeated
-	Repeated []string // the problems of the ids repeated: the last ones of Problems
-	Err      error    // why a file of the folder cannot be read or is not yaml, the first by name; nil when none
-	Strict   error    // where a strict reading stops: RetiredFile, else an invalid rule, else a repeated id, else Err
+	Rules    []Rule            // every rule of the folder, invalid ones included, ordered by id, stably; none with Err
+	Exists   bool              // whether the folder exists
+	Problems []string          // RetiredFile when the folder holds it, then why each invalid rule is not valid, then each id repeated
+	Repeated []string          // the problems of the ids repeated: the last ones of Problems
+	Err      error             // why a file of the folder cannot be read or is not yaml, the first by name; nil when none
+	Strict   error             // where a strict reading stops: RetiredFile, else an invalid rule, else a repeated id, else Err
+	Files    map[string]Source // the data of every yaml file of the folder by name, RetiredFile included; nil when
+	// the folder cannot be read
 }
 
 // kinds is the closed list of the kinds of a rule.
@@ -124,6 +126,8 @@ func (l Loaded) Valid() error {
 		return errors.New("repeated ids that are not the last problems of the rules")
 	case !l.Exists && len(l.Rules) > 0:
 		return errors.New("rules loaded without their folder")
+	case !l.Exists && len(l.Files) > 0:
+		return errors.New("files read without their folder")
 	}
 	return nil
 }

@@ -72,13 +72,14 @@ func loaderOf(loaded rule.Loaded, asked *[]string) rule.Load {
 // of the files is tested in internal/app/rule/adapters.
 func TestAdapterLoadRules(t *testing.T) {
 	var asked []string
-	rules := []rule.Rule{{ID: "A-1", Description: "a", File: "ai/rules/a.yaml"}, {ID: "B-1", Description: "b"}}
+	rules := []rule.Rule{complete(rule.Rule{ID: "A-1", Description: "a", File: "ai/rules/a.yaml"}),
+		complete(rule.Rule{ID: "B-1", Description: "b"})}
 	a := Adapter{Repo: &git.Repo{Root: "/repo"}, Rules: loaderOf(rule.Loaded{Rules: rules, Exists: true}, &asked)}
 	all, err := a.LoadRules(context.Background(), "ai/rules")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != 2 || all[0].ID != "A-1" || all[1].ID != "B-1" || !slices.Equal(asked, []string{"/repo ai/rules"}) {
+	if len(all.Rules) != 2 || all.Dir != "ai/rules" || all.Rules[0].ID != "A-1" || all.Rules[1].ID != "B-1" || !slices.Equal(asked, []string{"/repo ai/rules"}) {
 		t.Fatalf("LoadRules = %+v, asked %v", all, asked)
 	}
 }
@@ -86,7 +87,7 @@ func TestAdapterLoadRules(t *testing.T) {
 func TestAdapterLoadRulesWithoutFolder(t *testing.T) {
 	var asked []string
 	a := Adapter{Repo: &git.Repo{Root: t.TempDir()}, Rules: loaderOf(rule.Loaded{}, &asked)}
-	if all, err := a.LoadRules(context.Background(), "ai/rules"); err != nil || len(all) != 0 {
+	if all, err := a.LoadRules(context.Background(), "ai/rules"); err != nil || len(all.Rules) != 0 {
 		t.Fatalf("no folder, no rules: %v %v", all, err)
 	}
 }
@@ -99,7 +100,7 @@ func TestAdapterLoadRulesInvalid(t *testing.T) {
 		Problems: []string{"governance/rules/bad.yaml X-1: no description"}, Strict: strict}
 	a := Adapter{Repo: &git.Repo{Root: t.TempDir()}, Rules: loaderOf(loaded, &asked)}
 	all, err := a.LoadRules(context.Background(), "governance/rules")
-	if err == nil || !strings.Contains(err.Error(), "governance/rules/bad.yaml") || all != nil {
+	if err == nil || !strings.Contains(err.Error(), "governance/rules/bad.yaml") || all.Rules != nil {
 		t.Fatalf("got %v %v, want the error of the file", all, err)
 	}
 }
@@ -113,7 +114,7 @@ func TestAdapterLoadRulesRepeatedID(t *testing.T) {
 	})
 	a.Rules = (&ruleadapters.Folder{}).Load
 	all, err := a.LoadRules(context.Background(), "ai/rules")
-	if err == nil || err.Error() != "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml" || all != nil {
+	if err == nil || err.Error() != "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml" || all.Rules != nil {
 		t.Fatalf("got %v %v", all, err)
 	}
 }
@@ -267,19 +268,17 @@ func TestAdapterRunCheckTimeoutWithGrandchild(t *testing.T) {
 	}
 }
 
-// ReadRuleFiles reads the yaml files of the folder by name, subfolders and other files left out; a missing folder
-// has no files and no error.
-func TestAdapterReadRuleFiles(t *testing.T) {
+// LoadRules gives the data of the yaml files of the folder by name, as the loader of the rules that cmd/polix builds
+// reads them, subfolders and other files left out.
+func TestAdapterLoadRulesFiles(t *testing.T) {
 	a := adapterOf(t, map[string]string{
 		"ai/rules/a.yaml":     "rules: []\n",
 		"ai/rules/notes.md":   "x\n",
 		"ai/rules/sub/b.yaml": "rules: []\n",
 	})
-	files, err := a.ReadRuleFiles(context.Background(), "ai/rules")
-	if err != nil || len(files) != 1 || string(files["a.yaml"]) != "rules: []\n" {
-		t.Fatalf("got %q %v", files, err)
-	}
-	if files, err := a.ReadRuleFiles(context.Background(), "missing"); err != nil || files != nil {
-		t.Fatalf("missing folder: %q %v", files, err)
+	a.Rules = (&ruleadapters.Folder{}).Load
+	folder, err := a.LoadRules(context.Background(), "ai/rules")
+	if err != nil || len(folder.Files) != 1 || string(folder.Files["a.yaml"]) != "rules: []\n" {
+		t.Fatalf("got %+v %v", folder, err)
 	}
 }

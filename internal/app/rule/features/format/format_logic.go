@@ -1,8 +1,6 @@
 package format
 
 import (
-	"bytes"
-	"maps"
 	"slices"
 
 	"github.com/mlophez/polix-ai/internal/app/rule"
@@ -18,25 +16,16 @@ type Output struct {
 	Write    map[string][]byte // the formatted data of each changed file by name; nil when nothing is written
 }
 
-// Decide decides how to format the rules files of the folder dir, whose data is files by name: without files
-// nothing; else each file formatted with rule.Source.Format, a failure being its problem and a different result a change,
-// with the command that formats them. The ids repeated among the rules, as the loader of the rules words them
-// (rule.Loaded.Repeated), or the error where the loader stops, are problems too, after those of the files, each
-// once: the error of a file that is not yaml reads as its own problem. It is all or nothing: with any problem, or
-// when check only asks whether the files are formatted, nothing is written.
-func Decide(dir string, files map[string][]byte, repeated []string, check bool) Output {
-	out := Output{Dir: dir, Empty: len(files) == 0}
-	write := map[string][]byte{}
-	for _, name := range slices.Sorted(maps.Keys(files)) {
-		formatted, err := rule.Source(files[name]).Format()
-		switch {
-		case err != nil:
-			out.Problems = append(out.Problems, dir+"/"+name+": "+err.Error())
-		case !bytes.Equal(formatted, files[name]):
-			out.Changed = append(out.Changed, dir+"/"+name)
-			write[name] = formatted
-		}
-	}
+// Decide decides how to format folder, the rules files of the folder of rules: without files nothing; else each file
+// formatted with rule.Folder.Format, a failure being its problem and a different result a change, with the command
+// that formats them. The ids repeated among the rules, as the loader of the rules words them (rule.Loaded.Repeated),
+// or the error where the loader stops, are problems too, after those of the files, each once: the error of a file
+// that is not yaml reads as its own problem. It is all or nothing: with any problem, or when check only asks whether
+// the files are formatted, nothing is written.
+func Decide(folder rule.Folder, repeated []string, check bool) Output {
+	formatted := folder.Format()
+	out := Output{Dir: folder.Dir, Empty: len(folder.Files) == 0, Problems: formatted.Problems,
+		Changed: formatted.Changed}
 	for _, r := range repeated {
 		if !slices.Contains(out.Problems, r) {
 			out.Problems = append(out.Problems, r)
@@ -45,8 +34,8 @@ func Decide(dir string, files map[string][]byte, repeated []string, check bool) 
 	if len(out.Changed) > 0 {
 		out.Fix = rule.FixCommand
 	}
-	if len(out.Problems) == 0 && len(write) > 0 && !check {
-		out.Write = write
+	if len(out.Problems) == 0 && len(formatted.Data) > 0 && !check {
+		out.Write = formatted.Data
 	}
 	return out
 }

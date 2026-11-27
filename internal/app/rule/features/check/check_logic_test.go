@@ -182,7 +182,8 @@ func TestDecideFormatAndRun(t *testing.T) {
 		t.Fatalf("not formatted: %+v", out)
 	}
 	good := rule.Folder{Dir: "ai/rules", Rules: archRules(), Files: map[string]rule.Source{"a.yaml": ok}}
-	if out := Decide(good, batchFlow, rule.Selection{}, nil); out.Ran || out.Next != nil || out.Unformatted != nil {
+	if out := Decide(good, batchFlow, rule.Selection{}, nil); out.Ran || out.Next != nil || out.Unformatted != nil ||
+		out.NotRun != len(archRules()) {
 		t.Fatalf("without run: %+v", out)
 	}
 	if out := Decide(good, batchFlow, rule.Selection{Run: true}, nil); !out.Ran || out.Next == nil {

@@ -132,8 +132,8 @@ internal/app/rule/
                              Tail), and Results, a list of them (Failed)
   run.go                     domain: Run, a check with the argv of its runner (Valid, Settle), and Rules.Plan
   set.go                     domain: Rules, a list of rules (Matching, Repeated, Loaded), and Selection
-  format.go                  domain: Source, the data of a rules file (Format), and Folder, the folder of rules
-                             as a check reads it (Valid, Unformatted)
+  format.go                  domain: Source, the data of a rules file (Format), Folder, the folder of rules with
+                             its rules and files (Valid, Format), and Formatted (Valid)
   features/check/            the use case CheckRule, package check, imported as rulecheck
     check.md                 documentation of the use case, titled # CheckRule
     check_in.go              entry and shell: Command, Request, Response, Failed, Port, flags, run, load,
@@ -159,10 +159,9 @@ The flow of `polix rules check`:
    `Adapter{Repo: repo, Log: stderr, Rules: rules, Workflow: loadWorkflow}` as the `Port`, with the loaders of the
    rules and of polix.yaml it was given.
 2. `run` (shell) reads through the port: polix.yaml whenever it exists (`LoadWorkflow`, for the runners of `rules.run`,
-   which the adapter asks the loader of polix.yaml for), the rules of its folder of rules, below `path` (`LoadRules`,
-   which the adapter asks the loader for) and, with `--changed`, the changed files against its base branches
-   (`Changed`), which `--base` only replaces when given, and the files of the folder (`ReadRuleFiles`), which with
-   the rules make a `rule.Folder`.
+   which the adapter asks the loader of polix.yaml for), the folder of rules below `path` as a `rule.Folder`, its rules
+   and the data of its files (`LoadRules`, which the adapter asks the loader for) and, with `--changed`, the changed
+   files against its base branches (`Changed`), which `--base` only replaces when given.
 3. `Decide` (logic) stops at a file not formatted, or without `--run`; else it takes the outcomes carried out so far
    and decides the next run, which may decide several rules
    at once, or, when none is left, the result of every rule: `Output` (the step shape).

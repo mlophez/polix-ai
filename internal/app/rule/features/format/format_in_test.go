@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mlophez/polix-ai/internal/app/rule"
 	ruleadapters "github.com/mlophez/polix-ai/internal/app/rule/adapters"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 	workflowadapters "github.com/mlophez/polix-ai/internal/app/workflow/adapters"
@@ -21,7 +22,7 @@ import (
 type fakePort struct {
 	wf       workflow.Workflow
 	wfErr    error
-	files    map[string][]byte
+	files    map[string]rule.Source
 	readErr  error
 	read     []string
 	written  []string
@@ -44,7 +45,7 @@ func (f *fakePort) LoadWorkflow(_ context.Context, _ string) (workflow.Workflow,
 	return f.wf, f.wfErr
 }
 
-func (f *fakePort) ReadRuleFiles(_ context.Context, dir string) (map[string][]byte, error) {
+func (f *fakePort) ReadRuleFiles(_ context.Context, dir string) (map[string]rule.Source, error) {
 	f.read = append(f.read, dir)
 	return f.files, f.readErr
 }
@@ -68,8 +69,8 @@ func printed(res Response) (int, string, string) {
 // The shell reads the folder of rules below path and writes each changed file, in the order of the names, and
 // nothing else.
 func TestShellWrites(t *testing.T) {
-	port := &fakePort{wf: workflow.Workflow{Path: "docs"}, files: map[string][]byte{
-		"b.yaml": []byte(unformatted), "a.yaml": []byte(unformatted), "c.yaml": []byte(formatted)}}
+	port := &fakePort{wf: workflow.Workflow{Path: "docs"}, files: map[string]rule.Source{
+		"b.yaml": rule.Source(unformatted), "a.yaml": rule.Source(unformatted), "c.yaml": rule.Source(formatted)}}
 	res, err := run(context.Background(), port, Request{})
 	if err != nil || !slices.Equal(port.read, []string{"docs/rules"}) {
 		t.Fatalf("got %+v %v, read %v", res, err, port.read)
@@ -86,7 +87,7 @@ func TestShellWrites(t *testing.T) {
 
 // --check writes nothing and names each file that is not formatted, with exit code 1; formatted files are ok.
 func TestShellCheck(t *testing.T) {
-	port := &fakePort{files: map[string][]byte{"a.yaml": []byte(unformatted)}}
+	port := &fakePort{files: map[string]rule.Source{"a.yaml": rule.Source(unformatted)}}
 	res, err := run(context.Background(), port, Request{Check: true})
 	if err != nil || port.written != nil || !slices.Equal(res.Changed, []string{"ai/rules/a.yaml"}) {
 		t.Fatalf("got %+v %v", res, err)
@@ -95,7 +96,7 @@ func TestShellCheck(t *testing.T) {
 	if code != 1 || stdout != "" || stderr != "✗ ai/rules/a.yaml is not formatted: run polix rules fmt\n" {
 		t.Fatalf("print: %d %q %q", code, stdout, stderr)
 	}
-	port = &fakePort{files: map[string][]byte{"a.yaml": []byte(formatted)}}
+	port = &fakePort{files: map[string]rule.Source{"a.yaml": rule.Source(formatted)}}
 	res, _ = run(context.Background(), port, Request{Check: true})
 	if code, stdout, _ := printed(res); code != 0 || stdout != "ok: the rules are formatted\n" {
 		t.Fatalf("formatted: %d %q", code, stdout)
@@ -108,7 +109,7 @@ func TestShellCheck(t *testing.T) {
 
 // A file that cannot be formatted leaves every file as it is, and its problem goes to stderr with exit code 1.
 func TestShellProblem(t *testing.T) {
-	port := &fakePort{files: map[string][]byte{"a.yaml": []byte(unformatted), "b.yaml": []byte("rules: [\n")}}
+	port := &fakePort{files: map[string]rule.Source{"a.yaml": rule.Source(unformatted), "b.yaml": rule.Source("rules: [\n")}}
 	res, err := run(context.Background(), port, Request{})
 	if err != nil || port.written != nil || res.Written != nil || len(res.Problems) != 1 {
 		t.Fatalf("got %+v %v", res, err)
@@ -124,7 +125,7 @@ func TestShellProblem(t *testing.T) {
 func TestShellRepeatedIDs(t *testing.T) {
 	repeat := "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml"
 	for _, check := range []bool{false, true} {
-		port := &fakePort{files: map[string][]byte{"a.yaml": []byte(unformatted), "b.yaml": []byte(formatted)},
+		port := &fakePort{files: map[string]rule.Source{"a.yaml": rule.Source(unformatted), "b.yaml": rule.Source(formatted)},
 			repeated: []string{repeat}}
 		res, err := run(context.Background(), port, Request{Check: check})
 		if err != nil || port.written != nil || res.Written != nil {
@@ -155,20 +156,20 @@ func TestShellEmpty(t *testing.T) {
 // read stops it too.
 func TestShellErrors(t *testing.T) {
 	boom := errors.New("polix.yaml: yaml: broken")
-	port := &fakePort{wfErr: boom, files: map[string][]byte{"a.yaml": []byte(unformatted)}}
+	port := &fakePort{wfErr: boom, files: map[string]rule.Source{"a.yaml": rule.Source(unformatted)}}
 	if _, err := run(context.Background(), port, Request{}); !errors.Is(err, boom) || port.read != nil ||
 		port.written != nil {
 		t.Fatalf("workflow: %v, read %v", err, port.read)
 	}
 	port = &fakePort{wf: workflow.Workflow{Path: "../x"},
-		files: map[string][]byte{"a.yaml": []byte(unformatted)}}
+		files: map[string]rule.Source{"a.yaml": rule.Source(unformatted)}}
 	if _, err := run(context.Background(), port, Request{}); err == nil ||
 		!strings.Contains(err.Error(), `path "../x" must be below the root`) || port.read != nil ||
 		port.written != nil {
 		t.Fatalf("path: %v, read %v", err, port.read)
 	}
 	port = &fakePort{wf: workflow.Workflow{Rules: workflow.Rules{Run: []workflow.Runner{{Glob: "*"}}}},
-		files: map[string][]byte{"a.yaml": []byte(unformatted)}}
+		files: map[string]rule.Source{"a.yaml": rule.Source(unformatted)}}
 	if res, err := run(context.Background(), port, Request{}); err != nil || len(port.written) != 1 ||
 		len(res.Written) != 1 {
 		t.Fatalf("an invalid runner: %+v %v", res, err)

@@ -87,7 +87,7 @@ func (rs Rules) Repeated() []string {
 // cannot be read or is not yaml, it keeps none. Either way it tells where a reading that admits no invalid rule stops:
 // at retired, else at the first invalid rule, with its file, else at the first id repeated, else at err. exists tells
 // whether the folder exists.
-func (rs Rules) Loaded(retired string, exists bool, err error) Loaded {
+func (rs Rules) Loaded(retired string, files map[string]Source, exists bool, err error) Loaded {
 	repeated := rs.Repeated()
 	strict := rs.firstInvalid()
 	if strict == nil && len(repeated) > 0 {
@@ -102,18 +102,23 @@ func (rs Rules) Loaded(retired string, exists bool, err error) Loaded {
 		strict = errors.New(leftover)
 	}
 	if err != nil {
-		loaded := Loaded{Exists: exists, Err: err, Strict: strict}
+		loaded := Loaded{Exists: exists, Files: files, Err: err, Strict: strict}
 		if verr := loaded.Valid(); verr != nil {
 			return loaded.Fail(verr)
 		}
 		return loaded
 	}
-	return rs.read(leftover, repeated, exists, strict)
+	all, problems := rs.read(leftover, repeated)
+	loaded := Loaded{Rules: all, Exists: exists, Files: files, Problems: problems, Repeated: repeated, Strict: strict}
+	if verr := loaded.Valid(); verr != nil {
+		return loaded.Fail(verr)
+	}
+	return loaded
 }
 
-// read is what a folder whose files are all read loads: every rule, ordered by id, with the problems of the invalid
-// ones and then the repeated ids, after the problem of a leftover retired file ("" without it).
-func (rs Rules) read(leftover string, repeated []string, exists bool, strict error) Loaded {
+// read is what a folder whose files are all read loads: every rule, ordered by id, stably, and the problems of the
+// invalid ones and then the repeated ids, after the problem of a leftover retired file ("" without it).
+func (rs Rules) read(leftover string, repeated []string) ([]Rule, []string) {
 	var problems []string
 	if leftover != "" {
 		problems = append(problems, leftover)
@@ -126,11 +131,7 @@ func (rs Rules) read(leftover string, repeated []string, exists bool, strict err
 	problems = append(problems, repeated...)
 	all := append([]Rule(nil), rs...)
 	sort.SliceStable(all, func(i, j int) bool { return all[i].ID < all[j].ID })
-	loaded := Loaded{Rules: all, Exists: exists, Problems: problems, Repeated: repeated, Strict: strict}
-	if err := loaded.Valid(); err != nil {
-		return loaded.Fail(err)
-	}
-	return loaded
+	return all, problems
 }
 
 // firstInvalid is why the first invalid rule of rs is not valid, with its file; nil when every rule is valid.

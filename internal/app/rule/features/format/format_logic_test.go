@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mlophez/polix-ai/internal/app/rule"
 )
 
 const (
@@ -13,7 +15,7 @@ const (
 
 // Without files there is nothing to format.
 func TestDecideEmpty(t *testing.T) {
-	out := Decide("ai/rules", nil, nil, false)
+	out := Decide(rule.Folder{Dir: "ai/rules"}, nil, false)
 	if !out.Empty || out.Dir != "ai/rules" || out.Problems != nil || out.Changed != nil || out.Write != nil ||
 		out.Fix != "" {
 		t.Fatalf("got %+v", out)
@@ -22,8 +24,8 @@ func TestDecideEmpty(t *testing.T) {
 
 // Formatted files change nothing and leave nothing to write.
 func TestDecideFormatted(t *testing.T) {
-	files := map[string][]byte{"a.yaml": []byte(formatted), "b.yaml": []byte(formatted)}
-	out := Decide("ai/rules", files, nil, false)
+	files := map[string]rule.Source{"a.yaml": rule.Source(formatted), "b.yaml": rule.Source(formatted)}
+	out := Decide(rule.Folder{Dir: "ai/rules", Files: files}, nil, false)
 	if out.Empty || out.Problems != nil || out.Changed != nil || out.Write != nil || out.Fix != "" {
 		t.Fatalf("got %+v", out)
 	}
@@ -32,13 +34,13 @@ func TestDecideFormatted(t *testing.T) {
 // An unformatted file is a change, with its data unless check, and the fix polix rules fmt; retired.yaml is
 // formatted like the rest.
 func TestDecideUnformatted(t *testing.T) {
-	files := map[string][]byte{"retired.yaml": []byte(unformatted), "a.yaml": []byte(formatted)}
-	out := Decide("ai/rules", files, nil, false)
+	files := map[string]rule.Source{"retired.yaml": rule.Source(unformatted), "a.yaml": rule.Source(formatted)}
+	out := Decide(rule.Folder{Dir: "ai/rules", Files: files}, nil, false)
 	if !slices.Equal(out.Changed, []string{"ai/rules/retired.yaml"}) || out.Fix != "polix rules fmt" ||
 		len(out.Write) != 1 || string(out.Write["retired.yaml"]) != formatted || out.Problems != nil {
 		t.Fatalf("got %+v", out)
 	}
-	out = Decide("ai/rules", files, nil, true)
+	out = Decide(rule.Folder{Dir: "ai/rules", Files: files}, nil, true)
 	if !slices.Equal(out.Changed, []string{"ai/rules/retired.yaml"}) || out.Fix != "polix rules fmt" ||
 		out.Write != nil {
 		t.Fatalf("check: %+v", out)
@@ -48,13 +50,13 @@ func TestDecideUnformatted(t *testing.T) {
 // A file that cannot be formatted is a problem, and then no file is written at all, not even the ones that
 // change; the problems and the changed files come sorted by name.
 func TestDecideProblem(t *testing.T) {
-	files := map[string][]byte{
-		"d.yaml": []byte("rules:\n  - &x id: A-1\n"),
-		"c.yaml": []byte(unformatted),
-		"b.yaml": []byte("rules: [\n"),
-		"a.yaml": []byte(unformatted),
+	files := map[string]rule.Source{
+		"d.yaml": rule.Source("rules:\n  - &x id: A-1\n"),
+		"c.yaml": rule.Source(unformatted),
+		"b.yaml": rule.Source("rules: [\n"),
+		"a.yaml": rule.Source(unformatted),
 	}
-	out := Decide("ai/rules", files, nil, false)
+	out := Decide(rule.Folder{Dir: "ai/rules", Files: files}, nil, false)
 	if len(out.Problems) != 2 || !strings.HasPrefix(out.Problems[0], "ai/rules/b.yaml: ") ||
 		!strings.HasPrefix(out.Problems[1], "ai/rules/d.yaml: ") || !strings.Contains(out.Problems[1], "anchors") {
 		t.Fatalf("problems: %q", out.Problems)
@@ -67,21 +69,21 @@ func TestDecideProblem(t *testing.T) {
 // A repeated id is a problem, after those of the files, and then nothing is written, with or without check.
 func TestDecideRepeatedIDs(t *testing.T) {
 	repeat := "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml"
-	files := map[string][]byte{"a.yaml": []byte(formatted), "b.yaml": []byte(formatted)}
+	files := map[string]rule.Source{"a.yaml": rule.Source(formatted), "b.yaml": rule.Source(formatted)}
 	for _, check := range []bool{false, true} {
-		out := Decide("ai/rules", files, []string{repeat}, check)
+		out := Decide(rule.Folder{Dir: "ai/rules", Files: files}, []string{repeat}, check)
 		if !slices.Equal(out.Problems, []string{repeat}) || out.Write != nil || out.Changed != nil {
 			t.Fatalf("check %v: %+v", check, out)
 		}
 	}
-	files["c.yaml"] = []byte(unformatted)
-	out := Decide("ai/rules", files, []string{repeat}, false)
+	files["c.yaml"] = rule.Source(unformatted)
+	out := Decide(rule.Folder{Dir: "ai/rules", Files: files}, []string{repeat}, false)
 	if !slices.Equal(out.Problems, []string{repeat}) || !slices.Equal(out.Changed, []string{"ai/rules/c.yaml"}) ||
 		out.Write != nil {
 		t.Fatalf("with an unformatted file: %+v", out)
 	}
-	files["0.yaml"] = []byte("rules: [\n")
-	out = Decide("ai/rules", files, []string{repeat}, false)
+	files["0.yaml"] = rule.Source("rules: [\n")
+	out = Decide(rule.Folder{Dir: "ai/rules", Files: files}, []string{repeat}, false)
 	if len(out.Problems) != 2 || !strings.HasPrefix(out.Problems[0], "ai/rules/0.yaml: ") || out.Problems[1] != repeat {
 		t.Fatalf("the repeats after the problems of the files: %q", out.Problems)
 	}
@@ -91,21 +93,21 @@ func TestDecideRepeatedIDs(t *testing.T) {
 // decode leaves nothing to write, and the error of a file that is not yaml, worded as its problem, is reported once.
 func TestDecideLoaderError(t *testing.T) {
 	stop := "ai/rules/b.yaml: yaml: unmarshal errors:\n  line 4: cannot unmarshal !!str `*.go` into []string"
-	files := map[string][]byte{"a.yaml": []byte(unformatted),
-		"b.yaml": []byte("rules:\n  - id: B-1\n    description: b\n    scope: \"*.go\"\n")}
+	files := map[string]rule.Source{"a.yaml": rule.Source(unformatted),
+		"b.yaml": rule.Source("rules:\n  - id: B-1\n    description: b\n    scope: \"*.go\"\n")}
 	for _, check := range []bool{false, true} {
-		out := Decide("ai/rules", files, []string{stop}, check)
+		out := Decide(rule.Folder{Dir: "ai/rules", Files: files}, []string{stop}, check)
 		if !slices.Equal(out.Problems, []string{stop}) || !slices.Equal(out.Changed, []string{"ai/rules/a.yaml"}) ||
 			out.Write != nil {
 			t.Fatalf("check %v: %+v", check, out)
 		}
 	}
-	files["b.yaml"] = []byte("rules: [\n")
-	first := Decide("ai/rules", files, nil, false).Problems
+	files["b.yaml"] = rule.Source("rules: [\n")
+	first := Decide(rule.Folder{Dir: "ai/rules", Files: files}, nil, false).Problems
 	if len(first) != 1 {
 		t.Fatalf("a file that is not yaml: %q", first)
 	}
-	if out := Decide("ai/rules", files, first, false); !slices.Equal(out.Problems, first) || out.Write != nil {
+	if out := Decide(rule.Folder{Dir: "ai/rules", Files: files}, first, false); !slices.Equal(out.Problems, first) || out.Write != nil {
 		t.Fatalf("the same problem twice: %q", out.Problems)
 	}
 }

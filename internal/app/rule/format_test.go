@@ -1,6 +1,8 @@
 package rule
 
 import (
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -108,5 +110,53 @@ func TestOrderKindSubject(t *testing.T) {
 	got, err := Source(src).Format()
 	if err != nil || string(got) != want {
 		t.Fatalf("got:\n%s\nwant:\n%s\n%v", got, want, err)
+	}
+}
+
+// A folder is valid with a relative path with slashes, its rules ordered by id and valid, and its files named without
+// a folder; Format splits the files it would change, with their data, from those it cannot format.
+func TestFolder(t *testing.T) {
+	ok := Source("rules:\n  - id: A-1\n    description: d\n")
+	f := Folder{Dir: "ai/rules", Files: map[string]Source{"b.yaml": ok, "a.yaml": Source("rules:\n- id: A-1\n"),
+		"c.yaml": Source("rules:\n  - id: !!str C-1\n")}}
+	if err := f.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	got := f.Format()
+	if err := got.Valid(); err != nil || !slices.Equal(got.Changed, []string{"ai/rules/a.yaml"}) ||
+		string(got.Data["a.yaml"]) != "rules:\n  - id: A-1\n" || len(got.Problems) != 1 ||
+		!strings.HasPrefix(got.Problems[0], "ai/rules/c.yaml: ") {
+		t.Fatalf("Format = %+v, %v", got, err)
+	}
+	prefix := Folder{Dir: "d", Files: map[string]Source{"a.yaml": Source("x: !!str 1\n"), "a.yaml-old.yaml": Source("x: !!str 1\n")}}
+	if got := prefix.Format(); len(got.Problems) != 2 {
+		t.Fatalf("two files whose names share a prefix keep their problems: %q", got.Problems)
+	}
+	valid := complete(Rule{ID: "A-1", Description: "d"})
+	for name, bad := range map[string]Folder{
+		"no path":        {},
+		"absolute":       {Dir: "/ai/rules"},
+		"backslash":      {Dir: `ai\rules`},
+		"drive":          {Dir: "C:/ai/rules"},
+		"unordered":      {Dir: "ai/rules", Rules: []Rule{complete(Rule{ID: "B-1", Description: "d"}), valid}},
+		"invalid rule":   {Dir: "ai/rules", Rules: []Rule{{ID: "A-1"}}},
+		"file in folder": {Dir: "ai/rules", Files: map[string]Source{"sub/a.yaml": ok}},
+	} {
+		if bad.Valid() == nil {
+			t.Errorf("%s: valid", name)
+		}
+	}
+	for name, bad := range map[string]Formatted{
+		"no data":    {Changed: []string{"ai/rules/a.yaml"}},
+		"other data": {Changed: []string{"ai/rules/a.yaml"}, Data: map[string][]byte{"b.yaml": nil}},
+		"unsorted":   {Changed: []string{"d/b.yaml", "d/a.yaml"}, Data: map[string][]byte{"a.yaml": nil, "b.yaml": nil}},
+		"problems":   {Problems: []string{"d/b.yaml: x", "d/a.yaml: x"}},
+	} {
+		if bad.Valid() == nil {
+			t.Errorf("%s: valid", name)
+		}
+	}
+	if failed := (Formatted{Changed: []string{"a"}}).Fail("boom"); failed.Changed != nil || !slices.Equal(failed.Problems, []string{"boom"}) {
+		t.Fatalf("Fail = %+v", failed)
 	}
 }

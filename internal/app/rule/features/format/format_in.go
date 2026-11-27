@@ -42,7 +42,7 @@ type Port interface {
 	LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, error)
 	// ReadRuleFiles returns the data of every yaml file of the folder dir, relative to the root, by name; none without
 	// the folder. The error tells why the folder or a file of it cannot be read.
-	ReadRuleFiles(ctx context.Context, dir string) (map[string][]byte, error)
+	ReadRuleFiles(ctx context.Context, dir string) (map[string]rule.Source, error)
 	// WriteRuleFile writes data to the file name of the folder dir; the error tells why it cannot be written.
 	WriteRuleFile(ctx context.Context, dir, name string, data []byte) error
 	// RepeatedIDs returns the problem of each id repeated among the rules of the folder dir,
@@ -100,7 +100,11 @@ func run(ctx context.Context, port Port, req Request) (Response, error) {
 		return Response{}, err
 	}
 	repeated := port.RepeatedIDs(ctx, wf.RulesPath())
-	out := Decide(wf.RulesPath(), files, repeated, req.Check)
+	folder := rule.Folder{Dir: wf.RulesPath(), Files: files}
+	if err := folder.Valid(); err != nil {
+		return Response{}, err
+	}
+	out := Decide(folder, repeated, req.Check)
 	res := Response{Dir: out.Dir, Empty: out.Empty, Problems: out.Problems, Changed: out.Changed, Fix: out.Fix}
 	for _, name := range slices.Sorted(maps.Keys(out.Write)) {
 		if err := port.WriteRuleFile(ctx, out.Dir, name, out.Write[name]); err != nil {

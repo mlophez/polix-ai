@@ -30,14 +30,15 @@ func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Wor
 	return loaded.Workflow, nil
 }
 
-// ReadRuleFiles reads the yaml files of the folder dir through internal/platform/file, by name, subfolders
-// left out; a missing folder has no files and no error.
-func (a Adapter) ReadRuleFiles(_ context.Context, dir string) (map[string][]byte, error) {
-	files, err := file.ReadDir(a.folder(dir), ".yaml")
-	if err != nil || len(files) == 0 {
-		return nil, err
+// ReadRuleFiles returns the data of the yaml files of the folder dir, by name, subfolders left out, through the
+// loader of the rules (rule.Loaded.Files), which reads them once for every use case; a missing folder has no files
+// and no error, and a folder that cannot be read is the error of the loader.
+func (a Adapter) ReadRuleFiles(ctx context.Context, dir string) (map[string]rule.Source, error) {
+	loaded := a.Rules(ctx, a.Root, dir)
+	if loaded.Files == nil && loaded.Err != nil {
+		return nil, loaded.Err
 	}
-	return files, nil
+	return loaded.Files, nil
 }
 
 // WriteRuleFile writes the file name of the folder dir through internal/platform/file, keeping its mode and a
