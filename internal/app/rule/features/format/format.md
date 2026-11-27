@@ -48,7 +48,7 @@ with the sequence that `spaced` separates:
   on one line, quoted and block scalars as in the source, every comment and the blank lines between items kept, a
   comment above a key moving with it, and at most one blank line in a row.
 - `rules` goes first at the top, the other keys after it in their order in the source.
-- The keys of each rule follow `id`, `description`, `scope`, `deterministic`, `check` and `reason`; an unknown key
+- The keys of each rule follow `id`, `kind`, `subject`, `description`, `scope`, `deterministic` and `check`; an unknown key
   goes after them, in its order in the source. The rules never move.
 - Exactly one blank line before each rule but the first, above the comments of the rule when it has them, unless
   both rules are written in flow style on one line each, without comments above or below them; and none

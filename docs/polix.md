@@ -100,7 +100,7 @@ check failed.
 with the layout of `polix config fmt`: two spaces of indentation, flow collections on one
 line, the comments and the blank lines kept, and the anchors and aliases of the values where they are written (an
 anchored block collection has its anchor alone at the end of the line of its key or of its dash). `rules` goes
-first, the keys of each rule follow `id`, `description`, `scope`, `deterministic` and `check`, with any
+first, the keys of each rule follow `id`, `kind`, `subject`, `description`, `scope`, `deterministic` and `check`, with any
 other key after them in its order, and the rules never move. Exactly one blank line separates two rules, above the comments of the later one (two rules written in flow
 style on one line each, as `- { id: X-1, description: "One.", deterministic: false }`, without comments above or
 below them, stay together), and none follows `rules:`;

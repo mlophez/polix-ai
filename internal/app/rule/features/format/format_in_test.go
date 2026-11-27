@@ -240,3 +240,21 @@ func TestCommandLoaderStops(t *testing.T) {
 		t.Fatalf("a file that is not yaml: %d %q", code, stderr)
 	}
 }
+
+// The command rewrites a rule with kind and subject in the order of the schema.
+func TestCommandKindOrder(t *testing.T) {
+	root := testenv.GitRepo(t)
+	file := filepath.Join(root, "ai", "rules", "a.yaml")
+	testenv.Write(t, file, "rules:\n  - description: d\n    subject: s\n    kind: layout\n    id: A-1\n")
+	cmd := cli.Root("polix", "", "", "")
+	cmd.AddCommand(Command((&ruleadapters.Folder{}).Load, (&workflowadapters.File{}).Load))
+	var out, errb bytes.Buffer
+	code := cli.Run(cmd, []string{"fmt", "--dir", root}, strings.NewReader(""), &out, &errb)
+	if code != 0 || out.String() != "ok: formatted ai/rules/a.yaml\n" {
+		t.Fatalf("fmt: %d %q %q", code, out.String(), errb.String())
+	}
+	want := "rules:\n  - id: A-1\n    kind: layout\n    subject: s\n    description: d\n"
+	if got := testenv.Read(t, file); got != want {
+		t.Fatalf("file: %q", got)
+	}
+}

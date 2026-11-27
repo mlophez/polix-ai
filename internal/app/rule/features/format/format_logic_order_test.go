@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// rules goes first, the keys of a rule follow the schema with the unknown ones after (reason among them, a retired rule's key no more), and the rules never move; a
+// rules goes first, the keys of a rule follow the schema with the unknown ones after (reason among them), and the rules never move; a
 // comment above a key moves with it, a flow scope on two lines ends on one and a folded description keeps its text.
 func TestFormatData(t *testing.T) {
 	src := `x-owner: platform
@@ -80,5 +80,33 @@ func TestFormatDataSpacesTheRules(t *testing.T) {
 	}
 	if twice, err := formatData(got); err != nil || string(twice) != want {
 		t.Fatalf("not idempotent:\n%s\n%v", twice, err)
+	}
+}
+
+// kind and subject go right after id, then the fields of rule.Rule in order; a comment stays with its key.
+func TestOrderKindSubject(t *testing.T) {
+	src := `rules:
+  - check: tests/a_test.go
+    deterministic: true
+    scope: ["**"]
+    description: d
+    # what it applies to
+    subject: the code
+    kind: layout
+    id: A-1
+`
+	want := `rules:
+  - id: A-1
+    kind: layout
+    # what it applies to
+    subject: the code
+    description: d
+    scope: ["**"]
+    deterministic: true
+    check: tests/a_test.go
+`
+	got, err := formatData([]byte(src))
+	if err != nil || string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s\n%v", got, want, err)
 	}
 }
