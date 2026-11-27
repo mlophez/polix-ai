@@ -1621,6 +1621,20 @@ on:
 	}
 }
 
+// A retired.yaml in the folder of rules is a problem of the rule checks, never of the hooks: the rules are injected
+// as before, and its own rules never are (CUJ-09).
+func TestRuleInjectWithRetiredFile(t *testing.T) {
+	r := newRepo(t, "main")
+	r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - action: { inject: { rules: \"{path}\" } }\n")
+	r.write("ai/rules/style.yaml", "rules:\n  - id: GOOD-1\n    description: Good rule.\n    scope: [\"src/**\"]\n")
+	r.write("ai/rules/retired.yaml", "rules:\n  - id: OLD-1\n    description: Old rule.\n    reason: gone\n")
+	r.write("src/a.txt", "x\n")
+	code, stdout, stderr := r.edit("src/a.txt", "")
+	if code != 0 || !strings.Contains(stdout, "GOOD-1: Good rule.") || strings.Contains(stdout, "OLD-1") {
+		t.Fatalf("the rules are injected: %d %q %q", code, stdout, stderr)
+	}
+}
+
 // subagent calls SubagentStart, or SubagentStop with stop, of a builder subagent of id, as Claude Code does.
 func (r *repo) subagent(id string, stop bool) (int, string, string) {
 	r.t.Helper()

@@ -78,35 +78,6 @@ func TestFolderReadRulesOfAFolder(t *testing.T) {
 	}
 }
 
-// The retired rules are those of retired.yaml, each with its file; without the file, with one that is not yaml or
-// without the folder there are none, and never an error.
-func TestFolderReadRetired(t *testing.T) {
-	root := t.TempDir()
-	write(t, root, map[string]string{
-		"ai/rules/a.yaml":              "rules:\n  - id: A-1\n    description: d\n",
-		"ai/rules/" + rule.RetiredFile: "rules:\n  - id: R-1\n    reason: merged into A-1\n  - id: R-2\n",
-	})
-	got := (&Folder{}).readRetired(root, "ai/rules")
-	var read []string
-	for _, r := range got {
-		read = append(read, r.File+" "+r.ID)
-	}
-	if want := "ai/rules/retired.yaml R-1,ai/rules/retired.yaml R-2"; strings.Join(read, ",") != want {
-		t.Fatalf("read %v, want %s", read, want)
-	}
-	if got := (&Folder{}).readRetired(root, "docs/rules"); got != nil {
-		t.Fatalf("no folder: %+v", got)
-	}
-	write(t, root, map[string]string{"other/a.yaml": "rules:\n  - id: A-1\n    description: d\n",
-		"broken/" + rule.RetiredFile: "rules: [\n"})
-	if got := (&Folder{}).readRetired(root, "other"); got != nil {
-		t.Fatalf("no retired.yaml: %+v", got)
-	}
-	if got := (&Folder{}).readRetired(root, "broken"); got != nil {
-		t.Fatalf("a retired.yaml that is not yaml: %+v", got)
-	}
-}
-
 // Without the folder there are no rules, and no error.
 func TestFolderReadRulesWithoutFolder(t *testing.T) {
 	got, exists, err := (&Folder{}).readRules(t.TempDir(), "ai/rules")
@@ -200,19 +171,31 @@ func TestFolderLoadNeverFails(t *testing.T) {
 	})
 }
 
-// The retired rules of retired.yaml only take their ids: an active rule with a retired id is repeated, and the
-// retired rules are never rules of the result.
-func TestFolderLoadRetiredIDs(t *testing.T) {
+// retired.yaml is no longer read: its presence is a problem of the result, first among the problems and where a
+// strict reading stops, never Err, and its rules never load nor take ids, even when it is not yaml (CUJ-05, CUJ-06).
+func TestLoadRetiredIsProblem(t *testing.T) {
+	want := "ai/rules/retired.yaml is no longer read: delete it, its ids are free"
+	for name, retired := range map[string]string{
+		"old format": "rules:\n  - id: R-1\n    reason: merged\n",
+		"not yaml":   "rules: [\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			write(t, root, map[string]string{
+				"ai/rules/a.yaml":              "rules:\n  - id: R-1\n    description: d\n",
+				"ai/rules/" + rule.RetiredFile: retired,
+			})
+			got := (&Folder{}).Load(context.Background(), root, "ai/rules")
+			if got.Err != nil || len(got.Rules) != 1 || got.Repeated != nil || len(got.Problems) == 0 ||
+				got.Problems[0] != want || got.Strict == nil || got.Strict.Error() != want {
+				t.Fatalf("got %+v", got)
+			}
+		})
+	}
 	root := t.TempDir()
-	write(t, root, map[string]string{
-		"ai/rules/a.yaml":              "rules:\n  - id: R-1\n    description: d\n",
-		"ai/rules/" + rule.RetiredFile: "rules:\n  - id: R-1\n    reason: merged\n",
-	})
-	got := (&Folder{}).Load(context.Background(), root, "ai/rules")
-	want := "ai/rules/a.yaml R-1: id repeated, also in ai/rules/retired.yaml"
-	if len(got.Rules) != 1 || len(got.Repeated) != 1 || got.Repeated[0] != want || got.Strict == nil ||
-		got.Strict.Error() != want {
-		t.Fatalf("got %+v", got)
+	write(t, root, map[string]string{"ai/rules/a.yaml": "rules:\n  - id: R-1\n    description: d\n"})
+	if got := (&Folder{}).Load(context.Background(), root, "ai/rules"); got.Strict != nil || got.Err != nil {
+		t.Fatalf("without retired.yaml: %+v", got)
 	}
 }
 

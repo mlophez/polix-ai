@@ -30,8 +30,8 @@ const timeout = 5 * time.Minute
 // logIDs is how many ids of the rules of an invocation the log names before it only counts them.
 const logIDs = 5
 
-// LoadRules loads the rules of the folder dir of the repository through the loader of the rules, without
-// retired.yaml, ordered by id, and stops where a strict reading does (rule.Loaded.Strict): at the first invalid rule
+// LoadRules loads the rules of the folder dir of the repository through the loader of the rules, ordered by
+// id, and stops where a strict reading does (rule.Loaded.Strict): at a retired.yaml, else at the first invalid rule
 // of the files in the order of their names, or at a file that cannot be read or is not yaml. Without the folder
 // there are no rules.
 func (a Adapter) LoadRules(ctx context.Context, dir string) ([]rule.Rule, error) {

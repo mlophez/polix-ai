@@ -93,6 +93,18 @@ func TestDecideHealthy(t *testing.T) {
 	}
 }
 
+// A retired.yaml in the folder of rules, which the loader reports among its problems, is a fail row (CUJ-05, AC-03).
+func TestRulesRetiredFile(t *testing.T) {
+	i := healthy(t)
+	i.Rules = []rule.Rule{{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"}}
+	i.Invalid = []string{"ai/rules/retired.yaml is no longer read: delete it, its ids are free"}
+	out := Decide(i, false)
+	want := "fail rules ai/rules/retired.yaml is no longer read: delete it, its ids are free\n"
+	if !out.Failed || !strings.Contains(text(out), want) {
+		t.Fatalf("retired.yaml:\n%s", text(out))
+	}
+}
+
 func TestDecideFindsProblems(t *testing.T) {
 	i := healthy(t)
 	var settings struct {

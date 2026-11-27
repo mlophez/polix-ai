@@ -47,7 +47,7 @@ type Port interface {
 	// the default workflow without it. The error tells why it cannot be read or parsed, or is a workflow.InvalidError
 	// with the problems of a workflow that parses, returned with it.
 	LoadWorkflow(ctx context.Context, running string) (workflow.Workflow, bool, error)
-	// LoadRules returns every rule of the folder dir, relative to the root, retired ones excluded, ordered by id,
+	// LoadRules returns every rule of the folder dir, relative to the root, ordered by id,
 	// and the problems of the invalid ones; the error tells why a file cannot be read or parsed.
 	LoadRules(ctx context.Context, dir string) ([]rule.Rule, []string, error)
 	// Missing reports whether the file of a check, relative to the root, does not exist.

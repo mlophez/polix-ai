@@ -33,28 +33,31 @@ func TestRepeated(t *testing.T) {
 		{File: "ai/rules/c.yaml"},
 	}
 	want := []string{"ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml"}
-	if got := Rules(all).Repeated(nil); !slices.Equal(got, want) {
+	if got := Rules(all).Repeated(); !slices.Equal(got, want) {
 		t.Fatalf("Repeated = %q, want %q", got, want)
 	}
-	if got := Rules(all[2:]).Repeated(nil); len(got) != 0 {
+	if got := Rules(all[2:]).Repeated(); len(got) != 0 {
 		t.Fatalf("no repeated id: %q", got)
 	}
 }
 
-// The ids of the retired rules are taken before the active rules: an active rule with one of them is repeated,
-// naming the retired file, and a repeat among the retired rules themselves is never reported.
-func TestRepeatedRetired(t *testing.T) {
-	retired := Rules{
-		{ID: "GOARCH-31", File: "ai/rules/retired.yaml"},
-		{ID: "GOARCH-31", File: "ai/rules/retired.yaml"},
+// A deleted rule frees its id: an id is repeated only among the rules that exist.
+func TestRepeatedFreesDeletedIDs(t *testing.T) {
+	before := Rules{
+		{ID: "A-1", File: "ai/rules/a.yaml"},
+		{ID: "A-2", File: "ai/rules/a.yaml"},
 	}
-	active := Rules{{ID: "GOARCH-31", File: "ai/rules/a.yaml"}, {ID: "GOARCH-1", File: "ai/rules/a.yaml"}}
-	want := []string{"ai/rules/a.yaml GOARCH-31: id repeated, also in ai/rules/retired.yaml"}
-	if got := active.Repeated(retired); !slices.Equal(got, want) {
+	if got := before.Repeated(); len(got) != 0 {
+		t.Fatalf("no repeat: %q", got)
+	}
+	after := Rules{{ID: "A-2", File: "ai/rules/a.yaml"}, {ID: "A-1", File: "ai/rules/a.yaml"}}
+	if got := after.Repeated(); len(got) != 0 {
+		t.Fatalf("a freed id: %q", got)
+	}
+	twice := append(after, Rule{ID: "A-1", File: "ai/rules/b.yaml"})
+	want := []string{"ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml"}
+	if got := twice.Repeated(); !slices.Equal(got, want) {
 		t.Fatalf("Repeated = %q, want %q", got, want)
-	}
-	if got := Rules(nil).Repeated(retired); len(got) != 0 {
-		t.Fatalf("a repeat among the retired rules: %q", got)
 	}
 }
 
@@ -90,7 +93,7 @@ func TestRulesLoaded(t *testing.T) {
 			{ID: "A-4", Description: "d", Deterministic: true, Check: "/abs/a.sh", File: "ai/rules/a.yaml"},
 			{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"},
 		}
-		got := rules.Loaded(nil, true, nil)
+		got := rules.Loaded("", true, nil)
 		want := []string{
 			"ai/rules/a.yaml A-2: no description",
 			"ai/rules/a.yaml: a rule has no id",
@@ -116,12 +119,12 @@ func TestRulesLoaded(t *testing.T) {
 	t.Run("valid rules", func(t *testing.T) {
 		rules := Rules{{ID: "GO-1", Description: "gofmt", Deterministic: true, Check: "ai/checks/gofmt.sh",
 			Scope: []string{"**/*.go"}, File: "ai/rules/go.yaml"}}
-		got := rules.Loaded(nil, true, nil)
+		got := rules.Loaded("", true, nil)
 		if len(got.Rules) != 1 || got.Rules[0].ID != "GO-1" || got.Problems != nil || got.Repeated != nil ||
 			got.Err != nil || got.Strict != nil {
 			t.Fatalf("got %+v", got)
 		}
-		if got := Rules(nil).Loaded(nil, false, nil); got.Rules != nil || got.Exists || got.Err != nil || got.Strict != nil {
+		if got := Rules(nil).Loaded("", false, nil); got.Rules != nil || got.Exists || got.Err != nil || got.Strict != nil {
 			t.Fatalf("no folder: %+v", got)
 		}
 	})
@@ -130,20 +133,20 @@ func TestRulesLoaded(t *testing.T) {
 	// an invalid rule of a file before it, else at the error.
 	t.Run("stops at a file that cannot be read", func(t *testing.T) {
 		broken := errors.New("ai/rules/c.yaml: yaml: did not find expected node content")
-		got := Rules(nil).Loaded(nil, true, broken)
+		got := Rules(nil).Loaded("", true, broken)
 		if got.Rules != nil || got.Problems != nil || !errors.Is(got.Err, broken) || !errors.Is(got.Strict, broken) ||
 			!got.Exists {
 			t.Fatalf("got %+v", got)
 		}
 		before := Rules{{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"}, {ID: "B-1", File: "ai/rules/b.yaml"}}
-		got = before.Loaded(nil, true, broken)
+		got = before.Loaded("", true, broken)
 		if got.Rules != nil || !errors.Is(got.Err, broken) || got.Strict == nil ||
 			got.Strict.Error() != "ai/rules/b.yaml: rule B-1 has no description" {
 			t.Fatalf("an invalid rule before: %+v", got)
 		}
 		repeated := Rules{{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"},
 			{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"}}
-		got = repeated.Loaded(nil, true, broken)
+		got = repeated.Loaded("", true, broken)
 		if got.Rules != nil || got.Problems != nil || got.Repeated != nil || !errors.Is(got.Err, broken) ||
 			got.Strict == nil || got.Strict.Error() != "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml" {
 			t.Fatalf("a repeated id before: %+v", got)
@@ -159,13 +162,13 @@ func TestRulesLoaded(t *testing.T) {
 			{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"},
 		}
 		repeat := "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml"
-		got := rules.Loaded(nil, true, nil)
+		got := rules.Loaded("", true, nil)
 		if strings.Join(got.Problems, "\n") != repeat || strings.Join(got.Repeated, "\n") != repeat ||
 			got.Strict == nil || got.Strict.Error() != repeat || len(got.Rules) != 3 || got.Err != nil {
 			t.Fatalf("got %+v", got)
 		}
 		invalid := append(append(Rules(nil), rules...), Rule{ID: "C-1", File: "ai/rules/c.yaml"})
-		got = invalid.Loaded(nil, true, nil)
+		got = invalid.Loaded("", true, nil)
 		want := []string{"ai/rules/c.yaml C-1: no description", repeat}
 		if strings.Join(got.Problems, "\n") != strings.Join(want, "\n") || strings.Join(got.Repeated, "\n") != repeat ||
 			got.Strict == nil || got.Strict.Error() != "ai/rules/c.yaml: rule C-1 has no description" {
@@ -173,20 +176,38 @@ func TestRulesLoaded(t *testing.T) {
 		}
 	})
 
-	// An active id that a retired rule already has is repeated, naming the retired file; the retired rules are never
-	// rules of the result.
-	t.Run("retired ids", func(t *testing.T) {
-		retired := Rules{{ID: "GOARCH-31", File: "ai/rules/retired.yaml"}, {ID: "GOARCH-31", File: "ai/rules/retired.yaml"}}
-		rules := Rules{{ID: "GOARCH-31", Description: "d", File: "ai/rules/a.yaml"}}
-		repeat := "ai/rules/a.yaml GOARCH-31: id repeated, also in ai/rules/retired.yaml"
-		got := rules.Loaded(retired, true, nil)
-		if strings.Join(got.Repeated, "\n") != repeat || strings.Join(got.Problems, "\n") != repeat ||
-			got.Strict == nil || got.Strict.Error() != repeat || len(got.Rules) != 1 {
+	// A folder that holds retired.yaml has the problem of the file first and a strict reading that stops at it, before
+	// any invalid rule; the rules of the file never count, and the rules of the other files are kept.
+	t.Run("retired file", func(t *testing.T) {
+		const path = "ai/rules/retired.yaml"
+		want := path + " is no longer read: delete it, its ids are free"
+		rules := Rules{{ID: "A-1", File: "ai/rules/a.yaml"}}
+		got := rules.Loaded(path, true, nil)
+		if len(got.Problems) == 0 || got.Problems[0] != want || got.Strict == nil || got.Strict.Error() != want ||
+			len(got.Rules) != 1 || got.Err != nil {
 			t.Fatalf("got %+v", got)
 		}
-		other := Rules{{ID: "GOARCH-1", Description: "d", File: "ai/rules/a.yaml"}}
-		if got := other.Loaded(retired, true, nil); got.Problems != nil || got.Repeated != nil || got.Strict != nil {
-			t.Fatalf("no clash with the retired rules: %+v", got)
+		valid := Rules{{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"}}
+		if got := valid.Loaded(path, true, nil); got.Strict == nil || got.Strict.Error() != want || got.Err != nil {
+			t.Fatalf("valid rules: %+v", got)
 		}
 	})
+}
+
+// TestLoadedRetiredFile is the folder that holds retired.yaml (CUJ-05): its problem LIT-08 is among the problems of
+// the folder and stops a strict reading, and none of its rules loads.
+func TestLoadedRetiredFile(t *testing.T) {
+	const path = "ai/rules/retired.yaml"
+	want := path + " is no longer read: delete it, its ids are free"
+	got := Rules{{ID: "GOARCH-1", Description: "d", File: "ai/rules/a.yaml"}}.Loaded(path, true, nil)
+	if !slices.Contains(got.Problems, want) || got.Strict == nil || !strings.Contains(got.Strict.Error(), want) ||
+		got.Err != nil || len(got.Rules) != 1 {
+		t.Fatalf("got %+v", got)
+	}
+	// With a file that cannot be read, no problems: the strict reading still names the retired file first.
+	broken := errors.New("ai/rules/c.yaml: yaml: did not find expected node content")
+	got = Rules(nil).Loaded(path, true, broken)
+	if got.Problems != nil || !errors.Is(got.Err, broken) || got.Strict == nil || got.Strict.Error() != want {
+		t.Fatalf("a broken file: %+v", got)
+	}
 }

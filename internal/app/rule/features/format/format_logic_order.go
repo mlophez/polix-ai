@@ -9,9 +9,8 @@ import (
 // topKeys is the order of the top level keys of a formatted rules file: rules first.
 var topKeys = []string{"rules"}
 
-// ruleKeys is the order of the keys of a rule: the fields polix reads, in the order of rule.Rule, then the reason
-// of a retired rule.
-var ruleKeys = []string{"id", "description", "scope", "deterministic", "check", "reason"}
+// ruleKeys is the order of the keys of a rule: the fields polix reads, in the order of rule.Rule.
+var ruleKeys = []string{"id", "description", "scope", "deterministic", "check"}
 
 // formatData formats the data of a rules file: two spaces of indentation, the comments and the blank lines kept,
 // rules first, the keys of each rule in the order of ruleKeys with the unknown ones after in their order, and one

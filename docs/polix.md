@@ -16,7 +16,7 @@ repository pin the oldest polix that knows every option it uses.
 - `AGENTS.md`: what the project is (facts).
 - `ai/rules/*.yaml` (the folder `rules/` below `path` of polix.yaml): how the code must be. Polix only reads `id`,
   `description`, `scope`, `deterministic` and `check` of each rule; the rest of the format belongs to the skills
-  that write and use the rules. `retired.yaml` holds retired rules, which never apply.
+  that write and use the rules. `retired.yaml` is no longer read: delete it, the ids of a deleted rule are free.
 - `polix.yaml`: what happens on each event of a session, and on every commit: what is blocked, what runs and what
   is injected. It has three sections: `guardrails:`, the basics every project wants from the first minute, each a
   short list: first the protections (files no agent writes, branches nobody commits on, commands no agent runs), then
@@ -50,7 +50,7 @@ polix rules check          # run the checks of every deterministic rule (for CI)
 polix rules check --changed  # only the rules whose scope matches the files changed by the branch
                              # (--base BRANCH, default the closest of base_branch in polix.yaml, else main;
                              # it fails when no base exists, locally or on origin)
-polix rules fmt            # format every rules file of rules/ below path in place, retired.yaml included
+polix rules fmt            # format every rules file of rules/ below path in place
                            # (--check only tells whether they are formatted, exiting with 1 when not)
 polix graph                # print the workflow as a Mermaid diagram
 polix log                  # print the last session of the state log as a table, one block per event
@@ -80,8 +80,9 @@ hooks never use `base_branch`.
 
 `polix rules check` reads `polix.yaml` and then the rules of `rules/` below its `path` before running anything, and stops
 without running a check when a file of the folder of rules cannot be read or parsed, when a rule is not valid (no id, no description, a `check` on
-a rule that is not `deterministic`, or a `check` given as an absolute path), when two rules share an id or a rule
-has the id of a rule of `retired.yaml` (`<file> <id>: id repeated, also in <other file>`), when `polix.yaml` cannot be read or
+a rule that is not `deterministic`, or a `check` given as an absolute path), when two rules share an id
+(`<file> <id>: id repeated, also in <other file>`), when the folder holds a `retired.yaml`
+(`<path> is no longer read: delete it, its ids are free`, before any other problem), when `polix.yaml` cannot be read or
 parsed or requires a newer polix (without the file it uses the defaults), when a runner of `rules.run` is not
 valid, and when `--base` is given without `--changed`. The other problems of a `polix.yaml` that parses are left
 to `polix config check`. The hint to set `base_branch` or pass
@@ -91,10 +92,10 @@ prints each failure with the last 15 lines of its output, then `<n> checks, <m> 
 check failed.
 
 `polix rules fmt` formats every `*.yaml` of the folder `rules/` below `path` (`ai/rules` by default) in place,
-`retired.yaml` included, with the layout of `polix config fmt`: two spaces of indentation, flow collections on one
+with the layout of `polix config fmt`: two spaces of indentation, flow collections on one
 line, the comments and the blank lines kept, and the anchors and aliases of the values where they are written (an
 anchored block collection has its anchor alone at the end of the line of its key or of its dash). `rules` goes
-first, the keys of each rule follow `id`, `description`, `scope`, `deterministic`, `check` and `reason`, with any
+first, the keys of each rule follow `id`, `description`, `scope`, `deterministic` and `check`, with any
 other key after them in its order, and the rules never move. Exactly one blank line separates two rules, above the comments of the later one (two rules written in flow
 style on one line each, as `- { id: X-1, description: "One.", deterministic: false }`, without comments above or
 below them, stay together), and none follows `rules:`;
@@ -104,7 +105,7 @@ It prints `ok: formatted <file>` for each file it writes, or `ok: the rules are 
 would change and exits with 1. It is all or nothing: when a file cannot be formatted (not YAML, an anchor or alias in
 front of a key, an anchor on the whole document, an anchor name defined twice, a merge key (`<<`) that uses an anchor or alias, an alias that the order of the keys
 would put above its anchor), it prints `<file>: <problem>` and writes no file at all, and so it does, with or
-without `--check`, when two rules share an id or a rule has the id of a rule of `retired.yaml`, printing
+without `--check`, when two rules share an id, printing
 `<file> <id>: id repeated, also in <other file>`, and when a file is YAML but does not decode as rules (a `scope`
 that is not a list), printing the error of the loader of the rules, since it cannot rule out a repeated id then.
 A missing folder, or one without `*.yaml`, prints
@@ -742,7 +743,7 @@ is not a map as `guardrails.builtin takes a map of true or false, as { forbid_gi
 polix reads, injects and checks, `plans/`, the plans the skill `spec` writes, `reports/`, the reports of audits and
 reviews, and `tasks/`, the backlog the skill `task` writes. It is cleaned (slashes, no spaces around it, no `./` nor
 trailing slash). `polix config check` reports an absolute path, the root itself, a path out of the root (`..`) or a
-glob, as `path "../x" must be below the root`. polix reads only `<path>/rules`, its `*.yaml` but `retired.yaml` and
+glob, as `path "../x" must be below the root`. polix reads only `<path>/rules`, its `*.yaml` and
 not its subfolders, and moves or creates no folder; the four reach the agent in the start context on every `start`,
 so the skills write where the repository says and pass the folder of rules to the agents of the plugin.
 The keys `rules.path`, `plans`, `reports` and `guidance` are removed: `polix config check` reports each one with a
@@ -1223,8 +1224,7 @@ event outside `workflow.Informed` (all but `start`, `subagent_start`, `post_edit
 the two stops included. A blocked event shows the user no message, so the notice would be lost whenever the gate acts.
 The problem is at the line of the `notify`, naming the line of the first such entry and asking to move the notice
 after it or into its message. Of `ai/rules/` it reports every problem,
-not only the first: a rule without id or description, an id repeated (one that an earlier rule or a rule of
-`retired.yaml` already has, as `<file> <id>: id repeated, also in <other file>`), a check that does not exist, a `check` on a
+not only the first: a rule without id or description, a leftover `retired.yaml`, an id repeated (one that an earlier rule already has, as `<file> <id>: id repeated, also in <other file>`), a check that does not exist, a `check` on a
 rule that is not `deterministic: true`, and a `check` named by an absolute path instead of one relative to the root.
 It also rejects the problems of the shortcuts of [Guardrails](#guardrails).
 

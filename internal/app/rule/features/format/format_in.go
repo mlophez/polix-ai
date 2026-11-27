@@ -45,7 +45,7 @@ type Port interface {
 	ReadRuleFiles(ctx context.Context, dir string) (map[string][]byte, error)
 	// WriteRuleFile writes data to the file name of the folder dir; the error tells why it cannot be written.
 	WriteRuleFile(ctx context.Context, dir, name string, data []byte) error
-	// RepeatedIDs returns the problem of each id repeated among the rules of the folder dir, retired ones included,
+	// RepeatedIDs returns the problem of each id repeated among the rules of the folder dir,
 	// as the loader of the rules words it (rule.Loaded.Repeated). When the loader stops at a file that cannot be read,
 	// is not yaml or does not decode as rules, it returns that error alone, since no repeat can be ruled out.
 	RepeatedIDs(ctx context.Context, dir string) []string
@@ -60,9 +60,9 @@ func Command(loadRules rule.Load, loadWorkflow workflow.Load) *cobra.Command {
 		Use:   "fmt",
 		Short: "Format the rules files",
 		Long: "Format every yaml file of the folder of rules (rules below path of " + workflow.File + ", " +
-			workflow.DefaultRulesPath + " by default) in place, retired.yaml included: two spaces of indentation, flow " +
+			workflow.DefaultRulesPath + " by default) in place: two spaces of indentation, flow " +
 			"collections on one line, the comments and blank lines kept, rules first and the keys of each rule in the " +
-			"order id, description, scope, deterministic, check, reason, and one blank line between two rules. When a " +
+			"order id, description, scope, deterministic, check, and one blank line between two rules. When a " +
 			"file cannot be formatted or does not decode as rules, or two rules share an id, no file is written. " +
 			"With --check it only tells whether the files are formatted, and exits with 1 when not.",
 		Args: cobra.NoArgs,

@@ -75,7 +75,7 @@ type Port interface {
 	// Exists reports whether a file of the working tree matching one of the patterns exists, ignored files and the
 	// files under .git included.
 	Exists(ctx context.Context, patterns []string) bool
-	// LoadRules returns the rules of the folder dir, relative to the root, retired ones excluded, ordered by id.
+	// LoadRules returns the rules of the folder dir, relative to the root, ordered by id.
 	LoadRules(ctx context.Context, dir string) ([]rule.Rule, error)
 	// LoadState reads the log of polix of the session, the file of that session alone; a session without an id is
 	// an error, as a log that cannot be read.

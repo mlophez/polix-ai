@@ -42,8 +42,8 @@ func TestAdapterReadRuleFilesWithoutFolder(t *testing.T) {
 	}
 }
 
-// The repeated ids are those of the loader of the rules that cmd/polix builds: two files that share an id, or a rule
-// with the id of a retired one. When the loader stops at a file that is not yaml or does not decode, its error is the
+// The repeated ids are those of the loader of the rules that cmd/polix builds: two files that share an id; the ids of
+// retired.yaml count for none. When the loader stops at a file that is not yaml or does not decode, its error is the
 // problem, since the repeats of the rules it did not read cannot be ruled out.
 func TestAdapterRepeatedIDs(t *testing.T) {
 	root := t.TempDir()
@@ -59,8 +59,8 @@ func TestAdapterRepeatedIDs(t *testing.T) {
 	testenv.Write(t, filepath.Join(rules, "a.yaml"), "rules:\n  - id: GOARCH-31\n    description: a\n")
 	testenv.Write(t, filepath.Join(rules, "retired.yaml"), "rules:\n  - id: GOARCH-31\n    reason: gone\n")
 	got = Adapter{Root: root, Rules: (&ruleadapters.Folder{}).Load}.RepeatedIDs(context.Background(), "ai/rules")
-	if !slices.Equal(got, []string{"ai/rules/a.yaml GOARCH-31: id repeated, also in ai/rules/retired.yaml"}) {
-		t.Fatalf("a retired id: %q", got)
+	if len(got) != 0 {
+		t.Fatalf("the ids of retired.yaml are never repeated: %q", got)
 	}
 	testenv.Write(t, filepath.Join(rules, "b.yaml"), "rules: [\n")
 	got = Adapter{Root: root, Rules: (&ruleadapters.Folder{}).Load}.RepeatedIDs(context.Background(), "ai/rules")

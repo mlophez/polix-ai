@@ -155,8 +155,8 @@ func (a *Adapter) Exists(_ context.Context, patterns []string) bool {
 	return len(a.matching(patterns)) > 0
 }
 
-// LoadRules loads the rules of the folder dir of the repository through the loader of the rules: every rule but
-// those of retired.yaml, ordered by id, invalid ones included, or the error of a file that cannot be read or is not
+// LoadRules loads the rules of the folder dir of the repository through the loader of the rules: every rule,
+// ordered by id, invalid ones included (a retired.yaml is a problem, not an error), or the error of a file that cannot be read or is not
 // yaml. Without the folder there are no rules.
 func (a *Adapter) LoadRules(ctx context.Context, dir string) ([]rule.Rule, error) {
 	loaded := a.Rules(ctx, a.Repo.Root, dir)

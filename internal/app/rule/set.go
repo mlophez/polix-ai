@@ -55,17 +55,11 @@ func (rs Rules) Matching(paths []string) Rules {
 	return out
 }
 
-// Repeated returns one problem for each rule whose id an earlier rule or a retired rule already has, naming its file
-// and that of the last earlier one, so an id names one rule only, retired ones included. The ids of retired are taken
-// first, with their file; a repeat among the retired rules themselves is never reported.
-func (rs Rules) Repeated(retired Rules) []string {
+// Repeated returns one problem for each rule whose id an earlier rule already has, naming its file and that of the
+// last earlier one, so an id names one rule only. An id belongs only to the rules that exist: a deleted rule frees it.
+func (rs Rules) Repeated() []string {
 	var problems []string
 	seen := map[string]string{}
-	for _, r := range retired {
-		if r.ID != "" {
-			seen[r.ID] = r.File
-		}
-	}
 	for _, r := range rs {
 		if r.ID == "" {
 			continue
@@ -79,19 +73,26 @@ func (rs Rules) Repeated(retired Rules) []string {
 }
 
 // Loaded validates the rules rs read from a folder of rules, in the order of its files, and finds the ids repeated
-// among them or taken by the retired rules (Repeated). Without err, it keeps every rule, invalid ones included,
-// ordered by id, stably, with the problem of each invalid one in the words of polix config check and then those of
-// the ids repeated; with err, a file that cannot be read or is not yaml, it keeps none. Either way it tells where a
-// reading that admits no invalid rule stops: at the first invalid rule, with its file, else at the first id
-// repeated, else at err. exists tells whether the folder exists.
-func (rs Rules) Loaded(retired Rules, exists bool, err error) Loaded {
-	repeated := rs.Repeated(retired)
+// among them (Repeated). retired is the path, relative to the root with slashes, of the RetiredFile the folder holds,
+// "" without it: its presence is a problem, never read as rules, that comes first among the problems and where a strict
+// reading stops. Without err, it keeps every rule, invalid ones included, ordered by id, stably, with the problem of
+// each invalid one in the words of polix config check and then those of the ids repeated; with err, a file that
+// cannot be read or is not yaml, it keeps none. Either way it tells where a reading that admits no invalid rule stops:
+// at retired, else at the first invalid rule, with its file, else at the first id repeated, else at err. exists tells
+// whether the folder exists.
+func (rs Rules) Loaded(retired string, exists bool, err error) Loaded {
+	repeated := rs.Repeated()
 	strict := rs.firstInvalid()
 	if strict == nil && len(repeated) > 0 {
 		strict = errors.New(repeated[0])
 	}
 	if strict == nil {
 		strict = err
+	}
+	var leftover string
+	if retired != "" {
+		leftover = retired + " is no longer read: delete it, its ids are free"
+		strict = errors.New(leftover)
 	}
 	if err != nil {
 		loaded := Loaded{Exists: exists, Err: err, Strict: strict}
@@ -100,13 +101,16 @@ func (rs Rules) Loaded(retired Rules, exists bool, err error) Loaded {
 		}
 		return loaded
 	}
-	return rs.read(repeated, exists, strict)
+	return rs.read(leftover, repeated, exists, strict)
 }
 
 // read is what a folder whose files are all read loads: every rule, ordered by id, with the problems of the invalid
-// ones and then the repeated ids.
-func (rs Rules) read(repeated []string, exists bool, strict error) Loaded {
+// ones and then the repeated ids, after the problem of a leftover retired file ("" without it).
+func (rs Rules) read(leftover string, repeated []string, exists bool, strict error) Loaded {
 	var problems []string
+	if leftover != "" {
+		problems = append(problems, leftover)
+	}
 	for _, r := range rs {
 		if r.Valid() != nil {
 			problems = append(problems, r.problem())

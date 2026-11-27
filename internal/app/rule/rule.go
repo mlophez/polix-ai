@@ -30,18 +30,19 @@ type Rule struct {
 type Load func(ctx context.Context, root, dir string) Loaded
 
 // Loaded is what Load read from a folder of rules: the yaml files of the folder but RetiredFile, in the order of
-// their names. Each use case decides what an absent folder, an invalid rule or a file that cannot be read means to
-// it: it takes every rule with the problems of the invalid ones, or stops at Err, or stops at Strict.
+// their names; RetiredFile is a problem, never read. Each use case decides what an absent folder, an invalid rule or
+// a file that cannot be read means to it: it takes every rule with the problems of the invalid ones, or stops at Err, or stops at Strict.
 type Loaded struct {
 	Rules    []Rule   // every rule of the folder, invalid ones included, ordered by id, stably; none with Err
 	Exists   bool     // whether the folder exists
-	Problems []string // why each invalid rule is not valid, then each id repeated, in the words of polix config check
-	Repeated []string // the problems of the ids repeated, retired ones included: the last ones of Problems
+	Problems []string // RetiredFile when the folder holds it, then why each invalid rule is not valid, then each id repeated
+	Repeated []string // the problems of the ids repeated: the last ones of Problems
 	Err      error    // why a file of the folder cannot be read or is not yaml, the first by name; nil when none
-	Strict   error    // where a strict reading stops: an invalid rule, else a repeated id, of the files read, else Err
+	Strict   error    // where a strict reading stops: RetiredFile, else an invalid rule, else a repeated id, else Err
 }
 
-// RetiredFile holds retired rules: they keep their id but never apply.
+// RetiredFile is the file that held retired rules, no longer read: a folder that holds it has a problem, and the ids of
+// a deleted rule are free.
 const RetiredFile = "retired.yaml"
 
 // Valid reports why the rule is not a rule: it needs an id and a description, only a deterministic rule may

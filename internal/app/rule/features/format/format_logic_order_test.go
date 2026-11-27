@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// rules goes first, the keys of a rule follow the schema with the unknown ones after, and the rules never move; a
+// rules goes first, the keys of a rule follow the schema with the unknown ones after (reason among them, a retired rule's key no more), and the rules never move; a
 // comment above a key moves with it, a flow scope on two lines ends on one and a folded description keeps its text.
 func TestFormatData(t *testing.T) {
 	src := `x-owner: platform
@@ -32,8 +32,8 @@ rules:
     scope: ["a/**", "b/**"]
     deterministic: true
     check: tests/a_test.go
-    reason: why
     x-note: kept last
+    reason: why
 
   - id: A-1
     description: d

@@ -25,7 +25,7 @@ func (i Inspection) WorkflowProblems() ([]string, bool) {
 }
 
 // RuleProblems returns the problems of the rules, every one of them: those of the loader (Invalid, from
-// rule.Loaded.Problems: each invalid rule, then each id repeated, retired ones included), and the checks that do not
+// rule.Loaded.Problems: a leftover retired.yaml, then each invalid rule, then each id repeated), and the checks that do not
 // exist (Missing, by check).
 func (i Inspection) RuleProblems() []string {
 	problems := append([]string{}, i.Invalid...)

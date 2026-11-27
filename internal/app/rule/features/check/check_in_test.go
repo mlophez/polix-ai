@@ -269,6 +269,36 @@ func TestCommandExitCodes(t *testing.T) {
 	}
 }
 
+// A retired.yaml in the folder of rules stops the command before any check runs, with its problem first even when a
+// rule is invalid too (CUJ-05, AC-03).
+func TestCommandRetiredFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the check is a sh script")
+	}
+	want := "ai/rules/retired.yaml is no longer read: delete it, its ids are free"
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--quiet", "--initial-branch=main")
+	write(t, dir, map[string]string{
+		"ai/rules/a.yaml":       "rules:\n  - id: A-1\n    description: a\n    deterministic: true\n    check: checks/a.sh\n",
+		"ai/rules/retired.yaml": "rules:\n  - id: GOARCH-31\n    description: old\n    reason: gone\n",
+		"checks/a.sh":           "#!/bin/sh\ntouch ran\n",
+	})
+	code, stdout, stderr := runCommand(t, "--dir", dir)
+	if code != 1 || !strings.Contains(stderr, want) || strings.Contains(stdout, "checks,") {
+		t.Fatalf("retired.yaml: %d %q %q", code, stdout, stderr)
+	}
+	if _, err := os.Stat(dir + "/ran"); err == nil {
+		t.Fatal("a check ran")
+	}
+	write(t, dir, map[string]string{
+		"ai/rules/a.yaml": "rules:\n  - id: A-1\n    deterministic: true\n    check: checks/a.sh\n",
+	})
+	code, _, stderr = runCommand(t, "--dir", dir)
+	if code != 1 || !strings.Contains(stderr, want) || strings.Contains(stderr, "no description") {
+		t.Fatalf("retired.yaml and an invalid rule: %d %q", code, stderr)
+	}
+}
+
 func TestCommandBaseNeedsChanged(t *testing.T) {
 	code, _, stderr := runCommand(t, "--dir", t.TempDir(), "--base", "main")
 	if code != 1 || !strings.Contains(stderr, "--base needs --changed") {

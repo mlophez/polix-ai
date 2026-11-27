@@ -30,8 +30,8 @@ func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Wor
 	return loaded.Workflow, nil
 }
 
-// ReadRuleFiles reads the yaml files of the folder dir through internal/platform/file, by name, retired.yaml
-// included and subfolders left out; a missing folder has no files and no error.
+// ReadRuleFiles reads the yaml files of the folder dir through internal/platform/file, by name, subfolders
+// left out; a missing folder has no files and no error.
 func (a Adapter) ReadRuleFiles(_ context.Context, dir string) (map[string][]byte, error) {
 	files, err := file.ReadDir(a.folder(dir), ".yaml")
 	if err != nil || len(files) == 0 {
@@ -47,7 +47,7 @@ func (a Adapter) WriteRuleFile(_ context.Context, dir, name string, data []byte)
 }
 
 // RepeatedIDs returns the ids repeated among the rules of the folder dir through the loader of the rules
-// (rule.Loaded.Repeated), retired ones included. When the loader stops at Err, a file that cannot be read, is not
+// (rule.Loaded.Repeated). When the loader stops at Err, a file that cannot be read, is not
 // yaml or does not decode as rules, it returns that error instead: the rules after it are not read, so no repeat can
 // be ruled out.
 func (a Adapter) RepeatedIDs(ctx context.Context, dir string) []string {

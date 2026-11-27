@@ -28,7 +28,7 @@ polix rules check [--dir <dir>] [--changed] [--base <branch>]
 checks run and how, in the step shape. It takes what the shell read through the port, the choice of the request and what
 the runs carried out so far gave:
 
-- `rules`: the rules of the `*.yaml` of the folder of rules, retired ones (`retired.yaml`) excluded, ordered by id.
+- `rules`: the rules of the `*.yaml` of the folder of rules, ordered by id.
 - `wf`: the workflow of polix.yaml, the default one without the file; only its runners (`rules.run`) matter here
   (the shell uses its `Workflow.RulesPath`, `rules/` below `path`, to read the rules).
 - `sel`: the `rule.Selection` the shell builds and validates: `OnlyChanged`, whether `--changed` was given, and
@@ -84,9 +84,9 @@ and with 1 otherwise.
 
 - `LoadRules`: loads the rules of the folder it is given (`Workflow.RulesPath`) through the field `Rules` of the
   adapter, the loader `ruleadapters.Folder.Load` (`internal/app/rule/adapters`) that `cmd/polix` builds once and passes to
-  `Command`: `retired.yaml` left out, ordered by id; without the folder, no rules. It stops where a strict reading
-  does (`rule.Loaded.Strict`): at the first invalid rule of the files in the order of their names, with its file,
-  else at the first id repeated, retired ones included, else at a file that cannot be read or is not yaml.
+  `Command`: ordered by id; without the folder, no rules. It stops where a strict reading
+  does (`rule.Loaded.Strict`): at a `retired.yaml` of the folder, else at the first invalid rule of the files in the order of their names, with
+  its file, else at the first id repeated, else at a file that cannot be read or is not yaml.
 - `LoadWorkflow`: loads polix.yaml, always, for its runners and its base branches, through the field `Workflow` of the
   adapter, the loader `workflowadapters.File.Load` (`internal/app/workflow/adapters`) that `cmd/polix` builds once and passes to
   `Command`; without polix.yaml, the default workflow. Of the problems that `polix config check` reports on a workflow
@@ -111,7 +111,9 @@ The use case stops, without running any check, when:
 - `--dir` is not inside a git repository.
 - A file of the folder of rules cannot be read, is not valid yaml or holds a rule that is not `Valid` (a rule without id
   or description, with a `check` but not `deterministic`, or with a `check` given as an absolute path).
-- Two rules share an id, or a rule has the id of a rule of `retired.yaml`: the error is the problem of the loader,
+- The folder holds a `retired.yaml`: the error is `<path> is no longer read: delete it, its ids are free`, before any
+  invalid rule.
+- Two rules share an id: the error is the problem of the loader,
   `<file> <id>: id repeated, also in <other file>`, for the first such rule in the order of the files; an invalid
   rule of any file wins over it.
 - polix.yaml cannot be read, is not valid yaml, has an unknown top level key or requires a newer polix.

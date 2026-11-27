@@ -21,9 +21,8 @@ type ruleCheck struct {
 }
 
 // TestRulesChecks guards the link between the rules and their tests: each deterministic rule with a check of every
-// file of ai/rules/ but retired.yaml, whose rules never apply, names a file that exists and declares func
-// Test<name>, where <name> is the id without separators (GOARCH-4 is TestGOARCH4, GO-4 is TestGO4), the test the
-// runner of rules.run in polix.yaml runs.
+// file of ai/rules/ names a file that exists and declares func Test<name>, where <name> is the id without separators (GOARCH-4 is
+// TestGOARCH4, GO-4 is TestGO4), the test the runner of rules.run in polix.yaml runs.
 func TestRulesChecks(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join(*root, "ai", "rules", "*.yaml"))
 	if err != nil {
@@ -31,9 +30,6 @@ func TestRulesChecks(t *testing.T) {
 	}
 	var rules []ruleCheck
 	for _, file := range files {
-		if filepath.Base(file) == "retired.yaml" {
-			continue
-		}
 		data, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)

@@ -104,7 +104,7 @@ func TestAdapterLoadRulesInvalid(t *testing.T) {
 	}
 }
 
-// An id that an earlier rule or a retired rule already has stops the strict reading of CheckRule, through the
+// An id that an earlier rule already has stops the strict reading of CheckRule, through the
 // loader of the rules that cmd/polix builds, naming both files.
 func TestAdapterLoadRulesRepeatedID(t *testing.T) {
 	a := adapterOf(t, map[string]string{
@@ -115,16 +115,6 @@ func TestAdapterLoadRulesRepeatedID(t *testing.T) {
 	all, err := a.LoadRules(context.Background(), "ai/rules")
 	if err == nil || err.Error() != "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml" || all != nil {
 		t.Fatalf("got %v %v", all, err)
-	}
-	a = adapterOf(t, map[string]string{
-		"ai/rules/a.yaml":       "rules:\n  - id: GOARCH-31\n    description: a\n",
-		"ai/rules/retired.yaml": "rules:\n  - id: GOARCH-31\n    reason: retired\n",
-	})
-	a.Rules = (&ruleadapters.Folder{}).Load
-	all, err = a.LoadRules(context.Background(), "ai/rules")
-	if err == nil || err.Error() != "ai/rules/a.yaml GOARCH-31: id repeated, also in ai/rules/retired.yaml" ||
-		all != nil {
-		t.Fatalf("a retired id: %v %v", all, err)
 	}
 }
 

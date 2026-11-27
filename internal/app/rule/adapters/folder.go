@@ -47,7 +47,8 @@ type ruleYAML struct {
 }
 
 // Load loads the rules of the folder of rules dir (relative to root, with slashes) of the repository at root: it
-// reads the rules and then the retired ones, and has rule.Rules.Loaded decide what they load. It never fails: what
+// reads the rules and notes whether the folder holds rule.RetiredFile, which it never reads, and has
+// rule.Rules.Loaded decide what they load. It never fails: what
 // stops the reading is data of its result. The first call for a root and a folder reads them, and every later call
 // returns the same result.
 func (f *Folder) Load(_ context.Context, root, dir string) rule.Loaded {
@@ -58,7 +59,7 @@ func (f *Folder) Load(_ context.Context, root, dir string) rule.Loaded {
 		return loaded
 	}
 	rules, exists, err := f.readRules(root, dir)
-	loaded := rules.Loaded(f.readRetired(root, dir), exists, err)
+	loaded := rules.Loaded(f.retiredPath(root, dir), exists, err)
 	if f.seen == nil {
 		f.seen = map[folderKey]rule.Loaded{}
 	}
@@ -87,20 +88,14 @@ func (f *Folder) readRules(root, dir string) (rule.Rules, bool, error) {
 	return rules, exists, nil
 }
 
-// readRetired reads rule.RetiredFile of the folder dir of root through internal/platform/file and decodes its rules,
-// each with its file. A file that is missing, cannot be read or cannot be decoded has no rules, and is no error:
-// the retired rules only take their ids.
-func (f *Folder) readRetired(root, dir string) rule.Rules {
-	path := filepath.Join(root, filepath.FromSlash(dir), rule.RetiredFile)
-	data, found, err := file.Read(path)
+// retiredPath returns the path, relative to the root with slashes, of rule.RetiredFile in the folder dir of root,
+// "" when the folder does not hold it. It never reads its rules: the file is a problem, whatever it holds.
+func (f *Folder) retiredPath(root, dir string) string {
+	_, found, err := file.Read(filepath.Join(root, filepath.FromSlash(dir), rule.RetiredFile))
 	if err != nil || !found {
-		return nil
+		return ""
 	}
-	rules, err := f.decode(dir+"/"+rule.RetiredFile, data)
-	if err != nil {
-		return nil
-	}
-	return rules
+	return dir + "/" + rule.RetiredFile
 }
 
 // names returns the names of the files of rules among files, sorted: yaml, without rule.RetiredFile.

@@ -45,7 +45,7 @@ type Failed struct {
 // an interface so its implementation can change; the entry injects the adapter, and the logic never sees it. It
 // speaks in domain values, and every method takes the context of the caller.
 type Port interface {
-	// LoadRules returns the rules of the folder dir, relative to the root, retired ones excluded, ordered by id.
+	// LoadRules returns the rules of the folder dir, relative to the root, ordered by id.
 	LoadRules(ctx context.Context, dir string) ([]rule.Rule, error)
 	// LoadWorkflow returns the workflow of polix.yaml for the polix of version running, the default one without
 	// the file.

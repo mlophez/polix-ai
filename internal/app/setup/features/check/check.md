@@ -47,7 +47,7 @@ the methods of `setup.Inspection` of `internal/app/setup/problems.go`, which `po
    message.
 2. The error of reading the rules is the only entry of `Output.RuleProblems`; else `RuleProblems`: the problems of the loader
    (`rule.Loaded.Problems`): every invalid rule, in the words `<file> <id>: no description`, then every id repeated,
-   one an earlier rule or a rule of `retired.yaml` already has, as `<file> <id>: id repeated, also in <other file>`;
+   one an earlier rule already has, as `<file> <id>: id repeated, also in <other file>`;
    and every check that does not exist.
 3. With problems, the output holds them, those of the workflow file in `WorkflowProblems` and those of the rules in
    `RuleProblems`, and, when problems of the workflow file may come from a newer polix, the hint `NewerHint`.
@@ -75,7 +75,7 @@ built-in protections apply) and ...`) to stdout, and exits with 0.
   workflow and false; a workflow that parses with problems comes back with its `workflow.InvalidError`.
 - `LoadRules`: loads the rules of the folder it is given (`Workflow.RulesPath`, `rules/` below `path` of the workflow,
   `ai/rules/` by default) through the field `Rules` of the adapter, the loader `ruleadapters.Folder.Load`
-  (`internal/app/rule/adapters`) that `cmd/polix` builds once and passes to `Command`: every rule but those of `retired.yaml`,
+  (`internal/app/rule/adapters`) that `cmd/polix` builds once and passes to `Command`: every rule,
   ordered by id, with the problems of the invalid ones and of the ids repeated; without the folder, none; a file that
   cannot be read or parsed is an error.
 - `Missing`: whether the file of a check does not exist below the root.

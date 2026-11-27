@@ -26,7 +26,7 @@ It takes no argument.
 
 `Decide(dir string, files map[string][]byte, repeated []string, check bool) Output` decides what to write. It takes
 what the shell read through the port: `dir`, the folder of rules (`Workflow.RulesPath`), `files`, the data of each
-`*.yaml` of it by name, `retired.yaml` included, and `repeated`, the ids repeated among its rules as the loader of
+`*.yaml` of it by name, and `repeated`, the ids repeated among its rules as the loader of
 the rules words them, or the error where the loader stops; and `check`, from the request.
 
 1. Without files (no folder, or no `*.yaml` in it) there is nothing to format: `Empty`.
@@ -34,7 +34,7 @@ the rules words them, or the error where the loader stops; and `check`, from the
    fails, `<dir>/<name>: <error>` is a problem of `Problems`; when the result differs from the data read,
    `<dir>/<name>` goes to `Changed` and the result to the data to write.
 3. Each id repeated is a problem too, after those of the files: `<file> <id>: id repeated, also in <other file>`, an
-   id that an earlier rule or a rule of `retired.yaml` already has. When the loader stopped at a file, its error is
+   id that an earlier rule already has. When the loader stopped at a file, its error is
    the problem instead, since no repeat can be ruled out; a problem already reported, as the error of a file that is
    not yaml, is not reported twice.
 4. With a change, `Fix` is the command that formats the files, `polix rules fmt`.
@@ -85,11 +85,11 @@ and then the ids repeated or the error where the loader of the rules stops; `Cha
   polix.yaml, the default workflow. A polix.yaml that cannot be read, cannot be parsed, has an unknown top level key
   or requires a newer polix is an error; the other problems of a workflow that parses are left to
   `polix config check`.
-- `ReadRuleFiles`: reads the `*.yaml` of the folder through `internal/platform/file`, by name, `retired.yaml`
-  included and subfolders left out; a missing folder has no files and no error.
+- `ReadRuleFiles`: reads the `*.yaml` of the folder through `internal/platform/file`, by name, subfolders
+  left out; a missing folder has no files and no error.
 - `WriteRuleFile`: writes one file of the folder through `internal/platform/file`, keeping its mode and a symlink to
   it.
-- `RepeatedIDs`: the ids repeated among the rules of the folder, retired ones included, through the field `Rules` of
+- `RepeatedIDs`: the ids repeated among the rules of the folder, through the field `Rules` of
   the adapter, the loader `ruleadapters.Folder.Load` (`internal/app/rule/adapters`) that `cmd/polix` builds once and passes to
   `Command`: its `rule.Loaded.Repeated`, each as `<file> <id>: id repeated, also in <other file>`. When the loader
   stops at `Err`, a file that cannot be read, is not yaml or does not decode as rules (a `scope` that is not a list),

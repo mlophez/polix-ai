@@ -531,7 +531,7 @@ fact.
   repository without commits is its error, kept in the facts as a warning. Like `Diff`, it runs detached from the
   cancellation of the caller.
 - `LoadRules`: the rules of the folder it is given (`Workflow.RulesPath`: `rules/` below `path`, `ai/rules/` by
-  default), `retired.yaml` left out, ordered by id, invalid ones included, or the error of a file that cannot be read or
+  default), ordered by id, invalid ones included (a `retired.yaml` is a problem of the loader, never an error), or the error of a file that cannot be read or
   is not yaml (`rule.Loaded.Err`), through the field `Rules` of the adapter, the loader `ruleadapters.Folder.Load`
   (`internal/app/rule/adapters`) that `cmd/polix` builds once and passes to `Command`.
 - `LoadState`: the log of the session it is given, the session of the event, which the shell passes: the file
