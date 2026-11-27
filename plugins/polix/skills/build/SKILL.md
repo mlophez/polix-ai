@@ -79,7 +79,8 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
   Name the uncommitted changes the run left, and the task or the final verification they belong to.
   Once a person clears it, the skill `build` resumes the plan with those changes.
 - **Pending**: the manual checks and the failures that are not the change's.
-  Also the changes `AGENTS.md`, `CLAUDE.md` or a protected file need; or "none".
+  Also the changes `AGENTS.md`, `CLAUDE.md` or a protected file need, and each subagent you stopped (see `Limits`),
+  with its task or iteration; or "none".
 - **Next step**: with the plan `review`, the question of the triage, right under the report (see `Triage`).
 
 ## Limits
@@ -89,6 +90,9 @@ Without one, they are `ai/plans/`, `ai/rules/`, `ai/reports/` and `ai/tasks/` be
   Decide what is open from the plan, the code and the rules, and record it in `Pending`.
 - Never end your turn before Step 8: a subagent that returns, a failed check or a long run is never the end.
   The run ends only when the user closes the plan, or a loop stops (see `Task cycle` and `Final verification`).
+- Before you launch a subagent and before every commit, no subagent launched earlier may still run.
+  Stop each one still running with `TaskStop`, note it in `Pending` with its task or iteration, then go on.
+  Never run two builders at once, nor a builder with the reviewer or the verifier of a later step.
 - Never edit the code yourself: only the builder changes it, except in the fallback of `Requirements`.
   You edit only the frontmatter of the plan, and never its body nor a doc of the project.
   Of the frontmatter, you edit its `status`, the status of each task in `tasks` and of each criterion in
@@ -150,7 +154,8 @@ Each pass of the builder on the task has its own file (see `Passes`).
    (see `Iteration`).
    A noted finding waits for the user: it reopens nothing, and no builder works on it.
    Set that file to `status: checked`.
-5. **Close**: commit the task (see `Commits`), and go on with the next task.
+5. **Close**: stop any subagent still running (see `Limits`), commit the task (see `Commits`), and go on with the
+   next task.
 
 The criteria stay `pending` through the cycles of the tasks: only the final verification evaluates them.
 
@@ -172,7 +177,7 @@ Once every task is committed, check the whole plan, and repeat until the verifie
 5. **Stop**: after two iterations that fixed nothing, or after three iterations of `final` in this run.
    Each reason goes to `Blockers`; its last round stays uncommitted, and its round commits stay.
 6. **Iteration**: otherwise, add an iteration of `final` with what is open (see `Iteration`).
-   Commit the round with it (see `Commits`), so the next review reads only what the next round changes.
+   Stop any subagent still running (see `Limits`), and commit the round with it (see `Commits`), so the next review reads only what the next round changes.
    Launch the builder on it and write its report in its file, set it `status: built`, and go back to 1.
 
 ### Passes
