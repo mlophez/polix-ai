@@ -1,0 +1,10 @@
+rules:
+  - id: DOC-1
+    kind: docs
+    subject: polix documentation
+    description: >-
+      A change of the behaviour, the commands or the polix.yaml schema updates docs/polix.md and, for the
+      schema, the annotated examples/polix.yaml in the same change.
+      The document of the use case itself is GOARCH-21.
+    scope: ["cmd/**", "internal/**"]
+    deterministic: false

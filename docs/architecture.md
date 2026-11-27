@@ -12,12 +12,12 @@ which never depends on the product. Growing is adding sibling folders, never dee
 
 Each use case is an entry, a pure logic and an adapter (pure core, imperative shell), with the same short names in
 every use case package (`Command`, `Request`, `Response`, `Port`, `Adapter`, `Decide`, `Output`), read with their
-noun and verb outside it (`rulecheck.Command`). The rules are GOARCH-1 to GOARCH-47 of
-`ai/rules/architecture.yaml` (GOARCH-31 and GOARCH-40 are deleted, their ids free); the deterministic
+noun and verb outside it (`rulecheck.Command`). The rules are GOARCH-1 to GOARCH-49 of
+`ai/rules/architecture.yaml` (GOARCH-8, GOARCH-31 and GOARCH-40 are deleted, their ids free); the deterministic
 ones are decided by the AST tests of `tests/architecture/` (`go test ./tests/architecture`, one `TestGOARCH<N>` per
 rule), which read `internal/` and `cmd/`, and the fixed lists of imports by depguard, which those tests run (see
 [How the rules are decided](#how-the-rules-are-decided)). The limits of size and complexity of every Go file are
-GO-4 of `ai/rules/go.yaml` (see [Limits of size and complexity](#limits-of-size-and-complexity)).
+GO-4 and GO-5 of `ai/rules/go.yaml` (see [Limits of size and complexity](#limits-of-size-and-complexity)).
 
 The domains are `agent` (Claude Code and Codex, the neutral event of a hook call and its answer; the formats of each
 agent live in the entry of `AnswerHook`), `diff` (`risk`), `githook` (`githook`, the gates git runs on every commit),
@@ -79,7 +79,7 @@ tests/install/               the Go tests of install.sh and install.ps1
 tests/setup/                 the end-to-end tests of the commands of setup, composed as cmd/polix composes them
 ```
 
-Every package clause equals the name of its folder, `*_test.go` sits next to the file it tests, and a `testdata/`
+Every package clause equals the name of its folder (GOARCH-49), `*_test.go` sits next to the file it tests, and a `testdata/`
 folder is admitted at any level. A new command is a new `features/<verb>/`, a new concept a new `<noun>/`, a new
 technology a new `<lib>/`, and a use case too big a new `<helper>/`; no use case has a helper yet. The use cases and
 the adapters packages are:
@@ -302,12 +302,12 @@ The flow of `polix rules check`:
 
 ## Limits of size and complexity
 
-GO-4 of `ai/rules/go.yaml` bounds every Go file of the module that is not a test:
+GO-4 and GO-5 of `ai/rules/go.yaml` bound every Go file of the module that is not a test:
 
 - a function has a cyclomatic complexity of at most 15 (gocyclo) and a cognitive complexity of at most 20
-  (gocognit), each reported strictly above its value;
+  (gocognit), each reported strictly above its value (GO-4);
 - a file has at most 400 lines, every physical line counted (the rule `file-length-limit` of revive, with the
-  other default rules of revive still on).
+  other default rules of revive still on) (GO-5).
 
 golangci-lint decides them with `.golangci.yml`, so they show while the code is edited, on stop and in CI. Past a limit
 the code splits, never a `//nolint` nor an exclusion: a function into unexported functions or methods named after its
@@ -350,11 +350,12 @@ The other linters of design of `.golangci.yml` follow the same policy, enabled w
   `tests/architecture/testdata/depguard`, a module that compiles under the module path of polix, since
   golangci-lint loads its types. Without golangci-lint on the PATH these tests fail, never skip. GOARCH-4 reads the
   list `GOARCH-41-logic` to check the helpers that the logic imports, so the list lives in one place.
-- **Limits**: `TestGO4` runs golangci-lint the same way with only gocyclo, gocognit and revive, of which it keeps
-  only `file-length-limit`: `module` expects no finding on the repository, and `detects` expects each limit broken
+- **Limits**: `TestGO4` and `TestGO5` run golangci-lint once, the same way, with only gocyclo, gocognit and revive, of
+  which they keep only `file-length-limit`, and each reads the findings of its own limits: `module` expects no finding on the repository, and `detects` expects each limit broken
   in `tests/architecture/testdata/limits`, a module whose test file breaks them too and is never reported.
-- **Review**: the rules with `deterministic: false` (GOARCH-8, 10, 17 to 22, 30) are left to the review.
-- **Deleted**: GOARCH-31 (every name of a use case starts with its name) and GOARCH-40 (the methods of a domain
+- **Review**: the rules with `deterministic: false` (GOARCH-10, 17 to 22, 30) are left to the review.
+- **Deleted**: GOARCH-8 (a use case may import the domain of any noun, which GOARCH-9 already says), GOARCH-31 (every
+  name of a use case starts with its name) and GOARCH-40 (the methods of a domain
   struct live in its domain) are gone: the package of each use case and
   Go itself decide them now. A deleted rule frees its id.
 

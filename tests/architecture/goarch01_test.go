@@ -18,8 +18,7 @@ import (
 // folders; a helper folder holds <helper>.go, <helper>_*.go and their tests, and no folder; adapters/ holds
 // <concept>.go, <concept>_*.go and their tests, where <concept> is the lower case name of an exported struct of the
 // package, and no folder; internal/platform/ holds library folders; a library folder holds Go files and their tests,
-// and no folder. testdata/ is admitted at any level. Every package clause equals the name of its folder (of the
-// tests, GOARCH-38).
+// and no folder. testdata/ is admitted at any level. The package clause is GOARCH-49.
 func TestGOARCH1(t *testing.T) {
 	checkRule(t, checkLayout,
 		"internal/app/order/refund: a domain folder holds only its domain files, their tests, features/ and "+
@@ -35,7 +34,6 @@ func TestGOARCH1(t *testing.T) {
 			"ship_out.go",
 		"internal/app/order/features/ship/in.go: a use case folder holds only ship_in.go",
 		"internal/app/order/features/ship/ship_input.go: a use case folder holds only ship_in.go",
-		"internal/app/order/features/ship/ship_in.go: declares package shipping, not ship",
 		"internal/app/order/features/place/pricing/rates: a folder below the helper internal/app/order/features/place/pricing",
 		"internal/platform/text/unicode: a folder below the library internal/platform/text")
 	checkAccepts(t, checkLayout, "internal/app/stock/features/take/", "internal/app/stock/features/count/count_in_scan.go",
@@ -64,6 +62,28 @@ func TestGOARCH1(t *testing.T) {
 	})
 }
 
+// GOARCH-49: every package clause of internal/ equals the name of its folder (of the tests, GOARCH-38).
+func TestGOARCH49(t *testing.T) {
+	checkRule(t, checkPackageClause,
+		"internal/app/order/features/ship/ship_in.go: declares package shipping, not ship")
+}
+
+// checkPackageClause reports the files of internal/ whose package clause is not the name of their folder; cmd/ is
+// GOARCH-6 and the tests are GOARCH-38.
+func checkPackageClause(m *module) []string {
+	var out []string
+	for _, f := range m.files {
+		if f.place.level == levelCmd || f.place.level == levelOutside || f.kind == kindTest {
+			continue
+		}
+		if f.ast.Name.Name != f.pkg {
+			out = append(out, fmt.Sprintf("%s: declares package %s, not %s: a package is named after its folder",
+				f.rel, f.ast.Name.Name, f.pkg))
+		}
+	}
+	return out
+}
+
 func checkLayout(m *module) []string {
 	var out []string
 	for _, dir := range m.dirs {
@@ -77,10 +97,6 @@ func checkLayout(m *module) []string {
 		}
 		if f.kind == kindUnknown {
 			out = append(out, f.rel+": "+admits(f.place, f.dir))
-		}
-		if f.kind != kindTest && f.ast.Name.Name != f.pkg {
-			out = append(out, fmt.Sprintf("%s: declares package %s, not %s: a package is named after its folder",
-				f.rel, f.ast.Name.Name, f.pkg))
 		}
 	}
 	out = append(out, checkAdaptersNames(m)...)
