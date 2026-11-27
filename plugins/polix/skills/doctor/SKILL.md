@@ -63,7 +63,7 @@ Doctor progress:
   That is, a Codex hooks file runs polix, or the plugin is enabled in `~/.codex/config.toml`.
   Codex skips new or changed hooks until the user trusts them with `/hooks`.
 - **workflow** and **rules**: fix the problems `polix config check` prints.
-  The skills `workflow` and `add-rule` of polix know their formats.
+  The skills `workflow` and `rule` of polix know their formats.
   When `polix.yaml` requires a newer polix, run `polix update` and leave `polix.yaml` alone.
   An unknown option may belong to a newer polix: run `polix update` and check again before removing it.
   Among them, `polix config check` reports a runner of `rules.run` with an empty argv or an empty glob.

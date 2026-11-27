@@ -11,7 +11,7 @@ import (
 var plugin = map[string][]byte{
 	"polix/.claude-plugin/plugin.json": []byte(`{"name": "polix", "version": "0", "description": "the plugin"}`),
 	"polix/.codex-plugin/plugin.json":  []byte(`{"name": "polix", "version": "0", "skills": "./skills/"}`),
-	"polix/skills/add-rule/SKILL.md":   []byte("---\nname: add-rule\n---\n"),
+	"polix/skills/rule/SKILL.md":       []byte("---\nname: rule\n---\n"),
 }
 
 // The marketplace holds the plugin with the version in its manifests, and a manifest for each agent, read with the
@@ -48,7 +48,7 @@ func TestMarketplace(t *testing.T) {
 		xm.Plugins[0].Source.Path != "./polix" {
 		t.Fatalf("marketplace of Codex: %+v %v", xm, err)
 	}
-	if !strings.Contains(string(files["polix/skills/add-rule/SKILL.md"]), "name: add-rule\n") {
+	if !strings.Contains(string(files["polix/skills/rule/SKILL.md"]), "name: rule\n") {
 		t.Fatal("the skills")
 	}
 	if got := string(files["polix/.codex-plugin/plugin.json"]); got != "{\n  \"name\": \"polix\",\n  \"version\": \"1.2.3\",\n  \"skills\": \"./skills/\"\n}\n" {

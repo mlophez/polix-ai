@@ -7,6 +7,21 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- The skill `/polix:add-rule` is now `/polix:rule`, with no alias: it loads on its own when a rules file is edited.
+  It first audits every rule (fields, atomicity, duplicates, contradictions, wording, deterministic or review,
+  scope, check and references), asks about each finding alone, and then adds or removes the rules you ask for.
+- Every rule of the folder of rules declares `id`, `kind`, `subject`, `description`, `scope` and `deterministic`, and
+  `check` when deterministic. `kind` is one of `layout`, `dependency`, `declaration`, `naming`, `purity`, `data`,
+  `flow`, `metric`, `testing`, `docs`, `convention` or `unknown`; `subject` is free text. `polix rules check` stops
+  before running any check on a rule that misses a field, and `polix doctor` reports it. The hooks still inject
+  every rule. Migrate your rules with `/polix:rule`.
+- `retired.yaml` is no longer read: `polix rules check` and `polix doctor` report it, so delete it. A deleted rule
+  frees its id.
+- `polix config check` validates only `polix.yaml`: it no longer reads the rules, warns about
+  `polix rules check --changed` nor counts rules in its summary.
+
 ## [0.16.2] - 2026-11-27
 
 ### Changed

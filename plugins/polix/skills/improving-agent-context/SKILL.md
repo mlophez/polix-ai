@@ -218,7 +218,7 @@ A source that does not reach every phase a copy reaches keeps that copy only `on
 
 The source of each kind of fact; a fact elsewhere is misplaced:
 
-- How to write the code: the folder of rules, which the skill `add-rule` writes.
+- How to write the code: the folder of rules, which the skill `rule` writes.
 - The workflow of the agents, its phases and gates: the file of the workflow, which the skill `workflow` writes.
   Never move a fact into these two: leave it, and name in `Misplaced` the skill that writes it.
 - What applies to the whole project: the root `AGENTS.md`, or `CLAUDE.md` when there is no `AGENTS.md`.

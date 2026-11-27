@@ -236,7 +236,7 @@ guardrails:
   # Python script, `bash -c "$CMD"`) is put back after it ran, and the command is refused naming it (see "Files a
   # command changed" in docs/polix.md); this, like format_on_edit, pre_edit and post_edit, costs every command two content
   # hashes, and files git ignores are not put back.
-  # Protecting polix.yaml or ai/rules/ keeps the skills `workflow` and `add-rule` from writing them. A glob without
+  # Protecting polix.yaml or ai/rules/ keeps the skills `workflow` and `rule` from writing them. A glob without
   # `/` matches the name in any folder (`.env` keeps every .env); a leading `/` anchors it to the root, as in
   # .gitignore (`/AGENTS.md` is only the one of the root); `**` protects a whole folder. To keep only the subagents
   # away from a path, use `writes` and `path` with `actor` in `on` instead (see pre_command and pre_edit).
@@ -246,7 +246,7 @@ guardrails:
     - /AGENTS.md # only the one of the root
     - /CLAUDE.md
     # - /polix.yaml       # the workflow itself: then only a person changes it
-    # - ai/rules/**       # the rules: then the skill add-rule cannot write them
+    # - ai/rules/**       # the rules: then the skill rule cannot write them
   # protected_branches: branches nobody commits on. A list of branch names, each matched whole; `*` in a name
   # matches any text (`release/*`). It expands into one regular entry on pre_commit with the condition `branch`, an
   # anchored regular expression of the names (here `^(?:main|dev|release/.*)$`), whose message, in English, asks to

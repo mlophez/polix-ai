@@ -82,7 +82,7 @@ Review progress:
 - [ ] Step 6: Readability: names, the size and nesting of functions, duplication and comments a reader needs.
 - [ ] Step 7: List the guarantees of the change and try to break each one with the cases of its kind of code.
   Then look for bugs, security and compatibility issues in each hunk, following its data and errors (see Step 7).
-- [ ] Step 8: Read the folder of rules except retired.yaml and judge each changed file against the rules of its scope.
+- [ ] Step 8: Read the folder of rules and judge each changed file against the rules of its scope.
 - [ ] Step 9: Read the tests and check that they cover the new behaviour and can fail.
 - [ ] Step 10: Second pass: hunt the variants of each finding and review what the first pass left (see Step 10).
 - [ ] Step 11: Verify each finding again against the code or the exact wording of its rule.

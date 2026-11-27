@@ -74,8 +74,8 @@ Windows PowerShell 5.1 and PowerShell 7.
 This repository uses Polix on itself:
 
 - `polix.yaml` is its workflow.
-- `ai/rules/` holds the rules of its code (`architecture.yaml`, `go.yaml`, `platform.yaml`), and `retired.yaml`
-  keeps the ids of the retired ones, which Polix never reads.
+- `ai/rules/` holds the rules of its code (`architecture.yaml`, `go.yaml`, `platform.yaml`); each rule declares its kind
+  and subject, and a deleted rule leaves nothing behind.
 - `.claude/settings.json` registers the Polix hooks for Claude Code, committed with the repository.
 
 The hooks run `polix` from the `PATH`, so run `just install` once before opening a Claude Code session here, and

@@ -13,7 +13,7 @@ which never depends on the product. Growing is adding sibling folders, never dee
 Each use case is an entry, a pure logic and an adapter (pure core, imperative shell), with the same short names in
 every use case package (`Command`, `Request`, `Response`, `Port`, `Adapter`, `Decide`, `Output`), read with their
 noun and verb outside it (`rulecheck.Command`). The rules are GOARCH-1 to GOARCH-47 of
-`ai/rules/architecture.yaml` (GOARCH-31 and GOARCH-40 are retired in `ai/rules/retired.yaml`); the deterministic
+`ai/rules/architecture.yaml` (GOARCH-31 and GOARCH-40 are deleted, their ids free); the deterministic
 ones are decided by the AST tests of `tests/architecture/` (`go test ./tests/architecture`, one `TestGOARCH<N>` per
 rule), which read `internal/` and `cmd/`, and the fixed lists of imports by depguard, which those tests run (see
 [How the rules are decided](#how-the-rules-are-decided)). The limits of size and complexity of every Go file are
@@ -351,9 +351,9 @@ The other linters of design of `.golangci.yml` follow the same policy, enabled w
   only `file-length-limit`: `module` expects no finding on the repository, and `detects` expects each limit broken
   in `tests/architecture/testdata/limits`, a module whose test file breaks them too and is never reported.
 - **Review**: the rules with `deterministic: false` (GOARCH-8, 10, 17 to 22, 30) are left to the review.
-- **Retired**: GOARCH-31 (every name of a use case starts with its name) and GOARCH-40 (the methods of a domain
-  struct live in its domain) are in `ai/rules/retired.yaml`, with their reason: the package of each use case and
-  Go itself decide them now. Their ids are never reused.
+- **Deleted**: GOARCH-31 (every name of a use case starts with its name) and GOARCH-40 (the methods of a domain
+  struct live in its domain) are gone: the package of each use case and
+  Go itself decide them now. A deleted rule frees its id.
 
 ## Resolved decisions
 
@@ -387,7 +387,7 @@ The other linters of design of `.golangci.yml` follow the same policy, enabled w
 - The helpers of a use case sit right below it, not under a Go `internal/` of the use case: the compiler would
   enforce their visibility, but one level deeper than the layout allows; GOARCH-9 enforces it instead.
 - `polix rules check` changes on purpose: a rule that is not `Valid` (no description, or a `check` without
-  `deterministic`) stops the command, and so does an id repeated, retired ones included, which the loader of the
+  `deterministic`) stops the command, and so does an id repeated, which the loader of the
   rules reports (`rule.Loaded.Repeated`); `--base` without `--changed` is an error; the hint to set `base_branch` only
   comes when no base exists. It always reads polix.yaml when it exists, to know the runners of `rules.run`, and
   `--base` only replaces its base branches; a polix.yaml that cannot be read or parsed stops the command.

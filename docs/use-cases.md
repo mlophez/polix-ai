@@ -153,7 +153,7 @@ protected file git does not ignore back as it was before the command and tells t
 [Files a command changed](polix.md#files-a-command-changed)).
 
 To keep only the subagents away and let the main session change a path, use regular entries of `on:`: `path` for
-the edits and `writes` for the commands. The skills `workflow` and `add-rule` run in the main session, so they keep
+the edits and `writes` for the commands. The skills `workflow` and `rule` run in the main session, so they keep
 their way in:
 
 ```yaml
@@ -169,7 +169,7 @@ on:
 ```
 
 Do not put `polix.yaml` or `ai/rules/` in `protected_files`: it binds the main session too, so the skills
-`workflow` and `add-rule` could no longer change them. `writes` is a heuristic: it sees `rm`, `mv`, `cp`, `tee`,
+`workflow` and `rule` could no longer change them. `writes` is a heuristic: it sees `rm`, `mv`, `cp`, `tee`,
 `sed -i` and redirections into the repository, but not an interpreter that opens a file (`python -c ...`). A
 program that writes by itself (`rm`, `mv`, `cp`...) is denied on every protected file it names, also one it only
 reads (`cp AGENTS.md notes.md`), on a folder holding protected paths and on a wildcard that may reach them

@@ -136,7 +136,7 @@ unknown key "path" in rules (run): move it to the top-level key path, the folder
 
 - Type: a string. Default: `ai` (also when empty or only spaces).
 - The folder of the AI, relative to the root: it holds `rules/`, `plans/`, `reports/` and `tasks/`. polix reads
-  only `<path>/rules`, its `*.yaml` but `retired.yaml`, and names the four folders to the agent in the
+  only `<path>/rules`, its `*.yaml`, and names the four folders to the agent in the
   [start context](#start-context); it moves or creates no folder.
 - Cleaned: backslashes become `/`, the spaces around it, a leading `./` and a trailing `/` are dropped.
 - `polix config check` rejects an absolute path or a drive of Windows, the root itself (`.`), a path out of the root
@@ -188,7 +188,7 @@ base_branch: [main, dev]
 ### rules
 
 The rules on how to write the code, which polix injects and checks. Their folder is `rules/` below
-[`path`](#path), `ai/rules` by default: polix reads its `*.yaml` but `retired.yaml`, not its subfolders. The only key
+[`path`](#path), `ai/rules` by default: polix reads its `*.yaml`, not its subfolders. The only key
 of `rules` is `run`.
 
 - `run`: a map of glob to argv: how the `check` of a rule runs, from the root and without a shell. The glob is

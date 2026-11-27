@@ -346,7 +346,7 @@ evaluation of the event:
   A glob without `/` matches the name in any folder, so `polix.yaml` also keeps `examples/polix.yaml`; write
   `/polix.yaml` to protect only the file of the root. It covers the files git ignores, so `.env` is covered too,
   and it binds the skills as well: protecting `polix.yaml` or `ai/rules/` keeps the skills `workflow` and
-  `add-rule` from writing them. For finer control, such as keeping only subagents away, use the condition
+  `rule` from writing them. For finer control, such as keeping only subagents away, use the condition
   `writes` with `actor` in a `pre_command` entry and `path` in a `pre_edit` entry. A protected file that a command
   changed anyway, past the check of its line, is put back after it runs (see
   [Files a command changed](#files-a-command-changed)).
@@ -1599,7 +1599,7 @@ Claude Code alone, even when Codex is on the `PATH` or configured: Codex is set 
 also prints that Codex support is not implemented in this release and the setup is untested. It has two parts:
 
 - The plugin `polix`, for the user, since it helps in any repository. It is the folder `plugins/polix/` of this
-  repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `add-rule` writes
+  repository, embedded in the binary (package `plugins`): skills (`workflow` writes `polix.yaml`, `rule` audits and writes
   the folder of rules, `risk` calibrates `risk.weights` and the thresholds of the measures on the history of commits,
   `doctor` fixes the setup, `task` adds a task to the backlog `tasks/` below `path` from a template with a frontmatter, ready
   for `spec`, `brainstorming` explores the project and proposes new ideas, saving those the user picks as tasks of
@@ -1658,7 +1658,7 @@ also prints that Codex support is not implemented in this release and the setup 
     `claude plugin install polix@polix --scope user`. Claude Code copies the plugin to its cache
     (`~/.claude/plugins/cache/polix/polix/<version>`), so after rewriting the folder install and update run
     `claude plugin update`, which copies it only when its version changed; it loads in the next session. Its
-    skills are `/polix:workflow`, `/polix:add-rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`, `/polix:task`,
+    skills are `/polix:workflow`, `/polix:rule`, `/polix:risk`, `/polix:doctor`, `/polix:init`, `/polix:task`,
     `/polix:brainstorming`, `/polix:probe`, `/polix:grill-me`, `/polix:spec`, `/polix:build`, `/polix:review`, `/polix:audit`, `/polix:synthesize`, `/polix:improving-agent-context`, `/polix:writing-skills` and
     `/polix:writing-agents`, its agents `polix:builder`, `polix:verifier`, `polix:reviewer`, `polix:critic` and
     `polix:auditor`. The skills `spec`, `build`, `review` and `audit` launch the agents; Codex, which has no agents of
@@ -1679,12 +1679,12 @@ also prints that Codex support is not implemented in this release and the setup 
     prefix of the plugin, and the skills pass the folder of rules in their prompt (`Rules:`) to the agents that judge
     the code against it, `reviewer` and `auditor`; `critic` gets only the plan, and `builder` finds the
     folder as `AGENTS.md` or `CLAUDE.md` names it, else `ai/rules/`.
-    `add-rule` checks what it writes by parsing it and running each new `check` as `AGENTS.md` runs the checks.
+    `rule` audits the rules and asks about each finding alone, then checks what it writes by parsing it and running each new `check` as `AGENTS.md` runs the checks.
     `init`, `doctor`, `risk`, `task`, `spec`, `build`, `review`, `audit` and `synthesize` carry `disable-model-invocation: true`: only the
     user runs them, typing the command; when a message of polix asks for one, as the session start does for
     `/polix:doctor` or a gate without a plan for `/polix:spec`, the model tells the user to run it. So the flow of
     the harness always starts by hand, and a gate the model must satisfy alone asks for an agent, as
-    `polix:reviewer`, not for a skill. `workflow` and `add-rule`
+    `polix:reviewer`, not for a skill. `workflow` and `rule`
     stay open to the model but carry `paths` (`polix.yaml`, `**/rules/*.yaml`): the model sees them only while it
     works on those files, whatever the `path` of the folder of rules.
     `writing-skills` and `writing-agents` stay open too, with `paths` on `**/skills/**` and `**/agents/*.md`, and so

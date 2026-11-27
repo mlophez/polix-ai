@@ -3,7 +3,7 @@ name: workflow
 description: >
   Writes or changes polix.yaml, the workflow polix applies to the sessions of the agents on every event.
   It runs only when the user or the workflow of the project asks for it.
-  It never writes the rules (the folder rules/ below path): that is the skill add-rule.
+  It never writes the rules (the folder rules/ below path): that is the skill rule.
 user-invocable: true
 disable-model-invocation: false
 paths: polix.yaml
@@ -35,7 +35,7 @@ polix measures and never judges: judging the code belongs to a reviewer subagent
 ## Limits
 
 - Extend the current `polix.yaml`; never rewrite unrelated entries.
-- Only write `polix.yaml`; rules of the code go to the folder of rules with the skill `add-rule` of polix.
+- Only write `polix.yaml`; rules of the code go to the folder of rules with the skill `rule` of polix.
 - Never remove an option `polix config check` calls unknown before `polix update` rules out an outdated polix.
 - Never lower `requires`.
 - Talk to the user in the language of the session.

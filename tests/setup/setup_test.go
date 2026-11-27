@@ -48,7 +48,7 @@ func runSetup(args ...string) (int, string, string) {
 func TestInstall(t *testing.T) {
 	testenv.Machine(t, false, false)
 	code, stdout, stderr := runSetup("install", "--yes", "--agent", "claude", "--dir", t.TempDir())
-	if code != 0 || !strings.Contains(stdout, "polix dev installed") || !strings.Contains(stdout, "/polix:add-rule") ||
+	if code != 0 || !strings.Contains(stdout, "polix dev installed") || !strings.Contains(stdout, "/polix:rule") ||
 		!strings.Contains(stdout, "polix:verifier") || !strings.Contains(stdout, "not inside a git repository") ||
 		!strings.Contains(stdout, "run by hand: claude plugin marketplace add") || !strings.Contains(stdout, "polix is not on the PATH") {
 		t.Fatalf("install: %d\n%s%s", code, stdout, stderr)

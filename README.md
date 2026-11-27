@@ -231,7 +231,7 @@ plan `polix:critic` reviews before you approve it), `/polix:build` (run by `poli
 check whether one idea is viable, `/polix:synthesize` to condense a Markdown file without losing its format nor
 its information, `/polix:improving-agent-context` to improve the context an agent receives in each phase of the flow, finding
 its duplicates, contradictions, inconsistencies and misplaced facts and rewriting the sources you confirm, plus the skills that set Polix up
-(`/polix:init`, `/polix:workflow`, `/polix:add-rule`, `/polix:doctor`, `/polix:risk`) and those that write skills and subagents in one format (`/polix:writing-skills`, `/polix:writing-agents`). A
+(`/polix:init`, `/polix:workflow`, `/polix:rule`, `/polix:doctor`, `/polix:risk`) and those that write skills and subagents in one format (`/polix:writing-skills`, `/polix:writing-agents`). A
 skill of the flow runs only when you type it, and Polix enforces a phase only when your workflow says so:
 
 ```yaml

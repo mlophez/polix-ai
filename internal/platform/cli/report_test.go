@@ -113,7 +113,7 @@ func TestReportWithoutAreas(t *testing.T) {
 // wrapRow is the row of CUJ-03: one long message in one line.
 func wrapRow(fix string) Report {
 	msg := strings.Join(strings.Fields(`polix@polix 0.0.0-dev: skills
-		/polix:add-rule /polix:audit /polix:build, agents polix:auditor polix:builder`), " ")
+		/polix:rule /polix:audit /polix:build, agents polix:auditor polix:builder`), " ")
 	return Report{Sections: []Section{{Title: "Agents", Rows: []Row{
 		{Level: LevelOK, Area: "plugin", Message: msg, Fix: fix}}}}}
 }
@@ -123,7 +123,7 @@ func TestReportWrap(t *testing.T) {
 	var b bytes.Buffer
 	(&UI{w: &b, rich: true, width: 50}).Report(wrapRow(""))
 	want := "  ✓  plugin  polix@polix 0.0.0-dev: skills\n" +
-		"             /polix:add-rule /polix:audit\n" +
+		"             /polix:rule /polix:audit\n" +
 		"             /polix:build, agents polix:auditor\n" +
 		"             polix:builder\n"
 	got := escape.ReplaceAllString(b.String(), "")

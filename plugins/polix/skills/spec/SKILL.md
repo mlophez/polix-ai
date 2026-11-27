@@ -52,7 +52,7 @@ Without one, they are `ai/plans/`, `ai/rules/` and `ai/tasks/` below the root.
 - **Plan**: the path of the plan file, its `status` and its `branch`; Step 7 already showed its outcome.
 - **Decisions**: every decision of the plan with `source: delegated`, or "none".
 - **Next steps**: adjust the plan, or build, verify and review it with the skill `build`.
-- **Pending**: open blockers and stale or missing docs, with the skill `add-rule` when rules are missing.
+- **Pending**: open blockers and stale or missing docs, with the skill `rule` when rules are missing.
   Also the decisions the user left deferred and the findings of `critic` left open.
   Also the uncommitted changes other than the plan and its task: the skill `build` starts only once they are
   committed; or "none".
@@ -168,7 +168,7 @@ Without the subagent `critic`, follow `critic.md` yourself as `Requirements` say
 
 - Read `AGENTS.md` and `CLAUDE.md` when they are not in context: purpose, stack, commands, layout and testing.
   Run a command as they write it, narrowing it only with the options they document.
-- Read every `yaml` file of the folder of rules except `retired.yaml`, whose ids never apply.
+- Read every `yaml` file of the folder of rules.
 - A rule applies when the trigger of its `description` holds and the files touched match its `scope`.
   Without `scope`, it applies to the whole project.
 - A task never breaks a rule that applies: when the design needs it, stop and tell the user.

@@ -145,7 +145,7 @@ func TestInstallScript(t *testing.T) {
 	if err != nil || !strings.Contains(out, "installed polix 0.2.0") || content(t, filepath.Join(dir, "polix")) != string(bin) {
 		t.Fatalf("install.sh: %v\n%s", err, out)
 	}
-	if v, ok := pluginVersion(); !ok || v != "0.2.0" || !strings.Contains(out, "/polix:add-rule") {
+	if v, ok := pluginVersion(); !ok || v != "0.2.0" || !strings.Contains(out, "/polix:rule") {
 		t.Fatalf("install.sh runs polix install: %q %v\n%s", v, ok, out)
 	}
 
