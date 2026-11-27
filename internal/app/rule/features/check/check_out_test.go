@@ -108,8 +108,8 @@ func TestAdapterLoadRulesInvalid(t *testing.T) {
 // loader of the rules that cmd/polix builds, naming both files.
 func TestAdapterLoadRulesRepeatedID(t *testing.T) {
 	a := adapterOf(t, map[string]string{
-		"ai/rules/a.yaml": "rules:\n  - id: A-1\n    description: a\n",
-		"ai/rules/b.yaml": "rules:\n  - id: A-1\n    description: b\n",
+		"ai/rules/a.yaml": "rules:\n  - id: A-1\n    description: a\n" + fields + "    deterministic: false\n",
+		"ai/rules/b.yaml": "rules:\n  - id: A-1\n    description: b\n" + fields + "    deterministic: false\n",
 	})
 	a.Rules = (&ruleadapters.Folder{}).Load
 	all, err := a.LoadRules(context.Background(), "ai/rules")

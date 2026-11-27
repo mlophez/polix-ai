@@ -32,6 +32,8 @@ rules:
     scope: ["internal/**"]
     deterministic: true
     check: tests/architecture/goarch01_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-2
     description: >-
@@ -41,6 +43,8 @@ rules:
     scope: ["internal/app/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch02_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-3
     description: >-
@@ -56,6 +60,8 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch03_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-4
     description: >-
@@ -70,6 +76,8 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch04_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-5
     description: >-
@@ -79,6 +87,8 @@ rules:
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_out.go", "internal/app/*/features/*/*_out_*.go"]
     deterministic: true
     check: tests/architecture/goarch05_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-6
     description: >-
@@ -89,6 +99,8 @@ rules:
     scope: ["cmd/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch06_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-7
     description: >-
@@ -97,6 +109,8 @@ rules:
     scope: ["internal/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch07_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-8
     description: >-
@@ -104,6 +118,8 @@ rules:
       other noun. A permission: what it leaves out is decided by GOARCH-9.
     scope: ["internal/app/**/*.go"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-9
     description: >-
@@ -119,6 +135,8 @@ rules:
     scope: ["internal/app/**/*.go", "cmd/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch09_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-10
     description: >-
@@ -127,6 +145,8 @@ rules:
       that use case, never in another use case nor in a domain it alone uses.
     scope: ["internal/app/**/*.go"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-11
     description: >-
@@ -137,6 +157,8 @@ rules:
     scope: ["internal/app/*/features/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch11_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-12
     description: >-
@@ -147,6 +169,8 @@ rules:
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: true
     check: tests/architecture/goarch12_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-13
     description: >-
@@ -155,6 +179,8 @@ rules:
     scope: ["internal/**/*.go", "cmd/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch13_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-14
     description: >-
@@ -165,6 +191,8 @@ rules:
     scope: ["internal/app/**"]
     deterministic: true
     check: tests/architecture/goarch14_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-15
     description: >-
@@ -174,6 +202,8 @@ rules:
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: true
     check: tests/architecture/goarch15_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-16
     description: >-
@@ -184,6 +214,8 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch16_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-17
     description: >-
@@ -193,6 +225,8 @@ rules:
       install and doctor; workflow for graph and log).
     scope: ["internal/**/*.go"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-18
     description: >-
@@ -201,6 +235,8 @@ rules:
       and deadlines live in the adapter: the shell runs the steps of the output in sequence.
     scope: ["internal/app/**/*.go"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-19
     description: >-
@@ -209,6 +245,8 @@ rules:
       support the tests share (testenv).
     scope: ["internal/**/*.go"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-20
     description: >-
@@ -224,6 +262,8 @@ rules:
       GOARCH-37.
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-21
     description: >-
@@ -231,6 +271,8 @@ rules:
       its document in the same commit. That it names the fields and the methods of the code is GOARCH-36.
     scope: ["internal/app/**"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-22
     description: >-
@@ -240,6 +282,8 @@ rules:
       console and sets the exit code. Only the Request and the Response carry the shape of the transport.
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go", "internal/app/*/features/*/*_logic.go", "internal/app/*/features/*/*_logic_*.go"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-23
     description: >-
@@ -252,6 +296,8 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch23_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-24
     description: >-
@@ -266,6 +312,8 @@ rules:
     scope: ["internal/app/*/features/*/*_out.go", "internal/app/*/features/*/*_out_*.go"]
     deterministic: true
     check: tests/architecture/goarch24_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-25
     description: >-
@@ -276,6 +324,8 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch25_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-26
     description: >-
@@ -284,6 +334,8 @@ rules:
     scope: ["internal/app/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch26_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-27
     description: >-
@@ -294,6 +346,8 @@ rules:
     scope: ["internal/app/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch27_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-28
     description: >-
@@ -304,6 +358,8 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch28_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-29
     description: >-
@@ -315,6 +371,8 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch29_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-30
     description: >-
@@ -324,6 +382,8 @@ rules:
       use cases (Retire, Narrow), not after the field it touches.
     scope: ["internal/app/*/*.go"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-32
     description: >-
@@ -336,6 +396,8 @@ rules:
     scope: ["internal/app/*/features/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch32_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-33
     description: >-
@@ -346,6 +408,8 @@ rules:
     scope: ["internal/app/*/features/*/*_in.go"]
     deterministic: true
     check: tests/architecture/goarch33_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-34
     description: >-
@@ -358,6 +422,8 @@ rules:
     scope: ["internal/app/*/features/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch34_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-35
     description: >-
@@ -366,6 +432,8 @@ rules:
     scope: ["internal/**/*_test.go"]
     deterministic: true
     check: tests/architecture/goarch35_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-36
     description: >-
@@ -376,6 +444,8 @@ rules:
     scope: ["internal/app/*/features/*/*.md", "internal/app/*/features/*/*_in.go"]
     deterministic: true
     check: tests/architecture/goarch36_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-37
     description: >-
@@ -387,6 +457,8 @@ rules:
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: true
     check: tests/architecture/goarch37_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-38
     description: >-
@@ -395,6 +467,8 @@ rules:
     scope: ["internal/**/*_test.go"]
     deterministic: true
     check: tests/architecture/goarch38_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-39
     description: >-
@@ -403,6 +477,8 @@ rules:
     scope: ["internal/**/*.go", "cmd/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch39_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-41
     description: >-
@@ -419,6 +495,8 @@ rules:
     scope: ["internal/app/*/*.go", "internal/app/*/features/*/*_logic.go", "internal/app/*/features/*/*_logic_*.go", ".golangci.yml"]
     deterministic: true
     check: tests/architecture/goarch41_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-42
     description: >-
@@ -428,6 +506,8 @@ rules:
     scope: ["internal/platform/**/*.go", ".golangci.yml"]
     deterministic: true
     check: tests/architecture/goarch42_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-43
     description: >-
@@ -436,6 +516,8 @@ rules:
     scope: ["*.go", ".golangci.yml"]
     deterministic: true
     check: tests/architecture/goarch43_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-44
     description: >-
@@ -452,6 +534,8 @@ rules:
     scope: ["internal/app/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch44_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-45
     description: >-
@@ -462,6 +546,8 @@ rules:
     scope: ["internal/app/*/features/*/*_logic.go"]
     deterministic: true
     check: tests/architecture/goarch45_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-46
     description: >-
@@ -474,6 +560,8 @@ rules:
     scope: ["internal/app/*/adapters/*.go"]
     deterministic: true
     check: tests/architecture/goarch46_test.go
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-47
     description: >-
@@ -482,6 +570,8 @@ rules:
       the domain or to the use case, which the package calls or returns to.
     scope: ["internal/app/*/adapters/*.go"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GOARCH-48
     description: >-
@@ -493,3 +583,5 @@ rules:
     scope: ["internal/platform/**/*.go", ".golangci.yml"]
     deterministic: true
     check: tests/architecture/goarch48_test.go
+    kind: unknown
+    subject: unknown

@@ -118,7 +118,8 @@ vars:
 
 # Optional. The rules on how to write the code, which polix injects and checks.
 # - `path`, default ai/rules: the folder of the rules, relative to the root (no absolute path, no `..` out of the
-#   root, no glob). polix reads its *.yaml but retired.yaml, not its subfolders.
+#   root, no glob). polix reads its *.yaml, not its subfolders. Every rule declares `id`, `kind`, `subject`,
+#   `description`, `scope` and `deterministic`, and `check` when deterministic; a retired.yaml is no longer read.
 # - `run`: how a check of a rule runs. It maps a glob, matched against the `check` of a rule as the globs of a
 #   scope are (without `/` against its base name, with `/` against its path), to the argv that runs it from the
 #   root, without a shell; the first glob that matches wins, in this order, so a specific folder goes before a

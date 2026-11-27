@@ -27,6 +27,54 @@ func write(t *testing.T, root string, files map[string]string) {
 	}
 }
 
+// validRule is a file with one rule that declares every field.
+const validRule = "rules:\n  - id: R-1\n    kind: unknown\n    subject: s\n    description: d\n    scope: [\"**\"]\n" +
+	"    deterministic: false\n"
+
+// The loader decodes kind and subject and tells a missing deterministic from false (AC-01).
+func TestLoadFieldsDecoded(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, map[string]string{"ai/rules/a.yaml": `rules:
+  - id: A-1
+    kind: layout
+    subject: "  use case shell  "
+    description: d
+    scope: ["**"]
+    deterministic: false
+  - id: A-2
+    kind: layout
+    subject: s
+    description: d
+    scope: ["**"]
+    deterministic: true
+    check: c.sh
+  - id: A-3
+    description: d
+`})
+	got := (&Folder{}).Load(context.Background(), root, "ai/rules")
+	if got.Err != nil || len(got.Rules) != 3 {
+		t.Fatalf("got %+v", got)
+	}
+	a1, a2, a3 := got.Rules[0], got.Rules[1], got.Rules[2]
+	if a1.Kind != "layout" || a1.Subject != "use case shell" || a1.DeterministicMissing || a1.Deterministic {
+		t.Errorf("A-1 = %+v", a1)
+	}
+	if a2.DeterministicMissing || !a2.Deterministic || a2.Valid() != nil {
+		t.Errorf("A-2 = %+v", a2)
+	}
+	if a3.DeterministicMissing != true || a3.Kind != "" || a3.Subject != "" || a3.Scope != nil {
+		t.Errorf("A-3 = %+v", a3)
+	}
+	if len(got.Problems) != 1 || got.Problems[0] != "ai/rules/a.yaml A-3: no kind" {
+		t.Errorf("problems %q", got.Problems)
+	}
+	// A value of the wrong type stays a read error of the file.
+	write(t, root, map[string]string{"ai/rules/b.yaml": "rules:\n  - id: B-1\n    deterministic: [1]\n"})
+	if got := (&Folder{}).Load(context.Background(), root, "ai/rules"); got.Err == nil {
+		t.Errorf("deterministic: [1] is not a read error: %+v", got)
+	}
+}
+
 // A rule is decoded with every field polix reads, its description trimmed and its file.
 func TestFolderReadRules(t *testing.T) {
 	root := t.TempDir()
@@ -182,7 +230,7 @@ func TestLoadRetiredIsProblem(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
 			write(t, root, map[string]string{
-				"ai/rules/a.yaml":              "rules:\n  - id: R-1\n    description: d\n",
+				"ai/rules/a.yaml":              validRule,
 				"ai/rules/" + rule.RetiredFile: retired,
 			})
 			got := (&Folder{}).Load(context.Background(), root, "ai/rules")
@@ -193,7 +241,7 @@ func TestLoadRetiredIsProblem(t *testing.T) {
 		})
 	}
 	root := t.TempDir()
-	write(t, root, map[string]string{"ai/rules/a.yaml": "rules:\n  - id: R-1\n    description: d\n"})
+	write(t, root, map[string]string{"ai/rules/a.yaml": validRule})
 	if got := (&Folder{}).Load(context.Background(), root, "ai/rules"); got.Strict != nil || got.Err != nil {
 		t.Fatalf("without retired.yaml: %+v", got)
 	}

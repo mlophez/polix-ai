@@ -40,6 +40,12 @@ func (f *fakePort) LoadWorkflow(_ context.Context, _ string) (workflow.Workflow,
 	return workflow.Workflow{Base: []string{"trunk"}, Path: "docs"}, f.found, f.wfErr
 }
 
+// fields are the keys of a rule in a file that polix requires besides its id, its description and deterministic.
+const fields = "    kind: unknown\n    subject: s\n    scope: [\"**\"]\n"
+
+// notDeterministic ends the rule of a file that is not deterministic.
+const notDeterministic = "    deterministic: false\n"
+
 func (f *fakePort) LoadRules(_ context.Context, dir string) ([]rule.Rule, []string, error) {
 	f.dir = dir
 	return f.rules, nil, nil
@@ -54,7 +60,8 @@ func (f *fakePort) ResolveBase(_ context.Context, candidates []string) error {
 
 func TestShell(t *testing.T) {
 	port := &fakePort{found: true, baseErr: errors.New("no trunk"),
-		rules:   []rule.Rule{{ID: "S-1", Description: "d", Deterministic: true, Check: "c.sh", File: "f"}},
+		rules: []rule.Rule{{ID: "S-1", Kind: "unknown", Subject: "s", Description: "d", Scope: []string{"**"},
+			Deterministic: true, Check: "c.sh", File: "f"}},
 		missing: map[string]bool{"c.sh": true}}
 	res, err := run(context.Background(), port, Request{Version: "0.1.0"})
 	if err != nil || len(res.RuleProblems) != 1 || len(res.WorkflowProblems) != 0 ||
@@ -106,18 +113,18 @@ func TestCommand(t *testing.T) {
 		t.Fatalf("unknown options hint an update, exit 1 without the error handler: %d %q", code, stderr)
 	}
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase_branch: trunk\n")
-	testenv.Write(t, filepath.Join(r, "ai", "rules", "s.yaml"), "rules:\n  - id: S-1\n    description: d\n    deterministic: true\n    check: checks/s.sh\n  - id: S-2\n")
+	testenv.Write(t, filepath.Join(r, "ai", "rules", "s.yaml"), "rules:\n  - id: S-1\n    description: d\n"+fields+"    deterministic: true\n    check: checks/s.sh\n  - id: S-2\n")
 	code, _, stderr := runCommand(r)
 	if code != 1 || !strings.Contains(stderr, "S-1: check checks/s.sh does not exist") || !strings.Contains(stderr, "S-2: no description") {
 		t.Fatalf("every problem of the rules: %d %q", code, stderr)
 	}
-	testenv.Write(t, filepath.Join(r, "ai", "rules", "s.yaml"), "rules:\n  - id: S-1\n    description: d\n    deterministic: true\n    check: checks/s.sh\n")
+	testenv.Write(t, filepath.Join(r, "ai", "rules", "s.yaml"), "rules:\n  - id: S-1\n    description: d\n"+fields+"    deterministic: true\n    check: checks/s.sh\n")
 	testenv.Write(t, filepath.Join(r, "checks", "s.sh"), "#!/bin/sh\n")
 	if code, _, stderr := runCommand(r); code != 0 || !strings.Contains(stderr, "rules check --changed would fail") {
 		t.Fatalf("a missing base is a warning: %d %q", code, stderr)
 	}
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase_branch: trunk\npath: docs/\n")
-	testenv.Write(t, filepath.Join(r, "docs", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n")
+	testenv.Write(t, filepath.Join(r, "docs", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n"+fields+notDeterministic)
 	if code, stdout, _ := runCommand(r); code != 0 || !strings.HasSuffix(stdout, "1 rules of docs/rules/\n") {
 		t.Fatalf("the rules below path, not of ai/rules/: %d %q", code, stdout)
 	}
@@ -132,12 +139,12 @@ func TestCommand(t *testing.T) {
 func TestCommandPath(t *testing.T) {
 	r := testenv.GitRepo(t)
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\npath: docs/ai\n")
-	testenv.Write(t, filepath.Join(r, "docs", "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n")
+	testenv.Write(t, filepath.Join(r, "docs", "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n"+fields+notDeterministic)
 	if code, stdout, stderr := runCommand(r); code != 0 || stdout != "ok: polix.yaml and 1 rules of docs/ai/rules/\n" {
 		t.Fatalf("CUJ-03: %d %q %q", code, stdout, stderr)
 	}
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\n")
-	testenv.Write(t, filepath.Join(r, "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n")
+	testenv.Write(t, filepath.Join(r, "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n"+fields+notDeterministic)
 	if code, stdout, stderr := runCommand(r); code != 0 || stdout != "ok: polix.yaml and 1 rules of ai/rules/\n" {
 		t.Fatalf("CUJ-04: %d %q %q", code, stdout, stderr)
 	}
@@ -209,7 +216,7 @@ func TestCheckCheckOnSave(t *testing.T) {
 func TestCommandFile(t *testing.T) {
 	r := testenv.GitRepo(t)
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\n")
-	testenv.Write(t, filepath.Join(r, "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n")
+	testenv.Write(t, filepath.Join(r, "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n"+fields+notDeterministic)
 	other := filepath.Join(r, "examples", "reference.yaml")
 	testenv.Write(t, other, "version: 1\non:\n  pre_edit:\n    - action: { run: { rule: x } }\n")
 	if code, _, stderr := runCommand(r, other); code != 1 ||

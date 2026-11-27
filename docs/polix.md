@@ -14,9 +14,12 @@ repository pin the oldest polix that knows every option it uses.
 ## Layers
 
 - `AGENTS.md`: what the project is (facts).
-- `ai/rules/*.yaml` (the folder `rules/` below `path` of polix.yaml): how the code must be. Polix only reads `id`,
-  `description`, `scope`, `deterministic` and `check` of each rule; the rest of the format belongs to the skills
-  that write and use the rules. `retired.yaml` is no longer read: delete it, the ids of a deleted rule are free.
+- `ai/rules/*.yaml` (the folder `rules/` below `path` of polix.yaml): how the code must be. Every rule declares `id`,
+  `kind`, `subject`, `description`, `scope` and `deterministic`, and `check` exactly when `deterministic` is true;
+  polix requires them all, and any other key is kept and ignored. `kind` is one of `layout`, `dependency`,
+  `declaration`, `naming`, `purity`, `data`, `flow`, `metric`, `testing`, `docs`, `convention` or `unknown` (valid
+  for polix, always pending for the skill `rule`), case sensitive; `subject` is free text, the part of the code the
+  rule applies to; `scope` is a non-empty list of globs, `["**"]` for the whole project. `retired.yaml` is no longer read: delete it, the ids of a deleted rule are free.
 - `polix.yaml`: what happens on each event of a session, and on every commit: what is blocked, what runs and what
   is injected. It has three sections: `guardrails:`, the basics every project wants from the first minute, each a
   short list: first the protections (files no agent writes, branches nobody commits on, commands no agent runs), then
@@ -79,8 +82,10 @@ empty, and an empty `--base` falls back to `base_branch`. On a push to a branch 
 hooks never use `base_branch`.
 
 `polix rules check` reads `polix.yaml` and then the rules of `rules/` below its `path` before running anything, and stops
-without running a check when a file of the folder of rules cannot be read or parsed, when a rule is not valid (no id, no description, a `check` on
-a rule that is not `deterministic`, or a `check` given as an absolute path), when two rules share an id
+without running a check when a file of the folder of rules cannot be read or parsed, when a rule is not valid (no id, no description, no `kind` or one outside the list, no `subject`, no or an empty
+`scope`, no `deterministic`, `deterministic: true` without a `check`, a `check` on a rule that is not
+`deterministic`, or a `check` given as an absolute path; the first problem of the first invalid rule is printed as
+`<file>: rule <id> <problem>`), when two rules share an id
 (`<file> <id>: id repeated, also in <other file>`), when the folder holds a `retired.yaml`
 (`<path> is no longer read: delete it, its ids are free`, before any other problem), when `polix.yaml` cannot be read or
 parsed or requires a newer polix (without the file it uses the defaults), when a runner of `rules.run` is not

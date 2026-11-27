@@ -1635,6 +1635,27 @@ func TestRuleInjectWithRetiredFile(t *testing.T) {
 	}
 }
 
+// A rule that misses a field (here its kind) is still injected, with and without a retired.yaml: the hooks never
+// validate the rules, so a migration never breaks a session (CUJ-09, AC-05).
+func TestRuleInjectInvalidRule(t *testing.T) {
+	for name, retired := range map[string]bool{"without retired.yaml": false, "with retired.yaml": true} {
+		t.Run(name, func(t *testing.T) {
+			r := newRepo(t, "main")
+			r.write("polix.yaml", "version: 1\non:\n  pre_edit:\n    - action: { inject: { rules: \"{path}\" } }\n")
+			r.write("ai/rules/style.yaml", "rules:\n  - id: NOKIND-1\n    subject: s\n    description: No kind.\n"+
+				"    scope: [\"src/**\"]\n    deterministic: false\n")
+			if retired {
+				r.write("ai/rules/retired.yaml", "rules:\n  - id: OLD-1\n    description: Old rule.\n    reason: gone\n")
+			}
+			r.write("src/a.txt", "x\n")
+			code, stdout, stderr := r.edit("src/a.txt", "")
+			if code != 0 || !strings.Contains(stdout, "NOKIND-1: No kind.") || strings.Contains(stdout, "OLD-1") {
+				t.Fatalf("the rule is injected: %d %q %q", code, stdout, stderr)
+			}
+		})
+	}
+}
+
 // subagent calls SubagentStart, or SubagentStop with stop, of a builder subagent of id, as Claude Code does.
 func (r *repo) subagent(id string, stop bool) (int, string, string) {
 	r.t.Helper()

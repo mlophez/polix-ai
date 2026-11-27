@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/mlophez/polix-ai/internal/platform/glob"
 )
@@ -143,6 +144,18 @@ func (r Rule) problem() string {
 		return r.File + ": a rule has no id"
 	case r.Description == "":
 		return fmt.Sprintf("%s %s: no description", r.File, r.ID)
+	case r.Kind == "":
+		return fmt.Sprintf("%s %s: no kind", r.File, r.ID)
+	case !r.Kind.Known():
+		return fmt.Sprintf("%s %s: kind %s is not one of %s", r.File, r.ID, r.Kind, r.Kind.list())
+	case strings.TrimSpace(r.Subject) == "":
+		return fmt.Sprintf("%s %s: no subject", r.File, r.ID)
+	case len(r.Scope) == 0:
+		return fmt.Sprintf("%s %s: no scope", r.File, r.ID)
+	case r.DeterministicMissing:
+		return fmt.Sprintf("%s %s: no deterministic", r.File, r.ID)
+	case r.Deterministic && r.Check == "":
+		return fmt.Sprintf("%s %s: deterministic: true needs a check", r.File, r.ID)
 	case r.Check != "" && !r.Deterministic:
 		return fmt.Sprintf("%s %s: check %s needs deterministic: true", r.File, r.ID, r.Check)
 	}

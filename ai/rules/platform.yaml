@@ -6,6 +6,8 @@ rules:
       covered by a test that runs in the CI matrix of the three systems.
     scope: ["*.go", "install.sh", "install.ps1", "scripts/**", ".github/**"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: XPLAT-2
     description: >-
@@ -13,6 +15,8 @@ rules:
       with sh, Git Bash or PowerShell, so `||`, `command -v` or `{ ...; }` are not allowed.
     scope: ["examples/**", ".claude/settings.json"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: DOC-1
     description: >-
@@ -20,3 +24,5 @@ rules:
       schema, the annotated examples/polix.yaml in the same change.
     scope: ["cmd/**", "internal/**"]
     deterministic: false
+    kind: unknown
+    subject: unknown

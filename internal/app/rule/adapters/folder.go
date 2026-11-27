@@ -38,12 +38,23 @@ type fileYAML struct {
 // ruleYAML is the shape of one rule of a file, with the fields of rule.Rule in its order, so it converts to one;
 // File is not in the yaml, but where it was read from.
 type ruleYAML struct {
-	ID            string   `yaml:"id"`
-	Description   string   `yaml:"description"`
-	Scope         []string `yaml:"scope"`
-	Deterministic bool     `yaml:"deterministic"`
-	Check         string   `yaml:"check"`
-	File          string   `yaml:"-"`
+	ID                   string    `yaml:"id"`
+	Kind                 rule.Kind `yaml:"kind"`
+	Subject              string    `yaml:"subject"`
+	Description          string    `yaml:"description"`
+	Scope                []string  `yaml:"scope"`
+	Deterministic        bool      `yaml:"deterministic"`
+	DeterministicMissing bool      `yaml:"-"` // set from presenceYAML, not from the yaml of the rule
+	Check                string    `yaml:"check"`
+	File                 string    `yaml:"-"`
+}
+
+// presenceYAML is the shape of a file of the folder of rules that tells which rules declare deterministic, in their
+// order: a bool cannot tell false from missing.
+type presenceYAML struct {
+	Rules []struct {
+		Deterministic *bool `yaml:"deterministic"`
+	} `yaml:"rules"`
 }
 
 // Load loads the rules of the folder of rules dir (relative to root, with slashes) of the repository at root: it
@@ -117,9 +128,14 @@ func (f *Folder) decode(path string, data []byte) (rule.Rules, error) {
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("%s: %s", path, doc.names().Replace(err.Error()))
 	}
+	var presence presenceYAML
+	if err := yaml.Unmarshal(data, &presence); err != nil || len(presence.Rules) != len(doc.Rules) {
+		return nil, fmt.Errorf("%s: cannot tell which rules declare deterministic", path)
+	}
 	rules := make(rule.Rules, 0, len(doc.Rules))
-	for _, y := range doc.Rules {
-		y.Description, y.File = strings.TrimSpace(y.Description), path
+	for i, y := range doc.Rules {
+		y.Subject, y.Description, y.File = strings.TrimSpace(y.Subject), strings.TrimSpace(y.Description), path
+		y.DeterministicMissing = presence.Rules[i].Deterministic == nil
 		rules = append(rules, rule.Rule(y))
 	}
 	return rules, nil

@@ -34,6 +34,24 @@ type fakePort struct {
 	argv       map[string][]string
 }
 
+// complete gives r the fields polix requires that it leaves empty: a kind, a subject and the scope of the whole project.
+func complete(r rule.Rule) rule.Rule {
+	if r.Kind == "" {
+		r.Kind = "unknown"
+	}
+	if r.Subject == "" {
+		r.Subject = "subject"
+	}
+	if len(r.Scope) == 0 {
+		r.Scope = []string{"**"}
+	}
+	return r
+}
+
+// fields are the keys of a rule in a file that polix requires besides its id and description, with a deterministic
+// rule after them.
+const fields = "    kind: unknown\n    subject: s\n    scope: [\"**\"]\n"
+
 // TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
 // of polix.yaml run go test, and these tests run git in repositories of their own.
 func TestMain(m *testing.M) {
@@ -80,9 +98,9 @@ var batchShellFlow = workflow.Workflow{Rules: workflow.Rules{Run: []workflow.Run
 
 // batchShellRules are three rules whose checks are tests of one folder.
 var batchShellRules = []rule.Rule{
-	{ID: "A-1", Description: "a1", Deterministic: true, Check: "t/a1_test.go"},
-	{ID: "A-2", Description: "a2", Deterministic: true, Check: "t/a2_test.go"},
-	{ID: "A-3", Description: "a3", Deterministic: true, Check: "t/a3_test.go"},
+	complete(rule.Rule{ID: "A-1", Description: "a1", Deterministic: true, Check: "t/a1_test.go"}),
+	complete(rule.Rule{ID: "A-2", Description: "a2", Deterministic: true, Check: "t/a2_test.go"}),
+	complete(rule.Rule{ID: "A-3", Description: "a3", Deterministic: true, Check: "t/a3_test.go"}),
 }
 
 func TestShellRunsAPassingGroupOnce(t *testing.T) {
@@ -113,9 +131,11 @@ func TestShellRerunsAFailedGroupPerRule(t *testing.T) {
 
 // shellRules are two rules with a check and one without.
 var shellRules = []rule.Rule{
-	{ID: "go", Description: "gofmt", Scope: []string{"**/*.go"}, Deterministic: true, Check: "ai/checks/gofmt_test.go"},
-	{ID: "sh", Description: "shfmt", Scope: []string{"**/*.sh"}, Deterministic: true, Check: "ai/checks/shfmt.sh"},
-	{ID: "prose", Description: "no check"},
+	complete(rule.Rule{ID: "go", Description: "gofmt", Scope: []string{"**/*.go"}, Deterministic: true,
+		Check: "ai/checks/gofmt_test.go"}),
+	complete(rule.Rule{ID: "sh", Description: "shfmt", Scope: []string{"**/*.sh"}, Deterministic: true,
+		Check: "ai/checks/shfmt.sh"}),
+	complete(rule.Rule{ID: "prose", Description: "no check"}),
 }
 
 // developBase is a workflow whose base is develop and whose runner runs the Go tests.
@@ -251,7 +271,7 @@ func repo(t *testing.T, pass bool) string {
 		code = "exit 0"
 	}
 	write(t, dir, map[string]string{
-		"ai/rules/a.yaml": "rules:\n  - id: A-1\n    description: a\n    deterministic: true\n    check: checks/a.sh\n",
+		"ai/rules/a.yaml": "rules:\n  - id: A-1\n    description: a\n" + fields + "    deterministic: true\n    check: checks/a.sh\n",
 		"checks/a.sh":     "#!/bin/sh\necho checked\n" + code + "\n",
 	})
 	return dir
@@ -279,7 +299,7 @@ func TestCommandRetiredFile(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--quiet", "--initial-branch=main")
 	write(t, dir, map[string]string{
-		"ai/rules/a.yaml":       "rules:\n  - id: A-1\n    description: a\n    deterministic: true\n    check: checks/a.sh\n",
+		"ai/rules/a.yaml":       "rules:\n  - id: A-1\n    description: a\n" + fields + "    deterministic: true\n    check: checks/a.sh\n",
 		"ai/rules/retired.yaml": "rules:\n  - id: GOARCH-31\n    description: old\n    reason: gone\n",
 		"checks/a.sh":           "#!/bin/sh\ntouch ran\n",
 	})
@@ -296,6 +316,53 @@ func TestCommandRetiredFile(t *testing.T) {
 	code, _, stderr = runCommand(t, "--dir", dir)
 	if code != 1 || !strings.Contains(stderr, want) || strings.Contains(stderr, "no description") {
 		t.Fatalf("retired.yaml and an invalid rule: %d %q", code, stderr)
+	}
+}
+
+// A rule that misses or breaks a field stops the command before any check runs, with the problem of the file, the
+// rule and the field (CUJ-02, AC-01).
+func TestCommandInvalidFields(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the check is a sh script")
+	}
+	const kinds = "layout, dependency, declaration, naming, purity, data, flow, metric, testing, docs, convention or unknown"
+	head := "rules:\n  - id: A-1\n    description: a\n"
+	kind, subject, scope := "    kind: dependency\n", "    subject: domain\n", "    scope: [\"**\"]\n"
+	det := "    deterministic: true\n    check: checks/a.sh\n"
+	for name, tc := range map[string]struct{ yaml, want string }{
+		"no kind":                {head + subject + scope + det, "ai/rules/a.yaml: rule A-1 has no kind"},
+		"kind outside":           {head + "    kind: style\n" + subject + scope + det, "ai/rules/a.yaml: rule A-1 has the kind style, not one of " + kinds},
+		"kind case":              {head + "    kind: Layout\n" + subject + scope + det, "rule A-1 has the kind Layout, not one of " + kinds},
+		"no subject":             {head + kind + scope + det, "ai/rules/a.yaml: rule A-1 has no subject"},
+		"empty subject":          {head + kind + "    subject: \"\"\n" + scope + det, "ai/rules/a.yaml: rule A-1 has no subject"},
+		"no scope":               {head + kind + subject + det, "ai/rules/a.yaml: rule A-1 has no scope"},
+		"empty scope":            {head + kind + subject + "    scope: []\n" + det, "ai/rules/a.yaml: rule A-1 has no scope"},
+		"no deterministic":       {head + kind + subject + scope, "ai/rules/a.yaml: rule A-1 does not say whether it is deterministic"},
+		"deterministic no check": {head + kind + subject + scope + "    deterministic: true\n", "ai/rules/a.yaml: rule A-1 is deterministic but names no check"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			runGit(t, dir, "init", "--quiet", "--initial-branch=main")
+			write(t, dir, map[string]string{"ai/rules/a.yaml": tc.yaml, "checks/a.sh": "#!/bin/sh\ntouch ran\n"})
+			code, stdout, stderr := runCommand(t, "--dir", dir)
+			if code != 1 || !strings.Contains(stderr, tc.want) || strings.Contains(stdout, "checks,") {
+				t.Fatalf("%d %q %q, want %q", code, stdout, stderr, tc.want)
+			}
+			if _, err := os.Stat(dir + "/ran"); err == nil {
+				t.Fatal("a check ran")
+			}
+		})
+	}
+}
+
+// kind: unknown is valid (CUJ-03).
+func TestCommandKindUnknown(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "--quiet", "--initial-branch=main")
+	write(t, dir, map[string]string{"ai/rules/a.yaml": "rules:\n  - id: A-1\n    description: a\n" + fields +
+		"    deterministic: false\n"})
+	if code, stdout, stderr := runCommand(t, "--dir", dir); code != 0 {
+		t.Fatalf("%d %q %q", code, stdout, stderr)
 	}
 }
 
@@ -321,7 +388,7 @@ func TestCommandBase(t *testing.T) {
 	dir := repo(t, false)
 	writePolix := func(s string) { write(t, dir, map[string]string{"polix.yaml": s}) }
 	write(t, dir, map[string]string{"ai/rules/a.yaml": "rules:\n  - id: A-1\n    description: a\n" +
-		"    scope: [\"src/**\"]\n    deterministic: true\n    check: checks/a.sh\n"})
+		"    kind: unknown\n    subject: s\n    scope: [\"src/**\"]\n    deterministic: true\n    check: checks/a.sh\n"})
 	runGit(t, dir, "add", "--all")
 	runGit(t, dir, "commit", "--quiet", "-m", "rules")
 	runGit(t, dir, "checkout", "--quiet", "-b", "develop")

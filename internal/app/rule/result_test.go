@@ -6,13 +6,13 @@ import (
 	"testing"
 )
 
-var goRule = Rule{ID: "go", Description: "gofmt", Deterministic: true, Check: "ai/checks/gofmt.sh"}
+var goRule = complete(Rule{ID: "go", Description: "gofmt", Deterministic: true, Check: "ai/checks/gofmt.sh"})
 
 func TestResultValid(t *testing.T) {
 	if err := (Result{Rule: goRule}).Valid(); err != nil {
 		t.Fatal(err)
 	}
-	if err := (Result{Rule: Rule{ID: "prose", Description: "no check"}}).Valid(); err == nil {
+	if err := (Result{Rule: complete(Rule{ID: "prose", Description: "no check"})}).Valid(); err == nil {
 		t.Fatal("a rule without check has a result")
 	}
 	if err := (Result{Rule: Rule{ID: "x", Deterministic: true, Check: "c.sh"}}).Valid(); err == nil {

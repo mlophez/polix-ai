@@ -105,6 +105,47 @@ func TestRulesRetiredFile(t *testing.T) {
 	}
 }
 
+// Each invalid rule of the folder is a fail row, in the short wording of the problems of the loader (CUJ-04, AC-02).
+func TestRulesInvalidFields(t *testing.T) {
+	const kinds = "layout, dependency, declaration, naming, purity, data, flow, metric, testing, docs, convention or unknown"
+	valid := rule.Rule{Kind: "dependency", Subject: "domain", Description: "d", Scope: []string{"**"},
+		Deterministic: true, Check: "c.sh", File: "ai/rules/a.yaml"}
+	with := func(id string, edit func(*rule.Rule)) rule.Rule {
+		r := valid
+		r.ID = id
+		edit(&r)
+		return r
+	}
+	rules := rule.Rules{
+		with("A-1", func(r *rule.Rule) { r.Kind = "" }),
+		with("A-2", func(r *rule.Rule) { r.Subject = "" }),
+		with("A-3", func(r *rule.Rule) { r.Kind = "style" }),
+		with("A-4", func(r *rule.Rule) { r.Scope = nil }),
+		with("A-5", func(r *rule.Rule) { r.Deterministic, r.DeterministicMissing, r.Check = false, true, "" }),
+		with("A-6", func(r *rule.Rule) { r.Check = "" }),
+	}
+	i := healthy(t)
+	loaded := rules.Loaded("", true, nil)
+	i.Rules, i.Invalid = loaded.Rules, loaded.Problems
+	out := Decide(i, false)
+	got := text(out)
+	for _, want := range []string{
+		"ai/rules/a.yaml A-1: no kind",
+		"ai/rules/a.yaml A-2: no subject",
+		"ai/rules/a.yaml A-3: kind style is not one of " + kinds,
+		"ai/rules/a.yaml A-4: no scope",
+		"ai/rules/a.yaml A-5: no deterministic",
+		"ai/rules/a.yaml A-6: deterministic: true needs a check",
+	} {
+		if !strings.Contains(got, "fail rules "+want+"\n") {
+			t.Errorf("doctor should fail with %q:\n%s", want, got)
+		}
+	}
+	if !out.Failed {
+		t.Fatalf("invalid rules do not fail doctor:\n%s", got)
+	}
+}
+
 func TestDecideFindsProblems(t *testing.T) {
 	i := healthy(t)
 	var settings struct {
@@ -348,9 +389,9 @@ func TestFound(t *testing.T) {
 }
 
 var problemRules = []rule.Rule{
-	{ID: "A-1", Description: "d", Deterministic: true, Check: "checks/a.sh", File: "ai/rules/a.yaml"},
-	{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"},
-	{ID: "B-1", Description: "d", Deterministic: true, Check: "tests/b_test.go", File: "ai/rules/b.yaml"},
+	{ID: "A-1", Kind: "unknown", Subject: "s", Description: "d", Scope: []string{"**"}, Deterministic: true, Check: "checks/a.sh", File: "ai/rules/a.yaml"},
+	{ID: "A-1", Kind: "unknown", Subject: "s", Description: "d", Scope: []string{"**"}, File: "ai/rules/b.yaml"},
+	{ID: "B-1", Kind: "unknown", Subject: "s", Description: "d", Scope: []string{"**"}, Deterministic: true, Check: "tests/b_test.go", File: "ai/rules/b.yaml"},
 }
 
 // A check that a runner runs is never reported as not executable; the same error is reported once.

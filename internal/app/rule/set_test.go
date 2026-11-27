@@ -86,12 +86,12 @@ func TestRulesLoaded(t *testing.T) {
 	// polix config check, in the order of the files; a strict reading stops at the first invalid one, with its file.
 	t.Run("keeps every rule", func(t *testing.T) {
 		rules := Rules{
-			{ID: "B-1", Description: "ok", File: "ai/rules/a.yaml"},
+			complete(Rule{ID: "B-1", Description: "ok", File: "ai/rules/a.yaml"}),
 			{ID: "A-2", File: "ai/rules/a.yaml"},
 			{Description: "no id", File: "ai/rules/a.yaml"},
-			{ID: "A-3", Description: "d", Check: "checks/a.sh", File: "ai/rules/a.yaml"},
-			{ID: "A-4", Description: "d", Deterministic: true, Check: "/abs/a.sh", File: "ai/rules/a.yaml"},
-			{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"},
+			complete(Rule{ID: "A-3", Description: "d", Check: "checks/a.sh", File: "ai/rules/a.yaml"}),
+			complete(Rule{ID: "A-4", Description: "d", Deterministic: true, Check: "/abs/a.sh", File: "ai/rules/a.yaml"}),
+			complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"}),
 		}
 		got := rules.Loaded("", true, nil)
 		want := []string{
@@ -117,8 +117,8 @@ func TestRulesLoaded(t *testing.T) {
 
 	// Valid rules leave nothing to stop at; no rules, without the folder, are none.
 	t.Run("valid rules", func(t *testing.T) {
-		rules := Rules{{ID: "GO-1", Description: "gofmt", Deterministic: true, Check: "ai/checks/gofmt.sh",
-			Scope: []string{"**/*.go"}, File: "ai/rules/go.yaml"}}
+		rules := Rules{complete(Rule{ID: "GO-1", Description: "gofmt", Deterministic: true, Check: "ai/checks/gofmt.sh",
+			Scope: []string{"**/*.go"}, File: "ai/rules/go.yaml"})}
 		got := rules.Loaded("", true, nil)
 		if len(got.Rules) != 1 || got.Rules[0].ID != "GO-1" || got.Problems != nil || got.Repeated != nil ||
 			got.Err != nil || got.Strict != nil {
@@ -138,14 +138,15 @@ func TestRulesLoaded(t *testing.T) {
 			!got.Exists {
 			t.Fatalf("got %+v", got)
 		}
-		before := Rules{{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"}, {ID: "B-1", File: "ai/rules/b.yaml"}}
+		before := Rules{complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"}),
+			{ID: "B-1", File: "ai/rules/b.yaml"}}
 		got = before.Loaded("", true, broken)
 		if got.Rules != nil || !errors.Is(got.Err, broken) || got.Strict == nil ||
 			got.Strict.Error() != "ai/rules/b.yaml: rule B-1 has no description" {
 			t.Fatalf("an invalid rule before: %+v", got)
 		}
-		repeated := Rules{{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"},
-			{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"}}
+		repeated := Rules{complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"}),
+			complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"})}
 		got = repeated.Loaded("", true, broken)
 		if got.Rules != nil || got.Problems != nil || got.Repeated != nil || !errors.Is(got.Err, broken) ||
 			got.Strict == nil || got.Strict.Error() != "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml" {
@@ -157,9 +158,9 @@ func TestRulesLoaded(t *testing.T) {
 	// strict reading stops at it when no rule is invalid; an invalid rule of any file still wins.
 	t.Run("repeated ids", func(t *testing.T) {
 		rules := Rules{
-			{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"},
-			{ID: "B-1", Description: "d", File: "ai/rules/a.yaml"},
-			{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"},
+			complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"}),
+			complete(Rule{ID: "B-1", Description: "d", File: "ai/rules/a.yaml"}),
+			complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"}),
 		}
 		repeat := "ai/rules/b.yaml A-1: id repeated, also in ai/rules/a.yaml"
 		got := rules.Loaded("", true, nil)
@@ -187,7 +188,7 @@ func TestRulesLoaded(t *testing.T) {
 			len(got.Rules) != 1 || got.Err != nil {
 			t.Fatalf("got %+v", got)
 		}
-		valid := Rules{{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"}}
+		valid := Rules{complete(Rule{ID: "A-1", Description: "d", File: "ai/rules/a.yaml"})}
 		if got := valid.Loaded(path, true, nil); got.Strict == nil || got.Strict.Error() != want || got.Err != nil {
 			t.Fatalf("valid rules: %+v", got)
 		}

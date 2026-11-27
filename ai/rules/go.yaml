@@ -5,6 +5,8 @@ rules:
       the agent or the user may be in Spanish.
     scope: ["*.go", "docs/**", "examples/**", "scripts/**", "install.sh", "install.ps1"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GO-3
     description: >-
@@ -14,6 +16,8 @@ rules:
       file-length-limit of revive), in linters.exclusions.rules of .golangci.yml.
     scope: ["*.go", ".golangci.yml"]
     deterministic: false
+    kind: unknown
+    subject: unknown
 
   - id: GO-4
     description: >-
@@ -25,3 +29,5 @@ rules:
     scope: ["*.go", ".golangci.yml"]
     deterministic: true
     check: tests/architecture/go04_test.go
+    kind: unknown
+    subject: unknown

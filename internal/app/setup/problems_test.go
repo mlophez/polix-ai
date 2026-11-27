@@ -27,9 +27,9 @@ func TestWorkflowProblems(t *testing.T) {
 }
 
 var problemRules = []rule.Rule{
-	{ID: "A-1", Description: "d", Deterministic: true, Check: "checks/a.sh", File: "ai/rules/a.yaml"},
-	{ID: "A-1", Description: "d", File: "ai/rules/b.yaml"},
-	{ID: "B-1", Description: "d", Deterministic: true, Check: "tests/b_test.go", File: "ai/rules/b.yaml"},
+	{ID: "A-1", Kind: "unknown", Subject: "s", Description: "d", Scope: []string{"**"}, Deterministic: true, Check: "checks/a.sh", File: "ai/rules/a.yaml"},
+	{ID: "A-1", Kind: "unknown", Subject: "s", Description: "d", Scope: []string{"**"}, File: "ai/rules/b.yaml"},
+	{ID: "B-1", Kind: "unknown", Subject: "s", Description: "d", Scope: []string{"**"}, Deterministic: true, Check: "tests/b_test.go", File: "ai/rules/b.yaml"},
 }
 
 // The problems of the loader (Invalid), the repeated ids among them, come once and in their order, followed by the

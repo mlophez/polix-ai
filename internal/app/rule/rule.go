@@ -1,8 +1,8 @@
 // Package rule holds the rules of the folder of rules (rules/ below path of polix.yaml, ai/rules/ by default): how
 // the code of the project must be written.
 //
-// Polix only reads the fields it needs (id, description, scope, deterministic, check); the rest of the rule
-// format belongs to the skills that write and use the rules.
+// Polix reads the fields of a rule (id, kind, subject, description, scope, deterministic, check) and requires them all
+// (check when deterministic); any other key belongs to the skills that write and use the rules.
 package rule
 
 import (
@@ -16,13 +16,19 @@ import (
 // Rule is one rule of ai/rules/. Its fields are read freely and set only when it is built, followed by Valid;
 // after that it changes only through its methods, which return a copy.
 type Rule struct {
-	ID            string
-	Description   string
-	Scope         []string // globs of the files it applies to; empty applies to the whole project
-	Deterministic bool
-	Check         string // file that decides it (a script, a test), relative to the root, with slashes
-	File          string // file it was read from, relative to the root
+	ID                   string
+	Kind                 Kind   // one of the kinds
+	Subject              string // the part of the code it applies to, free text
+	Description          string
+	Scope                []string // globs of the files it applies to; the whole project is ["**"]
+	Deterministic        bool
+	DeterministicMissing bool   // the rule did not declare deterministic, so false is not an answer
+	Check                string // file that decides it (a script, a test), relative to the root, with slashes
+	File                 string // file it was read from, relative to the root
 }
+
+// Kind is the type of constraint of a rule, one of a closed list.
+type Kind string
 
 // Load loads the rules of the folder of rules dir (relative to root, with slashes) of the repository at root. It is the
 // method Load of ruleadapters.Folder (internal/app/rule/adapters), which cmd/polix builds once and passes to every use case
@@ -41,18 +47,50 @@ type Loaded struct {
 	Strict   error    // where a strict reading stops: RetiredFile, else an invalid rule, else a repeated id, else Err
 }
 
+// kinds is the closed list of the kinds of a rule.
+var kinds = []Kind{"layout", "dependency", "declaration", "naming", "purity", "data", "flow", "metric", "testing",
+	"docs", "convention", "unknown"}
+
+// All returns the kinds a rule may have, a copy: unknown is valid for polix, the audit of the skill rule reports it.
+func (Kind) All() []Kind { return slices.Clone(kinds) }
+
+// Known reports whether k is in the list; it is case sensitive.
+func (k Kind) Known() bool { return slices.Contains(kinds, k) }
+
+// list writes the kinds as "a, b or c".
+func (Kind) list() string {
+	names := make([]string, len(kinds))
+	for i, k := range kinds {
+		names[i] = string(k)
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
+}
+
 // RetiredFile is the file that held retired rules, no longer read: a folder that holds it has a problem, and the ids of
 // a deleted rule are free.
 const RetiredFile = "retired.yaml"
 
-// Valid reports why the rule is not a rule: it needs an id and a description, only a deterministic rule may
-// name a check, and the check is relative to the root.
+// Valid reports why the rule is not a rule, in the order of its fields: it needs an id, a description, a kind of the
+// list, a subject, a scope and to say whether it is deterministic; a deterministic rule names a check, only a
+// deterministic rule may name one, and the check is relative to the root.
 func (r Rule) Valid() error {
 	switch {
 	case r.ID == "":
 		return errors.New("a rule has no id")
 	case r.Description == "":
 		return fmt.Errorf("rule %s has no description", r.ID)
+	case r.Kind == "":
+		return fmt.Errorf("rule %s has no kind", r.ID)
+	case !r.Kind.Known():
+		return fmt.Errorf("rule %s has the kind %s, not one of %s", r.ID, r.Kind, r.Kind.list())
+	case strings.TrimSpace(r.Subject) == "":
+		return fmt.Errorf("rule %s has no subject", r.ID)
+	case len(r.Scope) == 0:
+		return fmt.Errorf("rule %s has no scope", r.ID)
+	case r.DeterministicMissing:
+		return fmt.Errorf("rule %s does not say whether it is deterministic", r.ID)
+	case r.Deterministic && r.Check == "":
+		return fmt.Errorf("rule %s is deterministic but names no check", r.ID)
 	case r.Check != "" && !r.Deterministic:
 		return fmt.Errorf("rule %s names a check but is not deterministic", r.ID)
 	case r.absoluteCheck():
