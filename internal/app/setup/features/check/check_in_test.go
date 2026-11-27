@@ -3,15 +3,12 @@ package check
 import (
 	"bytes"
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/mlophez/polix-ai/internal/app/rule"
-	ruleadapters "github.com/mlophez/polix-ai/internal/app/rule/adapters"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 	workflowadapters "github.com/mlophez/polix-ai/internal/app/workflow/adapters"
 	"github.com/mlophez/polix-ai/internal/platform/cli"
@@ -20,13 +17,8 @@ import (
 
 // fakePort answers the port of CheckSetup from memory.
 type fakePort struct {
-	found   bool
-	wfErr   error
-	rules   []rule.Rule
-	missing map[string]bool
-	baseErr error
-	asked   []string
-	dir     string // the folder LoadRules was asked for
+	found bool
+	wfErr error
 }
 
 // TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
@@ -40,37 +32,12 @@ func (f *fakePort) LoadWorkflow(_ context.Context, _ string) (workflow.Workflow,
 	return workflow.Workflow{Base: []string{"trunk"}, Path: "docs"}, f.found, f.wfErr
 }
 
-// fields are the keys of a rule in a file that polix requires besides its id, its description and deterministic.
-const fields = "    kind: unknown\n    subject: s\n    scope: [\"**\"]\n"
-
-// notDeterministic ends the rule of a file that is not deterministic.
-const notDeterministic = "    deterministic: false\n"
-
-func (f *fakePort) LoadRules(_ context.Context, dir string) ([]rule.Rule, []string, error) {
-	f.dir = dir
-	return f.rules, nil, nil
-}
-
-func (f *fakePort) Missing(_ context.Context, check string) bool { return f.missing[check] }
-
-func (f *fakePort) ResolveBase(_ context.Context, candidates []string) error {
-	f.asked = candidates
-	return f.baseErr
-}
-
+// The shell reads only the workflow: its problems and its hint come back, and the version is required.
 func TestShell(t *testing.T) {
-	port := &fakePort{found: true, baseErr: errors.New("no trunk"),
-		rules: []rule.Rule{{ID: "S-1", Kind: "unknown", Subject: "s", Description: "d", Scope: []string{"**"},
-			Deterministic: true, Check: "c.sh", File: "f"}},
-		missing: map[string]bool{"c.sh": true}}
+	port := &fakePort{found: true, wfErr: workflow.InvalidError{`polix.yaml:2: unknown key "an_option"`}}
 	res, err := run(context.Background(), port, Request{Version: "0.1.0"})
-	if err != nil || len(res.RuleProblems) != 1 || len(res.WorkflowProblems) != 0 ||
-		!strings.Contains(res.RuleProblems[0], "does not exist") ||
-		port.asked[0] != "trunk" {
+	if err != nil || len(res.WorkflowProblems) != 1 || res.Hint == "" || !res.Found {
 		t.Fatalf("%+v %v", res, err)
-	}
-	if port.dir != "docs/rules" || res.RulesPath != "docs/rules" {
-		t.Fatalf("rules read from %q and reported as %q, want rules below path", port.dir, res.RulesPath)
 	}
 }
 
@@ -83,10 +50,10 @@ func TestShellWithoutVersion(t *testing.T) {
 
 // runCommand runs the command of polix config check on dir through a root of internal/platform/cli, so the exit
 // codes are those of internal/platform/cli.Run; the command sits at the root here, not below config as in
-// cmd/polix. It builds the loaders of the rules and of polix.yaml as cmd/polix does, once per run.
+// cmd/polix. It builds the loader of polix.yaml as cmd/polix does, once per run.
 func runCommand(dir string, args ...string) (int, string, string) {
 	root := cli.Root("polix", "short", "long", "")
-	root.AddCommand(Command((&ruleadapters.Folder{}).Load, (&workflowadapters.File{}).Load))
+	root.AddCommand(Command((&workflowadapters.File{}).Load))
 	var out, errb bytes.Buffer
 	code := cli.Run(root, append([]string{"check", "--dir", dir}, args...), nil, &out, &errb)
 	return code, out.String(), errb.String()
@@ -96,7 +63,7 @@ func runCommand(dir string, args ...string) (int, string, string) {
 func TestCommand(t *testing.T) {
 	r := testenv.GitRepo(t)
 	code, stdout, _ := runCommand(r)
-	if code != 0 || stdout != "ok: no polix.yaml (only the built-in protections apply) and 0 rules of ai/rules/\n" {
+	if code != 0 || stdout != "ok: no polix.yaml (only the built-in protections apply)\n" {
 		t.Fatalf("without workflow: %d %q", code, stdout)
 	}
 	example, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "..", "examples", "polix.yaml"))
@@ -104,7 +71,7 @@ func TestCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), string(example))
-	if code, stdout, stderr := runCommand(r); code != 0 || !strings.HasPrefix(stdout, "ok: polix.yaml and 0 rules") {
+	if code, stdout, stderr := runCommand(r); code != 0 || stdout != "ok: polix.yaml\n" {
 		t.Fatalf("the example is valid: %d %q %q", code, stdout, stderr)
 	}
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\non:\n  pre_edit:\n    - action: { block: x }\n      an_option_of_0_2: 1\n")
@@ -112,41 +79,18 @@ func TestCommand(t *testing.T) {
 		strings.Contains(stderr, "polix:") {
 		t.Fatalf("unknown options hint an update, exit 1 without the error handler: %d %q", code, stderr)
 	}
-	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase_branch: trunk\n")
-	testenv.Write(t, filepath.Join(r, "ai", "rules", "s.yaml"), "rules:\n  - id: S-1\n    description: d\n"+fields+"    deterministic: true\n    check: checks/s.sh\n  - id: S-2\n")
-	code, _, stderr := runCommand(r)
-	if code != 1 || !strings.Contains(stderr, "S-1: check checks/s.sh does not exist") || !strings.Contains(stderr, "S-2: no description") {
-		t.Fatalf("every problem of the rules: %d %q", code, stderr)
-	}
-	testenv.Write(t, filepath.Join(r, "ai", "rules", "s.yaml"), "rules:\n  - id: S-1\n    description: d\n"+fields+"    deterministic: true\n    check: checks/s.sh\n")
-	testenv.Write(t, filepath.Join(r, "checks", "s.sh"), "#!/bin/sh\n")
-	if code, _, stderr := runCommand(r); code != 0 || !strings.Contains(stderr, "rules check --changed would fail") {
-		t.Fatalf("a missing base is a warning: %d %q", code, stderr)
-	}
-	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase_branch: trunk\npath: docs/\n")
-	testenv.Write(t, filepath.Join(r, "docs", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n"+fields+notDeterministic)
-	if code, stdout, _ := runCommand(r); code != 0 || !strings.HasSuffix(stdout, "1 rules of docs/rules/\n") {
-		t.Fatalf("the rules below path, not of ai/rules/: %d %q", code, stdout)
-	}
 	if code, _, stderr := runCommand(t.TempDir()); code != 1 || !strings.Contains(stderr, "not inside a git repository") {
 		t.Fatalf("outside a repository: %d %q", code, stderr)
 	}
 }
 
-// CUJ-03, CUJ-04, AC-01, AC-02: polix config check reads the rules below path, and those of ai/rules/ without it; a
-// path outside the root (CUJ-05) and a removed folder key (CUJ-06, CUJ-08) fail with their message, and never with
-// the hint of a newer polix.
+// polix config check validates polix.yaml whatever its path: a path outside the root (CUJ-05) and a removed folder key
+// (CUJ-06, CUJ-08) fail with their message, and never with the hint of a newer polix.
 func TestCommandPath(t *testing.T) {
 	r := testenv.GitRepo(t)
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\npath: docs/ai\n")
-	testenv.Write(t, filepath.Join(r, "docs", "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n"+fields+notDeterministic)
-	if code, stdout, stderr := runCommand(r); code != 0 || stdout != "ok: polix.yaml and 1 rules of docs/ai/rules/\n" {
-		t.Fatalf("CUJ-03: %d %q %q", code, stdout, stderr)
-	}
-	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\n")
-	testenv.Write(t, filepath.Join(r, "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n"+fields+notDeterministic)
-	if code, stdout, stderr := runCommand(r); code != 0 || stdout != "ok: polix.yaml and 1 rules of ai/rules/\n" {
-		t.Fatalf("CUJ-04: %d %q %q", code, stdout, stderr)
+	if code, stdout, stderr := runCommand(r); code != 0 || stdout != "ok: polix.yaml\n" {
+		t.Fatalf("a path: %d %q %q", code, stdout, stderr)
 	}
 	for src, want := range map[string]string{
 		"version: 1\npath: ../x\n":                `  fail  polix.yaml: path "../x" must be below the root`,
@@ -211,12 +155,11 @@ func TestCheckCheckOnSave(t *testing.T) {
 	}
 }
 
-// With a file, polix config check validates that workflow file in place of polix.yaml, with the rules of the
-// repository, and names it in its problems and its summary; a missing file is a problem.
+// With a file, polix config check validates that workflow file in place of polix.yaml, and names it in its problems
+// and its summary; a missing file is a problem.
 func TestCommandFile(t *testing.T) {
 	r := testenv.GitRepo(t)
 	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\n")
-	testenv.Write(t, filepath.Join(r, "ai", "rules", "d.yaml"), "rules:\n  - id: D-1\n    description: d\n"+fields+notDeterministic)
 	other := filepath.Join(r, "examples", "reference.yaml")
 	testenv.Write(t, other, "version: 1\non:\n  pre_edit:\n    - action: { run: { rule: x } }\n")
 	if code, _, stderr := runCommand(r, other); code != 1 ||
@@ -224,7 +167,7 @@ func TestCommandFile(t *testing.T) {
 		t.Fatalf("the problems of the file: %d %q", code, stderr)
 	}
 	testenv.Write(t, other, "version: 1\n")
-	if code, stdout, stderr := runCommand(r, other); code != 0 || stdout != "ok: "+other+" and 1 rules of ai/rules/\n" {
+	if code, stdout, stderr := runCommand(r, other); code != 0 || stdout != "ok: "+other+"\n" {
 		t.Fatalf("a valid file: %d %q %q", code, stdout, stderr)
 	}
 	missing := filepath.Join(r, "missing.yaml")
@@ -236,37 +179,42 @@ func TestCommandFile(t *testing.T) {
 	}
 }
 
-// CUJ-07, AC-05: the problems of polix.yaml and of the rules go to stderr in their own sections, the hint of a newer
-// polix is the fix of the last problem of Workflow, and stdout stays empty; a section without problems is left out.
+// The problems of polix.yaml go to stderr in the section Workflow, the hint of a newer polix is the fix of the last
+// problem, and stdout stays empty.
 func TestPrintProblems(t *testing.T) {
-	res := Response{File: "polix.yaml", RulesPath: "ai/rules",
-		WorkflowProblems: []string{"polix.yaml:3: unknown key foo"},
-		RuleProblems:     []string{"go.yaml GO-9: check tests/x.sh does not exist"},
-		Hint:             "these problems may be options of a newer polix than this one (dev): run polix update before removing them"}
+	res := Response{File: "polix.yaml", WorkflowProblems: []string{"polix.yaml:3: unknown key foo"},
+		Hint: "these problems may be options of a newer polix than this one (dev): run polix update before removing them"}
 	var stdout, stderr bytes.Buffer
 	code := res.print(&stdout, &stderr)
 	want := `Workflow  polix.yaml
   fail  polix.yaml:3: unknown key foo
         → these problems may be options of a newer polix than this one (dev): run polix update before removing them
 
-Rules  ai/rules/
-  fail  go.yaml GO-9: check tests/x.sh does not exist
-
-0 ok · 0 warn · 2 fail
+0 ok · 0 warn · 1 fail
 `
 	if code != 1 || stdout.Len() != 0 || stderr.String() != want {
 		t.Fatalf("%d %q\n%q", code, stdout.String(), stderr.String())
 	}
-	stderr.Reset()
-	res.RuleProblems = nil
-	want = "Workflow  polix.yaml\n  fail  polix.yaml:3: unknown key foo\n        → " + res.Hint + "\n\n0 ok · 0 warn · 1 fail\n"
-	if code := res.print(&stdout, &stderr); code != 1 || stderr.String() != want {
-		t.Fatalf("only workflow: %d %q", code, stderr.String())
+}
+
+// CUJ-07, AC-04: polix config check never reads the rules: with an invalid rule and a retired.yaml it prints the
+// summary of the workflow and exits with 0, with nothing about the rules nor about rules check --changed.
+func TestRunIgnoresRules(t *testing.T) {
+	r := testenv.GitRepo(t)
+	testenv.Write(t, filepath.Join(r, "polix.yaml"), "version: 1\nbase_branch: trunk\n")
+	testenv.Write(t, filepath.Join(r, "ai", "rules", "a.yaml"),
+		"rules:\n  - id: A-1\n    subject: s\n    description: d\n    scope: [\"**\"]\n    deterministic: true\n    check: checks/x.sh\n")
+	testenv.Write(t, filepath.Join(r, "ai", "rules", "retired.yaml"), "rules:\n  - id: GOARCH-31\n    reason: r\n")
+	code, stdout, stderr := runCommand(r)
+	if code != 0 || stdout != "ok: polix.yaml\n" || stderr != "" {
+		t.Fatalf("%d %q %q", code, stdout, stderr)
 	}
-	stderr.Reset()
-	res.WorkflowProblems, res.RuleProblems, res.Hint = nil, []string{"ai/rules/a.yaml A-1: no description"}, ""
-	want = "Rules  ai/rules/\n  fail  ai/rules/a.yaml A-1: no description\n\n0 ok · 0 warn · 1 fail\n"
-	if code := res.print(&stdout, &stderr); code != 1 || stderr.String() != want {
-		t.Fatalf("only rules: %d %q", code, stderr.String())
+}
+
+// CUJ-08, AC-04: without polix.yaml the summary says so plainly.
+func TestRunNoWorkflow(t *testing.T) {
+	code, stdout, stderr := runCommand(testenv.GitRepo(t))
+	if code != 0 || stdout != "ok: no polix.yaml (only the built-in protections apply)\n" || stderr != "" {
+		t.Fatalf("%d %q %q", code, stdout, stderr)
 	}
 }

@@ -52,7 +52,7 @@ func main() {
 	loadRules, loadCache, loadWorkflow := (&ruleadapters.Folder{}).Load, (&versionadapters.CacheFile{}).Load, (&workflowadapters.File{}).Load
 	loadState := (&stateadapters.Log{}).Load
 	config := &cobra.Command{Use: "config", Short: "Validate and format polix.yaml", Args: cobra.NoArgs, GroupID: "repo"}
-	config.AddCommand(setupcheck.Command(loadRules, loadWorkflow), workflowformat.Command())
+	config.AddCommand(setupcheck.Command(loadWorkflow), workflowformat.Command())
 	root.AddCommand(config)
 	for _, c := range []*cobra.Command{setupinstall.Command(), setupuninstall.Command(),
 		setupdiagnose.Command(loadRules, loadCache, loadWorkflow)} {

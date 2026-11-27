@@ -43,7 +43,7 @@ polix hook claude          # entry point of the Claude Code hooks (event on stdi
 polix hook codex           # entry point of the Codex hooks (not implemented)
 polix githook pre-commit   # entry point of the hooks of git (pre-commit, commit-msg <file>): the githooks of
                            # polix.yaml, on every commit, whoever makes it; git runs it, people do not
-polix config check         # validate polix.yaml and the rules (rules/ below path, ai/rules/ by default)
+polix config check         # validate polix.yaml (the rules are validated by polix rules check)
                            # (a file, as examples/polix.yaml, is validated in place of polix.yaml)
 polix config fmt           # format polix.yaml in place: keys in the order of the reference, comments kept,
                            # one blank line between two entries of an event or items of a shortcut
@@ -74,8 +74,8 @@ polix version
 `polix rules check --changed` compares the branch with the branch it merges into, `--base`, else the candidates
 of `base_branch` in `polix.yaml`, else `main`. Each candidate is tried as a local branch and then as `origin/<branch>`, and among
 those that exist the one whose merge base is closest to HEAD wins, so a feature forked from `dev` compares with
-`dev` when `base_branch: [main, dev]`. When none exists the command fails naming them, and `polix config check` and
-`polix doctor` warn about it when a deterministic rule has a check. In GitHub Actions, run it with
+`dev` when `base_branch: [main, dev]`. When none exists the command fails naming them, and `polix doctor` warns
+about it when a deterministic rule has a check. In GitHub Actions, run it with
 `--base="${{ github.base_ref }}"` after a checkout with `fetch-depth: 0`: outside a pull request `base_ref` is
 empty, and an empty `--base` falls back to `base_branch`. On a push to a branch of `base_branch` itself, such as
 `main`, the branch is its own base and `--changed` checks nothing: run `polix rules check` without it there. The
@@ -1228,15 +1228,13 @@ later gate could swallow: a `notify` followed in its event by an entry that may 
 event outside `workflow.Informed` (all but `start`, `subagent_start`, `post_edit`, `post_command` and `post_commit`), on every event,
 the two stops included. A blocked event shows the user no message, so the notice would be lost whenever the gate acts.
 The problem is at the line of the `notify`, naming the line of the first such entry and asking to move the notice
-after it or into its message. Of `ai/rules/` it reports every problem,
-not only the first: a rule without id or description, a leftover `retired.yaml`, an id repeated (one that an earlier rule already has, as `<file> <id>: id repeated, also in <other file>`), a check that does not exist, a `check` on a
-rule that is not `deterministic: true`, and a `check` named by an absolute path instead of one relative to the root.
+after it or into its message. It never reads the rules: `polix rules check` validates them.
 It also rejects the problems of the shortcuts of [Guardrails](#guardrails).
 
-With problems, it prints to stderr a report grouped into the section Workflow (titled with the workflow file) and the
-section Rules (titled with the folder of rules and a slash), each problem a `fail` line, and a count line at the end;
-a section without problems is left out. The hint that the problems may come from a newer polix is the `→` line below
-the last problem of Workflow. The exit code is 1. A valid repository prints its single `ok:` line.
+With problems, it prints to stderr a report with the section Workflow (titled with the workflow file), each problem a
+`fail` line, and a count line at the end. The hint that the problems may come from a newer polix is the `→` line below
+the last problem. The exit code is 1. A valid workflow prints `ok: polix.yaml` to stdout, and without a polix.yaml
+`ok: no polix.yaml (only the built-in protections apply)`.
 
 ### Names of the old vocabulary
 

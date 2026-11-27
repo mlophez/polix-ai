@@ -1,8 +1,8 @@
 # CheckSetup
 
-Validates the workflow (polix.yaml, or the workflow file its argument names) and the rules (the folder `rules/` below
-`path`, `ai/rules/` by default) of a repository and prints every problem, so a person or CI learns what polix would
-reject before a hook does.
+Validates the workflow (polix.yaml, or the workflow file its argument names) of a repository and prints every problem,
+so a person or CI learns what polix would reject before a hook does. It never reads the rules: `polix rules check`
+validates them.
 
 ## Trigger
 
@@ -12,7 +12,7 @@ polix config check [--dir <dir>] [file]
 
 - `--dir`: any folder of the repository; defaults to the current one.
 - `file`: a workflow file to validate in place of polix.yaml, relative to the working folder, as
-  `examples/polix.yaml`, with the rules, checks and base branches of the repository of `--dir`.
+  `examples/polix.yaml`.
 
 ## Request
 
@@ -25,12 +25,12 @@ polix config check [--dir <dir>] [file]
 ## Logic
 
 `Decide(i setup.Inspection, file string) Output` takes what the shell observed, the part of a `setup.Inspection` about
-the workflow and the rules, with a `setup.Setup` of the running version, and `File` of the request. With a file, a
-missing one is the only problem, `<file> not found`; and the problems of the workflow and the warning of the base branch
-name the file in place of polix.yaml: a problem that starts with it (followed by a colon or a space: `polix.yaml:4:
-...`, `polix.yaml requires ...`), and the warning where it names it as a word of its own, without changing the error
-they come from. The error of a file that cannot be read already names its path, and stays. It gathers the problems with
-the methods of `setup.Inspection` of `internal/app/setup/problems.go`, which `polix doctor` shares:
+the workflow, with a `setup.Setup` of the running version, and `File` of the request. With a file, a missing one is
+the only problem, `<file> not found`; and the problems of the workflow name the file in place of polix.yaml: a problem
+that starts with it (followed by a colon or a space: `polix.yaml:4: ...`, `polix.yaml requires ...`), without
+changing the error they come from. The error of a file that cannot be read already names its path, and stays. It
+gathers the problems with `WorkflowProblems` of `setup.Inspection` (`internal/app/setup/problems.go`), which `polix
+doctor` shares:
 
 1. `WorkflowProblems` (in the output, `Output.WorkflowProblems`): the error of loading polix.yaml is one problem, or each problem of a workflow that parses
    (`workflow.InvalidError`, the runners of `rules.run` included), with whether they may come from a newer polix
@@ -45,56 +45,37 @@ the methods of `setup.Inspection` of `internal/app/setup/problems.go`, which `po
    on an event outside `workflow.Informed`, as `the notice is not shown when the entry of line M blocks the event: move
    it after that entry or into its message`, at the line of the `notify`, since a blocked event shows the user no
    message.
-2. The error of reading the rules is the only entry of `Output.RuleProblems`; else `RuleProblems`: the problems of the loader
-   (`rule.Loaded.Problems`): every invalid rule, in the words `<file> <id>: no description`, then every id repeated,
-   one an earlier rule already has, as `<file> <id>: id repeated, also in <other file>`;
-   and every check that does not exist.
-3. With problems, the output holds them, those of the workflow file in `WorkflowProblems` and those of the rules in
-   `RuleProblems`, and, when problems of the workflow file may come from a newer polix, the hint `NewerHint`.
-4. Without problems, `BaseWarning`: when a deterministic rule has a check and no base branch exists,
-   `polix rules check --changed` would fail.
+2. With problems of the workflow file that may come from a newer polix, the hint `NewerHint`.
 
 ## Response
 
-`Response` is the output: `File` (the file as the console names it: the argument, or polix.yaml), `WorkflowProblems`, `RuleProblems`, `Hint`,
-`Warning`, `Found` (whether the workflow file exists), `Rules` (how many rules) and `RulesPath` (the folder they were
-read from, `Workflow.RulesPath`). With problems, the command prints to stderr a report without header nor area column: a section Workflow, titled with the
-file, and a section Rules, titled with the folder of rules and a slash, each with its problems as fail rows (a section
-without problems is left out) and the hint as the fix of the last problem of Workflow, then the count line, and exits
-with 1;
-else it prints the warning to stderr and `ok: <file> and <n> rules of <rules path>/` (or `ok: no polix.yaml (only the
-built-in protections apply) and ...`) to stdout, and exits with 0.
+`Response` is the output: `File` (the file as the console names it: the argument, or polix.yaml), `WorkflowProblems`,
+`Hint` and `Found` (whether the workflow file exists). With problems, the command prints to stderr a report without
+header nor area column: a section Workflow, titled with the file, with its problems as fail rows and the hint as the fix
+of the last problem, then the count line, and exits with 1; else it prints `ok: <file>` (or `ok: no polix.yaml (only
+the built-in protections apply)`) to stdout, and exits with 0.
 
 ## Port
 
-`Port`, implemented by `Adapter` on the repository:
+`Port`, implemented by `Adapter`:
 
 - `LoadWorkflow`: loads the file of the field `Path` of the adapter (polix.yaml at the root, or the file of the
   argument) through the field `Workflow` of the adapter, the loader `workflowadapters.File.Load`
   (`internal/app/workflow/adapters`) that `cmd/polix` builds once and passes to `Command`; without it, the default
   workflow and false; a workflow that parses with problems comes back with its `workflow.InvalidError`.
-- `LoadRules`: loads the rules of the folder it is given (`Workflow.RulesPath`, `rules/` below `path` of the workflow,
-  `ai/rules/` by default) through the field `Rules` of the adapter, the loader `ruleadapters.Folder.Load`
-  (`internal/app/rule/adapters`) that `cmd/polix` builds once and passes to `Command`: every rule,
-  ordered by id, with the problems of the invalid ones and of the ids repeated; without the folder, none; a file that
-  cannot be read or parsed is an error.
-- `Missing`: whether the file of a check does not exist below the root.
-- `ResolveBase`: why no base branch of the workflow exists, locally or on origin.
 
 ## Errors
 
 - Outside a repository the command fails with the error of git and exits with 1.
 - An empty file argument fails, and exits with 1.
-- The errors of reading polix.yaml and the rules are problems of the output, never errors of the shell.
+- The errors of reading polix.yaml are problems of the output, never errors of the shell.
 - Without the version of the running polix there is no setup to inspect: the shell fails with the error of
   `setup.Setup.Valid`. The command always gives it (`build.Current`).
 
 ## Flow
 
-1. `Command` opens the repository of `--dir` and injects `Adapter{Repo: repo, Path: path, Rules: rules, Workflow:
-   loadWorkflow}`, with the file of the argument or polix.yaml of the root, and the loaders of the rules and of
-   polix.yaml it was given.
-2. The shell reads the workflow, then the rules of its folder of rules, below its `path`, whether each check exists and
-   whether a base branch exists, and builds the `setup.Inspection` of it, validated.
-3. `Decide` decides the problems, the hint and the warning.
+1. `Command` opens the repository of `--dir` and injects `Adapter{Path: path, Workflow: loadWorkflow}`, with the file of
+   the argument or polix.yaml of the root, and the loader of polix.yaml it was given.
+2. The shell reads the workflow and builds the `setup.Inspection` of it, validated.
+3. `Decide` decides the problems and the hint.
 4. The shell builds the response, and the command prints it and sets the exit code.

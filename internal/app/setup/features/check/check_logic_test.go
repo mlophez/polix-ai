@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/setup"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
 )
@@ -22,23 +21,19 @@ func observed(t *testing.T, i setup.Inspection) setup.Inspection {
 }
 
 func TestDecideValid(t *testing.T) {
-	rules := []rule.Rule{{ID: "S-1", Description: "d", Deterministic: true, Check: "checks/s.sh", File: "ai/rules/s.yaml"}}
-	out := Decide(observed(t, setup.Inspection{Found: true, Rules: rules, Missing: map[string]bool{},
-		BaseErr: errors.New("no main")}), "")
-	if len(out.WorkflowProblems)+len(out.RuleProblems) != 0 || out.Rules != 1 || !out.Found || out.Warning == "" || out.RulesPath != "ai/rules" {
+	out := Decide(observed(t, setup.Inspection{Found: true}), "")
+	if len(out.WorkflowProblems) != 0 || !out.Found || out.File != workflow.File || out.Hint != "" {
 		t.Fatalf("%+v", out)
 	}
 }
 
 func TestDecideProblems(t *testing.T) {
-	out := Decide(observed(t, setup.Inspection{Found: true, WorkflowErr: workflow.InvalidError{`unknown key "an_option"`},
-		Invalid: []string{"ai/rules/a.yaml A-1: no description"}, BaseErr: errors.New("no main")}), "")
-	if len(out.WorkflowProblems) != 1 || len(out.RuleProblems) != 1 || out.Hint == "" || out.Warning != "" ||
-		out.RuleProblems[0] != "ai/rules/a.yaml A-1: no description" {
+	out := Decide(observed(t, setup.Inspection{Found: true, WorkflowErr: workflow.InvalidError{`unknown key "an_option"`}}), "")
+	if len(out.WorkflowProblems) != 1 || out.Hint == "" {
 		t.Fatalf("%+v", out)
 	}
-	out = Decide(observed(t, setup.Inspection{RulesErr: errors.New("ai/rules/x.yaml: yaml: broken")}), "")
-	if len(out.WorkflowProblems) != 0 || len(out.RuleProblems) != 1 || out.Hint != "" {
+	out = Decide(observed(t, setup.Inspection{Found: true, WorkflowErr: errors.New("read polix.yaml: broken")}), "")
+	if len(out.WorkflowProblems) != 1 || out.Hint != "" {
 		t.Fatalf("%+v", out)
 	}
 }
@@ -54,21 +49,19 @@ func TestDecideRenamedKey(t *testing.T) {
 	}
 }
 
-// A workflow file named by the argument must exist, and its problems name it instead of polix.yaml; the problems of
-// the rules keep their files.
+// A workflow file named by the argument must exist, and its problems name it instead of polix.yaml.
 func TestDecideFile(t *testing.T) {
 	out := Decide(observed(t, setup.Inspection{}), "examples/polix.yaml")
-	if len(out.WorkflowProblems) != 1 || len(out.RuleProblems) != 0 ||
+	if len(out.WorkflowProblems) != 1 ||
 		out.WorkflowProblems[0] != "examples/polix.yaml not found" || out.File != "examples/polix.yaml" {
 		t.Fatalf("missing: %+v", out)
 	}
 	err := workflow.InvalidError{`polix.yaml:4: unknown key "rule" in run`, `polix.yaml: requirements: "go" is repeated`}
-	out = Decide(observed(t, setup.Inspection{Found: true, WorkflowErr: err,
-		Invalid: []string{"ai/rules/a.yaml A-1: no description"}}), "examples/polix.yaml")
+	out = Decide(observed(t, setup.Inspection{Found: true, WorkflowErr: err}), "examples/polix.yaml")
 	want := []string{`examples/polix.yaml:4: unknown key "rule" in run`,
 		`examples/polix.yaml: requirements: "go" is repeated`}
-	if !slices.Equal(out.WorkflowProblems, want) || !slices.Equal(out.RuleProblems, []string{"ai/rules/a.yaml A-1: no description"}) {
-		t.Fatalf("got %q %q, want %q", out.WorkflowProblems, out.RuleProblems, want)
+	if !slices.Equal(out.WorkflowProblems, want) {
+		t.Fatalf("got %q, want %q", out.WorkflowProblems, want)
 	}
 	if out := Decide(observed(t, setup.Inspection{Found: true}), ""); out.File != workflow.File {
 		t.Fatalf("polix.yaml: %+v", out)
@@ -77,12 +70,6 @@ func TestDecideFile(t *testing.T) {
 	out = Decide(observed(t, setup.Inspection{Found: true, WorkflowErr: tooOld}), "x/polix.yaml")
 	if len(out.WorkflowProblems) != 1 || !strings.HasPrefix(out.WorkflowProblems[0], "x/polix.yaml requires polix 9.0.0") {
 		t.Fatalf("too old: %q", out.WorkflowProblems)
-	}
-	rules := []rule.Rule{{ID: "S-1", Description: "d", Deterministic: true, Check: "c.sh", File: "ai/rules/s.yaml"}}
-	out = Decide(observed(t, setup.Inspection{Found: true, Rules: rules, Missing: map[string]bool{},
-		BaseErr: errors.New("no main")}), "x/polix.yaml")
-	if !strings.Contains(out.Warning, "set base_branch in x/polix.yaml or pass --base") {
-		t.Fatalf("warning: %q", out.Warning)
 	}
 	// The error of a file that cannot be read already names its path: it is not renamed.
 	for _, file := range []string{"x/polix.yaml", "my polix.yaml"} {
