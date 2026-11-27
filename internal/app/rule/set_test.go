@@ -67,12 +67,15 @@ func TestSelection(t *testing.T) {
 	if err := every.Valid(); err != nil || len(every.Narrow(rs)) != 2 {
 		t.Fatalf("every rule: %v %v", err, every.Narrow(rs))
 	}
-	changed := Selection{OnlyChanged: true, Changed: []string{"main.go"}}
+	changed := Selection{Run: true, OnlyChanged: true, Changed: []string{"main.go"}}
 	if got := changed.Narrow(rs); changed.Valid() != nil || len(got) != 1 || got[0].ID != "A-1" {
 		t.Fatalf("only the rules of the changed files: %v", got)
 	}
 	if none := (Selection{OnlyChanged: true}).Narrow(rs); len(none) != 0 {
 		t.Fatalf("nothing changed selects no rule: %v", none)
+	}
+	if (Selection{OnlyChanged: true}).Valid() == nil {
+		t.Fatal("the changed rules without Run are valid")
 	}
 	if (Selection{Changed: []string{"main.go"}}).Valid() == nil {
 		t.Fatal("changed files without OnlyChanged are valid")
@@ -210,5 +213,25 @@ func TestLoadedRetiredFile(t *testing.T) {
 	got = Rules(nil).Loaded(path, true, broken)
 	if got.Problems != nil || !errors.Is(got.Err, broken) || got.Strict == nil || got.Strict.Error() != want {
 		t.Fatalf("a broken file: %+v", got)
+	}
+}
+
+// A folder is valid with a path and valid rules; Unformatted names the files Source.Format would change.
+func TestFolder(t *testing.T) {
+	ok := Source("rules:\n  - id: A-1\n    description: d\n")
+	f := Folder{Dir: "ai/rules", Files: map[string]Source{"b.yaml": ok, "a.yaml": Source("rules:\n- id: A-1\n")}}
+	if err := f.Valid(); err != nil {
+		t.Fatal(err)
+	}
+	if changed, problems := f.Unformatted(); !slices.Equal(changed, []string{"ai/rules/a.yaml"}) || problems != nil {
+		t.Fatalf("Unformatted = %q %q", changed, problems)
+	}
+	f.Files["c.yaml"] = Source("rules:\n  - id: !!str C-1\n")
+	if changed, problems := f.Unformatted(); len(changed) != 1 || len(problems) != 1 ||
+		!strings.HasPrefix(problems[0], "ai/rules/c.yaml: ") {
+		t.Fatalf("a file Format rejects is a problem, not a change: %q %q", changed, problems)
+	}
+	if (Folder{}).Valid() == nil || (Folder{Dir: "ai/rules", Rules: Rules{{ID: "A-1"}}}).Valid() == nil {
+		t.Fatal("a folder without path or with an invalid rule is valid")
 	}
 }

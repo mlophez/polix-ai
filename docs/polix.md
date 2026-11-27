@@ -49,9 +49,10 @@ polix config fmt           # format polix.yaml in place: keys in the order of th
                            # one blank line between two entries of an event or items of a shortcut
                            # (--check only tells whether it is formatted, exiting with 1 when not; a file,
                            # as examples/polix.yaml, is formatted instead, without a repository nor --dir)
-polix rules check          # run the checks of every deterministic rule (for CI)
-polix rules check --changed  # only the rules whose scope matches the files changed by the branch
-                             # (--base BRANCH, default the closest of base_branch in polix.yaml, else main;
+polix rules check          # validate the rules of rules/ below path and their format (as rules fmt --check)
+polix rules check --run    # then run the checks of every deterministic rule too (for CI)
+polix rules check --run --changed  # only the rules whose scope matches the files changed by the branch
+                             # (--changed needs --run; --base BRANCH, default the closest of base_branch in polix.yaml, else main;
                              # it fails when no base exists, locally or on origin)
 polix rules fmt            # format every rules file of rules/ below path in place
                            # (--check only tells whether they are formatted, exiting with 1 when not)
@@ -71,18 +72,19 @@ polix update               # replace the binary with the latest release and refr
 polix version
 ```
 
-`polix rules check --changed` compares the branch with the branch it merges into, `--base`, else the candidates
+`polix rules check --run --changed` compares the branch with the branch it merges into, `--base`, else the candidates
 of `base_branch` in `polix.yaml`, else `main`. Each candidate is tried as a local branch and then as `origin/<branch>`, and among
 those that exist the one whose merge base is closest to HEAD wins, so a feature forked from `dev` compares with
 `dev` when `base_branch: [main, dev]`. When none exists the command fails naming them, and `polix doctor` warns
 about it when a deterministic rule has a check. In GitHub Actions, run it with
 `--base="${{ github.base_ref }}"` after a checkout with `fetch-depth: 0`: outside a pull request `base_ref` is
 empty, and an empty `--base` falls back to `base_branch`. On a push to a branch of `base_branch` itself, such as
-`main`, the branch is its own base and `--changed` checks nothing: run `polix rules check` without it there. The
+`main`, the branch is its own base and `--changed` checks nothing: run `polix rules check --run` without it there. The
 hooks never use `base_branch`.
 
 `polix rules check` reads `polix.yaml` and then the rules of `rules/` below its `path` before running anything, and stops
-without running a check when a file of the folder of rules cannot be read or parsed, when a rule is not valid (no id, no description, no `kind` or one outside the list, no `subject`, no or an empty
+without running a check when a file of the folder is not formatted as `polix rules fmt` leaves it
+(`<file> is not formatted: run polix rules fmt`, exiting with 1), when a file of the folder of rules cannot be read or parsed, when a rule is not valid (no id, no description, no `kind` or one outside the list, no `subject`, no or an empty
 `scope`, no `deterministic`, `deterministic: true` without a `check`, a `check` on a rule that is not
 `deterministic`, or a `check` given as an absolute path; the first problem of the first invalid rule is printed as
 `<file>: rule <id> <problem>`), when two rules share an id
@@ -496,7 +498,7 @@ a test validates it. [reference.md](reference.md) describes every key, event, co
 version: 1
 path: ai              # the folder of the AI: rules/, plans/, reports/ and tasks/ (optional, default ai)
 requires: 0.3.0       # oldest polix the file needs (optional); the lifecycle shortcuts need a newer one
-base_branch: [main, dev]  # branch, or candidates, a change merges into, for rules check --changed (default main)
+base_branch: [main, dev]  # branch, or candidates, a change merges into, for rules check --run --changed (default main)
 stop_retries: 3       # loop guard of every block on stop and subagent_stop, per entry (default 1)
 requirements: [go, golangci-lint]  # programs the repository needs on the PATH: told to the AI, never blocking
 guardrails:           # the basics every project wants (optional)

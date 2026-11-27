@@ -827,9 +827,9 @@ on:
   with:
     fetch-depth: 0 # the base branch and the merge base must be in the clone
 - if: github.event_name == 'pull_request'
-  run: polix rules check --changed --base="${{ github.base_ref }}"
+  run: polix rules check --run --changed --base="${{ github.base_ref }}"
 - if: github.event_name != 'pull_request'
-  run: polix rules check
+  run: polix rules check --run
 ```
 
 The checkout needs `fetch-depth: 0` so that the base branch and the merge base are in the clone. On a pull

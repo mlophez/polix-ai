@@ -84,13 +84,13 @@ path: ai
 requires: 0.3.0
 
 # Optional, default main. The branch the change merges into, or a list of candidates, used only by
-# `polix rules check --changed` (CI): each candidate is tried locally and then as origin/<branch>, and the one whose
+# `polix rules check --run --changed` (CI): each candidate is tried locally and then as origin/<branch>, and the one whose
 # merge base is closest to HEAD wins. The command fails when none exists, and `polix config check` and
 # `polix doctor` warn about it. In the hooks, `changed` always compares with HEAD: the change is reviewed commit
 # by commit.
 # In GitHub Actions, pass `--base="${{ github.base_ref }}"` with a checkout of `fetch-depth: 0`; outside a pull
 # request it is empty, and an empty --base falls back to this list. On a push to a branch of this list, such as
-# main, --changed checks nothing (the branch is its own base): run `polix rules check` without it there.
+# main, --changed checks nothing (the branch is its own base): run `polix rules check --run` without it there.
 # Forms: a single branch, `base_branch: main`, or a list:
 base_branch: [main, dev]
 
@@ -133,7 +133,7 @@ vars:
 # tests/architecture/ below runs once for that folder, `go test ./tests/architecture -run ^Test(GOARCH1|GOARCH2)$`.
 # When a shared invocation fails, each rule of it runs again alone to tell which ones fail.
 # A check no glob matches runs as a program (its shebang; on Windows a .sh with the bash of Git for Windows and a
-# .py with py -3, python3 or python). Used by `polix rules check` and by a `run` with `rules`; `polix config check`
+# .py with py -3, python3 or python). Used by `polix rules check --run` and by a `run` with `rules`; `polix config check`
 # reports an empty argv, an empty glob, an unknown placeholder or {files} or {dirs} inside a longer argument.
 rules:
   run:

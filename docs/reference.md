@@ -42,7 +42,7 @@ makes it, with a small vocabulary of its own.
 version: 1                       # required
 path: ai                         # folder of the AI: rules/, plans/, reports/ and tasks/
 requires: 0.3.0                  # oldest polix the file needs; the lifecycle shortcuts need a newer one
-base_branch: [main, dev]         # branch the change merges into (polix rules check --changed)
+base_branch: [main, dev]         # branch the change merges into (polix rules check --run --changed)
 stop_retries: 3                  # loop guard of stop and subagent_stop (default 1)
 requirements: [go, golangci-lint]  # programs needed on the PATH, told to the AI on the first prompt
 guardrails:                      # the basics every project wants
@@ -163,7 +163,7 @@ path: docs/ai      # the rules in docs/ai/rules/, the plans in docs/ai/plans/...
 ### base_branch
 
 - Type: a branch name, or a list of them. Default: `main`.
-- The branch the change merges into. Only `polix rules check --changed` (CI) uses it: each candidate is tried
+- The branch the change merges into. Only `polix rules check --run --changed` (CI) uses it: each candidate is tried
   locally and as `origin/<branch>`, and the one whose merge base is closest to HEAD wins. The hooks never use it:
   `changed` always compares with HEAD.
 - `polix config check` rejects an empty name, and warns when no candidate exists.

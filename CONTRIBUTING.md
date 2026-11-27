@@ -60,11 +60,11 @@ just test -run TestName               # one test
 golangci-lint run ./...               # lint with .golangci.yml, as CI does
 golangci-lint fmt                     # format with gofmt and goimports
 just check                            # install, then polix config check, config fmt --check,
-                                      # rules fmt --check, rules check and doctor --offline
+                                      # rules check --run and doctor --offline
 claude plugin validate plugins/polix  # validate the plugin
 ```
 
-CI (`.github/workflows/ci.yml`) runs vet, lint, the tests and `polix rules check` on Linux, macOS and Windows, on
+CI (`.github/workflows/ci.yml`) runs vet, lint, the tests and `polix rules check --run` on Linux, macOS and Windows, on
 every push to `main` and every pull request.
 The tests of `install.sh` and `install.ps1` are Go tests in `tests/install/`, and on Windows they run under
 Windows PowerShell 5.1 and PowerShell 7.

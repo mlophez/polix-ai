@@ -40,7 +40,7 @@ type Workflow struct {
 	// Requires is the oldest polix that knows every option the file uses (`requires: 0.2.0`). An older polix
 	// reads it before anything else and asks to be updated instead of reporting the options it does not know.
 	Requires string
-	// Base names the branches a change may merge into (base_branch), for `polix rules check --changed`; the hooks
+	// Base names the branches a change may merge into (base_branch), for `polix rules check --run --changed`; the hooks
 	// always compare `changed` with HEAD.
 	Base        []string
 	StopRetries int // loop guard of every block on stop and subagent_stop (stop_retries)

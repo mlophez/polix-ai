@@ -11,6 +11,7 @@ import (
 
 	"github.com/mlophez/polix-ai/internal/app/rule"
 	"github.com/mlophez/polix-ai/internal/app/workflow"
+	"github.com/mlophez/polix-ai/internal/platform/file"
 	"github.com/mlophez/polix-ai/internal/platform/git"
 	"github.com/mlophez/polix-ai/internal/platform/proc"
 )
@@ -52,6 +53,20 @@ func (a Adapter) LoadWorkflow(ctx context.Context, running string) (workflow.Wor
 		return workflow.Workflow{}, loaded.Err
 	}
 	return loaded.Workflow, nil
+}
+
+// ReadRuleFiles reads the yaml files of the folder dir through internal/platform/file, by name, subfolders left
+// out; a missing folder has no files and no error.
+func (a Adapter) ReadRuleFiles(_ context.Context, dir string) (map[string]rule.Source, error) {
+	files, err := file.ReadDir(filepath.Join(a.Repo.Root, filepath.FromSlash(dir)), ".yaml")
+	if err != nil || len(files) == 0 {
+		return nil, err
+	}
+	out := make(map[string]rule.Source, len(files))
+	for name, data := range files {
+		out[name] = data
+	}
+	return out, nil
 }
 
 // Changed asks git for the files changed against the first of candidates that exists, locally or on origin. When

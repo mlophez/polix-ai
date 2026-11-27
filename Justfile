@@ -30,8 +30,7 @@ check: install
     [ -x "$polix" ] || polix=$polix.exe
     "$polix" config check
     "$polix" config fmt --check
-    "$polix" rules fmt --check
-    "$polix" rules check
+    "$polix" rules check --run
     "$polix" doctor --offline
 
 # Record a real Claude Code session with docs/assets/demo/demo.tape into docs/assets/demo.mp4 and turn it into

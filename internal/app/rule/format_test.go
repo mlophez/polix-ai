@@ -1,4 +1,4 @@
-package format
+package rule
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 
 // rules goes first, the keys of a rule follow the schema with the unknown ones after (reason among them), and the rules never move; a
 // comment above a key moves with it, a flow scope on two lines ends on one and a folded description keeps its text.
-func TestFormatData(t *testing.T) {
+func TestFormat(t *testing.T) {
 	src := `x-owner: platform
 rules:
   - check: tests/a_test.go
@@ -39,7 +39,7 @@ rules:
     description: d
 x-owner: platform
 `
-	got, err := formatData([]byte(src))
+	got, err := Source(src).Format()
 	if err != nil || string(got) != want {
 		t.Fatalf("got:\n%s\nwant:\n%s\n%v", got, want, err)
 	}
@@ -47,7 +47,7 @@ x-owner: platform
 
 // Three rules written without blank lines come out with one blank line between each two, above the comments of a
 // rule, and none after rules:; the scope of a rule in block style gets no blank line.
-func TestFormatDataSpacesTheRules(t *testing.T) {
+func TestFormatSpacesTheRules(t *testing.T) {
 	src := `rules:
   - id: A-1
     description: a
@@ -74,11 +74,11 @@ func TestFormatDataSpacesTheRules(t *testing.T) {
   - id: A-3
     description: c
 `
-	got, err := formatData([]byte(src))
+	got, err := Source(src).Format()
 	if err != nil || string(got) != want {
 		t.Fatalf("got:\n%s\nwant:\n%s\n%v", got, want, err)
 	}
-	if twice, err := formatData(got); err != nil || string(twice) != want {
+	if twice, err := Source(got).Format(); err != nil || string(twice) != want {
 		t.Fatalf("not idempotent:\n%s\n%v", twice, err)
 	}
 }
@@ -105,7 +105,7 @@ func TestOrderKindSubject(t *testing.T) {
     deterministic: true
     check: tests/a_test.go
 `
-	got, err := formatData([]byte(src))
+	got, err := Source(src).Format()
 	if err != nil || string(got) != want {
 		t.Fatalf("got:\n%s\nwant:\n%s\n%v", got, want, err)
 	}

@@ -323,7 +323,7 @@ func TestDecideCodex(t *testing.T) {
 	}
 }
 
-// doctor warns that rules check --changed would fail when no base branch exists and a rule has a check.
+// doctor warns that rules check --run --changed would fail when no base branch exists and a rule has a check.
 func TestDecideMissingBase(t *testing.T) {
 	i := healthy(t)
 	i.BaseErr = errors.New("no main")
@@ -331,7 +331,7 @@ func TestDecideMissingBase(t *testing.T) {
 		t.Fatal("no deterministic rule, no warning")
 	}
 	i.Rules = []rule.Rule{{ID: "S-1", Description: "d", Deterministic: true, Check: "c.sh", File: "f"}}
-	if got := text(Decide(i, false)); !strings.Contains(got, "rules check --changed would fail") {
+	if got := text(Decide(i, false)); !strings.Contains(got, "rules check --run --changed would fail") {
 		t.Fatal(got)
 	}
 	i.Found = false

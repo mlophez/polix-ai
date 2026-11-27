@@ -1,42 +1,49 @@
 # CheckRule
 
-Runs the checks of the deterministic rules of the folder `rules/` below `path` of polix.yaml (`ai/rules/` by default),
-so CI and the agent learn whether the code breaks a rule that a script or a test can decide.
+Validates the rules of the folder `rules/` below `path` of polix.yaml (`ai/rules/` by default) and their format, as
+`polix rules fmt --check` does, and with `--run` runs the checks of the deterministic rules too, so CI and the agent
+learn whether a rule is broken or not formatted and whether the code breaks a rule that a script or a test can decide.
 
 ## Trigger
 
 ```
-polix rules check [--dir <dir>] [--changed] [--base <branch>]
+polix rules check [--dir <dir>] [--run] [--changed] [--base <branch>]
 ```
 
+- `--run`: once the rules are valid and formatted, run their checks too; without it no check runs.
 - `--dir`: any folder of the repository; defaults to the current one.
-- `--changed`: only the rules whose scope matches the files changed by the branch.
+- `--changed`: with `--run`, only the rules whose scope matches the files changed by the branch.
 - `--base`: the branch the change merges into, locally or on origin, for `--changed`; without it, the closest of
-  `base_branch` in polix.yaml, else `main`. Without `--changed` it is an error.
+  `base_branch` in polix.yaml, else `main`. Without `--changed` it is an error, as `--changed` is without `--run`.
 
 ## Request
 
 `Request`, filled by the command from its flags:
 
-- `Dir`, `OnlyChanged` and `Base`, from `--dir`, `--changed` and `--base`. `Base` needs `OnlyChanged`, which the
-  command checks before running.
+- `Dir`, `Run`, `OnlyChanged` and `Base`, from `--dir`, `--run`, `--changed` and `--base`. `OnlyChanged` needs
+  `Run` and `Base` needs `OnlyChanged`, which the command checks before running.
 - `Version`, the version of the running polix (`build.Current`), which polix.yaml may require.
 
 ## Logic
 
-`Decide(rules []rule.Rule, wf workflow.Workflow, sel rule.Selection, outcomes []rule.Outcome) Output` decides which
-checks run and how, in the step shape. It takes what the shell read through the port, the choice of the request and what
-the runs carried out so far gave:
+`Decide(folder rule.Folder, wf workflow.Workflow, sel rule.Selection, outcomes []rule.Outcome) Output` decides whether
+the rules are formatted and which checks run and how, in the step shape. It takes what the shell read through the port,
+the choice of the request and what the runs carried out so far gave:
 
-- `rules`: the rules of the `*.yaml` of the folder of rules, ordered by id.
+- `folder`: the `rule.Folder`, valid, of the folder of rules: its `Dir`, its `Rules`, those of its `*.yaml` ordered by
+  id, and its `Files`, the data of each `*.yaml` by name as a `rule.Source`.
 - `wf`: the workflow of polix.yaml, the default one without the file; only its runners (`rules.run`) matter here
   (the shell uses its `Workflow.RulesPath`, `rules/` below `path`, to read the rules).
-- `sel`: the `rule.Selection` the shell builds and validates: `OnlyChanged`, whether `--changed` was given, and
+- `sel`: the `rule.Selection` the shell builds and validates: `Run`, whether `--run` was given, `OnlyChanged`,
+  whether `--changed` was given, and
   `Changed`, the files changed by the branch against its base, relative to the root, only with `--changed`.
   `Selection.Narrow` keeps the rules it asks for.
 - `outcomes`: the `rule.Outcome` of each run carried out so far, in order.
 
-It plans the runs of the rules (`rule.Rules.Plan`) and walks them, and the reruns of each failed shared run, taking one
+First the format: each file that `rule.Source.Format` would change or cannot format, as `<dir>/<name>`
+(`rule.Folder.Unformatted`), goes to `Output.Unformatted`, with `Output.Fix`, `polix rules fmt` (`rule.FixCommand`),
+and each file it cannot format to `Output.Problems`, as `<dir>/<name>: <error>`; with any of them, or
+without `Run`, it returns without runs. Else `Output.Ran` is true, and it plans the runs of the rules (`rule.Rules.Plan`) and walks them, and the reruns of each failed shared run, taking one
 outcome for each. `Output.Next` is the first run without outcome, the next one the shell carries out;
 when none is left it is nil and `Output.Results` holds a `rule.Result` for every rule that ran, in the
 order of the rules. The rules it follows:
@@ -61,6 +68,9 @@ The domain decides the rest:
 
 - `Workflow.Bases`: the base is the branch of `--base` when given, else the base branches of polix.yaml, closest
   first.
+- `rule.Folder`: `Valid` requires its `Dir` and every rule valid; `Unformatted` formats each file as `polix rules fmt`
+  does (`rule.Source.Format`), splitting the files it would change from those it cannot format, with their error.
+- `rule.Selection`: `Valid` requires `Run` for `OnlyChanged`, and `OnlyChanged` for changed files.
 - `rule.Rules`: `Matching` keeps the rules whose scope matches the changed files, and `Plan` turns the rules with a
   check into runs through `Workflow.CheckCommands`.
 - `rule.Run`: `Valid` requires at least one rule, each valid and with a check, and an argv when there are several;
@@ -72,11 +82,16 @@ The domain decides the rest:
 
 ## Response
 
-`Response`, built from the results of the output: `Ran`, how many rules were decided, and
-`Failed`, each failed check (a `Failed`) with its `ID`, `Check`, `Description` and `Output` (the `Tail` of
-the result). The command serializes it: each failure to stderr as `FAIL <id> (<check>): <description>` followed by
-its output, then the summary `<ran> checks, <failed> failed` to stdout. It exits with 0 when every check passed
-and with 1 otherwise.
+`Response`, built from the output and its results: `Rules`, how many rules are valid; `Unformatted`, `Problems` and `Fix`, of the
+output; `Ran`, whether the checks ran; `Checks`, how many rules were decided; and `Failed`, each failed check (a
+`Failed`) with its `ID`, `Check`, `Description` and `Output` (the `Tail` of the result). The command serializes it:
+
+- With files not formatted, each problem to stderr as it is and each other file as
+  `<file> is not formatted: run <fix>`, then
+  `<rules> rules valid, <n> files not formatted` to stdout, and exits with 1.
+- Without `--run`, `<rules> rules valid and formatted` to stdout, and exits with 0.
+- Else each failure to stderr as `FAIL <id> (<check>): <description>` followed by its output, then the summary
+  `<checks> checks, <failed> failed` to stdout. It exits with 0 when every check passed and with 1 otherwise.
 
 ## Port
 
@@ -91,6 +106,8 @@ and with 1 otherwise.
   adapter, the loader `workflowadapters.File.Load` (`internal/app/workflow/adapters`) that `cmd/polix` builds once and passes to
   `Command`; without polix.yaml, the default workflow. Of the problems that `polix config check` reports on a workflow
   that parses, only those of `rules` stop the use case (see Errors); the rest are left to `polix config check`.
+- `ReadRuleFiles`: reads the `*.yaml` of the folder through `internal/platform/file`, by name, subfolders left out;
+  a missing folder has no files and no error.
 - `Changed`: asks git for the files changed against the first base that exists, locally or on origin; when none
   exists, its error asks to set `base_branch` in polix.yaml or to pass `--base`.
 - `RunCheck`: runs one invocation from the root, which may decide several rules, with 5 minutes to finish: the argv of
@@ -107,6 +124,7 @@ and with 1 otherwise.
 
 The use case stops, without running any check, when:
 
+- `--changed` is given without `--run`: `--changed needs --run`.
 - `--base` is given without `--changed`.
 - `--dir` is not inside a git repository.
 - A file of the folder of rules cannot be read, is not valid yaml or holds a rule that is not `Valid` (a rule without id
@@ -133,9 +151,10 @@ with 1.
    polix.yaml it was given, as the `Port`.
 2. The shell reads, in `load`, the workflow, stopping on an invalid key `rules`, and then the rules of its folder of
    rules, below its `path`, stopping on one that is not `Valid`, through the port and, with `--changed`, the changed
-   files against `--base` or else the base branches of the workflow.
+   files against `--base` or else the base branches of the workflow; then the files of the folder of rules, which
+   with the rules make a `rule.Folder`, followed by `Valid`.
 3. The shell calls `Decide` in a loop, from one call site, with the outcomes so far: while
-   `Output.Next` is set, it runs it through `RunCheck`, builds a `rule.Outcome` from the run, followed by
+   `Output.Next` is set (never without `--run` nor with a file not formatted), it runs it through `RunCheck`, builds a `rule.Outcome` from the run, followed by
    `Valid`, and appends it.
 4. When `Next` is nil, `response` checks each of `Output.Results` with `Valid`.
 5. `response` builds the response from the results.

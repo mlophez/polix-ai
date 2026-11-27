@@ -14,14 +14,20 @@ import (
 type Rules []Rule
 
 // Selection is which rules a check is asked for: all of them, or only those whose scope matches the changed files.
+// Run says whether the checks run at all; Narrow ignores it, so the caller asks it first.
 // It is built with a literal followed by Valid.
 type Selection struct {
+	Run         bool     // the checks run at all; without it the rules are only validated
 	OnlyChanged bool     // only the rules whose scope matches one of Changed
 	Changed     []string // the changed files, read only with OnlyChanged
 }
 
 // Valid tells why s is not a selection: changed files without OnlyChanged select nothing.
+// The changed rules need Run, and changed files need OnlyChanged.
 func (s Selection) Valid() error {
+	if s.OnlyChanged && !s.Run {
+		return errors.New("a selection of the changed rules needs Run")
+	}
 	if !s.OnlyChanged && len(s.Changed) > 0 {
 		return errors.New("a selection of every rule takes no changed files")
 	}

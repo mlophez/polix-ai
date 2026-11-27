@@ -108,8 +108,8 @@ func TestAdapterLoadRulesInvalid(t *testing.T) {
 // loader of the rules that cmd/polix builds, naming both files.
 func TestAdapterLoadRulesRepeatedID(t *testing.T) {
 	a := adapterOf(t, map[string]string{
-		"ai/rules/a.yaml": "rules:\n  - id: A-1\n    description: a\n" + fields + "    deterministic: false\n",
-		"ai/rules/b.yaml": "rules:\n  - id: A-1\n    description: b\n" + fields + "    deterministic: false\n",
+		"ai/rules/a.yaml": "rules:\n  - id: A-1\n" + fields("a") + "    deterministic: false\n",
+		"ai/rules/b.yaml": "rules:\n  - id: A-1\n" + fields("b") + "    deterministic: false\n",
 	})
 	a.Rules = (&ruleadapters.Folder{}).Load
 	all, err := a.LoadRules(context.Background(), "ai/rules")
@@ -264,5 +264,22 @@ func TestAdapterRunCheckTimeoutWithGrandchild(t *testing.T) {
 	}
 	if d := time.Since(start); d > time.Second+proc.WaitDelay+5*time.Second {
 		t.Fatalf("the check returned after %v", d)
+	}
+}
+
+// ReadRuleFiles reads the yaml files of the folder by name, subfolders and other files left out; a missing folder
+// has no files and no error.
+func TestAdapterReadRuleFiles(t *testing.T) {
+	a := adapterOf(t, map[string]string{
+		"ai/rules/a.yaml":     "rules: []\n",
+		"ai/rules/notes.md":   "x\n",
+		"ai/rules/sub/b.yaml": "rules: []\n",
+	})
+	files, err := a.ReadRuleFiles(context.Background(), "ai/rules")
+	if err != nil || len(files) != 1 || string(files["a.yaml"]) != "rules: []\n" {
+		t.Fatalf("got %q %v", files, err)
+	}
+	if files, err := a.ReadRuleFiles(context.Background(), "missing"); err != nil || files != nil {
+		t.Fatalf("missing folder: %q %v", files, err)
 	}
 }

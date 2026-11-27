@@ -37,12 +37,12 @@ func (i Inspection) RuleProblems() []string {
 	return problems
 }
 
-// BaseWarning explains that polix rules check --changed would fail because no base branch exists (BaseErr), when
+// BaseWarning explains that polix rules check --run --changed would fail because no base branch exists (BaseErr), when
 // a deterministic rule has a check; "" otherwise.
 func (i Inspection) BaseWarning() string {
 	for _, r := range i.Rules {
 		if r.HasCheck() && i.BaseErr != nil {
-			return fmt.Sprintf("polix rules check --changed would fail: %v; set base_branch in %s or pass --base",
+			return fmt.Sprintf("polix rules check --run --changed would fail: %v; set base_branch in %s or pass --base",
 				i.BaseErr, workflow.File)
 		}
 	}

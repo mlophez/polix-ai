@@ -26,12 +26,14 @@ type fakePort struct {
 	wf         workflow.Workflow
 	changed    []string
 	rulesErr   error            // error of reading the rules
+	filesErr   error            // error of reading the files of the folder of rules
 	wfErr      error            // error of reading polix.yaml
 	changedErr error            // error of listing the changed files, as when no base branch exists
 	fails      map[string]error // error of the run of each check that fails
 	calls      []string         // the methods called, in order
 	candidates []string         // the bases Changed was asked for
 	argv       map[string][]string
+	files      map[string]rule.Source // the yaml files of the folder of rules, by name
 }
 
 // complete gives r the fields polix requires that it leaves empty: a kind, a subject and the scope of the whole project.
@@ -48,9 +50,11 @@ func complete(r rule.Rule) rule.Rule {
 	return r
 }
 
-// fields are the keys of a rule in a file that polix requires besides its id and description, with a deterministic
-// rule after them.
-const fields = "    kind: unknown\n    subject: s\n    scope: [\"**\"]\n"
+// fields returns the keys of a rule in a file after its id, formatted, that polix requires besides deterministic and
+// check: a kind, a subject, the description d and the scope of the whole project.
+func fields(d string) string {
+	return "    kind: unknown\n    subject: s\n    description: " + d + "\n    scope: [\"**\"]\n"
+}
 
 // TestMain runs the tests without the variables git exports to its hooks (see testenv.ClearGitHookEnv): the githooks
 // of polix.yaml run go test, and these tests run git in repositories of their own.
@@ -67,6 +71,11 @@ func (f *fakePort) LoadRules(_ context.Context, dir string) ([]rule.Rule, error)
 func (f *fakePort) LoadWorkflow(_ context.Context, _ string) (workflow.Workflow, error) {
 	f.calls = append(f.calls, "LoadWorkflow")
 	return f.wf, f.wfErr
+}
+
+func (f *fakePort) ReadRuleFiles(_ context.Context, dir string) (map[string]rule.Source, error) {
+	f.calls = append(f.calls, "ReadRuleFiles "+dir)
+	return f.files, f.filesErr
 }
 
 func (f *fakePort) Changed(_ context.Context, candidates []string) ([]string, error) {
@@ -105,11 +114,11 @@ var batchShellRules = []rule.Rule{
 
 func TestShellRunsAPassingGroupOnce(t *testing.T) {
 	port := &fakePort{rules: batchShellRules, wf: batchShellFlow}
-	res, err := run(context.Background(), port, Request{})
-	if err != nil || res.Ran != 3 || len(res.Failed) != 0 {
+	res, err := run(context.Background(), port, Request{Run: true})
+	if err != nil || res.Checks != 3 || len(res.Failed) != 0 {
 		t.Fatalf("got %+v, %v", res, err)
 	}
-	if want := []string{"LoadWorkflow", "LoadRules ai/rules", "RunCheck t/a1_test.go t/a2_test.go t/a3_test.go"}; !slices.Equal(port.calls, want) {
+	if want := []string{"LoadWorkflow", "LoadRules ai/rules", "ReadRuleFiles ai/rules", "RunCheck t/a1_test.go t/a2_test.go t/a3_test.go"}; !slices.Equal(port.calls, want) {
 		t.Fatalf("called %v, want %v", port.calls, want)
 	}
 }
@@ -117,11 +126,11 @@ func TestShellRunsAPassingGroupOnce(t *testing.T) {
 func TestShellRerunsAFailedGroupPerRule(t *testing.T) {
 	port := &fakePort{rules: batchShellRules, wf: batchShellFlow,
 		fails: map[string]error{"t/a2_test.go": errors.New("exit 1")}}
-	res, err := run(context.Background(), port, Request{})
-	if err != nil || res.Ran != 3 {
+	res, err := run(context.Background(), port, Request{Run: true})
+	if err != nil || res.Checks != 3 {
 		t.Fatalf("got %+v, %v", res, err)
 	}
-	if len(port.calls) != 2+1+3 {
+	if len(port.calls) != 3+1+3 {
 		t.Fatalf("one shared run and one per rule: %v", port.calls)
 	}
 	if len(res.Failed) != 1 || res.Failed[0].ID != "A-2" || res.Failed[0].Output != "ran t/a2_test.go\nexit 1" {
@@ -146,17 +155,17 @@ var developBase = workflow.Workflow{Base: []string{"develop"}, Rules: workflow.R
 func TestShellRunsTheChecksAndReportsTheFailures(t *testing.T) {
 	port := &fakePort{rules: shellRules, wf: developBase,
 		fails: map[string]error{"ai/checks/shfmt.sh": errors.New("exit 1")}}
-	res, err := run(context.Background(), port, Request{})
+	res, err := run(context.Background(), port, Request{Run: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Response{Ran: 2, Failed: []Failed{
+	want := Response{Checks: 2, Failed: []Failed{
 		{ID: "sh", Check: "ai/checks/shfmt.sh", Description: "shfmt", Output: "ran ai/checks/shfmt.sh\nexit 1"},
 	}}
-	if res.Ran != want.Ran || !slices.Equal(res.Failed, want.Failed) {
+	if res.Checks != want.Checks || !slices.Equal(res.Failed, want.Failed) {
 		t.Fatalf("got %+v, want %+v", res, want)
 	}
-	calls := []string{"LoadWorkflow", "LoadRules ai/rules", "RunCheck ai/checks/gofmt_test.go", "RunCheck ai/checks/shfmt.sh"}
+	calls := []string{"LoadWorkflow", "LoadRules ai/rules", "ReadRuleFiles ai/rules", "RunCheck ai/checks/gofmt_test.go", "RunCheck ai/checks/shfmt.sh"}
 	if !slices.Equal(port.calls, calls) {
 		t.Fatalf("called %v, want %v: without --changed the shell asks nothing about the branch", port.calls, calls)
 	}
@@ -170,8 +179,8 @@ func TestShellRunsTheChecksAndReportsTheFailures(t *testing.T) {
 
 func TestShellOnlyChanged(t *testing.T) {
 	port := &fakePort{rules: shellRules, wf: developBase, changed: []string{"install.sh"}}
-	res, err := run(context.Background(), port, Request{OnlyChanged: true})
-	if err != nil || res.Ran != 1 {
+	res, err := run(context.Background(), port, Request{Run: true, OnlyChanged: true})
+	if err != nil || res.Checks != 1 {
 		t.Fatalf("got %+v, %v", res, err)
 	}
 	if !slices.Equal(port.candidates, []string{"develop"}) {
@@ -182,10 +191,10 @@ func TestShellOnlyChanged(t *testing.T) {
 // The rules are read from the folder rules below path of polix.yaml, after the workflow.
 func TestShellReadsTheRulesOfRulesPath(t *testing.T) {
 	port := &fakePort{wf: workflow.Workflow{Path: "governance/"}}
-	if _, err := run(context.Background(), port, Request{}); err != nil {
+	if _, err := run(context.Background(), port, Request{Run: true}); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"LoadWorkflow", "LoadRules governance/rules"}; !slices.Equal(port.calls, want) {
+	if want := []string{"LoadWorkflow", "LoadRules governance/rules", "ReadRuleFiles governance/rules"}; !slices.Equal(port.calls, want) {
 		t.Fatalf("called %v, want %v", port.calls, want)
 	}
 }
@@ -193,8 +202,8 @@ func TestShellReadsTheRulesOfRulesPath(t *testing.T) {
 // --base replaces the bases of polix.yaml, but the workflow is still read for its runners.
 func TestShellPrefersTheBaseAsked(t *testing.T) {
 	port := &fakePort{rules: shellRules, wf: developBase, changed: []string{"a_test.go"}}
-	res, err := run(context.Background(), port, Request{OnlyChanged: true, Base: "main"})
-	if err != nil || res.Ran != 1 {
+	res, err := run(context.Background(), port, Request{Run: true, OnlyChanged: true, Base: "main"})
+	if err != nil || res.Checks != 1 {
 		t.Fatalf("got %+v, %v", res, err)
 	}
 	if !slices.Equal(port.candidates, []string{"main"}) {
@@ -209,11 +218,12 @@ func TestShellPrefersTheBaseAsked(t *testing.T) {
 func TestShellReturnsTheErrorsOfThePort(t *testing.T) {
 	boom := errors.New("boom")
 	for name, port := range map[string]*fakePort{
-		"LoadRules":    {rules: shellRules, rulesErr: boom},
-		"LoadWorkflow": {rules: shellRules, wfErr: boom},
-		"Changed":      {rules: shellRules, changedErr: boom},
+		"LoadRules":     {rules: shellRules, rulesErr: boom},
+		"LoadWorkflow":  {rules: shellRules, wfErr: boom},
+		"Changed":       {rules: shellRules, changedErr: boom},
+		"ReadRuleFiles": {rules: shellRules, filesErr: boom},
 	} {
-		_, err := run(context.Background(), port, Request{OnlyChanged: true})
+		_, err := run(context.Background(), port, Request{Run: true, OnlyChanged: true})
 		if !errors.Is(err, boom) {
 			t.Errorf("%s: got %v, want its error", name, err)
 		}
@@ -227,7 +237,7 @@ func TestShellReturnsTheErrorsOfThePort(t *testing.T) {
 func TestShellStopsOnInvalidRunners(t *testing.T) {
 	wf := workflow.Workflow{Rules: workflow.Rules{Run: []workflow.Runner{{Glob: "*_test.go"}}}}
 	port := &fakePort{rules: shellRules, wf: wf}
-	if _, err := run(context.Background(), port, Request{}); err == nil || len(port.argv) != 0 {
+	if _, err := run(context.Background(), port, Request{Run: true}); err == nil || len(port.argv) != 0 {
 		t.Fatalf("got %v after running %v", err, port.argv)
 	}
 }
@@ -235,7 +245,7 @@ func TestShellStopsOnInvalidRunners(t *testing.T) {
 // A rule that is not Valid stops the command: its result is not the result of a check.
 func TestShellStopsOnAnInvalidRule(t *testing.T) {
 	port := &fakePort{rules: []rule.Rule{{ID: "x", Deterministic: true, Check: "c.sh"}}}
-	if _, err := run(context.Background(), port, Request{}); err == nil {
+	if _, err := run(context.Background(), port, Request{Run: true}); err == nil {
 		t.Fatal("an invalid rule was run")
 	}
 }
@@ -244,7 +254,7 @@ func TestFlags(t *testing.T) {
 	if err := flags(Request{Base: "develop"}); err == nil {
 		t.Fatal("--base without --changed is accepted")
 	}
-	if err := flags(Request{Base: "develop", OnlyChanged: true}); err != nil {
+	if err := flags(Request{Run: true, Base: "develop", OnlyChanged: true}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -271,18 +281,18 @@ func repo(t *testing.T, pass bool) string {
 		code = "exit 0"
 	}
 	write(t, dir, map[string]string{
-		"ai/rules/a.yaml": "rules:\n  - id: A-1\n    description: a\n" + fields + "    deterministic: true\n    check: checks/a.sh\n",
+		"ai/rules/a.yaml": "rules:\n  - id: A-1\n" + fields("a") + "    deterministic: true\n    check: checks/a.sh\n",
 		"checks/a.sh":     "#!/bin/sh\necho checked\n" + code + "\n",
 	})
 	return dir
 }
 
 func TestCommandExitCodes(t *testing.T) {
-	code, stdout, _ := runCommand(t, "--dir", repo(t, true))
+	code, stdout, _ := runCommand(t, "--dir", repo(t, true), "--run")
 	if code != 0 || !strings.Contains(stdout, "1 checks, 0 failed") {
 		t.Fatalf("passing check: %d %q", code, stdout)
 	}
-	code, stdout, stderr := runCommand(t, "--dir", repo(t, false))
+	code, stdout, stderr := runCommand(t, "--dir", repo(t, false), "--run")
 	if code != 1 || !strings.Contains(stdout, "1 checks, 1 failed") ||
 		!strings.Contains(stderr, "FAIL A-1 (checks/a.sh): a") || !strings.Contains(stderr, "checked") {
 		t.Fatalf("failing check: %d %q %q", code, stdout, stderr)
@@ -299,7 +309,7 @@ func TestCommandRetiredFile(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--quiet", "--initial-branch=main")
 	write(t, dir, map[string]string{
-		"ai/rules/a.yaml":       "rules:\n  - id: A-1\n    description: a\n" + fields + "    deterministic: true\n    check: checks/a.sh\n",
+		"ai/rules/a.yaml":       "rules:\n  - id: A-1\n" + fields("a") + "    deterministic: true\n    check: checks/a.sh\n",
 		"ai/rules/retired.yaml": "rules:\n  - id: GOARCH-31\n    description: old\n    reason: gone\n",
 		"checks/a.sh":           "#!/bin/sh\ntouch ran\n",
 	})
@@ -359,7 +369,7 @@ func TestCommandInvalidFields(t *testing.T) {
 func TestCommandKindUnknown(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, "init", "--quiet", "--initial-branch=main")
-	write(t, dir, map[string]string{"ai/rules/a.yaml": "rules:\n  - id: A-1\n    description: a\n" + fields +
+	write(t, dir, map[string]string{"ai/rules/a.yaml": "rules:\n  - id: A-1\n" + fields("a") +
 		"    deterministic: false\n"})
 	if code, stdout, stderr := runCommand(t, "--dir", dir); code != 0 {
 		t.Fatalf("%d %q %q", code, stdout, stderr)
@@ -387,8 +397,8 @@ func TestCommandOutsideARepository(t *testing.T) {
 func TestCommandBase(t *testing.T) {
 	dir := repo(t, false)
 	writePolix := func(s string) { write(t, dir, map[string]string{"polix.yaml": s}) }
-	write(t, dir, map[string]string{"ai/rules/a.yaml": "rules:\n  - id: A-1\n    description: a\n" +
-		"    kind: unknown\n    subject: s\n    scope: [\"src/**\"]\n    deterministic: true\n    check: checks/a.sh\n"})
+	write(t, dir, map[string]string{"ai/rules/a.yaml": "rules:\n  - id: A-1\n" +
+		"    kind: unknown\n    subject: s\n    description: a\n    scope: [\"src/**\"]\n    deterministic: true\n    check: checks/a.sh\n"})
 	runGit(t, dir, "add", "--all")
 	runGit(t, dir, "commit", "--quiet", "-m", "rules")
 	runGit(t, dir, "checkout", "--quiet", "-b", "develop")
@@ -397,30 +407,89 @@ func TestCommandBase(t *testing.T) {
 	runGit(t, dir, "commit", "--quiet", "-m", "develop")
 	runGit(t, dir, "checkout", "--quiet", "-b", "feature")
 
-	code, stdout, _ := runCommand(t, "--dir", dir, "--changed")
+	code, stdout, _ := runCommand(t, "--dir", dir, "--run", "--changed")
 	if code != 1 || !strings.Contains(stdout, "1 checks, 1 failed") {
 		t.Fatalf("without a workflow the base is main: %d %q", code, stdout)
 	}
 	writePolix("version: 1\nbase_branch: develop\n")
-	code, stdout, _ = runCommand(t, "--dir", dir, "--changed")
+	code, stdout, _ = runCommand(t, "--dir", dir, "--run", "--changed")
 	if code != 0 || !strings.Contains(stdout, "0 checks") {
 		t.Fatalf("the base of polix.yaml is develop: %d %q", code, stdout)
 	}
-	if code, stdout, _ = runCommand(t, "--dir", dir, "--changed", "--base", "main"); code != 1 {
+	if code, stdout, _ = runCommand(t, "--dir", dir, "--run", "--changed", "--base", "main"); code != 1 {
 		t.Fatalf("--base overrides polix.yaml: %d %q", code, stdout)
 	}
 	writePolix("version: 1\nbase_branch: [main, develop]\n")
-	code, stdout, _ = runCommand(t, "--dir", dir, "--changed")
+	code, stdout, _ = runCommand(t, "--dir", dir, "--run", "--changed")
 	if code != 0 || !strings.Contains(stdout, "0 checks") {
 		t.Fatalf("the closest base of the list is develop: %d %q", code, stdout)
 	}
 	writePolix("version: 1\nbase_branch: trunk\n")
-	code, stdout, stderr := runCommand(t, "--dir", dir, "--changed")
+	code, stdout, stderr := runCommand(t, "--dir", dir, "--run", "--changed")
 	if code != 1 || !strings.Contains(stderr, "trunk") || !strings.Contains(stderr, "set base_branch in polix.yaml") {
 		t.Fatalf("a base that does not exist fails naming it: %d %q %q", code, stdout, stderr)
 	}
 	writePolix("version: [\n")
 	if code, _, stderr = runCommand(t, "--dir", dir); code != 1 || !strings.Contains(stderr, "polix.yaml") {
 		t.Fatalf("a broken polix.yaml stops: %d %q", code, stderr)
+	}
+}
+
+// Without --run the rules are validated and their format checked, and no check runs.
+func TestRunValidatesWithoutRun(t *testing.T) {
+	port := &fakePort{rules: batchShellRules, wf: batchShellFlow,
+		files: map[string]rule.Source{"a.yaml": rule.Source("rules:\n  - id: A-1\n    description: d\n")}}
+	res, err := run(context.Background(), port, Request{})
+	if err != nil || res.Ran || res.Rules != 3 || len(res.Unformatted) != 0 || len(port.argv) != 0 {
+		t.Fatalf("res %+v, err %v, ran %v", res, err, port.argv)
+	}
+}
+
+// A file not formatted is reported and stops the checks, with or without --run.
+func TestRunStopsOnUnformatted(t *testing.T) {
+	for _, req := range []Request{{}, {Run: true}} {
+		port := &fakePort{rules: batchShellRules, wf: batchShellFlow,
+			files: map[string]rule.Source{"a.yaml": rule.Source("rules:\n  - description: d\n    id: A-1\n")}}
+		res, err := run(context.Background(), port, req)
+		if err != nil || res.Ran || !slices.Equal(res.Unformatted, []string{"ai/rules/a.yaml"}) || len(port.argv) != 0 {
+			t.Fatalf("req %+v: res %+v, err %v, ran %v", req, res, err, port.argv)
+		}
+	}
+}
+
+// --changed means nothing without --run.
+func TestFlagsChangedNeedsRun(t *testing.T) {
+	if err := flags(Request{OnlyChanged: true}); err == nil || err.Error() != "--changed needs --run" {
+		t.Fatalf("err %v", err)
+	}
+}
+
+// Without --run the command validates the rules and their format and runs no check; a file not formatted fails it,
+// with or without --run, before any check runs, and a file the formatter rejects names its problem without a fix.
+func TestCommandFormat(t *testing.T) {
+	dir := repo(t, true)
+	code, stdout, stderr := runCommand(t, "--dir", dir)
+	if code != 0 || !strings.Contains(stdout, "1 rules valid and formatted") || strings.Contains(stderr, "run ") {
+		t.Fatalf("formatted without --run: %d %q %q", code, stdout, stderr)
+	}
+	write(t, dir, map[string]string{"ai/rules/a.yaml": "rules:\n  - kind: unknown\n    id: A-1\n    subject: s\n" +
+		"    description: a\n    scope: [\"**\"]\n    deterministic: true\n    check: checks/a.sh\n",
+		"checks/a.sh": "#!/bin/sh\ntouch ran\n"})
+	for _, args := range [][]string{{"--dir", dir}, {"--dir", dir, "--run"}} {
+		code, stdout, stderr := runCommand(t, args...)
+		if code != 1 || !strings.Contains(stderr, "ai/rules/a.yaml is not formatted: run polix rules fmt") ||
+			!strings.Contains(stdout, "1 rules valid, 1 files not formatted") {
+			t.Fatalf("%v: %d %q %q", args, code, stdout, stderr)
+		}
+		if _, err := os.Stat(dir + "/ran"); err == nil {
+			t.Fatalf("%v: a check ran", args)
+		}
+	}
+	write(t, dir, map[string]string{"ai/rules/a.yaml": "rules:\n  - id: !!str A-1\n" + fields("a") +
+		"    deterministic: false\n"})
+	code, stdout, stderr = runCommand(t, "--dir", dir, "--run")
+	if code != 1 || !strings.Contains(stderr, "ai/rules/a.yaml: ") || strings.Contains(stderr, "run polix rules fmt") ||
+		!strings.Contains(stdout, "1 files not formatted") {
+		t.Fatalf("a file the formatter rejects: %d %q %q", code, stdout, stderr)
 	}
 }

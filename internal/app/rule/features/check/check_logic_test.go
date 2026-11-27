@@ -26,7 +26,7 @@ func walk(rules []rule.Rule, wf workflow.Workflow, onlyChanged bool, changed []s
 	var runs []rule.Run
 	var outcomes []rule.Outcome
 	for {
-		out := Decide(rules, wf, rule.Selection{OnlyChanged: onlyChanged, Changed: changed}, outcomes)
+		out := Decide(rule.Folder{Rules: rules}, wf, rule.Selection{Run: true, OnlyChanged: onlyChanged, Changed: changed}, outcomes)
 		if out.Next == nil {
 			return runs, out
 		}
@@ -122,11 +122,11 @@ var batchFlow = workflow.Workflow{Rules: workflow.Rules{Run: []workflow.Runner{
 }}}
 
 func TestDecideBatchAsksForTheSharedRun(t *testing.T) {
-	out := Decide(archRules(), batchFlow, rule.Selection{}, nil)
+	out := Decide(rule.Folder{Rules: archRules()}, batchFlow, rule.Selection{Run: true}, nil)
 	if out.Next == nil || len(out.Next.Rules) != 3 || out.Results != nil {
 		t.Fatalf("got %+v", out)
 	}
-	out = Decide(archRules(), batchFlow, rule.Selection{}, []rule.Outcome{{Output: "ok"}})
+	out = Decide(rule.Folder{Rules: archRules()}, batchFlow, rule.Selection{Run: true}, []rule.Outcome{{Output: "ok"}})
 	if out.Next != nil || len(out.Results) != 3 || len(rule.Results(out.Results).Failed()) != 0 {
 		t.Fatalf("a passing shared run passes every rule: %+v", out)
 	}
@@ -134,11 +134,11 @@ func TestDecideBatchAsksForTheSharedRun(t *testing.T) {
 
 func TestDecideBatchRerunsAFailedGroup(t *testing.T) {
 	fail := rule.Outcome{Output: "boom", Err: errors.New("exit status 1")}
-	out := Decide(archRules(), batchFlow, rule.Selection{}, []rule.Outcome{fail})
+	out := Decide(rule.Folder{Rules: archRules()}, batchFlow, rule.Selection{Run: true}, []rule.Outcome{fail})
 	if out.Next == nil || len(out.Next.Rules) != 1 || out.Next.Rules[0].ID != "A-1" {
 		t.Fatalf("a failed shared run asks for the first rerun: %+v", out)
 	}
-	out = Decide(archRules(), batchFlow, rule.Selection{}, []rule.Outcome{fail, {Output: "ok"}, fail, {Output: "ok"}})
+	out = Decide(rule.Folder{Rules: archRules()}, batchFlow, rule.Selection{Run: true}, []rule.Outcome{fail, {Output: "ok"}, fail, {Output: "ok"}})
 	if out.Next != nil || len(out.Results) != 3 {
 		t.Fatalf("got %+v", out)
 	}
@@ -169,5 +169,23 @@ func TestDecideBatchOnlyChanged(t *testing.T) {
 	runs, out = walk(rules, batchFlow, true, []string{"docs/a.md"}, passAll)
 	if len(runs) != 1 || !slices.Equal(resultIDs(out.Results), []string{"A-2"}) {
 		t.Fatalf("--changed narrows the group: %+v", out)
+	}
+}
+
+// A file not formatted stops Decide before any run, and without Run nothing runs either.
+func TestDecideFormatAndRun(t *testing.T) {
+	ok := rule.Source("rules:\n  - id: A-1\n    description: d\n")
+	bad := rule.Folder{Dir: "ai/rules", Rules: archRules(), Files: map[string]rule.Source{
+		"a.yaml": rule.Source("rules:\n  - description: d\n    id: A-1\n"), "b.yaml": ok}}
+	out := Decide(bad, batchFlow, rule.Selection{Run: true}, nil)
+	if out.Ran || out.Next != nil || out.Fix != "polix rules fmt" || !slices.Equal(out.Unformatted, []string{"ai/rules/a.yaml"}) {
+		t.Fatalf("not formatted: %+v", out)
+	}
+	good := rule.Folder{Dir: "ai/rules", Rules: archRules(), Files: map[string]rule.Source{"a.yaml": ok}}
+	if out := Decide(good, batchFlow, rule.Selection{}, nil); out.Ran || out.Next != nil || out.Unformatted != nil {
+		t.Fatalf("without run: %+v", out)
+	}
+	if out := Decide(good, batchFlow, rule.Selection{Run: true}, nil); !out.Ran || out.Next == nil {
+		t.Fatalf("with run: %+v", out)
 	}
 }

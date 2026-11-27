@@ -131,7 +131,9 @@ internal/app/rule/
   result.go                  domain: Outcome, the output of a run, Result, the outcome of a check (Valid, Passed,
                              Tail), and Results, a list of them (Failed)
   run.go                     domain: Run, a check with the argv of its runner (Valid, Settle), and Rules.Plan
-  set.go                     domain: Rules, a list of rules (Matching, Repeated, Loaded)
+  set.go                     domain: Rules, a list of rules (Matching, Repeated, Loaded), and Selection
+  format.go                  domain: Source, the data of a rules file (Format), and Folder, the folder of rules
+                             as a check reads it (Valid, Unformatted)
   features/check/            the use case CheckRule, package check, imported as rulecheck
     check.md                 documentation of the use case, titled # CheckRule
     check_in.go              entry and shell: Command, Request, Response, Failed, Port, flags, run, load,
@@ -159,8 +161,10 @@ The flow of `polix rules check`:
 2. `run` (shell) reads through the port: polix.yaml whenever it exists (`LoadWorkflow`, for the runners of `rules.run`,
    which the adapter asks the loader of polix.yaml for), the rules of its folder of rules, below `path` (`LoadRules`,
    which the adapter asks the loader for) and, with `--changed`, the changed files against its base branches
-   (`Changed`), which `--base` only replaces when given.
-3. `Decide` (logic) takes the outcomes carried out so far and decides the next run, which may decide several rules
+   (`Changed`), which `--base` only replaces when given, and the files of the folder (`ReadRuleFiles`), which with
+   the rules make a `rule.Folder`.
+3. `Decide` (logic) stops at a file not formatted, or without `--run`; else it takes the outcomes carried out so far
+   and decides the next run, which may decide several rules
    at once, or, when none is left, the result of every rule: `Output` (the step shape).
 4. `run` carries out each next run through the port (`RunCheck`), builds a `rule.Outcome` (domain) from it,
    followed by `Valid()`, and calls the logic again, in a loop, until it has no next run.
@@ -388,7 +392,7 @@ The other linters of design of `.golangci.yml` follow the same policy, enabled w
   enforce their visibility, but one level deeper than the layout allows; GOARCH-9 enforces it instead.
 - `polix rules check` changes on purpose: a rule that is not `Valid` (no description, or a `check` without
   `deterministic`) stops the command, and so does an id repeated, which the loader of the
-  rules reports (`rule.Loaded.Repeated`); `--base` without `--changed` is an error; the hint to set `base_branch` only
+  rules reports (`rule.Loaded.Repeated`); `--changed` without `--run` and `--base` without `--changed` are errors; the hint to set `base_branch` only
   comes when no base exists. It always reads polix.yaml when it exists, to know the runners of `rules.run`, and
   `--base` only replaces its base branches; a polix.yaml that cannot be read or parsed stops the command.
 - `polix hook` takes the step shape, since a later entry of an event sees what an earlier one did (an observed

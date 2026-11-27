@@ -7,6 +7,13 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+### Changed
+
+- `polix rules check` validates the rules and their format by default, as `polix rules fmt --check` does, and runs
+  no check: a file not formatted fails with `<file> is not formatted: run polix rules fmt`. Pass `--run` to also run
+  the checks of the deterministic rules, which only run once every file is formatted. This breaks CI that runs
+  `polix rules check` to run the checks: change it to `polix rules check --run`. `--changed` now needs `--run`.
+
 ## [0.17.0] - 2026-11-27
 
 ### Changed

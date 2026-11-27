@@ -83,7 +83,7 @@ makes it.
 - **Every commit, not only the agent's.** `githooks:` gates commits by branch, staged files or message, including
   the ones people make.
 - **Rules for the agent and for CI.** Rules in `ai/rules/` reach the agent for the file it edits, and CI through
-  `polix rules check`.
+  `polix rules check --run`.
 - **Safe by default.** A typo is rejected, a broken config fails closed and a loop guard never traps a stop.
 - **An audit trail.** Every decision is logged with the entry that caused it.
 - **One binary, everywhere.** Linux, macOS and Windows, about 13 ms per hook call, and it updates itself.

@@ -101,7 +101,7 @@ func binary(i setup.Inspection) []setup.Finding {
 	return f
 }
 
-// workflowFile checks polix.yaml, and that rules check --changed finds a base branch.
+// workflowFile checks polix.yaml, and that rules check --run --changed finds a base branch.
 func workflowFile(i setup.Inspection) []setup.Finding {
 	var f []setup.Finding
 	base := func() {

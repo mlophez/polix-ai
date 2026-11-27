@@ -30,7 +30,7 @@ what the shell read through the port: `dir`, the folder of rules (`Workflow.Rule
 the rules words them, or the error where the loader stops; and `check`, from the request.
 
 1. Without files (no folder, or no `*.yaml` in it) there is nothing to format: `Empty`.
-2. It formats each file, in the order of the names, with `formatData` of its logic (`format_logic_order.go`). When it
+2. It formats each file, in the order of the names, with `rule.Source.Format` of the domain (`internal/app/rule/format.go`). When it
    fails, `<dir>/<name>: <error>` is a problem of `Problems`; when the result differs from the data read,
    `<dir>/<name>` goes to `Changed` and the result to the data to write.
 3. Each id repeated is a problem too, after those of the files: `<file> <id>: id repeated, also in <other file>`, an
@@ -41,7 +41,7 @@ the rules words them, or the error where the loader stops; and `check`, from the
 5. All or nothing: `Write` holds the data to write by name only without any problem and without `check`; else it is
    nil and nothing is written, so a repeated id stops `polix rules fmt` without writing, with or without `--check`.
 
-`formatData` lays a rules file out with `internal/platform/yamlfmt`, in the order of the keys that `order` gives and
+`rule.Source.Format` lays a rules file out with `internal/platform/yamlfmt`, in the order of the keys that `order` gives and
 with the sequence that `spaced` separates:
 
 - The layout of `polix config fmt`: two spaces of indentation, sequences indented below their key, flow collections
