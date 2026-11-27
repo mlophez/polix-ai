@@ -7,6 +7,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+## [0.16.2] - 2026-11-27
+
 ### Changed
 
 - `/polix:build` triages the findings with the user once the plan reaches `review`: it asks, round after round, to
@@ -14,6 +16,11 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
   plan, which it sets `done` and commits as `Close: <title>`. Run on a plan in `review`, it goes straight to the
   question.
 - `/polix:spec` no longer closes plans: it only writes and adjusts them.
+
+### Fixed
+
+- `/polix:build` stops with `TaskStop` any subagent still running before it launches another one or commits, and
+  lists each one it stopped under `Pending`, so two agents never edit the tree at once.
 
 ## [0.16.1] - 2026-11-26
 
@@ -1047,7 +1054,8 @@ Claude Code is the supported agent; Codex support is not implemented.
 - The condition `pr`, on the state of the pull request, is not implemented.
 - The rest of the known limits are in [docs/polix.md](docs/polix.md#known-limits).
 
-[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.16.1...HEAD
+[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.16.2...HEAD
+[0.16.2]: https://github.com/mlophez/polix-ai/compare/v0.16.1...v0.16.2
 [0.16.1]: https://github.com/mlophez/polix-ai/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/mlophez/polix-ai/compare/v0.15.0...v0.16.0
 [0.12.1]: https://github.com/mlophez/polix-ai/compare/v0.12.0...v0.12.1
