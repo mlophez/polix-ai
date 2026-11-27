@@ -7,6 +7,8 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-27
+
 ### Changed
 
 - The skill `/polix:add-rule` is now `/polix:rule`, with no alias: it loads on its own when a rules file is edited.
@@ -1071,7 +1073,8 @@ Claude Code is the supported agent; Codex support is not implemented.
 - The condition `pr`, on the state of the pull request, is not implemented.
 - The rest of the known limits are in [docs/polix.md](docs/polix.md#known-limits).
 
-[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.16.2...HEAD
+[Unreleased]: https://github.com/mlophez/polix-ai/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/mlophez/polix-ai/compare/v0.16.2...v0.17.0
 [0.16.2]: https://github.com/mlophez/polix-ai/compare/v0.16.1...v0.16.2
 [0.16.1]: https://github.com/mlophez/polix-ai/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/mlophez/polix-ai/compare/v0.15.0...v0.16.0
