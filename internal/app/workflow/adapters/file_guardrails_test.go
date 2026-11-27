@@ -63,7 +63,7 @@ const waitNotice = `notify "check_on_stop waits for the subagents still running:
 const (
 	formatPolixFiles = `guardrails.builtin.format_polix_files line=0 when=map[path:/polix.yaml] run ["polix" "config" "fmt"] ""`
 	formatRules      = `guardrails.builtin.format_polix_files line=0 when=map[path:ai/rules/*.yaml] run ["polix" "rules" "fmt"] ""`
-	checkPolixFiles  = `guardrails.builtin.check_polix_files line=0 when=map[changed:[/polix.yaml ai/rules/**]] run ["polix" "config" "check"] ""`
+	checkPolixFiles  = `guardrails.builtin.check_polix_files line=0 when=map[changed:[/polix.yaml]] run ["polix" "config" "check"] ""`
 )
 
 // writtenForbidden returns the items of forbidden_commands written in the file, without those the presets of

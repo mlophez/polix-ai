@@ -34,7 +34,8 @@ A rule has the keys of `Rule format`; any other key is kept for people and skill
 - **Audit**: the findings by rule id and check, each with the answer of the user, or "none".
 - **Rules**: each rule added, removed, split or changed, with its id and file.
 - **Pending**: the rules with `kind: unknown`, the deterministic rules left without `check`, the checks that failed
-  with their output and the files not parsed; or "none".
+  with their output and the files not parsed.
+  Also the migrated rules a denied edit left in their source, with their lines; or "none".
 
 ## Limits
 
@@ -54,13 +55,16 @@ Copy this checklist and track your progress:
 
 ```text
 Rules progress:
-- [ ] Step 1: Read every file of the folder of rules, to know the subjects, the kinds and the ids.
+- [ ] Step 1: Read every file of the folder of rules but `retired.yaml`, to know the subjects, the kinds and the ids.
+  Note whether `retired.yaml` exists: it is never read nor audited.
 - [ ] Step 2: Audit every rule with the nine checks (see `Audit`), listing the findings and writing nothing.
+  When `retired.yaml` exists, its deletion is the first finding and the only one about it.
 - [ ] Step 3: Ask about each finding alone (see `Question per finding`) and apply each answer to the rules.
 - [ ] Step 4: Ask what to add or remove, from the request or the user.
 - [ ] Step 5: Split the additions into atomic rules, each with its file, id, kind and subject (see `Rule format`).
 - [ ] Step 6: Propose `scope` and `check` from the code, say where each comes from, and confirm once before writing.
-- [ ] Step 7: Write the rules, delete retired.yaml when the user agreed, then parse each file and run each new `check`.
+- [ ] Step 7: Write the rules, then parse each file and run each new `check`.
+- [ ] Step 8: Remove each migrated rule from its source, only after its rule is written and parsed.
 ```
 
 ### Step 3: Ask and apply
@@ -69,7 +73,8 @@ Apply the answer of each finding before the next question, so later findings see
 When a rule is split, the main part keeps the id and the check, the other parts take new ids, and every description
 that names the id follows.
 When a rule is removed, delete it: its id becomes free, and no file keeps retired rules.
-When `retired.yaml` exists, no tool reads it any more: offer to delete it.
+When `retired.yaml` exists, no tool reads it any more: its finding offers to delete it, and the other rules are
+audited as if it were not there; never complete the fields of its rules.
 
 ### Step 5: New ids
 
@@ -82,6 +87,13 @@ Create a missing file with a `rules:` list ordered by id.
 Parse each file written until it parses.
 Run each new or changed `check` as the command of `AGENTS.md` that runs the checks of the rules does, from the root.
 A check that fails goes to `Pending` with its output: the code may not follow the rule yet.
+
+### Step 8: Remove the migrated rules
+
+Remove from its source each rule the user confirmed as migrated, and only that rule, once it is written and parsed.
+A rule must never stay in two places: the agent would receive two copies.
+When an edit is denied, as for a protected file, leave the rule there and list it with its lines in `Pending`.
+Without a document to migrate, skip this step.
 
 ## References
 
@@ -126,7 +138,8 @@ rules:
 
 ### Audit
 
-Run the nine checks on every rule and keep one finding per problem, with the ids it involves:
+Run the nine checks on every rule of the files read, `retired.yaml` apart, and keep one finding per problem, with the ids
+it involves:
 
 1. **Fields**: all present and valid; report every `kind: unknown` as pending.
 2. **Atomicity**: one subject and one kind; when a rule has two of either, propose to split it.

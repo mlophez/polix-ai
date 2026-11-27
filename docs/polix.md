@@ -504,7 +504,7 @@ guardrails:           # the basics every project wants (optional)
     forbid_commit_no_verify: true                 # no git commit that skips the hooks of git
     forbid_git_destructive_commands: true         # no forced git push, git reset --hard nor forced git clean
     format_polix_files: true                      # polix config fmt and polix rules fmt after an edit of them
-    check_polix_files: true                       # polix config check on a commit that stages them (githooks)
+    check_polix_files: true                       # polix config check on a commit that stages polix.yaml (githooks)
   protected_files: [".env"]                       # path globs no agent writes, the main session included
   protected_branches: [main]                      # branches nobody commits on
   forbidden_commands:                             # commands no agent runs, each command of the line as written
@@ -702,7 +702,7 @@ guardrails:
     forbid_commit_no_verify: true          # refuses git commit --no-verify and -n
     forbid_git_destructive_commands: true  # refuses git push --force, git reset --hard and git clean -f
     format_polix_files: true               # polix config fmt and polix rules fmt after an edit of them
-    check_polix_files: true                # polix config check on a commit that stages them
+    check_polix_files: true                # polix config check on a commit that stages polix.yaml
 ```
 
 - `forbid_commit_no_verify` refuses a `git commit` that skips the hooks of git, in every repository, with gates of
@@ -720,8 +720,8 @@ guardrails:
   so a failure reaches the agent as the output of the command. A written `format_on_edit` item that runs the same
   command is kept and runs too: the second run is skipped, since it already passed on the same content.
 - `check_polix_files` expands into the first entry of `githooks.pre_commit`, before those of `check_on_save`:
-  `polix config check` when a staged file is the `polix.yaml` of the root or below the rules folder
-  (`ai/rules/**` by default). Being an entry of `githooks`, it makes every session start install the hooks of git
+  `polix config check` when a staged file is the `polix.yaml` of the root. The rules are not checked there: run
+  `polix rules check` in CI or by hand, since a commit that stages a rule does not validate it. Being an entry of `githooks`, it makes every session start install the hooks of git
   (`polix install --githooks`), which needs git 2.54 or later and informs the agent when it fails: a repository on
   an older git sets `check_polix_files: false` to stop that warning.
 

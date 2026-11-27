@@ -181,7 +181,7 @@ githooks:
 		"    n1 --> n2\n" +
 		"  end\n" +
 		"  subgraph githooks_pre_commit [githooks.pre_commit]\n" +
-		"    n3[\"when changed=[/polix.yaml ai/rules/**]<br/>run polix config check<br/>" +
+		"    n3[\"when changed=[/polix.yaml]<br/>run polix config check<br/>" +
 		"from guardrails.builtin.check_polix_files\"]\n" +
 		"    n4[\"run go test ./...<br/>from guardrails.check_on_save\"]\n" +
 		"    n3 --> n4\n" +

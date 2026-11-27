@@ -20,7 +20,9 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 - `retired.yaml` is no longer read: `polix rules check` and `polix doctor` report it, so delete it. A deleted rule
   frees its id.
 - `polix config check` validates only `polix.yaml`: it no longer reads the rules, warns about
-  `polix rules check --changed` nor counts rules in its summary.
+  `polix rules check --changed` nor counts rules in its summary. For that reason `check_polix_files` runs it only on
+  a commit that stages `polix.yaml`; a commit that stages a rule no longer validates it, so run `polix rules check`
+  in CI.
 
 ## [0.16.2] - 2026-11-27
 

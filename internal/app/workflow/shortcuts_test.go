@@ -157,7 +157,7 @@ func TestAlsoOnSaveExpand(t *testing.T) {
 	if err := w.Valid(); err != nil {
 		t.Fatal(err)
 	}
-	if got := (Guardrails{CheckOnStop: g.CheckOnStop[1:2]}).Githooks(nil, DefaultRulesPath); got != nil {
+	if got := (Guardrails{CheckOnStop: g.CheckOnStop[1:2]}).Githooks(nil); got != nil {
 		t.Errorf("without also_on_save: %v", got)
 	}
 }

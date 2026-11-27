@@ -19,8 +19,8 @@ type Builtin struct {
 	// FormatPolixFiles runs polix config fmt after an edit of the root polix.yaml and polix rules fmt after an edit
 	// of a yaml file of the rules folder (format_polix_files).
 	FormatPolixFiles bool
-	// CheckPolixFiles runs polix config check on every commit that stages the root polix.yaml or a file of the rules
-	// folder, as a gate of git (check_polix_files).
+	// CheckPolixFiles runs polix config check on every commit that stages the root polix.yaml, as a gate of git
+	// (check_polix_files).
 	CheckPolixFiles bool
 	Line            int
 	Problems        []GuardrailProblem
@@ -113,7 +113,7 @@ func (p GuardrailProblem) Valid() error {
 // Guard returns a copy of w with the section guardrails g applied: the built-in good practices of g, the items of
 // forbidden_commands its presets add, before those of w (Builtin.forbidden), whether w has gates of git or not, and
 // the entries its shortcuts expand into, in On (Guardrails.Expand) and in Githooks (Guardrails.Githooks), with the
-// rules folder of w (RulesPath) for the globs of the built-in format and check of the polix files. The entry of start
+// rules folder of w (RulesPath) for the globs of the built-in format of the polix files. The entry of start
 // that installs the hooks of git is left to ExpandGithooks. With a path that cannot be the folder of the AI
 // (ValidPath), the format and the check of the polix files are off, so the only problem is the one of path, never one
 // of a rules folder built from it; the presets stay as g says.
@@ -127,7 +127,7 @@ func (w Workflow) Guard(g Guardrails) Workflow {
 		w.ForbiddenCommands = append(presets, w.ForbiddenCommands...)
 	}
 	w.On = g.Expand(w.On, rules)
-	w.Githooks = g.Githooks(w.Githooks, rules)
+	w.Githooks = g.Githooks(w.Githooks)
 	return w
 }
 
@@ -176,15 +176,15 @@ func (b Builtin) formatEntries(rules string) []Entry {
 	return []Entry{config, rulesFmt}
 }
 
-// checkEntries returns the entries of githooks.pre_commit check_polix_files expands into, for the rules folder rules:
-// polix config check when a staged file is the root polix.yaml or a file below the rules folder, at the line of
-// builtin; nil when it is off.
-func (b Builtin) checkEntries(rules string) []Entry {
+// checkEntries returns the entries of githooks.pre_commit check_polix_files expands into: polix config check when a
+// staged file is the root polix.yaml, at the line of builtin; nil when it is off. The rules are validated by polix
+// rules check, which a commit that stages a rule does not run.
+func (b Builtin) checkEntries() []Entry {
 	if !b.CheckPolixFiles {
 		return nil
 	}
 	from := "guardrails." + ShortcutBuiltin + "." + BuiltinCheckPolixFiles
-	when := Cond{"changed": []any{builtinRootFile, rules + "/**"}}
+	when := Cond{"changed": []any{builtinRootFile}}
 	e, _ := when.shortcutRun(from, b.Line, slices.Clone(builtinConfigCheck), "", false)
 	return []Entry{e}
 }

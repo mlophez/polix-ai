@@ -66,7 +66,7 @@ Workflow progress:
   `forbid_git_destructive_commands` refuses a forced `git push`, `git reset --hard` and a forced `git clean`.
   Both blocks are presets: items of `forbidden_commands` placed before the written ones.
   `format_polix_files` formats `polix.yaml` and the rules after each edit.
-  `check_polix_files` runs `polix config check` on every commit that stages them, so the hooks of git get installed.
+  `check_polix_files` runs `polix config check` on every commit that stages `polix.yaml`, so the hooks of git get installed.
 - The protections say what no actor may do: `protected_files`, `protected_branches` and `forbidden_commands`.
 - The lifecycle shortcuts each run a command at one moment of the work, in the order the work reaches them.
   The verb says what the command does: `exec_` prepares, `format_` changes files, `check_` gates.

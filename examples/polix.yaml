@@ -212,9 +212,10 @@ guardrails:
   # - format_polix_files: runs `polix config fmt` after an edit of the polix.yaml of the root and `polix rules fmt`
   #   after an edit of a yaml file of the rules folder (rules/ below path), two entries first on post_edit, before
   #   those of format_on_edit, without message.
-  # - check_polix_files: runs `polix config check` on every commit that stages the polix.yaml of the root or a file of
-  #   the rules folder, the first entry of githooks.pre_commit; as any entry of githooks it makes every session start
-  #   install the hooks of git, which needs git 2.54 or later: on an older git, set it to false.
+  # - check_polix_files: runs `polix config check` on every commit that stages the polix.yaml of the root, the first
+  #   entry of githooks.pre_commit; the rules are validated by `polix rules check`, which a commit that stages a
+  #   rule does not run. As any entry of githooks it makes every session start install the hooks of git, which needs
+  #   git 2.54 or later: on an older git, set it to false.
   # The two blocks are presets: they expand into items of forbidden_commands before the written ones, so they apply
   # to every actor, only with a valid file, matched against the text of each command of the line, nested ones
   # included: `echo "git push --force"` passes, while a commit message that cites --no-verify is refused too; each

@@ -58,14 +58,14 @@ func TestBuiltinFormat(t *testing.T) {
 
 // CUJ-03, AC-02: check_polix_files expands into the first entry of githooks.pre_commit, before those of
 // check_on_save and those written in githooks: polix config check when a staged file is the polix.yaml of the root
-// or below the rules folder, from guardrails.builtin.check_polix_files; and, as any entry of githooks, the start
+// (and none for the rules folder, which polix rules check validates), from guardrails.builtin.check_polix_files; and, as any entry of githooks, the start
 // installs the hooks of git.
 func TestBuiltinCheckPolixFiles(t *testing.T) {
 	g := Guardrails{Builtin: builtinOn, CheckOnSave: []GuardrailCheck{{Run: []string{"go", "test", "./..."}, Line: 8}}}
 	written := map[string][]Entry{PreCommit: {{Action: Action{Block: &Block{Message: "no"}}, Line: 12}}}
 	w := Workflow{Version: 1, Githooks: written}.Guard(g).ExpandGithooks()
 	want := []string{
-		`guardrails.builtin.check_polix_files line=3 when=map[changed:[/polix.yaml ai/rules/**]] run ["polix" "config" "check"] ""`,
+		`guardrails.builtin.check_polix_files line=3 when=map[changed:[/polix.yaml]] run ["polix" "config" "check"] ""`,
 		`guardrails.check_on_save line=8 when=map[] run ["go" "test" "./..."] ""`,
 		` line=12 when=map[] block "no"`,
 	}
@@ -76,8 +76,8 @@ func TestBuiltinCheckPolixFiles(t *testing.T) {
 		t.Fatalf("the start installs the hooks of git: %q", summaries(start))
 	}
 	custom := Workflow{Version: 1, Path: "custom"}.Guard(g)
-	if c, _ := custom.Githooks[PreCommit][0].When["changed"].([]any); !slices.Equal(c, []any{"/polix.yaml", "custom/rules/**"}) {
-		t.Fatalf("the rules below path: %v", c)
+	if c, _ := custom.Githooks[PreCommit][0].When["changed"].([]any); !slices.Equal(c, []any{"/polix.yaml"}) {
+		t.Fatalf("the files that trigger the check: %v", c)
 	}
 }
 

@@ -13,14 +13,14 @@ import (
 
 // Githooks returns the entries of githooks with those builtin and check_on_save expand into before the entries written
 // in githooks.pre_commit: first the entry of check_polix_files, which runs polix config check when a staged file is
-// the root polix.yaml or below rules, the folder of the rules (Builtin.checkEntries); then one entry per item of
+// the root polix.yaml (Builtin.checkEntries); then one entry per item of
 // check_on_save, in file order, that runs its command with its message, when a staged file matches its changed if it
 // has one; then, as those of check_on_save, one entry per item of check_on_stop with also_on_save, in file order,
 // whose wait_agents applies only to its entry on stop. Each takes the line of its item, or of builtin, and the path
 // of its shortcut, which the validator of githooks names in its problems. An item with problems expands into
 // nothing: Problems reports them. Without such entries githooks is returned as it is.
-func (g Guardrails) Githooks(githooks map[string][]Entry, rules string) map[string][]Entry {
-	saved := g.Builtin.checkEntries(rules)
+func (g Guardrails) Githooks(githooks map[string][]Entry) map[string][]Entry {
+	saved := g.Builtin.checkEntries()
 	for _, c := range g.CheckOnSave {
 		if e, ok := c.entry(ShortcutCheckOnSave, nil, "changed", false); ok {
 			saved = append(saved, e)

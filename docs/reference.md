@@ -430,8 +430,8 @@ When a shortcut falls short, write the entries it expands into in `on` or `githo
   fmt` when the edited path is `/polix.yaml` and `polix rules fmt` when it is `<path>/rules/*.yaml`
   (`ai/rules/*.yaml` by default), without message.
 - `check_polix_files`: the first entry of `githooks.pre_commit`, that runs `polix config check` when a staged file
-  is `/polix.yaml` or below `<path>/rules` (`ai/rules/**` by default); as any entry of `githooks`, it makes every
-  session start install the hooks of git, which needs git 2.54 or later.
+  is `/polix.yaml` (the rules are validated by `polix rules check`, not on commit); as any entry of `githooks`, it
+  makes every session start install the hooks of git, which needs git 2.54 or later.
 - The two blocks are presets: at load they expand into their items of `forbidden_commands`, before the written
   ones, at the line of `builtin`, so with a valid file they apply to every actor as any item does, matched against
   the text of each command of the line, nested ones the shell parser reads included; a commit message that cites
