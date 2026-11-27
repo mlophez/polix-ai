@@ -10,6 +10,8 @@
 # type they cannot resolve is accepted, so a rule on types is only as strong as what compiles.
 rules:
   - id: GOARCH-1
+    kind: unknown
+    subject: unknown
     description: >-
       The depth of a folder gives the kind of its code, and growth is new sibling folders, never deeper ones.
       internal/ holds app/ and platform/. internal/app/ holds domain folders. A domain folder
@@ -32,10 +34,10 @@ rules:
     scope: ["internal/**"]
     deterministic: true
     check: tests/architecture/goarch01_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-2
+    kind: unknown
+    subject: unknown
     description: >-
       Each domain package has its entity file <noun>.go, which declares the entity <Noun>, a struct
       (internal/app/rule/rule.go declares Rule); the rest of the domain is split into a <topic>.go per part, named
@@ -43,10 +45,10 @@ rules:
     scope: ["internal/app/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch02_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-3
+    kind: unknown
+    subject: unknown
     description: >-
       A use case is three files in its folder, as a pure core and an imperative shell: <verb>_in.go (the entry, a cobra
       command, the shell and the port it needs from the outside), <verb>_logic.go (the pure logic) and <verb>_out.go
@@ -60,10 +62,10 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch03_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-4
+    kind: unknown
+    subject: unknown
     description: >-
       The domain and the logic of a use case are pure, and what they import is GOARCH-41. They never read the clock
       (time.Now, Since, Until, Sleep, After, Tick, NewTimer, NewTicker, AfterFunc), write to the console (fmt.Print*,
@@ -76,10 +78,10 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch04_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-5
+    kind: unknown
+    subject: unknown
     description: >-
       The adapter implements the port of its own use case: Adapter of <verb>_out.go has every method of Port of
       <verb>_in.go, declared or promoted from an embedded field. The compiler checks it too, where the entry passes the
@@ -87,10 +89,10 @@ rules:
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_out.go", "internal/app/*/features/*/*_out_*.go"]
     deterministic: true
     check: tests/architecture/goarch05_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-6
+    kind: unknown
+    subject: unknown
     description: >-
       cmd/ only wires the root command and the entries of each use case: its files declare nothing but func main,
       and it has no tests (the commands are tested through their entries in internal/app/, and the end-to-end
@@ -99,29 +101,29 @@ rules:
     scope: ["cmd/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch06_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-7
+    kind: unknown
+    subject: unknown
     description: >-
       The packages of internal/ have no import cycles. That internal/platform/ never imports internal/app/ is
       GOARCH-42.
     scope: ["internal/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch07_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-8
+    kind: unknown
+    subject: unknown
     description: >-
       The domain is shared by the whole app: a use case folder of any noun may import the domain folder of any
       other noun. A permission: what it leaves out is decided by GOARCH-9.
     scope: ["internal/app/**/*.go"]
     deterministic: false
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-9
+    kind: unknown
+    subject: unknown
     description: >-
       The direction of every import follows from the depth. A use case imports the domains of any noun (up and across)
       and its own helpers (the only way down), and never another use case, of its noun or of another. A domain imports
@@ -135,20 +137,20 @@ rules:
     scope: ["internal/app/**/*.go", "cmd/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch09_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-10
+    kind: unknown
+    subject: unknown
     description: >-
       Use cases are vertical, and what they share goes where the depth says: logic shared by several use cases,
       of one noun or of several, goes in the domain; a part of one use case that grows goes in a helper folder of
       that use case, never in another use case nor in a domain it alone uses.
     scope: ["internal/app/**/*.go"]
     deterministic: false
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-11
+    kind: unknown
+    subject: unknown
     description: >-
       The names of a use case are fixed, the same in every use case package: <verb>_logic.go declares the logic Decide
       and its Output; <verb>_in.go declares the entry Command, Request, Response and Port; <verb>_out.go declares
@@ -157,10 +159,10 @@ rules:
     scope: ["internal/app/*/features/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch11_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-12
+    kind: unknown
+    subject: unknown
     description: >-
       A port is one interface, never a struct, declared where it is used: <verb>_in.go declares the interface Port.
       Besides it, the in files (<verb>_in.go and its siblings) declare at most one interface, unexported and named: the
@@ -169,20 +171,20 @@ rules:
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: true
     check: tests/architecture/goarch12_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-13
+    kind: unknown
+    subject: unknown
     description: >-
       In every file the types (interfaces and structs) come first, right after the imports, before constants,
       variables and functions; methods go after all the types.
     scope: ["internal/**/*.go", "cmd/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch13_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-14
+    kind: unknown
+    subject: unknown
     description: >-
       Each use case has its document <verb>.md in its folder (internal/app/rule/features/check/check.md), starting with
       # <Verb><Noun> built from its path (# CheckRule) and with the sections, each once and in this order:
@@ -191,10 +193,10 @@ rules:
     scope: ["internal/app/**"]
     deterministic: true
     check: tests/architecture/goarch14_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-15
+    kind: unknown
+    subject: unknown
     description: >-
       The entry of a use case is the only exported function of its in files, named Command and declared in <verb>_in.go;
       the shell and the other helpers of the in files are unexported, and a sibling <verb>_in_<topic>.go exports no
@@ -202,10 +204,10 @@ rules:
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: true
     check: tests/architecture/goarch15_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-16
+    kind: unknown
+    subject: unknown
     description: >-
       Every use case declares Request and Response in <verb>_in.go (GOARCH-11), and neither the types of its logic nor
       the exported types of the domain carry field tags, the shape of a transport, on named or embedded fields. An
@@ -214,10 +216,10 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch16_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-17
+    kind: unknown
+    subject: unknown
     description: >-
       Each folder is named after what it holds: a domain after its entity, a noun; a use case after what it does
       to that noun, a verb, so the use case reads <Verb><Noun>; a helper after its role in its use case; a library
@@ -225,30 +227,30 @@ rules:
       install and doctor; workflow for graph and log).
     scope: ["internal/**/*.go"]
     deterministic: false
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-18
+    kind: unknown
+    subject: unknown
     description: >-
       The domain and the logic are pure beyond the imports GOARCH-41 lists: they take data and return data, and
       never touch disk, git, network, processes, clock nor environment, not even through a library. Concurrency
       and deadlines live in the adapter: the shell runs the steps of the output in sequence.
     scope: ["internal/app/**/*.go"]
     deterministic: false
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-19
+    kind: unknown
+    subject: unknown
     description: >-
       internal/platform/ holds the technology polix runs on, without domain: a technology shared by several use
       cases lives there as a library that the adapters wrap, instead of each adapter repeating it, and so does the
       support the tests share (testenv).
     scope: ["internal/**/*.go"]
     deterministic: false
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-20
+    kind: unknown
+    subject: unknown
     description: >-
       <verb>_in.go of a use case is its imperative shell, always with the same shape: it reads through the port what the
       logic needs, branching on the request to know what to read; calls the logic from one call site (once, or in
@@ -262,19 +264,19 @@ rules:
       GOARCH-37.
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: false
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-21
+    kind: unknown
+    subject: unknown
     description: >-
       The document of a use case says what its code does, and a change of the behavior of the use case updates
       its document in the same commit. That it names the fields and the methods of the code is GOARCH-36.
     scope: ["internal/app/**"]
     deterministic: false
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-22
+    kind: unknown
+    subject: unknown
     description: >-
       The entry turns the flags, or the stdin of a hook, into the Request and validates them before the shell
       runs (a flag that needs another, allowed values); the shell turns the Request into the Response, built from
@@ -282,10 +284,10 @@ rules:
       console and sets the exit code. Only the Request and the Response carry the shape of the transport.
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go", "internal/app/*/features/*/*_logic.go", "internal/app/*/features/*/*_logic_*.go"]
     deterministic: false
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-23
+    kind: unknown
+    subject: unknown
     description: >-
       Every use case has the same shape: the logic is one function, Decide, that takes domain values (types of the
       domain of any noun, or predeclared types) and returns its decision, Output, and nothing else: a refusal is data of
@@ -296,10 +298,10 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch23_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-24
+    kind: unknown
+    subject: unknown
     description: >-
       The out files, <verb>_out.go and its siblings <verb>_out_<topic>.go, hold only the adapter of their use case, an
       object that implements the port: the public struct Adapter, declared in <verb>_out.go, its methods, in any out
@@ -312,10 +314,10 @@ rules:
     scope: ["internal/app/*/features/*/*_out.go", "internal/app/*/features/*/*_out_*.go"]
     deterministic: true
     check: tests/architecture/goarch24_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-25
+    kind: unknown
+    subject: unknown
     description: >-
       An exported struct of internal/app/ has only exported fields: the structs that go from one part to another
       (domain, Request, Response, Output, Adapter) are open to read. A struct that is a detail of one file, such
@@ -324,20 +326,20 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch25_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-26
+    kind: unknown
+    subject: unknown
     description: >-
       Every exported struct of the domain has the method Valid() error, with a value receiver, which tells why a
       value is not valid. Go declares it in the package of the struct, so in its domain package.
     scope: ["internal/app/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch26_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-27
+    kind: unknown
+    subject: unknown
     description: >-
       The domain is immutable: the methods of a domain struct have a value receiver, so a method that changes the
       value returns a copy. They are named after what the use cases do with the value, never setters nor getters:
@@ -346,10 +348,10 @@ rules:
     scope: ["internal/app/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch27_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-28
+    kind: unknown
+    subject: unknown
     description: >-
       A domain struct changes only through its own methods: no code of internal/app/ outside the methods of T
       assigns to a field of a T (x.F = v, x.F += v, x.F++, x.F[i] = v), reached directly or promoted through
@@ -358,10 +360,10 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch28_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-29
+    kind: unknown
+    subject: unknown
     description: >-
       A value of a domain struct is built with a literal, never with a constructor (no function New* nor new* in
       internal/app/), and validated: a literal with fields (T{...} or &T{...}), in a function or at the top level
@@ -371,10 +373,10 @@ rules:
     scope: ["internal/app/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch29_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-30
+    kind: unknown
+    subject: unknown
     description: >-
       Beyond what GOARCH-26 to GOARCH-29 check: Valid covers every invariant of the value and its result is
       handled before the value is used; a method that changes a slice or a map of the value copies it first, so
@@ -382,10 +384,10 @@ rules:
       use cases (Retire, Narrow), not after the field it touches.
     scope: ["internal/app/*/*.go"]
     deterministic: false
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-32
+    kind: unknown
+    subject: unknown
     description: >-
       <verb>_in.go declares the shell run, of type func(context.Context, Port, Request) (Response, error). Outside the
       tests, the shell is the only function or method of its use case package that calls the logic Decide, from
@@ -396,10 +398,10 @@ rules:
     scope: ["internal/app/*/features/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch32_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-33
+    kind: unknown
+    subject: unknown
     description: >-
       The port speaks in domain values: every method of Port takes context.Context first, and the rest of its
       parameters and its results are domain types of any noun or predeclared types (error among them), so the
@@ -408,10 +410,10 @@ rules:
     scope: ["internal/app/*/features/*/*_in.go"]
     deterministic: true
     check: tests/architecture/goarch33_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-34
+    kind: unknown
+    subject: unknown
     description: >-
       Every use case has its two tests: <verb>_logic_test.go calls the logic Decide, does not mention Port nor Adapter
       and uses no name declared in <verb>_in_test.go, where the fake of the port lives; <verb>_in_test.go calls the
@@ -422,20 +424,20 @@ rules:
     scope: ["internal/app/*/features/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch34_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-35
+    kind: unknown
+    subject: unknown
     description: >-
       Each test file is named after the file it tests: <stem>_test.go sits next to <stem>.go, so the test of a
       file is found by its name.
     scope: ["internal/**/*_test.go"]
     deterministic: true
     check: tests/architecture/goarch35_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-36
+    kind: unknown
+    subject: unknown
     description: >-
       The document of a use case names, between backquotes, every field of Request in ## Request, every field of
       Response and of the structs of <verb>_in.go it holds in ## Response, and every method of Port in ## Port, so a
@@ -444,10 +446,10 @@ rules:
     scope: ["internal/app/*/features/*/*.md", "internal/app/*/features/*/*_in.go"]
     deterministic: true
     check: tests/architecture/goarch36_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-37
+    kind: unknown
+    subject: unknown
     description: >-
       The shell decides nothing: every condition of an if, for or switch in the shell run and in the unexported
       functions of the in files (<verb>_in.go and its <verb>_in_<topic>.go siblings) is made of fields of the request,
@@ -457,30 +459,30 @@ rules:
     scope: ["internal/app/*/features/*/*_in.go", "internal/app/*/features/*/*_in_*.go"]
     deterministic: true
     check: tests/architecture/goarch37_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-38
+    kind: unknown
+    subject: unknown
     description: >-
       The tests are white box: every *_test.go of internal/ declares the package of its folder, never
       <name>_test, so the tests reach the shell, the fakes and the unexported names without exporting anything.
     scope: ["internal/**/*_test.go"]
     deterministic: true
     check: tests/architecture/goarch38_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-39
+    kind: unknown
+    subject: unknown
     description: >-
       No dot import (import . "pkg") in internal/ nor cmd/: every name of another package is written with its
       qualifier, so the file says which package each name comes from.
     scope: ["internal/**/*.go", "cmd/**/*.go"]
     deterministic: true
     check: tests/architecture/goarch39_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-41
+    kind: unknown
+    subject: unknown
     description: >-
       The domain files (internal/app/<noun>/*.go) and the logic files of every use case
       (internal/app/<noun>/features/<verb>/<verb>_logic.go and its siblings <verb>_logic_<topic>.go) import only the
@@ -495,10 +497,10 @@ rules:
     scope: ["internal/app/*/*.go", "internal/app/*/features/*/*_logic.go", "internal/app/*/features/*/*_logic_*.go", ".golangci.yml"]
     deterministic: true
     check: tests/architecture/goarch41_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-42
+    kind: unknown
+    subject: unknown
     description: >-
       internal/platform/ never imports internal/app/: the technology never depends on the product, so a library
       takes the values it needs as parameters. The list GOARCH-42 of depguard in .golangci.yml holds it, tests
@@ -506,20 +508,20 @@ rules:
     scope: ["internal/platform/**/*.go", ".golangci.yml"]
     deterministic: true
     check: tests/architecture/goarch42_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-43
+    kind: unknown
+    subject: unknown
     description: >-
       internal/platform/testenv, the support that the tests share, is imported only by _test.go files. The list
       GOARCH-43 of depguard in .golangci.yml holds it.
     scope: ["*.go", ".golangci.yml"]
     deterministic: true
     check: tests/architecture/goarch43_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-44
+    kind: unknown
+    subject: unknown
     description: >-
       A domain package (internal/app/<noun>/*.go, tests aside) declares only types, interfaces, constants,
       variables that are not functions, and methods of its types, structs or named types (workflow.Cond). It
@@ -534,10 +536,10 @@ rules:
     scope: ["internal/app/*/*.go"]
     deterministic: true
     check: tests/architecture/goarch44_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-45
+    kind: unknown
+    subject: unknown
     description: >-
       The logic Decide of a use case takes at most 4 parameters, each name counted (a, b string are two). What
       does not fit is grouped into a value of the domain, built and validated by the shell (GOARCH-29) and named
@@ -546,10 +548,10 @@ rules:
     scope: ["internal/app/*/features/*/*_logic.go"]
     deterministic: true
     check: tests/architecture/goarch45_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-46
+    kind: unknown
+    subject: unknown
     description: >-
       An adapters package, internal/app/<noun>/adapters/, package adapters, declares only exported structs, with their
       methods, and unexported types, constants and helpers. It declares no exported function, constant, variable,
@@ -560,20 +562,20 @@ rules:
     scope: ["internal/app/*/adapters/*.go"]
     deterministic: true
     check: tests/architecture/goarch46_test.go
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-47
+    kind: unknown
+    subject: unknown
     description: >-
       An adapters package only reads, decodes, caches and writes, and decides nothing: what to do with what it read,
       such as the validation of a value, the choice between two outcomes or the meaning of a missing file, belongs to
       the domain or to the use case, which the package calls or returns to.
     scope: ["internal/app/*/adapters/*.go"]
     deterministic: false
-    kind: unknown
-    subject: unknown
 
   - id: GOARCH-48
+    kind: unknown
+    subject: unknown
     description: >-
       A library internal/platform/<lib>/ never imports another library of internal/platform/: each one depends only
       on the standard library and third parties, so the platform stays a flat set of independent pieces. What two
@@ -583,5 +585,3 @@ rules:
     scope: ["internal/platform/**/*.go", ".golangci.yml"]
     deterministic: true
     check: tests/architecture/goarch48_test.go
-    kind: unknown
-    subject: unknown
