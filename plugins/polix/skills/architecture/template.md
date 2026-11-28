@@ -7,13 +7,15 @@ The scope and the dimensions measured, and whether the scores hold only for the 
 ## Summary
 
 <One line per dimension measured: `<dimension>: <score>/5`, or `unscored`, and its reason.
+Then the agent traps and the unmodeled cases found, and how many have `no mechanical guard`.
 Then the three recommendations that matter most, each with the solution recommended.>
 
 ## Metrics
 
 <Graph: the modules and edges, every cycle, and the modules with the highest fan-in, fan-out and instability.
 External reach: each external dependency and the modules that import it.
-History: the commits sampled, the hotspots, the co-change pairs without an import and the spread.
+History: the commits sampled, the hotspots, the co-change pairs without an import, the spread and the fix
+concentration.
 Each metric with the command that produced it, or `approximate`.>
 
 ## Dimensions
@@ -22,11 +24,41 @@ Each metric with the command that produced it, or `approximate`.>
 
 ### <Dimension>: <score>/5
 
-<Why it meets that level and not the next, the metrics it rests on and each finding at `file:line`.>>
+<Why it meets that level and not the next, the metrics it rests on and each finding at `file:line`.>
+
+Weakness: <the main weakness, at `file:line`: what holds it below 5, or at 5, what would bring it down first>.
+
+<In conformance, also the challenge of the declared architecture: each constraint that protects nothing, costs more
+than it protects, contradicts another or is bypassed, with the constraint or rule it names.>>
+
+## Agent traps
+
+<One subsection per trap, ranked: confirmed by the history first, then `no mechanical guard`, then the rest:
+
+### T<n>. <title> (<kind>)
+
+Where: <`file:line`>.
+Scenario: <the change an agent would make, what breaks and why no check fails>.
+Confirmed by: <the commit, or none>.
+Guard: <the first viable guard of the rubric, or `no mechanical guard` and the note it needs>.>
+
+<Or "none" with the kinds walked.>
+
+## Unmodeled cases
+
+<One subsection per case, ranked as the traps:
+
+### U<n>. <title> (<family>)
+
+Case: <what happens and when>.
+Owner: <the module that should handle it and why none does today, at `file:line`>.
+Guard: <the first viable guard of the rubric, or `no mechanical guard` and the note it needs>.>
+
+<Or "none" with the families walked.>
 
 ## Strengths
 
-<What the architecture does well and must be kept, each with its evidence at `file:line`.>
+<Only what a recommendation could undo and must be kept, each with its evidence at `file:line`.>
 
 ## Recommendations
 

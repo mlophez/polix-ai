@@ -225,8 +225,8 @@ none: use it with your own skills, agents and conventions.
 
 **The harness** is optional: the `polix` plugin ships a ready-to-use development flow, with `/polix:spec` (whose
 plan `polix:critic` reviews before you approve it), `/polix:build` (run by `polix:builder`, checked against the plan by `polix:verifier` and reviewed by
-`polix:reviewer`), `/polix:review`, `/polix:audit` and `/polix:architecture`, which scores the architecture in eight
-dimensions and recommends solutions, with `/polix:task` to add tasks to the backlog and
+`polix:reviewer`), `/polix:review`, `/polix:audit` and `/polix:architecture`, which scores the architecture in nine
+dimensions, finds where an agent will err and recommends solutions, with `/polix:task` to add tasks to the backlog and
 `/polix:grill-me` to stress-test a plan or an idea one question at a time and then ask whether to plan it or implement it,
 `/polix:brainstorming` to propose new ideas from the project and save those you pick as tasks, `/polix:probe` to
 check whether one idea is viable, `/polix:think` to think a doubt or a topic through before it is an idea, `/polix:synthesize` to condense a Markdown file without losing its format nor

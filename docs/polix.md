@@ -1643,10 +1643,12 @@ also prints that Codex support is not implemented in this release and the setup 
   the report
   in the folder of reports, `audit` audits the repository with several `auditor` agents in parallel and saves the
   report in the folder of reports, `architecture` measures the architecture of the repository, or of a part, in
-  eight dimensions (cohesion, coupling, growth, replaceability, dependencies, conformance, testability and
-  simplicity), each scored 1 to 5 by a rubric on the metrics of the graph of imports and of the history and on the
-  code, alone in the session, and saves in the folder of reports one report with prioritized recommendations, two or
-  three possible solutions for each high one, changing nothing else, `synthesize` condenses a Markdown file in place, cutting filler and repetition
+  nine dimensions (cohesion, coupling, growth, replaceability, dependencies, conformance, testability, simplicity
+  and agent-safety), each scored 1 to 5 by a rubric on the metrics of the graph of imports and of the history and on
+  the code, alone in the session, critically: it names the weakness of each, challenges the declared architecture and
+  lists the agent traps and the cases no module handles, each with the guard that would close it, and saves in the
+  folder of reports one report with prioritized recommendations, two or three possible solutions for each high one,
+  changing nothing else, `synthesize` condenses a Markdown file in place, cutting filler and repetition
   while keeping its format, its readability and every instruction and fact, `improving-agent-context` maps what an agent receives
   in each phase of the flow, from the repository and from outside it, and rewrites the repository, as the
   user confirms, so each fact is stated once, in its home and the same way in every phase, `writing-skills` and `writing-agents` write a skill or a

@@ -1,7 +1,8 @@
 # Rubric of the architecture
 
-The eight dimensions the skill measures, the metrics they rest on and the levels of their score.
+The nine dimensions the skill measures, the metrics they rest on and the levels of their score.
 A dimension gets the level whose description it meets whole; levels 4 and 2 sit between their neighbours.
+Then the agent traps, the unmodeled cases and the guards that close them, which the report lists whatever it scores.
 
 ## Graph metrics
 
@@ -33,6 +34,8 @@ With fewer than 30 commits left, skip these metrics and say so in `Pending`: the
 - **Co-change**: the pairs of modules changed in the same commit at least 5 times, and which of them import neither
   the other.
 - **Spread**: the median and the 90th percentile of the modules touched per commit that adds a behaviour.
+- **Fix concentration**: the files touched most by the commits whose subject starts with `fix`, `revert` or
+  `hotfix`, in any case, and the commits that touch each of them.
 
 ## Cohesion
 
@@ -101,6 +104,10 @@ The code does what the declared architecture says, and checks enforce it.
 - Metrics: the constraints declared, those a test or a linter enforces, and the violations found.
 - Questions: does each layer, module and allowed dependency of the docs match the code?
   Which constraints rely only on the reviewers?
+- Challenge the declared architecture itself, each finding with the constraint or rule it names:
+  - A constraint that protects nothing: breaking it would harm no dimension.
+  - A constraint that costs more than it protects: it forces detours, such as layers that only forward or copies.
+  - Two constraints that contradict each other, or one the code bypasses because it is impractical.
 - `unscored` when nothing declares the architecture: its first recommendation, of high priority, is to declare the
   layers and the allowed dependencies and to check them with tests or linters.
 - 5: the code matches every declared constraint, and tests or linters enforce the main ones.
@@ -132,3 +139,72 @@ No more structure than the problem needs.
 - 5: every abstraction serves a second implementation, a test or a boundary, and no layer only forwards.
 - 3: some abstractions or layers nothing needs, which add hops but do not hide the logic.
 - 1: the indirection hides the logic: layers that only forward, generality nothing uses, dead modules.
+
+## Agent safety
+
+An agent that edits the code learns every invariant from the files it touches, and a check fails when it breaks one.
+
+- Metrics: the agent traps found and the share with a mechanical guard, the unmodeled cases, the declared conventions
+  no check enforces, the fix concentration, the co-change pairs without an import.
+- Questions: can an agent learn every invariant of a change from the files it edits, or does one live elsewhere?
+  Does a new case need an edit in a second place nothing checks, such as a registry, a list, a doc or a string?
+  Are the contracts between modules typed and checked, or strings and conventions?
+  Does each failure, platform and concurrent run the system meets have a module that handles it?
+  When an agent breaks a declared convention, does a test or a linter fail?
+- 5: every invariant is local or checked, every convention has a mechanical guard, no case is unmodeled, and the
+  fixes do not concentrate.
+- 3: the main constraints have a check, but some conventions or paired edits rely on reading, or some cases have no
+  module that handles them.
+- 1: most conventions rely on reading, the invariants spread across files with no check, and the history fixes the
+  same files again and again.
+
+## Agent traps
+
+A trap is a place where an agent that edits the code will likely err, and no check catches the error.
+Look for these kinds, in the scope and in the modules it imports:
+
+- **Non-local invariant**: a rule of a module that holds only because another file, far from it, keeps it.
+- **Paired edit**: a change that is right only when a second place changes too, such as a registry, a switch, a
+  list of names, a doc, a fixture or a generated file.
+- **Implicit convention**: a naming, layout or ordering rule that only the existing code shows, and no doc or check
+  states.
+- **Stringly contract**: modules that agree on a key, a path, a format or a message by literal strings, with no type
+  nor test that ties both ends.
+- **Misleading example**: two ways to do one thing, a deprecated pattern still in use, or a name that says other than
+  the code does; an agent copies the nearest example.
+- **Silent default**: a fallback, a zero value or a swallowed error that turns a wrong edit into wrong behaviour
+  instead of a failure.
+- **Hand-edited generated code**: generated or vendored files nothing marks, which an agent edits instead of their
+  source.
+
+Each trap rests on evidence: the code at `file:line`, a declared constraint, and when the history has one, a commit
+of the fix concentration or a co-change pair that confirms it.
+A trap without a concrete scenario is no finding: name the change an agent would make, what breaks and why no check
+fails.
+
+## Unmodeled cases
+
+An unmodeled case is a case the system meets and no module of the architecture has a place to handle.
+Look for these families:
+
+- **Partial failure**: a run that stops between two steps that change state, files or the outside world.
+- **Failing dependency**: a command, network call, file or service that fails, times out or answers late.
+- **Platform**: another operating system, architecture, shell, encoding or version of a tool the code assumes.
+- **Concurrency**: two runs at once, a retry, or a run that starts while another holds the state.
+- **Old state**: data, configuration or files of an older version, or missing, that reach the new code.
+- **Boundary of a contract**: an input that crosses modules empty, too large or malformed, with no module that owns
+  its validation.
+
+Name the module that should handle the case and why none does today.
+A missing check inside one function is a bug, not an unmodeled case: it belongs to an audit.
+
+## Guards
+
+Each trap and unmodeled case proposes the first guard of this order that is viable:
+
+1. A test or a linter that fails when the error happens, such as an architecture test or a dependency rule.
+2. A rule of the folder of rules with a check that runs it.
+3. A rule of the folder of rules without a check.
+4. A note in the instructions of the agents, such as `AGENTS.md` or `CLAUDE.md`.
+
+When only a note is viable, mark the finding `no mechanical guard`.
