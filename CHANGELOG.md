@@ -9,6 +9,11 @@ A 0.x release may still change the format of `polix.yaml`; `requires:` lets a re
 
 ### Added
 
+- `/polix:architecture` measures the architecture of the repository, or of the paths and dimensions given, in eight
+  dimensions scored 1 to 5 by a rubric: cohesion, coupling, growth, replaceability, dependencies, conformance,
+  testability and simplicity. It computes the metrics of the graph of imports and of the history with the tools of
+  the language, or marks them `approximate`, and writes one report to the folder of reports with prioritized
+  recommendations, two or three possible solutions for each high one, and changes nothing else.
 - `/polix:think` thinks a doubt or a topic through with the user in free conversation, before any idea or task
   exists; it changes nothing unless the user asks for it.
 

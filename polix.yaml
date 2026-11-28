@@ -62,7 +62,7 @@ on:
         inject: |
           - Always push to remote after commit, except while /polix:build runs: it never pushes, so push its commits once it reports.
           - This repository has two flows and the user chooses which one: following a plan (polix:spec writes it, polix:build builds it) or editing the code directly, without a plan.
-          - This repository plans, builds, reviews and audits with the skills of polix: polix:spec, polix:build, polix:review and polix:audit.
+          - This repository plans, builds, reviews, audits and measures its architecture with the skills of polix: polix:spec, polix:build, polix:review, polix:audit and polix:architecture.
           - The generic skills that overlap them (engineering:code-review, engineering:architecture, engineering:system-design, engineering:testing-strategy, engineering:tech-debt, code-review, simplify) are not used here.
 
   # The model of a skill holds only for the turn that invokes it: each notification of a background subagent of
